@@ -1,0 +1,4 @@
+{
+  "base" : "git:merge-base(master), arc:prompt",
+  "phabricator.uri" : "https://logdna.phacility.com/"
+}

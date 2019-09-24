@@ -1,0 +1,15 @@
+[workspace]
+members = [
+    "bin",
+    "common/config",
+    "common/config-macro",
+    "common/fs",
+    "common/http",
+    "common/k8s",
+    "common/middleware",
+]
+
+[profile.release]
+opt-level = 3
+debug = true
+panic = "abort"

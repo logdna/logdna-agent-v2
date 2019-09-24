@@ -1,0 +1,22 @@
+[package]
+name = "config"
+version = "0.1.0"
+authors = ["CJP10 <connor.peticca@logdna.com>"]
+edition = "2018"
+
+[dependencies]
+#local
+fs = { package = "fs", path = "../fs" }
+http = { package = "http", path = "../http" }
+config-macro = { package = "config-macro", path = "../config-macro" }
+
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.8"
+globber = "0.1"
+regex = "1"
+lazy_static = "1"
+flate2 = "1"
+libc = "0.2"
+
+[dev-dependencies]
+scopeguard = "1"

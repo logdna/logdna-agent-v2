@@ -1,0 +1,11 @@
+[package]
+name = "middleware"
+version = "0.1.0"
+authors = ["CJP10 <connor.peticca@logdna.com>"]
+edition = "2018"
+
+[dependencies]
+#local
+http = { package = "http", path = "../http" }
+
+crossbeam = "0.7"
