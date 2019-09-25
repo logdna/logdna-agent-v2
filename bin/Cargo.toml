@@ -1,0 +1,31 @@
+# version bump checklist
+# 1) version = "X.Y.Z" in this file
+#       ../bin/Cargo.toml
+# 2) version in all the k8s yaml image: logdna/logdna-agent-v2:X.Y.Z
+#       ../k8s/*.yaml
+# 3) update changelog
+#       ../CHANGELOG.md
+# 4) *optional* run 'cargo update' so that new deps are pulled in
+# 5) once the diff/pr is accepted tag the commit in master X.Y.Z, this will trigger the CI job
+
+[package]
+name = "logdna-agent"
+version = "2.1.6"
+authors = ["CJP10 <connor.peticca@logdna.com>"]
+edition = "2018"
+
+[[bin]]
+name = "logdna-agent"
+path = "src/main.rs"
+
+[dependencies]
+#local
+http = { package = "http", path = "../common/http" }
+fs = { package = "fs", path = "../common/fs" }
+config = { package = "config", path = "../common/config" }
+middleware = { package = "middleware", path = "../common/middleware" }
+k8s = { package = "k8s", path = "../common/k8s" }
+
+log = "0.4"
+env_logger = "0.6"
+serde_yaml = "0.8"

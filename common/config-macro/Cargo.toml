@@ -1,0 +1,14 @@
+[package]
+name = "config-macro"
+version = "0.1.0"
+authors = ["CJP10 <connor.peticca@logdna.com>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "0.6"
+syn = { version = "0.15", features = ["full","printing", "extra-traits"] }
+proc-macro2 = "0.4"
+hashbrown = "0.6"

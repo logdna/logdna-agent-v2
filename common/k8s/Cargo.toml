@@ -1,0 +1,20 @@
+[package]
+name = "k8s"
+version = "0.1.0"
+authors = ["CJP10 <connor.peticca@logdna.com>"]
+edition = "2018"
+
+[dependencies]
+#local
+middleware = { package = "middleware", path = "../middleware" }
+http = { package = "http", path = "../http" }
+
+crossbeam = "0.7"
+inotify = "0.7"
+regex = "1"
+lazy_static = "1"
+log = "0.4"
+quick-error = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+parking_lot = "0.9"
