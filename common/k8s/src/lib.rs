@@ -6,20 +6,23 @@ extern crate log;
 extern crate quick_error;
 
 use std::collections::HashMap;
+use std::env;
 use std::ffi::OsStr;
 use std::fs::read_dir;
-use std::io;
 use std::path::PathBuf;
-use std::process::Command;
 use std::sync::Arc;
+use std::{io, process};
 
+use crossbeam::scope;
 use inotify::{EventMask, Inotify, WatchMask};
+use kube::{api::Api, client::APIClient, config};
 use parking_lot::Mutex;
 use regex::Regex;
-use serde::{Deserialize, Serialize};
 
 use http::types::body::{KeyValueMap, LineBuilder};
+use kube::api::{Informer, WatchEvent};
 use middleware::{Middleware, Status};
+use std::str::FromStr;
 
 lazy_static! {
     static ref K8S_REG: Regex = Regex::new(
@@ -42,7 +45,7 @@ quick_error! {
             from()
             display("failed to parse path")
         }
-        Serde(e: serde_json::Error){
+        K8s(e: kube::Error) {
             from()
             display("{}", e)
         }
@@ -52,14 +55,27 @@ quick_error! {
 pub struct K8s {
     metadata: Mutex<HashMap<PathBuf, Metadata>>,
     inotify: Arc<Mutex<Inotify>>,
+    api: APIClient,
 }
 
 impl K8s {
     pub fn new() -> Self {
+        let config = match config::incluster_config() {
+            Ok(v) => v,
+            Err(e) => {
+                error!("failed to connect to k8s cluster: {}", e);
+                process::exit(1);
+            }
+        };
+
+        let api = APIClient::new(config);
+
         let this = K8s {
             metadata: Mutex::new(HashMap::new()),
             inotify: Arc::new(Mutex::new(create_inotify().expect("Inotify::create()"))),
+            api,
         };
+
         this.update_all();
         this
     }
@@ -83,24 +99,23 @@ impl K8s {
     fn update_metadata(&self, symlink: PathBuf) -> Result<(), Error> {
         let (name, namespace) = parse_container_path(&symlink).ok_or(Error::Regex)?;
         if let Ok(Some(real)) = canonicalize(&symlink) {
-            let out = Command::new("kubectl")
-                .args(&["get", "pods", "-o", "json", "-n", &namespace, &name])
-                .output()?
-                .stdout;
-            let pod: Pod = serde_json::from_str(&String::from_utf8(out)?)?;
+            let resource = Api::v1Pod(self.api.clone());
+            let object = resource.within(&namespace).get(&name)?;
+            let pod_meta = PodMetadata {
+                name,
+                namespace,
+                labels: object.metadata.labels.into(),
+                annotations: object.metadata.annotations.into(),
+            };
             info!(
                 "added ({}) {}/{}",
                 self.metadata.lock().len(),
-                pod.metadata.namespace,
-                pod.metadata.name
+                pod_meta.namespace,
+                pod_meta.name
             );
-            self.metadata.lock().insert(
-                real,
-                Metadata {
-                    pod_meta: pod.metadata,
-                    symlink,
-                },
-            );
+            self.metadata
+                .lock()
+                .insert(real, Metadata { pod_meta, symlink });
         }
         Ok(())
     }
@@ -126,10 +141,8 @@ impl K8s {
             });
         });
     }
-}
 
-impl Middleware for K8s {
-    fn run(&self) {
+    fn process_inotify(&self) {
         let mut buff = [0u8; 8_192];
         loop {
             let events = match self.inotify.lock().read_events_blocking(&mut buff) {
@@ -148,6 +161,61 @@ impl Middleware for K8s {
                     self.remove_metadata(&event_name_to_symlink(event.name));
                 }
             }
+        }
+    }
+
+    fn process_poll(&self) {
+        let resource = Api::v1Pod(self.api.clone());
+
+        let mut inf = Informer::new(resource.clone())
+            .init()
+            .expect("k8s informer failed");
+        if let Ok(node) = env::var("NODE_NAME") {
+            inf = inf.fields(&format!("spec.nodeName={}", node));
+        }
+
+        loop {
+            if let Err(e) = inf.poll() {
+                error!("error polling api server: {}", e);
+                continue;
+            };
+
+            while let Some(event) = inf.pop() {
+                match event {
+                    WatchEvent::Modified(pod) => {
+                        let name = pod.metadata.name;
+                        let namespace = pod.metadata.namespace.unwrap_or("default".into());
+                        for (_, meta) in self.metadata.lock().iter_mut() {
+                            if meta.pod_meta.name == name && meta.pod_meta.namespace == namespace {
+                                info!("updated {}/{}", namespace, name);
+                                meta.pod_meta.annotations = pod.metadata.annotations.clone().into();
+                                meta.pod_meta.labels = pod.metadata.labels.clone().into();
+                            }
+                        }
+                    }
+                    WatchEvent::Error(e) => error!("api server watch error: {}", e),
+                    _ => {}
+                }
+            }
+        }
+    }
+}
+
+impl Middleware for K8s {
+    fn run(&self) {
+        //FIXME: integrate into env config
+        let poll = env::var("LOGDNA_K8S_POLL")
+            .ok()
+            .and_then(|var| bool::from_str(&var).ok())
+            .unwrap_or(false);
+        if poll {
+            scope(|s| {
+                s.spawn(|_| self.process_inotify());
+                s.spawn(|_| self.process_poll());
+            })
+            .expect("K8s::middleware::run()")
+        } else {
+            self.process_inotify()
         }
     }
 
@@ -194,12 +262,6 @@ fn parse_container_path(path: &PathBuf) -> Option<(String, String)> {
     ))
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-struct Pod {
-    metadata: PodMetadata,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
 struct PodMetadata {
     name: String,
     namespace: String,
