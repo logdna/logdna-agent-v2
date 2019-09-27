@@ -26,6 +26,10 @@ spec:
                   key: logdna-agent-key
             - name: RUST_LOG
               value: info
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
           resources:
             requests:
               cpu: 20m
@@ -83,8 +87,11 @@ metadata:
   name: logdna-agent
 rules:
   - apiGroups: [""]
-    resources: ["pods","configmaps"]
-    verbs: ["get","list", "create"]
+    resources: ["configmaps"]
+    verbs: ["get","list", "create", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get","list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRoleBinding
