@@ -193,7 +193,6 @@ impl K8s {
                             }
                         }
                     }
-                    WatchEvent::Error(e) => error!("api server watch error: {}", e),
                     _ => {}
                 }
             }
