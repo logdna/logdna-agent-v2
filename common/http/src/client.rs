@@ -39,7 +39,7 @@ impl Client {
         let (temp, _) = bounded(0);
         let (retry_in_sender, retry_in_receiver) = bounded(0);
         Self {
-            inner: HttpClient::new(template, &mut runtime),
+            inner: HttpClient::new(template),
             runtime,
             line_sender: s,
             line_receiver: r,
