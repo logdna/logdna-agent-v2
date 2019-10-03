@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use crossbeam::{after, bounded, Receiver, Sender};
 use either::Either;
 use tokio::prelude::Future;
-use tokio::runtime::Runtime;
+use tokio::runtime::{Runtime, Builder};
 
 use crate::limit::RateLimiter;
 use crate::types::body::{IngestBody, Line, LineBuilder};
@@ -34,7 +34,10 @@ impl Client {
     /// Used to create a new instance of client, requiring a channel sender for retry
     /// and a request template for building ingest requests
     pub fn new(template: RequestTemplate) -> Self {
-        let mut runtime = Runtime::new().expect("Runtime::new()");
+        let mut runtime = Builder::new()
+            .core_threads(2)
+            .build()
+            .expect("Runtime::new()");
         let (s, r) = bounded(0);
         let (temp, _) = bounded(0);
         let (retry_in_sender, retry_in_receiver) = bounded(0);
