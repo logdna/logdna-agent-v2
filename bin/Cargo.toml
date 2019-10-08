@@ -29,3 +29,6 @@ k8s = { package = "k8s", path = "../common/k8s" }
 log = "0.4"
 env_logger = "0.6"
 serde_yaml = "0.8"
+
+libc = "0.2"
+bytesize = "1"
