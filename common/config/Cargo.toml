@@ -13,7 +13,7 @@ config-macro = { package = "config-macro", path = "../config-macro" }
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.8"
 globber = "0.1"
-regex = "1"
+pcre2 = "0.2"
 lazy_static = "1"
 flate2 = "1"
 libc = "0.2"

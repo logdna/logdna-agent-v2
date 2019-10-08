@@ -9,7 +9,7 @@ pub enum ConfigError {
     Serde(serde_yaml::Error),
     Template(http::types::error::TemplateError),
     Glob(globber::Error),
-    Regex(regex::Error),
+    Regex(pcre2::Error),
 }
 
 impl Display for ConfigError {
@@ -57,8 +57,8 @@ impl From<globber::Error> for ConfigError {
     }
 }
 
-impl From<regex::Error> for ConfigError {
-    fn from(e: regex::Error) -> Self {
+impl From<pcre2::Error> for ConfigError {
+    fn from(e: pcre2::Error) -> Self {
         ConfigError::Regex(e)
     }
 }
