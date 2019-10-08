@@ -24,7 +24,7 @@ impl RateLimiter {
             let current = self.slots.load(Ordering::SeqCst);
 
             if current >= self.max {
-                backoff.spin();
+                backoff.snooze();
                 continue;
             }
 
@@ -41,7 +41,7 @@ impl RateLimiter {
                     }),
                 };
             } else {
-                backoff.spin();
+                backoff.snooze();
                 continue;
             }
         }
@@ -89,6 +89,8 @@ impl<T> Drop for InnerSlot<T> {
 #[cfg(test)]
 mod tests {
     use std::thread::spawn;
+    use std::thread::sleep;
+    use std::time::Duration;
 
     use rand::Rng;
 
