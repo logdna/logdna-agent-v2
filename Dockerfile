@@ -1,5 +1,5 @@
 # select build image
-FROM rust:1.37 as build
+FROM rust:1.38 as build
 
 COPY . /agent
 WORKDIR /agent
@@ -20,5 +20,7 @@ apt install ca-certificates -y
 COPY --from=build /agent/target/release/logdna-agent /work/
 WORKDIR /work/
 RUN chmod -R 777 .
+
+ENV MALLOC_ARENA_MAX=2
 
 CMD ["./logdna-agent"]
