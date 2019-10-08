@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::str::FromStr;
 
 use globber::{Error as PatternError, Pattern};
-use regex::{Error as RegexError, Regex};
+use pcre2::{Error as RegexError, bytes::Regex};
 
 /// A list of rules
 pub type RuleList = Vec<Box<dyn Rule + Send>>;
@@ -120,7 +120,7 @@ impl RegexRule {
 
 impl Rule for RegexRule {
     fn matches(&self, value: &str) -> bool {
-        self.inner.is_match(value)
+        self.inner.is_match(value.as_bytes()).unwrap_or(false)
     }
 }
 

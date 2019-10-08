@@ -13,7 +13,7 @@ inotify = "0.7"
 #error
 quick-error = "1"
 #utils
-regex = "1"
+pcre2 = "0.2"
 globber = "0.1.2"
 lazy_static = "1"
 crossbeam = "0.7"
