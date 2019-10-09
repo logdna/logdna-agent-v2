@@ -34,7 +34,7 @@ impl Client {
     /// Used to create a new instance of client, requiring a channel sender for retry
     /// and a request template for building ingest requests
     pub fn new(template: RequestTemplate) -> Self {
-        let mut runtime = Builder::new()
+        let runtime = Builder::new()
             .core_threads(2)
             .build()
             .expect("Runtime::new()");
