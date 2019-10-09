@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 #http
-logdna-client = "*"
+logdna-client = "0.1"
 #io
 tokio = "0.1"
 #utils

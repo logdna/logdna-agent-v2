@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use crossbeam::utils::Backoff;
+use serde::{Serialize, Serializer};
 
 pub struct RateLimiter {
     pub slots: Arc<AtomicUsize>,
@@ -70,6 +71,13 @@ impl<T> Deref for Slot<T> {
 
     fn deref(&self) -> &Self::Target {
         &self.inner.inner
+    }
+}
+
+impl<T: Serialize> Serialize for Slot<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error> where
+        S: Serializer {
+        self.inner.inner.serialize(serializer)
     }
 }
 
