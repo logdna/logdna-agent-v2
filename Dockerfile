@@ -21,6 +21,4 @@ COPY --from=build /agent/target/release/logdna-agent /work/
 WORKDIR /work/
 RUN chmod -R 777 .
 
-ENV MALLOC_ARENA_MAX=1
-
 CMD ["./logdna-agent"]

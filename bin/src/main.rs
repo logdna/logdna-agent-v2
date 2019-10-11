@@ -6,6 +6,9 @@ use std::thread::sleep;
 use std::thread::spawn;
 use std::time::Duration;
 
+use bytesize::ByteSize;
+use jemalloc_ctl::{epoch, stats};
+
 use config::Config;
 use fs::tail::Tailer;
 use fs::watch::Watcher;
@@ -13,6 +16,9 @@ use http::client::Client;
 use http::retry::Retry;
 use k8s::K8s;
 use middleware::Executor;
+
+#[global_allocator]
+static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 fn main() {
     env_logger::init();
@@ -55,20 +61,26 @@ fn main() {
     spawn(move || retry.run(client_retry_sender));
     spawn(move || watcher.run(tailer_sender));
     spawn(move || {
+        let e = epoch::mib().unwrap();
+        let active = stats::active::mib().unwrap();
+        let allocated = stats::allocated::mib().unwrap();
+        let resident = stats::resident::mib().unwrap();
         loop {
             sleep(Duration::from_secs(600));
-            let mallinfo = unsafe { libc::mallinfo() };
+            e.advance().unwrap();
             let mut log = String::from("memory report:\n");
-            log.push_str(&format!("  max total allocated: {}\n", bytesize::ByteSize::b(mallinfo.usmblks as u64)));
-            log.push_str(&format!("  total allocated: {}\n", bytesize::ByteSize::b(mallinfo.arena as u64)));
-            log.push_str(&format!("  free chunks: {}\n", mallinfo.ordblks));
-            log.push_str(&format!("  fast bins: {}\n", mallinfo.smblks));
-            log.push_str(&format!("  bin space: {}\n", bytesize::ByteSize::b(mallinfo.fsmblks as u64)));
-            log.push_str(&format!("  regions: {}\n", mallinfo.hblks));
-            log.push_str(&format!("  region space: {}\n", bytesize::ByteSize::b(mallinfo.hblkhd as u64)));
-            log.push_str(&format!("  used space: {}\n", bytesize::ByteSize::b(mallinfo.uordblks as u64)));
-            log.push_str(&format!("  free space: {}\n", bytesize::ByteSize::b(mallinfo.fordblks as u64)));
-            log.push_str(&format!("  releasable space: {}", bytesize::ByteSize::b(mallinfo.keepcost as u64)));
+            log.push_str(&format!(
+                "  active: {}\n",
+                ByteSize::b(active.read().unwrap() as u64)
+            ));
+            log.push_str(&format!(
+                "  allocated: {}\n",
+                ByteSize::b(allocated.read().unwrap() as u64)
+            ));
+            log.push_str(&format!(
+                "  resident: {}",
+                ByteSize::b(resident.read().unwrap() as u64)
+            ));
             info!("{}", log);
         }
     });
