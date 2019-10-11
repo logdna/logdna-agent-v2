@@ -30,5 +30,6 @@ log = "0.4"
 env_logger = "0.6"
 serde_yaml = "0.8"
 
-libc = "0.2"
 bytesize = "1"
+jemallocator = "0.3"
+jemalloc-ctl = "0.3"
