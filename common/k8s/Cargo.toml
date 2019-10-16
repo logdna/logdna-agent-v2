@@ -8,6 +8,7 @@ edition = "2018"
 #local
 middleware = { package = "middleware", path = "../middleware" }
 http = { package = "http", path = "../http" }
+metrics = { package = "metrics", path = "../metrics" }
 
 crossbeam = "0.7"
 inotify = "0.7"

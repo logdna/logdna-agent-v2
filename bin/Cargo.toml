@@ -25,11 +25,9 @@ fs = { package = "fs", path = "../common/fs" }
 config = { package = "config", path = "../common/config" }
 middleware = { package = "middleware", path = "../common/middleware" }
 k8s = { package = "k8s", path = "../common/k8s" }
+metrics = { package = "metrics", path = "../common/metrics" }
 
 log = "0.4"
 env_logger = "0.6"
 serde_yaml = "0.8"
-
-bytesize = "1"
 jemallocator = "0.3"
-jemalloc-ctl = "0.3"

@@ -5,6 +5,8 @@ authors = ["CJP10 <connor.peticca@logdna.com>"]
 edition = "2018"
 
 [dependencies]
+#local
+metrics = { package = "metrics", path = "../metrics" }
 #http
 logdna-client = "0.1"
 #io

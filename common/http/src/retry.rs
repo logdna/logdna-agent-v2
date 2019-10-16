@@ -9,6 +9,7 @@ use crossbeam::{bounded, scope, Receiver, Sender};
 use uuid::Uuid;
 
 use crate::types::body::IngestBody;
+use metrics::Metrics;
 
 quick_error! {
     #[derive(Debug)]
@@ -75,6 +76,7 @@ impl Retry {
     }
 
     fn poll_incoming(&self) -> Result<(), Error> {
+        Metrics::http().increment_retries();
         let body = self.retry_receiver.recv()?;
 
         let file = OpenOptions::new().create(true).write(true).open(format!(

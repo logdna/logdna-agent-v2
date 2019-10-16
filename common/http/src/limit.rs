@@ -3,8 +3,11 @@ use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use crossbeam::utils::Backoff;
 use serde::{Serialize, Serializer};
+use metrics::Metrics;
+use std::cell::Cell;
+use std::thread::sleep;
+use std::time::Duration;
 
 pub struct RateLimiter {
     pub slots: Arc<AtomicUsize>,
@@ -25,6 +28,7 @@ impl RateLimiter {
             let current = self.slots.load(Ordering::SeqCst);
 
             if current >= self.max {
+                Metrics::http().increment_limit_hits();
                 backoff.snooze();
                 continue;
             }
@@ -42,6 +46,7 @@ impl RateLimiter {
                     }),
                 };
             } else {
+                Metrics::http().increment_limit_hits();
                 backoff.snooze();
                 continue;
             }
@@ -92,6 +97,29 @@ impl<T> Drop for InnerSlot<T> {
     fn drop(&mut self) {
         self.slots.fetch_sub(1, Ordering::SeqCst);
     }
+}
+
+struct Backoff {
+    step: Cell<u32>,
+    base: u64,
+    multipler: u64,
+}
+
+impl Backoff {
+    pub fn new() -> Self {
+        Self {
+            step: Cell::new(0),
+            base: 2,
+            multipler: 10,
+        }
+    }
+
+    pub fn snooze(&self) {
+        let step = self.step.get();
+        sleep(Duration::from_millis(self.base.pow(step) * self.multipler));
+        self.step.set(step + 1);
+    }
+
 }
 
 #[cfg(test)]

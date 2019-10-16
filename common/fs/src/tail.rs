@@ -1,4 +1,4 @@
-use std::fs::{metadata, File};
+use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::PathBuf;
 
@@ -6,6 +6,7 @@ use crossbeam::{bounded, Receiver, Sender};
 use hashbrown::HashMap;
 
 use http::types::body::LineBuilder;
+use metrics::Metrics;
 
 use crate::Event;
 
@@ -52,12 +53,14 @@ impl Tailer {
                     self.offsets.insert(path, len);
                 }
                 Event::New(path) => {
+                    Metrics::fs().increment_creates();
                     // similar to initiate but sets the offset to 0
                     self.offsets.insert(path.clone(), 0);
                     info!("added {:?} to offset table ({})", path, self.offsets.len());
                     self.tail(path, &sender);
                 }
                 Event::Delete(ref path) => {
+                    Metrics::fs().increment_deletes();
                     // just remove the file from the offset table on delete
                     // this acts almost like a garbage collection mechanism
                     // ensuring the offset table doesn't "leak" by holding deleted files
@@ -68,7 +71,10 @@ impl Tailer {
                         self.offsets.len()
                     );
                 }
-                Event::Write(path) => self.tail(path, &sender),
+                Event::Write(path) => {
+                    Metrics::fs().increment_writes();
+                    self.tail(path, &sender);
+                },
             }
         }
     }
@@ -134,6 +140,7 @@ impl Tailer {
             // if the line doesn't end with a new line we might have read in the middle of a write
             // so we return in this case
             if !line.ends_with('\n') {
+                Metrics::fs().increment_partial_reads();
                 return;
             }
             // remove the trailing new line
@@ -143,7 +150,9 @@ impl Tailer {
             // send the line upstream, safe to unwrap
             sender
                 .send(LineBuilder::new().line(line).file(file_name.clone()))
-                .unwrap()
+                .unwrap();
+            Metrics::fs().increment_lines();
+            Metrics::fs().add_bytes(line_len);
         }
     }
 }
