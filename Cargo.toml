@@ -6,6 +6,7 @@ members = [
     "common/fs",
     "common/http",
     "common/k8s",
+    "common/metrics",
     "common/middleware",
 ]
 

@@ -12,6 +12,7 @@ use crate::types::client::Client as HttpClient;
 use crate::types::error::HttpError;
 use crate::types::request::RequestTemplate;
 use crate::types::response::Response;
+use metrics::Metrics;
 
 /// Http(s) client used to send logs to the Ingest API
 pub struct Client {
@@ -112,6 +113,7 @@ impl Client {
 
     fn flush(&mut self) {
         let buffer = replace(&mut self.buffer, Vec::new());
+        Metrics::http().add_request_size(self.buffer_bytes as u64);
         self.buffer_bytes = 0;
         self.buffer_timeout = new_timeout();
 
@@ -119,6 +121,7 @@ impl Client {
             return;
         }
 
+        Metrics::http().increment_requests();
         self.send(IngestBody::new(buffer));
     }
 

@@ -1,0 +1,11 @@
+[package]
+name = "metrics"
+version = "0.1.0"
+authors = ["CJP10 <connor.peticca@logdna.com>"]
+edition = "2018"
+
+[dependencies]
+lazy_static = "1"
+chrono = "0.4"
+jemalloc-ctl = "0.3"
+json = "0.12"

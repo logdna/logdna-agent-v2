@@ -13,6 +13,7 @@ use inotify::{Event as InotifyEvent, EventMask, Inotify, WatchDescriptor, WatchM
 use crate::error::WatchError;
 use crate::rule::{Rule, Rules, Status};
 use crate::Event;
+use metrics::Metrics;
 
 //todo provide examples and some extra tid bits around operational behavior
 /// Used to watch the filesystem for [Events](../enum.Event.html)
@@ -81,6 +82,7 @@ impl Watcher {
             };
             // process all events we just read
             for event in events {
+                Metrics::fs().increment_events();
                 self.process(event, &sender);
             }
             //sleep for loop_interval duration

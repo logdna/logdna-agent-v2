@@ -23,6 +23,9 @@ use http::types::body::{KeyValueMap, LineBuilder};
 use kube::api::{Informer, WatchEvent};
 use middleware::{Middleware, Status};
 use std::str::FromStr;
+use metrics::Metrics;
+use std::thread::sleep;
+use std::time::Duration;
 
 lazy_static! {
     static ref K8S_REG: Regex = Regex::new(
@@ -116,6 +119,7 @@ impl K8s {
             self.metadata
                 .lock()
                 .insert(real, Metadata { pod_meta, symlink });
+            Metrics::k8s().increment_creates();
         }
         Ok(())
     }
@@ -132,6 +136,7 @@ impl K8s {
 
         keys_to_remove.iter().for_each(|k| {
             metadata.remove(k).map(|meta| {
+                Metrics::k8s().increment_deletes();
                 info!(
                     "removed ({}) {}/{}",
                     metadata.len(),
@@ -161,6 +166,7 @@ impl K8s {
                     self.remove_metadata(&event_name_to_symlink(event.name));
                 }
             }
+            sleep(Duration::from_secs(1))
         }
     }
 
@@ -175,6 +181,8 @@ impl K8s {
         }
 
         loop {
+            sleep(Duration::from_secs(1));
+            Metrics::k8s().increment_polls();
             if let Err(e) = inf.poll() {
                 error!("error polling api server: {}", e);
                 continue;
@@ -222,6 +230,7 @@ impl Middleware for K8s {
         if let Some(ref file) = line.file {
             if let Some(real) = PathBuf::from(file).parent().map(|p| p.to_path_buf()) {
                 if let Some(meta) = self.metadata.lock().get(&real) {
+                    Metrics::k8s().increment_lines();
                     if let Some(file) = meta.symlink.to_str() {
                         line = line.file(file);
                     }
