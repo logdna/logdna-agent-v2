@@ -6,6 +6,9 @@ use jemalloc_ctl::stats::{active, active_mib, allocated, allocated_mib, resident
 use jemalloc_ctl::{epoch, epoch_mib};
 use lazy_static::lazy_static;
 use json::object;
+use std::thread::sleep;
+use std::time::Duration;
+use log::info;
 
 lazy_static! {
     static ref METRICS: Metrics = Metrics::new();
@@ -20,13 +23,21 @@ pub struct Metrics {
 }
 
 impl Metrics {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             last_flush: AtomicI64::new(Utc::now().timestamp()),
             fs: Fs::new(),
             memory: Memory::new(),
             http: Http::new(),
             k8s: K8s::new(),
+        }
+    }
+
+    pub fn start() {
+        loop {
+            sleep(Duration::from_secs(60));
+            info!("{}", Metrics::print());
+            Metrics::reset();
         }
     }
 

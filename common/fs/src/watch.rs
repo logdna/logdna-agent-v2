@@ -1,12 +1,8 @@
 use std::ffi::{OsStr, OsString};
 use std::fs::{canonicalize, read_dir};
 use std::io;
-use std::mem::replace;
 use std::path::PathBuf;
-use std::thread::sleep;
-use std::time::Duration;
 
-use crossbeam::Sender;
 use hashbrown::HashMap;
 use inotify::{Event as InotifyEvent, EventMask, Inotify, WatchDescriptor, WatchMask};
 
@@ -14,6 +10,7 @@ use crate::error::WatchError;
 use crate::rule::{Rule, Rules, Status};
 use crate::Event;
 use metrics::Metrics;
+use std::mem::replace;
 
 //todo provide examples and some extra tid bits around operational behavior
 /// Used to watch the filesystem for [Events](../enum.Event.html)
@@ -34,9 +31,7 @@ pub struct Watcher {
     // These dirs will be watched recursively
     // So if /var/log/ is in this list, /var/log/httpd/ is redundant
     initial_dirs: Vec<PathBuf>,
-    // A duration that the event loop will wait before polling again
-    // Effectively a dumb rate limit, in the case the sender is unbounded
-    loop_interval: Duration,
+    initial_events: Vec<Event>,
 }
 
 impl Watcher {
@@ -44,18 +39,14 @@ impl Watcher {
     pub fn builder() -> WatchBuilder {
         WatchBuilder {
             initial_dirs: Vec::new(),
-            loop_interval: Duration::from_millis(50),
             rules: Rules::new(),
         }
     }
-    /// Runs the main logic loop of the watcher, consuming itself because run can only be called once
-    ///
-    /// The sender is the where events are streamed too, this should be an unbounded sender
-    /// to prevent kernel over flow. However, being unbounded isn't a hard requirement.
-    pub fn run(mut self, sender: Sender<Event>) {
+
+    pub fn init(&mut self) {
         // iterate over all initial dirs and add them to the watcher
         // replace is need because it takes owner ship of the initial_dirs field without consuming self
-        for dir in replace(&mut self.initial_dirs, Vec::new()) {
+        for dir in self.initial_dirs.clone() {
             // if the watch was successful a list of watched paths will be returned
             // we only create Initiate events for files
             // the events get sent upstream through sender
@@ -63,32 +54,75 @@ impl Watcher {
                 Ok(paths) => paths
                     .into_iter()
                     .filter(|p| p.is_file())
-                    .for_each(|p| sender.send(Event::Initiate(p)).unwrap()),
+                    .for_each(|p| self.initial_events.push(Event::Initiate(p))),
                 Err(e) => error!("error initializing root path {:?}: {:?}", dir, e),
             }
         }
-
-        // stack allocated buffer for reading inotify events
-        let mut buf = [0u8; 4096];
-        // infinite loop that constantly reads the inotify file descriptor when it has data
-        // if the sender passed in to run() is bounded this loop can be blocked if that sender hits capacity
-        loop {
-            let events = match self.inotify.read_events_blocking(&mut buf) {
-                Ok(events) => events,
-                Err(e) => {
-                    error!("error reading from inotify fd: {}", e);
-                    continue;
-                }
-            };
-            // process all events we just read
-            for event in events {
-                Metrics::fs().increment_events();
-                self.process(event, &sender);
-            }
-            //sleep for loop_interval duration
-            sleep(self.loop_interval)
-        }
     }
+
+    pub fn read_events(&mut self) -> Vec<Event> {
+        if !self.initial_events.is_empty() {
+            return replace(&mut self.initial_events, Vec::new());
+        }
+
+        let mut buf = [0u8; 4096];
+        let events = match self.inotify.read_events(&mut buf) {
+            Ok(events) => events,
+            Err(e) => {
+                error!("error reading from inotify fd: {}", e);
+                return Vec::new();
+            }
+        };
+
+        events
+            .into_iter()
+            .map(|e| self.process(e))
+            .flatten()
+            .collect()
+    }
+    // handles inotify events and may produce Event(s) that are return upstream through sender
+    fn process(&mut self, event: InotifyEvent<&OsStr>) -> Vec<Event> {
+        Metrics::fs().increment_events();
+        let mut new_events = Vec::new();
+
+        if event.mask.contains(EventMask::CREATE) {
+            let empty = OsString::new();
+            let name = event.name.unwrap_or(&empty);
+            self.watch_descriptors
+                .get(&event.wd)
+                .map(|p| p.join(name))
+                .and_then(|path| self.watch(&path).ok())
+                .map(|paths| {
+                    paths.into_iter().filter(|p| p.is_file()).for_each(|p| {
+                        new_events.push(Event::New(p));
+                    })
+                });
+        }
+
+        if event.mask.contains(EventMask::MODIFY) {
+            self.watch_descriptors
+                .get(&event.wd)
+                .map(|path| new_events.push(Event::Write(path.clone())));
+        }
+
+        if event.mask.contains(EventMask::DELETE_SELF) {
+            self.watch_descriptors.remove(&event.wd).map(|path| {
+                Some(info!(
+                    "removed {:?} from watcher ({})",
+                    path,
+                    self.watch_descriptors.len()
+                ));
+                new_events.push(Event::Delete(path));
+            });
+        }
+
+        if event.mask.contains(EventMask::Q_OVERFLOW) {
+            panic!("overflowed kernel queue!")
+        }
+
+        new_events
+    }
+
     /// Used to watch a file or directory, in the case it's a directory it is recursively scanned
     ///
     /// This scan has an unlimited depth, so watching /var/log/ will capture all the root and all children
@@ -133,6 +167,7 @@ impl Watcher {
 
         Ok(paths)
     }
+
     // adds path to inotify and watch descriptor map
     fn add(&mut self, path: &PathBuf) -> Result<(), WatchError> {
         // make sure that the path passed in is not a symlink
@@ -163,50 +198,6 @@ impl Watcher {
                 info!("{} was excluded!", path);
                 false
             }
-        }
-    }
-    // handles inotify events and may produce Event(s) that are return upstream through sender
-    fn process(&mut self, event: InotifyEvent<&OsStr>, sender: &Sender<Event>) {
-        if event.mask.contains(EventMask::CREATE) {
-            let path = match self
-                .watch_descriptors
-                .get(&event.wd)
-                .map(|p| p.join(event.name.unwrap_or(&OsString::new())))
-            {
-                Some(v) => v,
-                None => {
-                    return;
-                }
-            };
-
-            match self.watch(&path) {
-                Ok(paths) => paths
-                    .into_iter()
-                    .filter(|p| p.is_file())
-                    .for_each(|p| sender.send(Event::New(p)).unwrap()),
-                Err(e) => error!("error adding root path {:?}: {:?}", path, e),
-            }
-        }
-
-        if event.mask.contains(EventMask::MODIFY) {
-            self.watch_descriptors
-                .get(&event.wd)
-                .and_then(|path| sender.send(Event::Write(path.clone())).ok());
-        }
-
-        if event.mask.contains(EventMask::DELETE_SELF) {
-            self.watch_descriptors.remove(&event.wd).and_then(|path| {
-                Some(info!(
-                    "removed {:?} from watcher ({})",
-                    path,
-                    self.watch_descriptors.len()
-                ));
-                sender.send(Event::Delete(path)).ok()
-            });
-        }
-
-        if event.mask.contains(EventMask::Q_OVERFLOW) {
-            panic!("overflowed kernel queue!")
         }
     }
 }
@@ -263,7 +254,6 @@ fn recursive_scan(path: &PathBuf) -> Vec<PathBuf> {
 /// Creates an instance of a Watcher
 pub struct WatchBuilder {
     initial_dirs: Vec<PathBuf>,
-    loop_interval: Duration,
     rules: Rules,
 }
 
@@ -276,11 +266,6 @@ impl WatchBuilder {
     /// Add a multiple dirs to the list of initial dirs
     pub fn add_all<T: AsRef<[PathBuf]>>(mut self, path: T) -> Self {
         self.initial_dirs.extend_from_slice(path.as_ref());
-        self
-    }
-    /// Sets the loop interval
-    pub fn loop_interval<T: Into<Duration>>(mut self, duration: T) -> Self {
-        self.loop_interval = duration.into();
         self
     }
     /// Adds an inclusion rule
@@ -305,7 +290,7 @@ impl WatchBuilder {
             watch_descriptors: HashMap::new(),
             rules: self.rules,
             initial_dirs: self.initial_dirs,
-            loop_interval: self.loop_interval,
+            initial_events: Vec::new(),
         })
     }
 }

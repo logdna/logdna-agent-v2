@@ -2,7 +2,6 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::PathBuf;
 
-use crossbeam::{bounded, Receiver, Sender};
 use hashbrown::HashMap;
 
 use http::types::body::LineBuilder;
@@ -12,10 +11,6 @@ use crate::Event;
 
 /// Tails files on a filesystem by inheriting events from a Watcher
 pub struct Tailer {
-    // the sender that we are going to share to threads that want to communicate e.g watcher thread
-    event_sender: Sender<Event>,
-    // used to pops items out of the sender
-    event_receiver: Receiver<Event>,
     // tracks the offset (bytes from the beginning of the file we have read) of file(s)
     offsets: HashMap<PathBuf, u64>,
 }
@@ -23,64 +18,56 @@ pub struct Tailer {
 impl Tailer {
     /// Creates new instance of Tailer
     pub fn new() -> Self {
-        let (s, r) = bounded(0);
         Self {
-            event_sender: s,
-            event_receiver: r,
             offsets: HashMap::new(),
         }
     }
-    /// Returns the sender the tailer is "listening" on
-    pub fn sender(&self) -> Sender<Event> {
-        self.event_sender.clone()
-    }
     /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
-    pub fn run(mut self, sender: Sender<LineBuilder>) {
-        loop {
-            // safe to unwrap
-            let event = self.event_receiver.recv().unwrap();
+    pub fn process(&mut self, event: Event) -> Vec<LineBuilder> {
+        let mut lines = Vec::new();
 
-            match event {
-                Event::Initiate(path) => {
-                    // will initiate a file to it's current length
-                    let len = path.metadata().map(|m| m.len()).unwrap_or(0);
-                    info!(
-                        "initiated {:?} to offset table with offset {} ({})",
-                        path,
-                        len,
-                        self.offsets.len()
-                    );
-                    self.offsets.insert(path, len);
-                }
-                Event::New(path) => {
-                    Metrics::fs().increment_creates();
-                    // similar to initiate but sets the offset to 0
-                    self.offsets.insert(path.clone(), 0);
-                    info!("added {:?} to offset table ({})", path, self.offsets.len());
-                    self.tail(path, &sender);
-                }
-                Event::Delete(ref path) => {
-                    Metrics::fs().increment_deletes();
-                    // just remove the file from the offset table on delete
-                    // this acts almost like a garbage collection mechanism
-                    // ensuring the offset table doesn't "leak" by holding deleted files
-                    self.offsets.remove(path);
-                    info!(
-                        "removed {:?} from offset table ({})",
-                        path,
-                        self.offsets.len()
-                    );
-                }
-                Event::Write(path) => {
-                    Metrics::fs().increment_writes();
-                    self.tail(path, &sender);
-                },
+        match event {
+            Event::Initiate(path) => {
+                // will initiate a file to it's current length
+                let len = path.metadata().map(|m| m.len()).unwrap_or(0);
+                info!(
+                    "initiated {:?} to offset table with offset {} ({})",
+                    path,
+                    len,
+                    self.offsets.len()
+                );
+                self.offsets.insert(path, len);
+            }
+            Event::New(path) => {
+                Metrics::fs().increment_creates();
+                // similar to initiate but sets the offset to 0
+                self.offsets.insert(path.clone(), 0);
+                info!("added {:?} to offset table ({})", path, self.offsets.len());
+                self.tail(path, &mut lines);
+            }
+            Event::Delete(ref path) => {
+                Metrics::fs().increment_deletes();
+                // just remove the file from the offset table on delete
+                // this acts almost like a garbage collection mechanism
+                // ensuring the offset table doesn't "leak" by holding deleted files
+                self.offsets.remove(path);
+                info!(
+                    "removed {:?} from offset table ({})",
+                    path,
+                    self.offsets.len()
+                );
+            }
+            Event::Write(path) => {
+                Metrics::fs().increment_writes();
+                self.tail(path, &mut lines);
             }
         }
+
+        lines
     }
 
     // tail a file for new line(s)
-    fn tail(&mut self, path: PathBuf, sender: &Sender<LineBuilder>) {
+    fn tail(&mut self, path: PathBuf, lines: &mut Vec<LineBuilder>) {
         // get the offset from the map, insert if not found
         let offset = self.offsets.entry(path.clone()).or_insert_with(|| {
             warn!("{:?} was not found in offset table!", path);
@@ -148,9 +135,7 @@ impl Tailer {
             // increment the offset
             *offset += line_len;
             // send the line upstream, safe to unwrap
-            sender
-                .send(LineBuilder::new().line(line).file(file_name.clone()))
-                .unwrap();
+            lines.push(LineBuilder::new().line(line).file(file_name.clone()));
             Metrics::fs().increment_lines();
             Metrics::fs().add_bytes(line_len);
         }

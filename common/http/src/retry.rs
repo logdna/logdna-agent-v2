@@ -1,15 +1,14 @@
 use std::fs::{create_dir_all, read_dir, remove_file, File, OpenOptions};
 use std::io::Read;
 use std::str::FromStr;
-use std::thread::sleep;
-use std::time::Duration;
 
 use chrono::prelude::Utc;
-use crossbeam::{bounded, scope, Receiver, Sender};
+use crossbeam::queue::SegQueue;
 use uuid::Uuid;
 
 use crate::types::body::IngestBody;
 use metrics::Metrics;
+use std::path::PathBuf;
 
 quick_error! {
     #[derive(Debug)]
@@ -36,70 +35,39 @@ quick_error! {
 }
 
 pub struct Retry {
-    retry_sender: Sender<IngestBody>,
-    retry_receiver: Receiver<IngestBody>,
-    body_sender: Sender<IngestBody>,
+    waiting: SegQueue<PathBuf>
 }
 
 impl Retry {
     pub fn new() -> Retry {
-        let (s, r) = bounded(0);
-        let (temp, _) = bounded(0);
-        Retry {
-            retry_sender: s,
-            retry_receiver: r,
-            body_sender: temp,
-        }
-    }
-
-    pub fn sender(&self) -> Sender<IngestBody> {
-        self.retry_sender.clone()
-    }
-
-    pub fn run(mut self, body_sender: Sender<IngestBody>) {
-        self.body_sender = body_sender;
-
         create_dir_all("/tmp/logdna/").expect("can't create /tmp/logdna");
-        scope(|s| {
-            s.spawn(|_| self.handle_incoming());
-            s.spawn(|_| self.handle_outgoing());
-        })
-        .expect("failed starting Retry")
+        Retry { waiting: SegQueue::new() }
     }
 
-    fn handle_incoming(&self) {
-        loop {
-            if let Err(e) = self.poll_incoming() {
-                error!("failed to write retry: {}", e)
-            }
-        }
-    }
-
-    fn poll_incoming(&self) -> Result<(), Error> {
+    pub fn retry(&self, body: IngestBody) -> Result<(), Error> {
         Metrics::http().increment_retries();
-        let body = self.retry_receiver.recv()?;
-
         let file = OpenOptions::new().create(true).write(true).open(format!(
             "/tmp/logdna/{}_{}.retry",
             Utc::now().timestamp(),
             Uuid::new_v4().to_string()
         ))?;
-
         Ok(serde_json::to_writer(file, &body)?)
     }
 
-    fn handle_outgoing(&self) {
-        loop {
-            if let Err(e) = self.poll_outgoing() {
-                error!("failed to read retry: {}", e)
-            }
-            sleep(Duration::from_secs(15));
+    pub fn poll(&self) -> Result<Option<IngestBody>, Error> {
+        if self.waiting.is_empty() {
+            self.fill_waiting()?
         }
+
+        if let Ok(path) = self.waiting.pop() {
+            return  Ok(Some(Self::read_from_disk(&path)?))
+        }
+
+        Ok(None)
     }
 
-    fn poll_outgoing(&self) -> Result<(), Error> {
+    fn fill_waiting(&self) -> Result<(), Error>{
         let files = read_dir("/tmp/logdna/")?;
-
         for file in files {
             let path = file?.path();
             if path.is_dir() {
@@ -111,6 +79,7 @@ impl Retry {
                 .and_then(|s| s.to_str())
                 .map(|s| s.to_string())
                 .ok_or_else(|| Error::NonUTF8(path.clone()))?;
+
             let timestamp: i64 = file_name
                 .split('_')
                 .map(|s| s.to_string())
@@ -123,14 +92,17 @@ impl Retry {
                 continue;
             }
 
-            let mut file = File::open(&path)?;
-            let mut data = String::new();
-            file.read_to_string(&mut data)?;
-            remove_file(&path)?;
-            let body = serde_json::from_str(&data)?;
-            self.body_sender.send(body)?;
+            self.waiting.push(path);
         }
 
         Ok(())
+    }
+
+    fn read_from_disk(path: &PathBuf) -> Result<IngestBody, Error>{
+        let mut file = File::open(path)?;
+        let mut data = String::new();
+        file.read_to_string(&mut data)?;
+        remove_file(&path)?;
+        Ok(serde_json::from_str(&data)?)
     }
 }

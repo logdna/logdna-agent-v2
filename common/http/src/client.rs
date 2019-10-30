@@ -1,10 +1,8 @@
 use std::mem::replace;
 use std::time::{Duration, Instant};
 
-use crossbeam::{after, bounded, Receiver, Sender};
-use either::Either;
 use tokio::prelude::Future;
-use tokio::runtime::{Runtime, Builder};
+use tokio::runtime::{Builder, Runtime};
 
 use crate::limit::RateLimiter;
 use crate::types::body::{IngestBody, Line, LineBuilder};
@@ -13,22 +11,21 @@ use crate::types::error::HttpError;
 use crate::types::request::RequestTemplate;
 use crate::types::response::Response;
 use metrics::Metrics;
+use crate::retry::Retry;
+use std::sync::Arc;
 
 /// Http(s) client used to send logs to the Ingest API
 pub struct Client {
     inner: HttpClient,
     runtime: Runtime,
-    line_sender: Sender<LineBuilder>,
-    line_receiver: Receiver<LineBuilder>,
-    retry_in_sender: Sender<IngestBody>,
-    retry_in_receiver: Receiver<IngestBody>,
-    retry_out_sender: Sender<IngestBody>,
+    limiter: RateLimiter,
+    retry: Arc<Retry>,
 
     buffer: Vec<Line>,
     buffer_max_size: usize,
     buffer_bytes: usize,
-    buffer_timeout: Receiver<Instant>,
-    limiter: RateLimiter,
+    last_flush: Instant,
+    last_retry: Instant,
 }
 
 impl Client {
@@ -39,67 +36,43 @@ impl Client {
             .core_threads(2)
             .build()
             .expect("Runtime::new()");
-        let (s, r) = bounded(0);
-        let (temp, _) = bounded(0);
-        let (retry_in_sender, retry_in_receiver) = bounded(0);
         Self {
             inner: HttpClient::new(template),
             runtime,
-            line_sender: s,
-            line_receiver: r,
-            retry_in_sender,
-            retry_in_receiver,
-            retry_out_sender: temp,
-
+            limiter: RateLimiter::new(10),
+            retry: Arc::new(Retry::new()),
             buffer: Vec::new(),
             buffer_max_size: 2 * 1024 * 1024,
             buffer_bytes: 0,
-            buffer_timeout: new_timeout(),
-            limiter: RateLimiter::new(10),
+            last_flush: Instant::now(),
+            last_retry: Instant::now(),
         }
     }
-    /// Returns the channel senders used to send data from other threads
-    pub fn sender(&self) -> (Sender<LineBuilder>, Sender<IngestBody>) {
-        (self.line_sender.clone(), self.retry_in_sender.clone())
-    }
 
-    pub fn retry_sender(&self) -> Sender<LineBuilder> {
-        self.line_sender.clone()
-    }
-
-    /// The main logic loop, consumes self because it should only be called once
-    pub fn run(mut self, retry_sender: Sender<IngestBody>) {
-        self.retry_out_sender = retry_sender;
-
-        loop {
-            if self.buffer_bytes < self.buffer_max_size {
-                let msg = select! {
-                    recv(self.line_receiver) -> msg => msg.map(Either::Left),
-                    recv(self.retry_in_receiver) -> msg => msg.map(Either::Right),
-                    recv(self.buffer_timeout) -> _ => {
-                        self.flush();
-                        continue;
-                    },
-                };
-                // The left hand side of the either is new lines the come from the Tailer
-                // The right hand side of the either is ingest bodies that are ready for retry
-                match msg {
-                    Ok(Either::Left(line)) => {
-                        if let Ok(line) = line.build() {
-                            self.buffer_bytes += line.line.len();
-                            self.buffer.push(line);
-                        }
-                        continue;
-                    }
-                    Ok(Either::Right(body)) => {
-                        self.send(body);
-                        continue;
-                    }
-                    Err(_) => {}
-                };
-            } else {
-                self.flush()
+    pub fn poll(&mut self) {
+        if self.should_retry() {
+            self.last_retry = Instant::now();
+            match self.retry.poll() {
+                Ok(Some(body)) => {
+                    self.make_request(body)
+                }
+                Err(e) => {
+                    error!("error polling retry: {}", e)
+                }
+                _ => {}
             }
+        }
+
+        if self.should_flush() {
+            self.flush()
+        }
+    }
+    /// The main logic loop, consumes self because it should only be called once
+    pub fn send(&mut self, line: LineBuilder) {
+        self.poll();
+        if let Ok(line) = line.build() {
+            self.buffer_bytes += line.line.len();
+            self.buffer.push(line);
         }
     }
 
@@ -111,32 +84,46 @@ impl Client {
         self.inner.set_timeout(timeout)
     }
 
+    fn should_flush(&self) -> bool {
+        self.buffer_bytes >= self.buffer_max_size
+            || self.last_flush.elapsed() > Duration::from_millis(250)
+    }
+
+    fn should_retry(&self) -> bool {
+        self.last_retry.elapsed() > Duration::from_secs(3)
+    }
+
     fn flush(&mut self) {
         let buffer = replace(&mut self.buffer, Vec::new());
-        Metrics::http().add_request_size(self.buffer_bytes as u64);
+        let buffer_size = self.buffer_bytes as u64;
         self.buffer_bytes = 0;
-        self.buffer_timeout = new_timeout();
+        self.last_flush = Instant::now();
 
         if buffer.is_empty() {
             return;
         }
 
+        Metrics::http().add_request_size(buffer_size);
         Metrics::http().increment_requests();
-        self.send(IngestBody::new(buffer));
+        self.make_request(IngestBody::new(buffer));
     }
 
-    fn send(&mut self, body: IngestBody) {
-        let sender = self.retry_out_sender.clone();
+    fn make_request(&mut self, body: IngestBody) {
+        let retry = self.retry.clone();
         let fut = self.inner.send(self.limiter.get_slot(body)).then(move |r| {
             match r {
                 Ok(Response::Failed(_, s, r)) => warn!("bad response {}: {}", s, r),
                 Err(HttpError::Send(body, e)) => {
                     warn!("failed sending http request, retrying: {}", e);
-                    sender.send(body.into_inner()).unwrap();
+                    if let Err(e) = retry.retry(body.into_inner()) {
+                        error!("failed to retry request: {}", e)
+                    }
                 }
                 Err(HttpError::Timeout(body)) => {
                     warn!("failed sending http request, retrying: request timed out!");
-                    sender.send(body.into_inner()).unwrap();
+                    if let Err(e) = retry.retry(body.into_inner()) {
+                        error!("failed to retry request: {}", e)
+                    }
                 }
                 Err(e) => {
                     warn!("failed sending http request: {}", e);
@@ -147,8 +134,4 @@ impl Client {
         });
         self.runtime.spawn(fut);
     }
-}
-
-fn new_timeout() -> Receiver<Instant> {
-    after(Duration::from_millis(250))
 }

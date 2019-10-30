@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use crossbeam::scope;
-use crossbeam::{bounded, Receiver, Sender};
-
 use http::types::body::LineBuilder;
+use std::thread::spawn;
 
 pub enum Status {
     Ok(LineBuilder),
@@ -17,20 +15,12 @@ pub trait Middleware: Send + Sync + 'static {
 
 pub struct Executor {
     middlewares: Vec<Arc<dyn Middleware>>,
-    senders: Vec<Sender<LineBuilder>>,
-
-    line_sender: Sender<LineBuilder>,
-    line_receiver: Receiver<LineBuilder>,
 }
 
 impl Executor {
     pub fn new() -> Executor {
-        let (s, r) = bounded(0);
         Executor {
             middlewares: Vec::new(),
-            senders: Vec::new(),
-            line_sender: s,
-            line_receiver: r,
         }
     }
 
@@ -38,30 +28,14 @@ impl Executor {
         self.middlewares.push(Arc::new(middleware))
     }
 
-    pub fn add_sender(&mut self, sender: Sender<LineBuilder>) {
-        self.senders.push(sender)
+    pub fn init(&self) {
+        for middleware in &self.middlewares {
+            let middleware = middleware.clone();
+            spawn(move || middleware.run());
+        }
     }
 
-    pub fn sender(&self) -> Sender<LineBuilder> {
-        self.line_sender.clone()
-    }
-
-    pub fn run(self) {
-        scope(|s| {
-            s.spawn(|_| self.process());
-            s.spawn(|s| {
-                for middleware in &self.middlewares {
-                    let middleware = middleware.clone();
-                    s.spawn(move |_| middleware.run());
-                }
-            });
-        })
-        .expect("Executor::run()");
-    }
-
-    fn process(&self) {
-        loop {
-            let mut line = self.line_receiver.recv().unwrap();
+    pub fn process(&self, mut line: LineBuilder) -> Option<LineBuilder> {
             let mut skipped = false;
 
             for middleware in &self.middlewares {
@@ -77,17 +51,9 @@ impl Executor {
                 }
             }
 
-            if skipped {
-                continue;
+            match skipped {
+                true => None,
+                false => Some(line),
             }
-
-            match self.senders.len() {
-                0 => self.senders.get(0).unwrap().send(line).unwrap(),
-                _ => self
-                    .senders
-                    .iter()
-                    .for_each(|s| s.send(line.clone()).unwrap()),
-            }
-        }
     }
 }
