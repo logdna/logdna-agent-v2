@@ -58,11 +58,12 @@ fn main() {
             continue;
         }
 
-        events
-            .into_iter()
-            .map(|event| tailer.process(event))
-            .flatten()
-            .filter_map(|line| executor.process(line))
-            .for_each(|line| client.send(line))
+        for event in events {
+            for line in tailer.process(event) {
+                if let Some(line) = executor.process(line) {
+                    client.send(line)
+                }
+            }
+        }
     }
 }
