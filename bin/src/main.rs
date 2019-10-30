@@ -2,18 +2,16 @@
 extern crate log;
 
 use std::path::PathBuf;
-use std::thread::sleep;
-use std::thread::spawn;
-use std::time::Duration;
+use std::thread::{sleep, spawn};
 
 use config::Config;
 use fs::tail::Tailer;
 use fs::watch::Watcher;
 use http::client::Client;
-use http::retry::Retry;
 use k8s::K8s;
-use middleware::Executor;
 use metrics::Metrics;
+use middleware::Executor;
+use std::time::Duration;
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
@@ -30,40 +28,41 @@ fn main() {
         }
     };
 
-    let watcher = Watcher::builder()
+    spawn(move || Metrics::start());
+
+    let mut watcher = Watcher::builder()
         .add_all(config.log.dirs)
         .append_all(config.log.rules)
         .build()
         .unwrap();
 
-    let tailer = Tailer::new();
-    let tailer_sender = tailer.sender();
+    let mut tailer = Tailer::new();
 
     let mut client = Client::new(config.http.template);
     client.set_max_buffer_size(config.http.body_size);
     client.set_timeout(config.http.timeout);
-    let (client_sender, client_retry_sender) = client.sender();
 
     let mut executor = Executor::new();
-    let executor_sender = executor.sender();
-    executor.add_sender(client_sender.clone());
     if PathBuf::from("/var/log/containers/").exists() {
         executor.register(K8s::new());
     }
 
-    let retry = Retry::new();
-    let retry_sender = retry.sender();
+    watcher.init();
+    executor.init();
 
-    spawn(move || tailer.run(executor_sender));
-    spawn(move || executor.run());
-    spawn(move || retry.run(client_retry_sender));
-    spawn(move || watcher.run(tailer_sender));
-    spawn(move || {
-        loop {
-            sleep(Duration::from_secs(60));
-            info!("{}", Metrics::print());
-            Metrics::reset();
+    loop {
+        let events = watcher.read_events();
+        if events.is_empty() {
+            client.poll();
+            sleep(Duration::from_millis(50));
+            continue;
         }
-    });
-    client.run(retry_sender);
+
+        events
+            .into_iter()
+            .map(|event| tailer.process(event))
+            .flatten()
+            .filter_map(|line| executor.process(line))
+            .for_each(|line| client.send(line))
+    }
 }

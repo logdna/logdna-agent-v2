@@ -16,9 +16,6 @@ quick-error = "1"
 #utils
 pcre2 = "0.2"
 globber = "0.1.2"
-lazy_static = "1"
-crossbeam = "0.7"
 hashbrown = "0.6"
-num_cpus = "1"
 #logging
 log = "0.4"

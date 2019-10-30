@@ -7,5 +7,3 @@ edition = "2018"
 [dependencies]
 #local
 http = { package = "http", path = "../http" }
-
-crossbeam = "0.7"
