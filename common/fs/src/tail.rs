@@ -23,9 +23,10 @@ impl Tailer {
         }
     }
     /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
-    pub fn process(&mut self, event: Event) -> Vec<LineBuilder> {
-        let mut lines = Vec::new();
-
+    pub fn process<F>(&mut self, event: Event, callback: F)
+    where
+        F: FnMut(LineBuilder),
+    {
         match event {
             Event::Initiate(path) => {
                 // will initiate a file to it's current length
@@ -43,7 +44,7 @@ impl Tailer {
                 // similar to initiate but sets the offset to 0
                 self.offsets.insert(path.clone(), 0);
                 info!("added {:?} to offset table ({})", path, self.offsets.len());
-                self.tail(path, &mut lines);
+                self.tail(path, callback);
             }
             Event::Delete(ref path) => {
                 Metrics::fs().increment_deletes();
@@ -59,15 +60,16 @@ impl Tailer {
             }
             Event::Write(path) => {
                 Metrics::fs().increment_writes();
-                self.tail(path, &mut lines);
+                self.tail(path, callback);
             }
         }
-
-        lines
     }
 
     // tail a file for new line(s)
-    fn tail(&mut self, path: PathBuf, lines: &mut Vec<LineBuilder>) {
+    fn tail<F>(&mut self, path: PathBuf, mut callback: F)
+    where
+        F: FnMut(LineBuilder),
+    {
         // get the offset from the map, insert if not found
         let offset = self.offsets.entry(path.clone()).or_insert_with(|| {
             warn!("{:?} was not found in offset table!", path);
@@ -135,7 +137,7 @@ impl Tailer {
             // increment the offset
             *offset += line_len;
             // send the line upstream, safe to unwrap
-            lines.push(LineBuilder::new().line(line).file(file_name.clone()));
+            callback(LineBuilder::new().line(line).file(file_name.clone()));
             Metrics::fs().increment_lines();
             Metrics::fs().add_bytes(line_len);
         }

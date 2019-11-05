@@ -59,11 +59,11 @@ fn main() {
         }
 
         for event in events {
-            for line in tailer.process(event) {
+            tailer.process(event, |line| {
                 if let Some(line) = executor.process(line) {
                     client.send(line)
                 }
-            }
+            });
         }
     }
 }
