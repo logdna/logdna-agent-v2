@@ -1,0 +1,8 @@
+{
+  "linters": {
+    "rustfmt": {
+      "type": "rustfmt",
+      "include": "(\\.rs$)"
+    }
+  }
+}
