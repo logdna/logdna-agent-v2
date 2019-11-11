@@ -3,8 +3,8 @@ use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use serde::{Serialize, Serializer};
 use metrics::Metrics;
+use serde::{Serialize, Serializer};
 use std::cell::Cell;
 use std::thread::sleep;
 use std::time::Duration;
@@ -80,8 +80,10 @@ impl<T> Deref for Slot<T> {
 }
 
 impl<T: Serialize> Serialize for Slot<T> {
-    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error> where
-        S: Serializer {
+    fn serialize<S>(&self, serializer: S) -> Result<<S as Serializer>::Ok, <S as Serializer>::Error>
+    where
+        S: Serializer,
+    {
         self.inner.inner.serialize(serializer)
     }
 }
@@ -119,13 +121,12 @@ impl Backoff {
         sleep(Duration::from_millis(self.base.pow(step) * self.multipler));
         self.step.set(step + 1);
     }
-
 }
 
 #[cfg(test)]
 mod tests {
-    use std::thread::spawn;
     use std::thread::sleep;
+    use std::thread::spawn;
     use std::time::Duration;
 
     use rand::Rng;

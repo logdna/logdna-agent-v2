@@ -60,9 +60,11 @@ impl Watcher {
         }
     }
 
-    pub fn read_events(&mut self) -> Vec<Event> {
+    pub fn read_events<F: FnMut(Event)>(&mut self, mut callback: F) {
         if !self.initial_events.is_empty() {
-            return replace(&mut self.initial_events, Vec::new());
+            for event in replace(&mut self.initial_events, Vec::new()) {
+                callback(event)
+            }
         }
 
         let mut buf = [0u8; 4096];
@@ -70,20 +72,17 @@ impl Watcher {
             Ok(events) => events,
             Err(e) => {
                 error!("error reading from inotify fd: {}", e);
-                return Vec::new();
+                return;
             }
         };
 
-        events
-            .into_iter()
-            .map(|e| self.process(e))
-            .flatten()
-            .collect()
+        for event in events {
+            self.process(event, &mut callback);
+        }
     }
     // handles inotify events and may produce Event(s) that are return upstream through sender
-    fn process(&mut self, event: InotifyEvent<&OsStr>) -> Vec<Event> {
+    fn process<F: FnMut(Event)>(&mut self, event: InotifyEvent<&OsStr>, callback: &mut F) {
         Metrics::fs().increment_events();
-        let mut new_events = Vec::new();
 
         if event.mask.contains(EventMask::CREATE) {
             let empty = OsString::new();
@@ -94,7 +93,7 @@ impl Watcher {
                 .and_then(|path| self.watch(&path).ok())
                 .map(|paths| {
                     paths.into_iter().filter(|p| p.is_file()).for_each(|p| {
-                        new_events.push(Event::New(p));
+                        callback(Event::New(p));
                     })
                 });
         }
@@ -102,7 +101,7 @@ impl Watcher {
         if event.mask.contains(EventMask::MODIFY) {
             self.watch_descriptors
                 .get(&event.wd)
-                .map(|path| new_events.push(Event::Write(path.clone())));
+                .map(|path| callback(Event::Write(path.clone())));
         }
 
         if event.mask.contains(EventMask::DELETE_SELF) {
@@ -112,15 +111,13 @@ impl Watcher {
                     path,
                     self.watch_descriptors.len()
                 ));
-                new_events.push(Event::Delete(path));
+                callback(Event::Delete(path));
             });
         }
 
         if event.mask.contains(EventMask::Q_OVERFLOW) {
             panic!("overflowed kernel queue!")
         }
-
-        new_events
     }
 
     /// Used to watch a file or directory, in the case it's a directory it is recursively scanned
