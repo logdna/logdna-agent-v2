@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::str::FromStr;
 
 use globber::{Error as PatternError, Pattern};
-use pcre2::{Error as RegexError, bytes::Regex};
+use pcre2::{bytes::Regex, Error as RegexError};
 
 /// A list of rules
 pub type RuleList = Vec<Box<dyn Rule + Send>>;

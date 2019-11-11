@@ -8,7 +8,8 @@ use config::Config;
 use fs::tail::Tailer;
 use fs::watch::Watcher;
 use http::client::Client;
-use k8s::K8s;
+use k8s::events::K8sEvents;
+use k8s::middleware::K8sMiddleware;
 use metrics::Metrics;
 use middleware::Executor;
 use std::time::Duration;
@@ -44,26 +45,30 @@ fn main() {
 
     let mut executor = Executor::new();
     if PathBuf::from("/var/log/containers/").exists() {
-        executor.register(K8s::new());
+        executor.register(K8sMiddleware::new());
     }
+
+    let mut k8s_events = K8sEvents::new();
 
     watcher.init();
     executor.init();
 
     loop {
-        let events = watcher.read_events();
-        if events.is_empty() {
-            client.poll();
-            sleep(Duration::from_millis(50));
-            continue;
-        }
-
-        for event in events {
+        watcher.read_events(|event| {
             tailer.process(event, |line| {
                 if let Some(line) = executor.process(line) {
                     client.send(line)
                 }
             });
-        }
+        });
+
+        k8s_events.read_lines(|line| {
+            if let Some(line) = executor.process(line) {
+                client.send(line)
+            }
+        });
+
+        client.poll();
+        sleep(Duration::from_millis(50));
     }
 }

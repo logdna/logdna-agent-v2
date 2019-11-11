@@ -36,24 +36,24 @@ impl Executor {
     }
 
     pub fn process(&self, mut line: LineBuilder) -> Option<LineBuilder> {
-            let mut skipped = false;
+        let mut skipped = false;
 
-            for middleware in &self.middlewares {
-                match middleware.process(line) {
-                    Status::Ok(v) => {
-                        line = v;
-                    }
-                    Status::Skip(v) => {
-                        line = v;
-                        skipped = true;
-                        break;
-                    }
+        for middleware in &self.middlewares {
+            match middleware.process(line) {
+                Status::Ok(v) => {
+                    line = v;
+                }
+                Status::Skip(v) => {
+                    line = v;
+                    skipped = true;
+                    break;
                 }
             }
+        }
 
-            match skipped {
-                true => None,
-                false => Some(line),
-            }
+        match skipped {
+            true => None,
+            false => Some(line),
+        }
     }
 }

@@ -4,11 +4,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use chrono::Utc;
 use jemalloc_ctl::stats::{active, active_mib, allocated, allocated_mib, resident, resident_mib};
 use jemalloc_ctl::{epoch, epoch_mib};
-use lazy_static::lazy_static;
 use json::object;
+use lazy_static::lazy_static;
+use log::info;
 use std::thread::sleep;
 use std::time::Duration;
-use log::info;
 
 lazy_static! {
     static ref METRICS: Metrics = Metrics::new();
@@ -77,7 +77,7 @@ impl Metrics {
         let http = Metrics::http();
         let k8s = Metrics::k8s();
 
-        let object = object!{
+        let object = object! {
             "fs" => object!{
                 "events" => fs.read_events(),
                 "creates" => fs.read_creates(),

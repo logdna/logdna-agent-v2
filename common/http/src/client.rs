@@ -5,13 +5,13 @@ use tokio::prelude::Future;
 use tokio::runtime::{Builder, Runtime};
 
 use crate::limit::RateLimiter;
+use crate::retry::Retry;
 use crate::types::body::{IngestBody, Line, LineBuilder};
 use crate::types::client::Client as HttpClient;
 use crate::types::error::HttpError;
 use crate::types::request::RequestTemplate;
 use crate::types::response::Response;
 use metrics::Metrics;
-use crate::retry::Retry;
 use std::sync::Arc;
 
 /// Http(s) client used to send logs to the Ingest API
@@ -53,12 +53,8 @@ impl Client {
         if self.should_retry() {
             self.last_retry = Instant::now();
             match self.retry.poll() {
-                Ok(Some(body)) => {
-                    self.make_request(body)
-                }
-                Err(e) => {
-                    error!("error polling retry: {}", e)
-                }
+                Ok(Some(body)) => self.make_request(body),
+                Err(e) => error!("error polling retry: {}", e),
                 _ => {}
             }
         }

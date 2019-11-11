@@ -35,13 +35,15 @@ quick_error! {
 }
 
 pub struct Retry {
-    waiting: SegQueue<PathBuf>
+    waiting: SegQueue<PathBuf>,
 }
 
 impl Retry {
     pub fn new() -> Retry {
         create_dir_all("/tmp/logdna/").expect("can't create /tmp/logdna");
-        Retry { waiting: SegQueue::new() }
+        Retry {
+            waiting: SegQueue::new(),
+        }
     }
 
     pub fn retry(&self, body: IngestBody) -> Result<(), Error> {
@@ -60,13 +62,13 @@ impl Retry {
         }
 
         if let Ok(path) = self.waiting.pop() {
-            return  Ok(Some(Self::read_from_disk(&path)?))
+            return Ok(Some(Self::read_from_disk(&path)?));
         }
 
         Ok(None)
     }
 
-    fn fill_waiting(&self) -> Result<(), Error>{
+    fn fill_waiting(&self) -> Result<(), Error> {
         let files = read_dir("/tmp/logdna/")?;
         for file in files {
             let path = file?.path();
@@ -98,7 +100,7 @@ impl Retry {
         Ok(())
     }
 
-    fn read_from_disk(path: &PathBuf) -> Result<IngestBody, Error>{
+    fn read_from_disk(path: &PathBuf) -> Result<IngestBody, Error> {
         let mut file = File::open(path)?;
         let mut data = String::new();
         file.read_to_string(&mut data)?;
