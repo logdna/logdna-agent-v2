@@ -3,6 +3,7 @@ executors:
   docker-publisher:
     environment:
       IMAGE_NAME: logdna/logdna-agent-v2
+      IBM_IMAGE_NAME: icr.io/ext/logdna-agent
     docker:
       - image: circleci/buildpack-deps:stretch
 jobs:
@@ -19,30 +20,30 @@ jobs:
     executor: docker-publisher
     steps:
       - run: |
-          echo "export IMAGE_TAG=master" > env-vars1
-          cat env-vars1 >> ${BASH_ENV}
+          echo "export IMAGE_TAG=master" >> env-vars
+          cat env-vars >> ${BASH_ENV}
       - persist_to_workspace:
           root: .
           paths:
             - ./image.tar
-            - ./env-vars1
+            - ./env-vars
   set-tag:
     executor: docker-publisher
     steps:
       - run: |
-          echo "export IMAGE_TAG=$CIRCLE_TAG" > env-vars1
-          cat env-vars1 >> ${BASH_ENV}
+          echo "export IMAGE_TAG=$CIRCLE_TAG" >> env-vars
+          cat env-vars >> ${BASH_ENV}
       - persist_to_workspace:
           root: .
           paths:
             - ./image.tar
-            - ./env-vars1
+            - ./env-vars
   image-build:
     executor: docker-publisher
     steps:
       - checkout
       - run: |
-          echo "export DATESTAMP=$(date +%s)" > env-vars
+          echo "export DATESTAMP=$(date +%s)" >> env-vars
           cat env-vars >> ${BASH_ENV}
       - setup_remote_docker
       - run:
@@ -63,7 +64,6 @@ jobs:
       - attach_workspace:
           at: /tmp/workspace
       - run: cat /tmp/workspace/env-vars >> $BASH_ENV
-      - run: cat /tmp/workspace/env-vars1 >> $BASH_ENV
       - setup_remote_docker
       - run:
           name: Load archived Docker image
@@ -81,14 +81,12 @@ jobs:
       - attach_workspace:
           at: /tmp/workspace
       - run: cat /tmp/workspace/env-vars >> $BASH_ENV
-      - run: cat /tmp/workspace/env-vars1 >> $BASH_ENV
   docker-upload:
     executor: docker-publisher
     steps:
       - attach_workspace:
           at: /tmp/workspace
       - run: cat /tmp/workspace/env-vars >> $BASH_ENV
-      - run: cat /tmp/workspace/env-vars1 >> $BASH_ENV
       - setup_remote_docker
       - run:
           name: Load archived Docker image
@@ -97,11 +95,6 @@ jobs:
           name: Publish Docker Image to Docker Hub
           command: |
             echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
-
-            if [ -n "$CIRCLE_TAG" ]; then
-             IMAGE_TAG=${CIRCLE_TAG}
-            fi
-
             docker tag ${IMAGE_NAME}:sandbox-${DATESTAMP} ${IMAGE_NAME}:${IMAGE_TAG}
             docker push ${IMAGE_NAME}:${IMAGE_TAG}
   ibm-registry:
@@ -110,7 +103,6 @@ jobs:
       - attach_workspace:
           at: /tmp/workspace
       - run: cat /tmp/workspace/env-vars >> $BASH_ENV
-      - run: cat /tmp/workspace/env-vars1 >> $BASH_ENV
       - setup_remote_docker
       - run:
           name: Load archived Docker image
@@ -119,13 +111,8 @@ jobs:
           name: Publish Docker Image to IBM registry
           command: |
             echo "${IBM_API_KEY}" | docker login -u iamapikey --password-stdin icr.io
-
-            if [ -n "$CIRCLE_TAG" ]; then
-             IMAGE_TAG=${CIRCLE_TAG}
-            fi
-
-            docker tag ${IMAGE_NAME}:sandbox-${DATESTAMP} icr.io/ext/logdna-agent:v2-${IMAGE_TAG}
-            docker push icr.io/ext/logdna-agent:v2-${IMAGE_TAG}
+            docker tag ${IMAGE_NAME}:sandbox-${DATESTAMP} ${IBM_IMAGE_NAME}:v2-${IMAGE_TAG}
+            docker push ${IBM_IMAGE_NAME}:v2-${IMAGE_TAG}
 workflows:
   version: 2
   check:
@@ -136,7 +123,7 @@ workflows:
       - set-tag:
           filters:
             tags:
-              only: /[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?/
+              only: /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$/
             branches:
               ignore: /.*/
       - image-build:
