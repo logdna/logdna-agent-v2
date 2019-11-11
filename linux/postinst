@@ -1,0 +1,2 @@
+systemctl start logdna-agent
+systemctl enable logdna-agent

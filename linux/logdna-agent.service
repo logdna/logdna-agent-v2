@@ -1,0 +1,13 @@
+[Unit]
+Description=LogDNA Agent
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/logdna-agent
+Restart=always
+RestartSec=15
+
+[Install]
+WantedBy=multi-user.target
