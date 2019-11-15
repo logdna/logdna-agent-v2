@@ -90,6 +90,9 @@ rules:
     resources: ["configmaps"]
     verbs: ["get","list", "create", "watch"]
   - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get","list", "create", "watch"]
+  - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get","list", "watch"]
 ---
