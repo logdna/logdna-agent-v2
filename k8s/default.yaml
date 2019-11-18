@@ -8,6 +8,9 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 100%
+  selector:
+    matchLabels:
+      app: logdna-agent
   template:
     metadata:
       labels:
@@ -46,8 +49,6 @@ spec:
             - name: mnt
               mountPath: /mnt
               readOnly: true
-            - name: docker
-              mountPath: /var/run/docker.sock
             - name: osrelease
               mountPath: /etc/os-release
             - name: logdnahostname
@@ -65,9 +66,6 @@ spec:
         - name: mnt
           hostPath:
             path: /mnt
-        - name: docker
-          hostPath:
-            path: /var/run/docker.sock
         - name: osrelease
           hostPath:
             path: /etc/os-release
