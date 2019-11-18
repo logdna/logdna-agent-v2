@@ -8,6 +8,9 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       maxUnavailable: 100%
+  selector:
+    matchLabels:
+      app: logdna-agent
   template:
     metadata:
       labels:
@@ -24,16 +27,14 @@ spec:
                 secretKeyRef:
                   name: logdna-agent-key
                   key: logdna-agent-key
+            - name: LOGDNA_ENDPOINT
+              value: /supertenant/logs/ingest
+            - name: RUST_LOG
+              value: info
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            - name: RUST_LOG
-              value: info
-            - name: LOGDNA_ENDPOINT
-              value: /supertenant/logs/ingest
-            - name: LOGDNA_K8S_POLL
-              value: "true"
           resources:
             requests:
               cpu: 20m
@@ -50,8 +51,6 @@ spec:
             - name: mnt
               mountPath: /mnt
               readOnly: true
-            - name: docker
-              mountPath: /var/run/docker.sock
             - name: osrelease
               mountPath: /etc/os-release
             - name: logdnahostname
@@ -69,9 +68,6 @@ spec:
         - name: mnt
           hostPath:
             path: /mnt
-        - name: docker
-          hostPath:
-            path: /var/run/docker.sock
         - name: osrelease
           hostPath:
             path: /etc/os-release
