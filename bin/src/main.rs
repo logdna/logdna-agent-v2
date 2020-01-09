@@ -48,8 +48,6 @@ fn main() {
         executor.register(K8sMiddleware::new());
     }
 
-    let mut k8s_events = K8sEvents::new();
-
     watcher.init();
     executor.init();
 
@@ -60,12 +58,6 @@ fn main() {
                     client.send(line)
                 }
             });
-        });
-
-        k8s_events.read_lines(|line| {
-            if let Some(line) = executor.process(line) {
-                client.send(line)
-            }
         });
 
         client.poll();
