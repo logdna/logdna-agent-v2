@@ -19,30 +19,27 @@ jobs:
   set-master:
     executor: docker-publisher
     steps:
-      - run: |
-          echo "export IMAGE_TAG=master" >> env-vars
-          cat env-vars >> ${BASH_ENV}
+      - run: echo "export IMAGE_TAG=master" >> env-vars
       - persist_to_workspace:
           root: .
           paths:
-            - ./image.tar
             - ./env-vars
   set-tag:
     executor: docker-publisher
     steps:
-      - run: |
-          echo "export IMAGE_TAG=$CIRCLE_TAG" >> env-vars
-          cat env-vars >> ${BASH_ENV}
+      - run: echo "export IMAGE_TAG=$CIRCLE_TAG" >> env-vars
       - persist_to_workspace:
           root: .
           paths:
-            - ./image.tar
             - ./env-vars
   image-build:
     executor: docker-publisher
     steps:
+      - attach_workspace:
+          at: /tmp/workspace
       - checkout
       - run: |
+          cat /tmp/workspace/env-vars > env-vars
           echo "export DATESTAMP=$(date +%s)" >> env-vars
           cat env-vars >> ${BASH_ENV}
       - setup_remote_docker
@@ -74,7 +71,6 @@ jobs:
             echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
             docker push ${IMAGE_NAME}:sandbox-${DATESTAMP}
             docker run -e IMAGE_TO_SCAN=${IMAGE_NAME}:sandbox-${DATESTAMP} -e SYSDIG_SECURE_TOKEN=$SYSDIG_SECURE_TOKEN logdna/sysdigsecure
-
   docker-approved:
     executor: docker-publisher
     steps:
