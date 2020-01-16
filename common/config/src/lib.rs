@@ -127,6 +127,22 @@ impl TryFrom<RawConfig> for Config {
                 .ok_or(ConfigError::MissingField("http.params"))?,
         );
 
+        let mut info = "unknown".to_string();
+        if let Ok(sys_info) = sys_info::linux_os_release() {
+            info = format!(
+                "{}/{}",
+                sys_info.name.unwrap_or("unknown".to_string()),
+                sys_info.version.unwrap_or("unknown".to_string()),
+            )
+        }
+
+        template_builder.user_agent(format!(
+            "{}/{} ({})",
+            env!("CARGO_PKG_NAME"),
+            env!("CARGO_PKG_VERSION"),
+            info
+        ));
+
         let http = HttpConfig {
             template: template_builder.build()?,
             timeout: Duration::from_millis(

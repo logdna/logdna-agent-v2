@@ -18,6 +18,7 @@ lazy_static = "1"
 flate2 = "1"
 libc = "0.2"
 log = "0.4"
+sys-info = "0.5"
 
 [dev-dependencies]
 scopeguard = "1"
