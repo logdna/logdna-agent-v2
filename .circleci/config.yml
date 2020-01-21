@@ -2,7 +2,7 @@ version: 2.1
 executors:
   docker-publisher:
     environment:
-      IMAGE_NAME: logdna/logdna-agent-v2
+      IMAGE_NAME: logdna/logdna-agent
       IBM_IMAGE_NAME: icr.io/ext/logdna-agent
     docker:
       - image: circleci/buildpack-deps:stretch
