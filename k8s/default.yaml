@@ -19,7 +19,7 @@ spec:
       serviceAccountName: logdna-agent
       containers:
         - name: logdna-agent
-          image: logdna/logdna-agent-v2:2.1.7
+          image: logdna/logdna-agent:2.1.8-beta
           imagePullPolicy: Always
           env:
             - name: LOGDNA_AGENT_KEY
