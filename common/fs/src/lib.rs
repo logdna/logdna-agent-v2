@@ -10,6 +10,8 @@ use std::path::PathBuf;
 pub mod error;
 /// Traits and types for defining exclusion and inclusion rules
 pub mod rule;
+/// The source for filesystem generated lines
+pub mod source;
 /// Defines the tailer used to tail directories or single files
 pub mod tail;
 /// Defines the filesystem watcher
