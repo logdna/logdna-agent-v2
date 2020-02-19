@@ -8,6 +8,7 @@ edition = "2018"
 #local
 http = { package = "http", path = "../http" }
 metrics = { package = "metrics", path = "../metrics" }
+source = { package = "source", path = "../source" }
 
 #io
 inotify = "0.7"

@@ -8,6 +8,8 @@ members = [
     "common/k8s",
     "common/metrics",
     "common/middleware",
+    "common/journald",
+    "common/source",
 ]
 
 [profile.release]

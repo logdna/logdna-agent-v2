@@ -3,7 +3,7 @@ use std::ffi::OsStr;
 use std::fs::read_dir;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{env, io, process};
+use std::{env, io};
 
 use crossbeam::scope;
 use inotify::{EventMask, Inotify, WatchMask};

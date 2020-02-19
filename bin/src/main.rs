@@ -5,13 +5,15 @@ use std::path::PathBuf;
 use std::thread::{sleep, spawn};
 
 use config::Config;
-use fs::tail::Tailer;
-use fs::watch::Watcher;
+use fs::source::FSSource;
 use http::client::Client;
-use k8s::events::K8sEvents;
+use journald::JournaldSource;
 use k8s::middleware::K8sMiddleware;
 use metrics::Metrics;
 use middleware::Executor;
+use source::SourceReader;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::time::Duration;
 
 #[global_allocator]
@@ -31,36 +33,30 @@ fn main() {
 
     spawn(move || Metrics::start());
 
-    let mut watcher = Watcher::builder()
-        .add_all(config.log.dirs)
-        .append_all(config.log.rules)
-        .build()
-        .unwrap();
-
-    let mut tailer = Tailer::new();
-
-    let mut client = Client::new(config.http.template);
-    client.set_max_buffer_size(config.http.body_size);
-    client.set_timeout(config.http.timeout);
+    let client = Rc::new(RefCell::new(Client::new(config.http.template)));
+    client
+        .borrow_mut()
+        .set_max_buffer_size(config.http.body_size);
+    client.borrow_mut().set_timeout(config.http.timeout);
 
     let mut executor = Executor::new();
     if PathBuf::from("/var/log/containers/").exists() {
         executor.register(K8sMiddleware::new());
     }
 
-    watcher.init();
+    let mut source_reader = SourceReader::new();
+    source_reader.register(JournaldSource::new());
+    source_reader.register(FSSource::new(config.log.dirs, config.log.rules));
+
     executor.init();
 
     loop {
-        watcher.read_events(|event| {
-            tailer.process(event, |line| {
-                if let Some(line) = executor.process(line) {
-                    client.send(line)
-                }
-            });
-        });
-
-        client.poll();
+        source_reader.drain(Box::new(|line| {
+            if let Some(line) = executor.process(line) {
+                client.borrow_mut().send(line)
+            }
+        }));
+        client.borrow_mut().poll();
         sleep(Duration::from_millis(50));
     }
 }
