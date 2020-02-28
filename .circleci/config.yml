@@ -4,6 +4,7 @@ executors:
     environment:
       IMAGE_NAME: logdna/logdna-agent
       IBM_IMAGE_NAME: icr.io/ext/logdna-agent
+      SCAN_IMAGE_NAME: "sysdiglabs/secure_inline_scan:latest"
     docker:
       - image: circleci/buildpack-deps:stretch
 jobs:
@@ -70,7 +71,7 @@ jobs:
           command: |
             echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
             docker push ${IMAGE_NAME}:sandbox-${DATESTAMP}
-            docker run -e IMAGE_TO_SCAN=${IMAGE_NAME}:sandbox-${DATESTAMP} -e SYSDIG_SECURE_TOKEN=$SYSDIG_SECURE_TOKEN logdna/sysdigsecure
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ${SCAN_IMAGE_NAME} /bin/inline_scan analyze -s https://secure.sysdig.com -k "${SYSDIG_SECURE_TOKEN}" "${IMAGE_NAME}"
   docker-approved:
     executor: docker-publisher
     steps:
