@@ -15,7 +15,11 @@ inotify = "0.7"
 regex = "1"
 lazy_static = "1"
 log = "0.4"
+tokio = { version = "0.2", features = ["full"] }
+futures = "0.3"
 quick-error = "1"
 parking_lot = "0.9"
-kube = { version = "0.16", features = ["openapi"] }
+kube = "0.29.0"
+kube-derive = "0.29.0"
+k8s-openapi = { version = "0.7.1", default_features = false, features = ["v1_15"] }
 serde_json = "1"

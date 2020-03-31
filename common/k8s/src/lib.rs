@@ -5,5 +5,4 @@ extern crate log;
 #[macro_use]
 extern crate quick_error;
 
-pub mod events;
 pub mod middleware;

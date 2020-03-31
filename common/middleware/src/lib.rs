@@ -4,13 +4,13 @@ use http::types::body::LineBuilder;
 use std::thread::spawn;
 
 pub enum Status {
-    Ok(LineBuilder),
-    Skip(LineBuilder),
+    Ok(Vec<LineBuilder>),
+    Skip,
 }
 
 pub trait Middleware: Send + Sync + 'static {
     fn run(&self);
-    fn process(&self, line: LineBuilder) -> Status;
+    fn process(&self, lines: Vec<LineBuilder>) -> Status;
 }
 
 pub struct Executor {
@@ -35,16 +35,15 @@ impl Executor {
         }
     }
 
-    pub fn process(&self, mut line: LineBuilder) -> Option<LineBuilder> {
+    pub fn process(&self, mut lines: Vec<LineBuilder>) -> Option<Vec<LineBuilder>> {
         let mut skipped = false;
 
         for middleware in &self.middlewares {
-            match middleware.process(line) {
+            match middleware.process(lines.clone()) {
                 Status::Ok(v) => {
-                    line = v;
+                    lines = v;
                 }
-                Status::Skip(v) => {
-                    line = v;
+                Status::Skip => {
                     skipped = true;
                     break;
                 }
@@ -53,7 +52,7 @@ impl Executor {
 
         match skipped {
             true => None,
-            false => Some(line),
+            false => Some(lines),
         }
     }
 }

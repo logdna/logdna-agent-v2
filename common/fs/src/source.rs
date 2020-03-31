@@ -1,6 +1,5 @@
 use crate::rule::Rules;
 use crate::tail::Tailer;
-use crate::watch::Watcher;
 
 use std::path::PathBuf;
 
@@ -9,31 +8,19 @@ use http::types::body::LineBuilder;
 use source::Source;
 
 pub struct FSSource {
-    watcher: Watcher,
     tailer: Tailer,
 }
 impl FSSource {
-    pub fn new<T: AsRef<[PathBuf]>, R: Into<Rules>>(path: T, rules: R) -> FSSource {
-        let mut watcher = Watcher::builder()
-            .add_all(path)
-            .append_all(rules)
-            .build()
-            .unwrap();
-        watcher.init();
-
+    pub fn new<R: Into<Rules>>(paths: Vec<PathBuf>, rules: R) -> FSSource {
         FSSource {
-            watcher,
-            tailer: Tailer::new(),
+            tailer: Tailer::new(paths, rules.into()),
         }
     }
 }
 
 impl<'a> Source<'a> for FSSource {
-    fn drain(&mut self, callback: &mut Box<dyn FnMut(LineBuilder) + 'a>) {
-        let watcher = &mut self.watcher;
+    fn drain(&mut self, mut callback: &mut Box<dyn FnMut(Vec<LineBuilder>) + 'a>) {
         let tailer = &mut self.tailer;
-        watcher.read_events(|event| {
-            tailer.process(event, |line| callback(line));
-        });
+        tailer.process(&mut callback);
     }
 }

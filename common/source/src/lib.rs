@@ -1,7 +1,7 @@
 use http::types::body::LineBuilder;
 
 pub trait Source<'a> {
-    fn drain(&mut self, callback: &mut Box<dyn FnMut(LineBuilder) + 'a>);
+    fn drain(&mut self, callback: &mut Box<dyn FnMut(Vec<LineBuilder>) + 'a>);
 }
 
 pub struct SourceReader<'a> {
@@ -19,7 +19,7 @@ impl<'a> SourceReader<'a> {
         self.sources.push(Box::new(source))
     }
 
-    pub fn drain(&mut self, mut callback: Box<dyn FnMut(LineBuilder) + 'a>) {
+    pub fn drain(&mut self, mut callback: Box<dyn FnMut(Vec<LineBuilder>) + 'a>) {
         for source in &mut self.sources {
             source.drain(&mut callback);
         }
