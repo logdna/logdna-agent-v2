@@ -978,6 +978,8 @@ impl<T> FileSystem<T> {
             return None;
         }
 
+        let last_component = components.pop()?;
+
         for component in components {
             parent = parent
                 .children_mut()
@@ -986,7 +988,11 @@ impl<T> FileSystem<T> {
                 .deref_mut()
         }
 
-        Some(parent)
+        parent
+            .children_mut()
+            .expect("expected directory entry")
+            .get_mut(&last_component)
+            .map(|e| e.deref_mut())
     }
 
     fn follow_links(&mut self, mut entry: *mut Entry<T>) -> Option<*mut Entry<T>> {
