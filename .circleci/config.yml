@@ -71,7 +71,7 @@ jobs:
           command: |
             echo "${DOCKERHUB_PASS}" | docker login -u "${DOCKERHUB_USERNAME}" --password-stdin
             docker push ${IMAGE_NAME}:sandbox-${DATESTAMP}
-            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ${SCAN_IMAGE_NAME} /bin/inline_scan analyze -s https://secure.sysdig.com -k "${SYSDIG_SECURE_TOKEN}" "${IMAGE_NAME}"
+            docker run --rm -v /var/run/docker.sock:/var/run/docker.sock ${SCAN_IMAGE_NAME} /bin/inline_scan analyze -s https://secure.sysdig.com -k "${SYSDIG_SECURE_TOKEN}" "${IMAGE_NAME}:sandbox-${DATESTAMP}"
   docker-approved:
     executor: docker-publisher
     steps:
