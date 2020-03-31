@@ -1,27 +1,28 @@
 use std::collections::HashMap;
-use std::ffi::OsStr;
-use std::fs::read_dir;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::{env, io};
+use std::env;
 
-use crossbeam::scope;
-use inotify::{EventMask, Inotify, WatchMask};
-use kube::{api::Api, client::APIClient, config};
 use parking_lot::Mutex;
 use regex::Regex;
 
 use http::types::body::{KeyValueMap, LineBuilder};
-use kube::api::{Informer, WatchEvent};
+use k8s_openapi::api::core::v1::Pod;
+use kube::{
+    api::{ListParams, Resource, WatchEvent},
+    client::APIClient,
+    config,
+    runtime::Informer,
+    Api,
+};
 use metrics::Metrics;
 use middleware::{Middleware, Status};
-use std::thread::sleep;
-use std::time::Duration;
+
+use futures::stream::StreamExt;
+use tokio::runtime::{Builder, Runtime};
 
 lazy_static! {
     static ref K8S_REG: Regex = Regex::new(
         r#"^/var/log/containers/([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)-([a-z0-9]{64}).log$"#
-    ).expect("Regex::new()");
+    ).expect("K8S_REG Regex::new()");
 }
 
 quick_error! {
@@ -47,153 +48,92 @@ quick_error! {
 }
 
 pub struct K8sMiddleware {
-    metadata: Mutex<HashMap<PathBuf, Metadata>>,
-    inotify: Arc<Mutex<Inotify>>,
-    api: APIClient,
+    metadata: Mutex<HashMap<String, PodMetadata>>,
+    informer: Mutex<Option<Informer<Pod>>>,
+    runtime: Mutex<Option<Runtime>>,
 }
 
 impl K8sMiddleware {
     pub fn new() -> Self {
-        let config = match config::incluster_config() {
-            Ok(v) => v,
-            Err(e) => {
-                error!("failed to connect to k8s cluster: {}", e);
-                panic!("{}", e);
+        let mut runtime = Builder::new()
+            .threaded_scheduler()
+            .enable_all()
+            .core_threads(2)
+            .build()
+            .unwrap();
+        let this = runtime.block_on(async {
+            let node = env::var("NODE_NAME").unwrap();
+
+            let config = config::incluster_config().unwrap();
+            let client = APIClient::new(config);
+
+            let params = ListParams::default().fields(&format!("spec.nodeName={}", node));
+            let mut metadata = HashMap::new();
+
+            let pods = Api::<Pod>::all(client.clone()).list(&params).await.unwrap();
+            for pod in pods {
+                let real_pod_meta = pod.metadata.unwrap();
+                let pod_meta_data = PodMetadata {
+                    name: real_pod_meta.name.unwrap(),
+                    namespace: real_pod_meta.namespace.unwrap(),
+                    labels: real_pod_meta.labels.unwrap().into(),
+                    annotations: real_pod_meta.annotations.unwrap().into(),
+                };
+                metadata.insert(
+                    format!("{}_{}", pod_meta_data.name, pod_meta_data.namespace),
+                    pod_meta_data,
+                );
             }
-        };
 
-        let api = APIClient::new(config);
+            K8sMiddleware {
+                metadata: Mutex::new(metadata),
+                informer: Mutex::new(Some(Informer::new(client, params, Resource::all::<Pod>()))),
+                runtime: Mutex::new(None),
+            }
+        });
 
-        let this = K8sMiddleware {
-            metadata: Mutex::new(HashMap::new()),
-            inotify: Arc::new(Mutex::new(create_inotify().expect("Inotify::create()"))),
-            api,
-        };
-
-        this.update_all();
+        *this.runtime.lock() = Some(runtime);
         this
     }
 
-    fn update_all(&self) {
-        if let Ok(files) = read_dir("/var/log/containers") {
-            for file in files {
-                if let Ok(file) = file {
-                    let symlink = file.path();
-                    if symlink.is_dir() {
-                        continue;
-                    }
-                    if let Err(e) = self.update_metadata(symlink) {
-                        error!("error updating k8s metadata: {}", e)
-                    }
+    fn handle_pod(&self, event: WatchEvent<Pod>) {
+        match event {
+            WatchEvent::Added(pod) => {
+                let real_pod_meta = pod.metadata.unwrap();
+                let pod_meta_data = PodMetadata {
+                    name: real_pod_meta.name.unwrap(),
+                    namespace: real_pod_meta.namespace.unwrap(),
+                    labels: real_pod_meta.labels.unwrap().into(),
+                    annotations: real_pod_meta.annotations.unwrap().into(),
                 };
+                self.metadata.lock().insert(
+                    format!("{}_{}", pod_meta_data.name, pod_meta_data.namespace),
+                    pod_meta_data,
+                );
+                Metrics::k8s().increment_creates();
             }
-        }
-    }
-
-    fn update_metadata(&self, symlink: PathBuf) -> Result<(), Error> {
-        let (name, namespace) = parse_container_path(&symlink).ok_or(Error::Regex)?;
-        if let Ok(Some(real)) = canonicalize(&symlink) {
-            let resource = Api::v1Pod(self.api.clone());
-            let object = resource.within(&namespace).get(&name)?;
-            let pod_meta = PodMetadata {
-                name,
-                namespace,
-                labels: object.metadata.labels.into(),
-                annotations: object.metadata.annotations.into(),
-            };
-            info!(
-                "added ({}) {}/{}",
-                self.metadata.lock().len(),
-                pod_meta.namespace,
-                pod_meta.name
-            );
-            self.metadata
-                .lock()
-                .insert(real, Metadata { pod_meta, symlink });
-            Metrics::k8s().increment_creates();
-        }
-        Ok(())
-    }
-
-    fn remove_metadata(&self, symlink: &PathBuf) {
-        let mut metadata = self.metadata.lock();
-
-        let mut keys_to_remove = Vec::new();
-        for (key, meta) in metadata.iter() {
-            if meta.symlink == *symlink {
-                keys_to_remove.push(key.clone());
+            WatchEvent::Modified(pod) => {
+                let real_pod_meta = pod.metadata.unwrap();
+                if let Some(pod_meta_data) = self.metadata.lock().get_mut(&format!(
+                    "{}_{}",
+                    real_pod_meta.name.unwrap(),
+                    real_pod_meta.namespace.unwrap()
+                )) {
+                    pod_meta_data.labels = real_pod_meta.labels.unwrap().into();
+                    pod_meta_data.annotations = real_pod_meta.annotations.unwrap().into();
+                }
             }
-        }
-
-        keys_to_remove.iter().for_each(|k| {
-            metadata.remove(k).map(|meta| {
+            WatchEvent::Deleted(pod) => {
+                let real_pod_meta = pod.metadata.unwrap();
+                self.metadata.lock().remove(&format!(
+                    "{}_{}",
+                    real_pod_meta.name.unwrap(),
+                    real_pod_meta.namespace.unwrap()
+                ));
                 Metrics::k8s().increment_deletes();
-                info!(
-                    "removed ({}) {}/{}",
-                    metadata.len(),
-                    meta.pod_meta.namespace,
-                    meta.pod_meta.name
-                )
-            });
-        });
-    }
-
-    fn process_inotify(&self) {
-        let mut buff = [0u8; 8_192];
-        loop {
-            let events = match self.inotify.lock().read_events_blocking(&mut buff) {
-                Ok(v) => v,
-                Err(_) => {
-                    continue;
-                }
-            };
-
-            for event in events {
-                if event.mask.contains(EventMask::CREATE) {
-                    if let Err(e) = self.update_metadata(event_name_to_symlink(event.name)) {
-                        error!("error updating k8s metadata: {}", e)
-                    }
-                } else if event.mask.contains(EventMask::DELETE) {
-                    self.remove_metadata(&event_name_to_symlink(event.name));
-                }
             }
-            sleep(Duration::from_secs(1))
-        }
-    }
-
-    fn process_poll(&self) {
-        let resource = Api::v1Pod(self.api.clone());
-
-        let mut inf = Informer::new(resource.clone())
-            .init()
-            .expect("k8s informer failed");
-        if let Ok(node) = env::var("NODE_NAME") {
-            inf = inf.fields(&format!("spec.nodeName={}", node));
-        }
-
-        loop {
-            sleep(Duration::from_secs(1));
-            Metrics::k8s().increment_polls();
-            if let Err(e) = inf.poll() {
-                error!("error polling api server: {}", e);
-                continue;
-            };
-
-            while let Some(event) = inf.pop() {
-                match event {
-                    WatchEvent::Modified(pod) => {
-                        let name = pod.metadata.name;
-                        let namespace = pod.metadata.namespace.unwrap_or("default".into());
-                        for (_, meta) in self.metadata.lock().iter_mut() {
-                            if meta.pod_meta.name == name && meta.pod_meta.namespace == namespace {
-                                info!("updated {}/{}", namespace, name);
-                                meta.pod_meta.annotations = pod.metadata.annotations.clone().into();
-                                meta.pod_meta.labels = pod.metadata.labels.clone().into();
-                            }
-                        }
-                    }
-                    _ => {}
-                }
+            WatchEvent::Error(e) => {
+                debug!("kubernetes api error event: {:?}", e);
             }
         }
     }
@@ -201,51 +141,49 @@ impl K8sMiddleware {
 
 impl Middleware for K8sMiddleware {
     fn run(&self) {
-        scope(|s| {
-            s.spawn(|_| self.process_inotify());
-            s.spawn(|_| self.process_poll());
-        })
-        .expect("K8s::middleware::run()")
+        let mut runtime = self.runtime.lock().take().unwrap();
+        let informer = self.informer.lock().take().unwrap();
+
+        runtime.block_on(async move {
+            loop {
+                let mut pods = informer.poll().await.unwrap().boxed();
+                Metrics::k8s().increment_polls();
+
+                while let Some(Ok(event)) = pods.next().await {
+                    self.handle_pod(event);
+                }
+            }
+        });
     }
 
-    fn process(&self, mut line: LineBuilder) -> Status {
-        if let Some(ref file) = line.file {
-            if let Some(real) = PathBuf::from(file).parent().map(|p| p.to_path_buf()) {
-                if let Some(meta) = self.metadata.lock().get(&real) {
-                    Metrics::k8s().increment_lines();
-                    if let Some(file) = meta.symlink.to_str() {
-                        line = line.file(file);
+    fn process(&self, lines: Vec<LineBuilder>) -> Status {
+        let mut container_line = None;
+        for line in lines.iter() {
+            if let Some(ref file_name) = line.file {
+                if let Some((name, namespace)) = parse_container_path(&file_name) {
+                    if let Some(pod_meta_data) =
+                        self.metadata.lock().get(&format!("{}_{}", name, namespace))
+                    {
+                        Metrics::k8s().increment_lines();
+                        let mut new_line = line.clone();
+                        new_line = new_line.labels(pod_meta_data.labels.clone());
+                        new_line = new_line.annotations(pod_meta_data.annotations.clone());
+                        container_line = Some(new_line);
                     }
-                    line = line.labels(meta.pod_meta.labels.clone());
-                    line = line.annotations(meta.pod_meta.annotations.clone());
                 }
             }
         }
-        Status::Ok(line)
+
+        if let Some(line) = container_line {
+            return Status::Ok(vec![line]);
+        }
+
+        Status::Ok(lines)
     }
 }
 
-fn event_name_to_symlink(name: Option<&OsStr>) -> PathBuf {
-    PathBuf::from("/var/log/containers/").join(name.unwrap_or_default())
-}
-
-fn canonicalize(symlink: &PathBuf) -> io::Result<Option<PathBuf>> {
-    symlink
-        .canonicalize()
-        .map(|p| p.parent().map(|p| p.to_path_buf()))
-}
-
-fn create_inotify() -> io::Result<Inotify> {
-    let mut inotify = Inotify::init()?;
-    inotify.add_watch(
-        "/var/log/containers/",
-        WatchMask::CREATE | WatchMask::DELETE | WatchMask::DONT_FOLLOW,
-    )?;
-    Ok(inotify)
-}
-
-fn parse_container_path(path: &PathBuf) -> Option<(String, String)> {
-    let captures = K8S_REG.captures(path.to_str()?)?;
+fn parse_container_path(path: &str) -> Option<(String, String)> {
+    let captures = K8S_REG.captures(path)?;
     Some((
         captures.get(1)?.as_str().into(),
         captures.get(2)?.as_str().into(),
@@ -257,9 +195,4 @@ struct PodMetadata {
     namespace: String,
     labels: KeyValueMap,
     annotations: KeyValueMap,
-}
-
-struct Metadata {
-    pod_meta: PodMetadata,
-    symlink: PathBuf,
 }

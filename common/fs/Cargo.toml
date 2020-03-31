@@ -11,7 +11,7 @@ metrics = { package = "metrics", path = "../metrics" }
 source = { package = "source", path = "../source" }
 
 #io
-inotify = "0.7"
+inotify = "0.8"
 #error
 quick-error = "1"
 #utils
@@ -20,3 +20,8 @@ globber = "0.1.2"
 hashbrown = "0.6"
 #logging
 log = "0.4"
+env_logger = "0.6"
+lazy_static = "1.4.0"
+
+[dev-dependencies]
+tempdir = "0.3"
