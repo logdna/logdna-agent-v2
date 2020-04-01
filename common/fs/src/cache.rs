@@ -23,7 +23,7 @@ macro_rules! deref {
             Some(v) => v,
             None => panic!("entry pointer {:?} points to invalid location", $e),
         }
-    }
+    };
 }
 
 macro_rules! deref_mut {
@@ -32,7 +32,7 @@ macro_rules! deref_mut {
             Some(v) => v,
             None => panic!("entry pointer {:?} points to invalid location", $e),
         }
-    }
+    };
 }
 
 #[derive(Debug)]
@@ -442,8 +442,7 @@ impl<T> FileSystem<T> {
                             return;
                         }
 
-                        let mut path =
-                            self.resolve_direct_path(deref!(entries[0]));
+                        let mut path = self.resolve_direct_path(deref!(entries[0]));
                         path.push(from_name.clone());
                         path
                     }
@@ -463,8 +462,7 @@ impl<T> FileSystem<T> {
                             return;
                         }
 
-                        let mut path =
-                            self.resolve_direct_path(deref!(entries[0]));
+                        let mut path = self.resolve_direct_path(deref!(entries[0]));
                         path.push(to_name.clone());
                         path
                     }
@@ -696,8 +694,7 @@ impl<T> FileSystem<T> {
             return None;
         }
 
-        let parent =
-            deref_mut!(self.create_dir(&path.parent().unwrap().into())?);
+        let parent = deref_mut!(self.create_dir(&path.parent().unwrap().into())?);
 
         let parent = self.follow_links(parent)?;
 
@@ -709,9 +706,7 @@ impl<T> FileSystem<T> {
             return self.create_dir(path);
         }
 
-        let children = deref_mut!(parent)
-            .children_mut()
-            .unwrap();
+        let children = deref_mut!(parent).children_mut().unwrap();
 
         // Ok = symlink, Err = real path
 
@@ -823,9 +818,28 @@ impl<T> FileSystem<T> {
             .unwrap() // this is safe since parent is the path of a parent dir so a valid lookup should return a Dir entry
             .remove(&component)
             .map(|mut entry| {
+                self.walk_children(&mut entry.deref_mut(), callback);
                 self.drop_entry(&mut entry.deref_mut(), callback);
                 entry
             })
+    }
+
+    fn walk_children<F: FnMut(&mut FileSystem<T>, Event<T>)>(
+        &mut self,
+        mut entry: &mut Entry<T>,
+        callback: &mut F,
+    ) {
+        let entry_ptr = entry as *mut _;
+        match entry.deref_mut() {
+            Entry::Dir { children, .. } => {
+                for (_, child) in children.iter_mut() {
+                    self.walk_children(child.deref_mut(), callback);
+                }
+            }
+            Entry::Symlink { .. } | Entry::File { .. } => {
+                callback(self, Event::Delete(entry_ptr));
+            }
+        }
     }
 
     fn drop_entry<F: FnMut(&mut FileSystem<T>, Event<T>)>(
@@ -853,15 +867,11 @@ impl<T> FileSystem<T> {
                     }
                 }
 
-                callback(self, Event::Delete(entry_ptr));
-
                 if !self.passes(link.to_str().unwrap()) {
                     self.remove(&link, callback);
                 }
             }
-            Entry::File { .. } => {
-                callback(self, Event::Delete(entry_ptr));
-            }
+            _ => {}
         };
     }
 
