@@ -986,7 +986,7 @@ impl<T> FileSystem<T> {
     // Returns the entry that represents the supplied path.
     // If the path is not represented and therefor has no entry then None is return.
     pub fn lookup(&mut self, path: &PathBuf) -> Option<&mut Entry<T>> {
-        let mut parent = self.root.deref_mut();
+        let mut parent = self.root.deref_mut() as *mut Entry<T>;
         let mut components = into_components(path);
         // remove the first component because it will always be the root
         components.remove(0);
@@ -999,18 +999,19 @@ impl<T> FileSystem<T> {
         let last_component = components.pop()?;
 
         for component in components {
-            parent = parent
+            parent = deref_mut!(self.follow_links(parent)?)
                 .children_mut()
                 .expect("expected directory entry")
-                .get_mut(&component)?
-                .deref_mut()
+                .get_mut(&component)
+                .map(|entry| entry.deref_mut() as *mut Entry<T>)
+                .and_then(|entry| self.follow_links(entry))?;
         }
 
-        parent
+        deref_mut!(parent)
             .children_mut()
             .expect("expected directory entry")
             .get_mut(&last_component)
-            .map(|e| e.deref_mut())
+            .map(|entry| entry.deref_mut())
     }
 
     fn follow_links(&mut self, mut entry: *mut Entry<T>) -> Option<*mut Entry<T>> {
