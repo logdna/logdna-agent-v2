@@ -17,6 +17,24 @@ type Children<T> = HashMap<OsString, Box<Entry<T>>>;
 type Symlinks<T> = Rc<RefCell<HashMap<PathBuf, Vec<*mut Entry<T>>>>>;
 type WatchDescriptors<T> = Rc<RefCell<HashMap<WatchDescriptor, Vec<*mut Entry<T>>>>>;
 
+macro_rules! deref {
+    ($e:expr) => {
+        match unsafe { $e.as_ref() } {
+            Some(v) => v,
+            None => panic!("entry pointer {:?} points to invalid location", $e),
+        }
+    }
+}
+
+macro_rules! deref_mut {
+    ($e:expr) => {
+        match unsafe { $e.as_mut() } {
+            Some(v) => v,
+            None => panic!("entry pointer {:?} points to invalid location", $e),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Entry<T> {
     File {
@@ -235,7 +253,7 @@ impl<T> FileSystem<T> {
         // reference to the root node, but we move that node into the file system. to get around
         // this we hack around the borrow check by converting a mutable reference to a mutable
         // pointer and back into a mutable reference
-        let root_ref = FileSystem::deref_entry_ptr_mut(root.deref_mut() as *mut Entry<T>);
+        let root_ref = deref_mut!(root.deref_mut() as *mut Entry<T>);
         let mut initial_dir_rules = Rules::new();
         for path in watched_dirs.iter() {
             append_rules(&mut initial_dir_rules, path.clone());
@@ -425,7 +443,7 @@ impl<T> FileSystem<T> {
                         }
 
                         let mut path =
-                            self.resolve_direct_path(FileSystem::deref_entry_ptr(entries[0]));
+                            self.resolve_direct_path(deref!(entries[0]));
                         path.push(from_name.clone());
                         path
                     }
@@ -446,7 +464,7 @@ impl<T> FileSystem<T> {
                         }
 
                         let mut path =
-                            self.resolve_direct_path(FileSystem::deref_entry_ptr(entries[0]));
+                            self.resolve_direct_path(deref!(entries[0]));
                         path.push(to_name.clone());
                         path
                     }
@@ -496,12 +514,12 @@ impl<T> FileSystem<T> {
             }
         };
 
-        let entry = FileSystem::deref_entry_ptr(entry_ptr);
+        let entry = deref!(entry_ptr);
         let mut path = self.resolve_direct_path(entry).clone();
         path.push(name.clone());
 
         if let Some(new_entry) = self.insert(&path, callback) {
-            if let Entry::Dir { .. } = FileSystem::deref_entry_ptr(new_entry) {
+            if let Entry::Dir { .. } = deref!(new_entry) {
                 for new_path in recursive_scan(&path) {
                     self.insert(&new_path, callback);
                 }
@@ -550,7 +568,7 @@ impl<T> FileSystem<T> {
             }
         };
 
-        let entry = FileSystem::deref_entry_ptr(entry_ptr);
+        let entry = deref!(entry_ptr);
         let mut path = self.resolve_direct_path(entry).clone();
         path.push(name);
 
@@ -588,8 +606,8 @@ impl<T> FileSystem<T> {
             }
         };
 
-        let from_entry = FileSystem::deref_entry_ptr(from_entry_ptr);
-        let to_entry = FileSystem::deref_entry_ptr(to_entry_ptr);
+        let from_entry = deref!(from_entry_ptr);
+        let to_entry = deref!(to_entry_ptr);
 
         let mut from_path = self.resolve_direct_path(from_entry).clone();
         from_path.push(from_name);
@@ -651,7 +669,7 @@ impl<T> FileSystem<T> {
                         symlink_path_builder.reverse();
 
                         for symlink_ptr in symlinks.get() {
-                            let symlink = FileSystem::deref_entry_ptr_mut(*symlink_ptr);
+                            let symlink = deref_mut!(*symlink_ptr);
                             path_builders.push((symlink_path_builder.clone(), symlink));
                         }
                     }
@@ -679,7 +697,7 @@ impl<T> FileSystem<T> {
         }
 
         let parent =
-            FileSystem::deref_entry_ptr_mut(self.create_dir(&path.parent().unwrap().into())?);
+            deref_mut!(self.create_dir(&path.parent().unwrap().into())?);
 
         let parent = self.follow_links(parent)?;
 
@@ -691,7 +709,7 @@ impl<T> FileSystem<T> {
             return self.create_dir(path);
         }
 
-        let children = FileSystem::deref_entry_ptr_mut(parent)
+        let children = deref_mut!(parent)
             .children_mut()
             .unwrap();
 
@@ -865,7 +883,7 @@ impl<T> FileSystem<T> {
         };
         let new_name = into_components(to).pop()?;
         let old_name = entry.name().clone();
-        let mut entry = FileSystem::deref_entry_ptr_mut(entry.parent())
+        let mut entry = deref_mut!(entry.parent())
             .children_mut()
             .expect("expected entry to be a directory")
             .remove(&old_name)
@@ -875,7 +893,7 @@ impl<T> FileSystem<T> {
         entry.set_name(new_name.clone());
         let entry_ptr = entry.deref_mut() as *mut _;
 
-        FileSystem::deref_entry_ptr_mut(new_parent)
+        deref_mut!(new_parent)
             .children_mut()
             .expect("expected entry to be a directory")
             .insert(new_name, entry);
@@ -900,7 +918,7 @@ impl<T> FileSystem<T> {
 
         let components_slice = components.as_slice();
         for (i, component) in components.iter().enumerate() {
-            let children = FileSystem::deref_entry_ptr_mut(entry)
+            let children = deref_mut!(entry)
                 .children_mut()
                 .expect("expected entry to be a directory");
             let mut current_path = PathBuf::from(r"/");
@@ -1007,7 +1025,7 @@ impl<T> FileSystem<T> {
     fn is_symlink_target(&self, path: &str) -> bool {
         for (_, symlink_ptrs) in self.symlinks.borrow().iter() {
             for symlink_ptr in symlink_ptrs.iter() {
-                let symlink = FileSystem::deref_entry_ptr_mut(*symlink_ptr);
+                let symlink = deref_mut!(*symlink_ptr);
                 match symlink {
                     Entry::Symlink { rules, .. } => {
                         if let Status::Ok = rules.passes(path) {
@@ -1042,20 +1060,6 @@ impl<T> FileSystem<T> {
     // a helper for checking if a path passes exclusion/inclusion rules
     fn passes(&self, path: &str) -> bool {
         self.is_initial_dir_target(path) || self.is_symlink_target(path)
-    }
-
-    fn deref_entry_ptr<'a>(entry: *const Entry<T>) -> &'a Entry<T> {
-        match unsafe { entry.as_ref() } {
-            Some(v) => v,
-            None => panic!("entry pointer {:?} points to invalid location", entry),
-        }
-    }
-
-    fn deref_entry_ptr_mut<'a>(entry: *mut Entry<T>) -> &'a mut Entry<T> {
-        match unsafe { entry.as_mut() } {
-            Some(v) => v,
-            None => panic!("entry pointer {:?} points to invalid location", entry),
-        }
     }
 }
 
