@@ -31,69 +31,57 @@ impl Tailer {
     {
         self.fs.clone().borrow_mut().read_events(&mut |fs, event| {
             match event {
-                Event::Initialize(entry_ptr) => {
+                Event::Initialize(mut entry_ptr) => {
                     // will initiate a file to it's current length
-                    let entry = unsafe { entry_ptr.as_mut() }.unwrap();
+                    let entry = unsafe { entry_ptr.as_mut() };
                     let path = fs.resolve_direct_path(entry);
                     match entry {
                         Entry::File { ref mut data, .. } => {
                             let mut len = path.metadata().map(|m| m.len()).unwrap_or(0);
                             if len < 8192 { len = 0 }
                             info!("initialized {:?} with offset {}", path, len,);
-                            *data = Some(len);
+                            *data = len;
                         }
                         _ => {}
                     };
                 }
-                Event::New(entry_ptr) => {
+                Event::New(mut entry_ptr) => {
                     Metrics::fs().increment_creates();
                     // similar to initiate but sets the offset to 0
-                    let entry = unsafe { entry_ptr.as_mut() }.unwrap();
+                    let entry = unsafe { entry_ptr.as_mut() };
                     let paths = fs.resolve_all_paths(entry);
                     match entry {
                         Entry::File { ref mut data, file_handle, .. } => {
                             info!("added {:?}", paths[0]);
-                            *data = Some(0);
-                            if let Some(ref mut data) = data {
-                                self.tail(file_handle, &paths, data, callback);
-                            } else {
-                                error!("expected offsets for path {:?}", paths[0]);
-                            }
+                            *data = 0;
+                            self.tail(file_handle, &paths, data, callback);
                         }
                         _ => {}
                     };
                 }
-                Event::Write(entry_ptr) => {
+                Event::Write(mut entry_ptr) => {
                     Metrics::fs().increment_writes();
-                    let entry = unsafe { entry_ptr.as_mut() }.unwrap();
+                    let entry = unsafe { entry_ptr.as_mut() };
                     let paths = fs.resolve_all_paths(entry);
                     if let Entry::File { ref mut data, file_handle, .. } = entry {
-                        if let Some(ref mut data) = data {
                             self.tail(file_handle, &paths, data, callback);
-                        } else {
-                            error!("expected offsets for path {:?}", paths[0]);
-                        }
                     }
                 }
-                Event::Delete(entry_ptr) => {
+                Event::Delete(mut entry_ptr) => {
                     Metrics::fs().increment_deletes();
-                    let mut entry = unsafe { entry_ptr.as_mut() }.unwrap();
+                    let mut entry = unsafe { entry_ptr.as_mut() };
                     let paths = fs.resolve_all_paths(entry);
 
                     if let Entry::Symlink { link, .. } = entry {
                         if let Some(real_entry) = fs.lookup(link) {
-                            entry = real_entry;
+                            entry = unsafe { &mut *real_entry.as_ptr() };
                         } else {
                             error!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths[0]);
                         }
                     }
 
                     if let Entry::File { ref mut data, file_handle, .. } = entry {
-                        if let Some(ref mut data) = data {
                             self.tail(file_handle, &paths, data, callback);
-                        } else {
-                            error!("expected offsets for path {:?}", paths[0]);
-                        }
                     }
                 }
             };
