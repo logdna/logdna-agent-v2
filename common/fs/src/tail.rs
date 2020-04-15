@@ -1,14 +1,14 @@
+use crate::cache::entry::Entry;
+use crate::cache::event::Event;
+use crate::cache::FileSystem;
+use crate::rule::Rules;
+use http::types::body::LineBuilder;
+use metrics::Metrics;
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::rc::Rc;
-
-use http::types::body::LineBuilder;
-use metrics::Metrics;
-
-use crate::cache::{Entry, Event, FileSystem};
-use crate::rule::Rules;
 
 /// Tails files on a filesystem by inheriting events from a Watcher
 pub struct Tailer {
@@ -112,7 +112,6 @@ impl Tailer {
             return;
         }
         // open the file, create a reader
-        //todo when match postfix lands on stable replace prefix match for readability
         let mut reader = BufReader::new(file_handle);
         // if the offset is greater than the file's len
         // it's very likely a truncation occurred

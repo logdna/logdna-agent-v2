@@ -1,5 +1,7 @@
+use crate::cache::entry::{Entry, EntryPtr};
+use crate::cache::event::Event;
+use crate::cache::watch::{WatchEvent, Watcher};
 use crate::rule::{GlobRule, Rules, Status};
-use crate::watch::{WatchEvent, Watcher};
 use hashbrown::hash_map::Entry as HashMapEntry;
 use hashbrown::HashMap;
 use inotify::WatchDescriptor;
@@ -8,127 +10,20 @@ use std::cell::RefCell;
 use std::ffi::OsString;
 use std::fmt;
 use std::fs::read_dir;
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::iter::FromIterator;
 use std::ops::{Deref, DerefMut};
 use std::path::{Component, PathBuf};
 use std::ptr::NonNull;
 use std::rc::Rc;
 
-type EntryPtr<T> = NonNull<Entry<T>>;
+pub mod entry;
+pub mod event;
+mod watch;
+
 type Children<T> = HashMap<OsString, Box<Entry<T>>>;
 type Symlinks<T> = HashMap<PathBuf, Vec<EntryPtr<T>>>;
 type WatchDescriptors<T> = HashMap<WatchDescriptor, Vec<EntryPtr<T>>>;
-
-#[derive(Debug)]
-pub enum Entry<T> {
-    File {
-        name: OsString,
-        parent: EntryPtr<T>,
-        wd: WatchDescriptor,
-        data: T,
-        file_handle: File,
-    },
-    Dir {
-        name: OsString,
-        parent: Option<EntryPtr<T>>,
-        children: Children<T>,
-        wd: WatchDescriptor,
-    },
-    Symlink {
-        name: OsString,
-        parent: EntryPtr<T>,
-        link: PathBuf,
-        wd: WatchDescriptor,
-        rules: Rules,
-    },
-}
-
-impl<T> Entry<T> {
-    fn name(&self) -> &OsString {
-        match self {
-            Entry::File { name, .. } | Entry::Dir { name, .. } | Entry::Symlink { name, .. } => {
-                name
-            }
-        }
-    }
-
-    fn parent(&self) -> Option<EntryPtr<T>> {
-        match self {
-            Entry::File { parent, .. } | Entry::Symlink { parent, .. } => Some(*parent),
-            Entry::Dir { parent, .. } => *parent,
-        }
-    }
-
-    fn set_parent(&mut self, new_parent: EntryPtr<T>) {
-        match self {
-            Entry::File { parent, .. } | Entry::Symlink { parent, .. } => *parent = new_parent,
-            Entry::Dir { parent, .. } => *parent = Some(new_parent),
-        }
-    }
-
-    fn set_name(&mut self, new_name: OsString) {
-        match self {
-            Entry::File { name, .. } | Entry::Dir { name, .. } | Entry::Symlink { name, .. } => {
-                *name = new_name
-            }
-        }
-    }
-
-    fn link(&self) -> Option<&PathBuf> {
-        match self {
-            Entry::Symlink { link, .. } => Some(link),
-            _ => None,
-        }
-    }
-
-    fn children(&self) -> Option<&Children<T>> {
-        match self {
-            Entry::Dir { children, .. } => Some(children),
-            _ => None,
-        }
-    }
-
-    fn children_mut(&mut self) -> Option<&mut Children<T>> {
-        match self {
-            Entry::Dir { children, .. } => Some(children),
-            _ => None,
-        }
-    }
-
-    fn watch_descriptor(&self) -> &WatchDescriptor {
-        match self {
-            Entry::Dir { wd, .. } | Entry::Symlink { wd, .. } | Entry::File { wd, .. } => wd,
-        }
-    }
-
-    pub fn data_mut(&mut self) -> Option<&mut T> {
-        match self {
-            Entry::Dir { .. } | Entry::Symlink { .. } => None,
-            Entry::File { data, .. } => Some(data),
-        }
-    }
-
-    pub fn file_handle(&self) -> Option<&File> {
-        match self {
-            Entry::Dir { .. } | Entry::Symlink { .. } => None,
-            Entry::File { file_handle, .. } => Some(file_handle),
-        }
-    }
-}
-
-/// Represents a filesystem event
-#[derive(Debug)]
-pub enum Event<T> {
-    /// A file was created initialized
-    Initialize(EntryPtr<T>),
-    /// A new file was created
-    New(EntryPtr<T>),
-    /// A file was written too
-    Write(EntryPtr<T>),
-    /// A file was deleted
-    Delete(EntryPtr<T>),
-}
 
 pub struct FileSystem<T> {
     watcher: Watcher,
@@ -467,7 +362,7 @@ impl<T: Default> FileSystem<T> {
                     let current_path = PathBuf::from(current_path_builder.join(r"/"));
 
                     if let HashMapEntry::Occupied(symlinks) =
-                    symlinks.borrow_mut().entry(current_path)
+                        symlinks.borrow_mut().entry(current_path)
                     {
                         let mut symlink_path_builder = Vec::new();
                         symlink_path_builder.extend_from_slice(&raw_components[(i + 1)..]);
@@ -496,6 +391,7 @@ impl<T: Default> FileSystem<T> {
             info!("ignoring {:?}", path);
             return None;
         }
+
         if !(path.exists() || path.read_link().is_ok()) {
             warn!("attempted to insert non existant path {:?}", path);
             return None;
@@ -643,9 +539,6 @@ impl<T: Default> FileSystem<T> {
     ) -> Option<Box<Entry<T>>> {
         let mut parent = self.lookup(&path.parent()?.into())?;
         let component = into_components(path).pop()?;
-        if let Some(entry) = unsafe { parent.as_mut().children_mut().unwrap().get(&component) } {
-            self.before_drop(EntryPtr::from(entry.deref()), callback);
-        }
 
         unsafe {
             parent
@@ -657,24 +550,6 @@ impl<T: Default> FileSystem<T> {
                     self.drop_entry(EntryPtr::from(entry.deref()), callback);
                     entry
                 })
-        }
-    }
-
-    fn before_drop<F: FnMut(&mut FileSystem<T>, Event<T>)>(
-        &mut self,
-        entry_ptr: EntryPtr<T>,
-        callback: &mut F,
-    ) {
-        let entry = unsafe { entry_ptr.as_ref() };
-        match entry {
-            Entry::Dir { children, .. } => {
-                for (_, child) in children {
-                    self.before_drop(EntryPtr::from(child.deref()), callback);
-                }
-            }
-            Entry::Symlink { .. } | Entry::File { .. } => {
-                callback(self, Event::Delete(entry_ptr));
-            }
         }
     }
 
@@ -697,8 +572,12 @@ impl<T: Default> FileSystem<T> {
                 if !self.passes(link.to_str().unwrap()) {
                     self.remove(&link, callback);
                 }
+
+                callback(self, Event::Delete(entry_ptr));
             }
-            _ => {}
+            Entry::File { .. } => {
+                callback(self, Event::Delete(entry_ptr));
+            }
         };
     }
 
@@ -1735,17 +1614,6 @@ mod tests {
             assert!(resolved_paths
                 .iter()
                 .any(|other| other.to_str() == double_nested_symlink_path.to_str()));
-        });
-    }
-
-    // #[test]
-    fn filesystem_crash_test() {
-        run_test(|| {
-            let mut fs = new_fs::<()>("/var/log/".into(), None);
-            loop {
-                fs.read_events(&mut |_, _| {});
-            }
-            // exec sudo logrotate -f /etc/logrotate.conf and watch things burn lol
         });
     }
 }
