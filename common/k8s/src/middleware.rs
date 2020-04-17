@@ -51,7 +51,7 @@ quick_error! {
 }
 
 pub struct K8sMiddleware {
-    metadata: Mutex<HashMap<String, PodMetadata>>,
+    metadata: Mutex<HashMap<(String, String), PodMetadata>>,
     informer: Mutex<Informer<Pod>>,
     runtime: Mutex<Option<Runtime>>,
 }
@@ -65,9 +65,11 @@ impl K8sMiddleware {
             .build()
             .unwrap_or_else(|e| panic!("unable to build tokio runtime: {}", e));
         let this = runtime.block_on(async {
-            let node = env::var("NODE_NAME").expect("unable to read environment variable NODE_NAME");
+            let node =
+                env::var("NODE_NAME").expect("unable to read environment variable NODE_NAME");
 
-            let config = config::incluster_config().unwrap_or_else(|e| panic!("unable to get cluster configuration info: {}", e));
+            let config = config::incluster_config()
+                .unwrap_or_else(|e| panic!("unable to get cluster configuration info: {}", e));
             let client = APIClient::new(config);
 
             let params = ListParams::default().fields(&format!("spec.nodeName={}", node));
@@ -84,11 +86,11 @@ impl K8sMiddleware {
                             }
                         };
                         metadata.insert(
-                            format!("{}_{}", pod_meta_data.name, pod_meta_data.namespace),
+                            (pod_meta_data.name.clone(), pod_meta_data.namespace.clone()),
                             pod_meta_data,
                         );
                     }
-                },
+                }
                 Err(e) => {
                     warn!("unable to poll pods during initialization: {}", e);
                 }
@@ -116,7 +118,7 @@ impl K8sMiddleware {
                     }
                 };
                 self.metadata.lock().insert(
-                    format!("{}_{}", pod_meta_data.name, pod_meta_data.namespace),
+                    (pod_meta_data.name.clone(), pod_meta_data.namespace.clone()),
                     pod_meta_data,
                 );
                 Metrics::k8s().increment_creates();
@@ -129,11 +131,11 @@ impl K8sMiddleware {
                         return;
                     }
                 };
-                if let Some(old_pod_meta_data) = self.metadata.lock().get_mut(&format!(
-                    "{}_{}",
-                    new_pod_meta_data.name,
-                    new_pod_meta_data.namespace
-                )) {
+                if let Some(old_pod_meta_data) = self
+                    .metadata
+                    .lock()
+                    .get_mut(&(new_pod_meta_data.name, new_pod_meta_data.namespace))
+                {
                     old_pod_meta_data.labels = new_pod_meta_data.labels;
                     old_pod_meta_data.annotations = new_pod_meta_data.annotations;
                 }
@@ -146,11 +148,9 @@ impl K8sMiddleware {
                         return;
                     }
                 };
-                self.metadata.lock().remove(&format!(
-                    "{}_{}",
-                    pod_meta_data.name,
-                    pod_meta_data.namespace
-                ));
+                self.metadata
+                    .lock()
+                    .remove(&(pod_meta_data.name, pod_meta_data.namespace));
                 Metrics::k8s().increment_deletes();
             }
             WatchEvent::Error(e) => {
@@ -162,7 +162,11 @@ impl K8sMiddleware {
 
 impl Middleware for K8sMiddleware {
     fn run(&self) {
-        let mut runtime = self.runtime.lock().take().expect("tokio runtime not initialized");
+        let mut runtime = self
+            .runtime
+            .lock()
+            .take()
+            .expect("tokio runtime not initialized");
         let informer = self.informer.lock();
 
         runtime.block_on(async move {
@@ -187,10 +191,8 @@ impl Middleware for K8sMiddleware {
         let mut container_line = None;
         for line in lines.iter() {
             if let Some(ref file_name) = line.file {
-                if let Some((name, namespace)) = parse_container_path(&file_name) {
-                    if let Some(pod_meta_data) =
-                        self.metadata.lock().get(&format!("{}_{}", name, namespace))
-                    {
+                if let Some(key) = parse_container_path(&file_name) {
+                    if let Some(pod_meta_data) = self.metadata.lock().get(&key) {
                         Metrics::k8s().increment_lines();
                         let mut new_line = line.clone();
                         new_line = new_line.labels(pod_meta_data.labels.clone());
@@ -236,8 +238,12 @@ impl TryFrom<k8s_openapi::api::core::v1::Pod> for PodMetadata {
         Ok(PodMetadata {
             name: name,
             namespace: namespace,
-            labels: real_pod_meta.labels.map_or_else(|| KeyValueMap::new(), |v| v.into()),
-            annotations: real_pod_meta.annotations.map_or_else(|| KeyValueMap::new(), |v| v.into())
+            labels: real_pod_meta
+                .labels
+                .map_or_else(|| KeyValueMap::new(), |v| v.into()),
+            annotations: real_pod_meta
+                .annotations
+                .map_or_else(|| KeyValueMap::new(), |v| v.into()),
         })
     }
 }
