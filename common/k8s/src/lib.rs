@@ -6,3 +6,4 @@ extern crate log;
 extern crate quick_error;
 
 pub mod middleware;
+pub mod errors;

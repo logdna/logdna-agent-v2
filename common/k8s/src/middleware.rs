@@ -19,10 +19,13 @@ use middleware::{Middleware, Status};
 use futures::stream::StreamExt;
 use tokio::runtime::{Builder, Runtime};
 
+use crate::errors::K8sError;
+use std::convert::TryFrom;
+
 lazy_static! {
     static ref K8S_REG: Regex = Regex::new(
         r#"^/var/log/containers/([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)-([a-z0-9]{64}).log$"#
-    ).expect("K8S_REG Regex::new()");
+    ).unwrap_or_else(|e| panic!("K8S_REG Regex::new() failed: {}", e));
 }
 
 quick_error! {
@@ -49,7 +52,7 @@ quick_error! {
 
 pub struct K8sMiddleware {
     metadata: Mutex<HashMap<String, PodMetadata>>,
-    informer: Mutex<Option<Informer<Pod>>>,
+    informer: Mutex<Informer<Pod>>,
     runtime: Mutex<Option<Runtime>>,
 }
 
@@ -60,34 +63,40 @@ impl K8sMiddleware {
             .enable_all()
             .core_threads(2)
             .build()
-            .unwrap();
+            .unwrap_or_else(|e| panic!("unable to build tokio runtime: {}", e));
         let this = runtime.block_on(async {
-            let node = env::var("NODE_NAME").unwrap();
+            let node = env::var("NODE_NAME").expect("unable to read environment variable NODE_NAME");
 
-            let config = config::incluster_config().unwrap();
+            let config = config::incluster_config().unwrap_or_else(|e| panic!("unable to get cluster configuration info: {}", e));
             let client = APIClient::new(config);
 
             let params = ListParams::default().fields(&format!("spec.nodeName={}", node));
             let mut metadata = HashMap::new();
 
-            let pods = Api::<Pod>::all(client.clone()).list(&params).await.unwrap();
-            for pod in pods {
-                let real_pod_meta = pod.metadata.unwrap();
-                let pod_meta_data = PodMetadata {
-                    name: real_pod_meta.name.unwrap(),
-                    namespace: real_pod_meta.namespace.unwrap(),
-                    labels: real_pod_meta.labels.unwrap().into(),
-                    annotations: real_pod_meta.annotations.unwrap().into(),
-                };
-                metadata.insert(
-                    format!("{}_{}", pod_meta_data.name, pod_meta_data.namespace),
-                    pod_meta_data,
-                );
+            match Api::<Pod>::all(client.clone()).list(&params).await {
+                Ok(pods) => {
+                    for pod in pods {
+                        let pod_meta_data = match PodMetadata::try_from(pod) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                warn!("ignoring pod on initialization: {}", e);
+                                continue;
+                            }
+                        };
+                        metadata.insert(
+                            format!("{}_{}", pod_meta_data.name, pod_meta_data.namespace),
+                            pod_meta_data,
+                        );
+                    }
+                },
+                Err(e) => {
+                    warn!("unable to poll pods during initialization: {}", e);
+                }
             }
 
             K8sMiddleware {
                 metadata: Mutex::new(metadata),
-                informer: Mutex::new(Some(Informer::new(client, params, Resource::all::<Pod>()))),
+                informer: Mutex::new(Informer::new(client, params, Resource::all::<Pod>())),
                 runtime: Mutex::new(None),
             }
         });
@@ -99,12 +108,12 @@ impl K8sMiddleware {
     fn handle_pod(&self, event: WatchEvent<Pod>) {
         match event {
             WatchEvent::Added(pod) => {
-                let real_pod_meta = pod.metadata.unwrap();
-                let pod_meta_data = PodMetadata {
-                    name: real_pod_meta.name.unwrap(),
-                    namespace: real_pod_meta.namespace.unwrap(),
-                    labels: real_pod_meta.labels.unwrap().into(),
-                    annotations: real_pod_meta.annotations.unwrap().into(),
+                let pod_meta_data = match PodMetadata::try_from(pod) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("ignoring pod added event: {}", e);
+                        return;
+                    }
                 };
                 self.metadata.lock().insert(
                     format!("{}_{}", pod_meta_data.name, pod_meta_data.namespace),
@@ -113,22 +122,34 @@ impl K8sMiddleware {
                 Metrics::k8s().increment_creates();
             }
             WatchEvent::Modified(pod) => {
-                let real_pod_meta = pod.metadata.unwrap();
-                if let Some(pod_meta_data) = self.metadata.lock().get_mut(&format!(
+                let new_pod_meta_data = match PodMetadata::try_from(pod) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("ignoring pod modified event: {}", e);
+                        return;
+                    }
+                };
+                if let Some(old_pod_meta_data) = self.metadata.lock().get_mut(&format!(
                     "{}_{}",
-                    real_pod_meta.name.unwrap(),
-                    real_pod_meta.namespace.unwrap()
+                    new_pod_meta_data.name,
+                    new_pod_meta_data.namespace
                 )) {
-                    pod_meta_data.labels = real_pod_meta.labels.unwrap().into();
-                    pod_meta_data.annotations = real_pod_meta.annotations.unwrap().into();
+                    old_pod_meta_data.labels = new_pod_meta_data.labels;
+                    old_pod_meta_data.annotations = new_pod_meta_data.annotations;
                 }
             }
             WatchEvent::Deleted(pod) => {
-                let real_pod_meta = pod.metadata.unwrap();
+                let pod_meta_data = match PodMetadata::try_from(pod) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("ignoring pod deleted event: {}", e);
+                        return;
+                    }
+                };
                 self.metadata.lock().remove(&format!(
                     "{}_{}",
-                    real_pod_meta.name.unwrap(),
-                    real_pod_meta.namespace.unwrap()
+                    pod_meta_data.name,
+                    pod_meta_data.namespace
                 ));
                 Metrics::k8s().increment_deletes();
             }
@@ -141,12 +162,18 @@ impl K8sMiddleware {
 
 impl Middleware for K8sMiddleware {
     fn run(&self) {
-        let mut runtime = self.runtime.lock().take().unwrap();
-        let informer = self.informer.lock().take().unwrap();
+        let mut runtime = self.runtime.lock().take().expect("tokio runtime not initialized");
+        let informer = self.informer.lock();
 
         runtime.block_on(async move {
             loop {
-                let mut pods = informer.poll().await.unwrap().boxed();
+                let mut pods = match informer.poll().await {
+                    Ok(v) => v.boxed(),
+                    Err(e) => {
+                        error!("unable to poll kubernetes api for pods: {}", e);
+                        continue;
+                    }
+                };
                 Metrics::k8s().increment_polls();
 
                 while let Some(Ok(event)) = pods.next().await {
@@ -179,6 +206,39 @@ impl Middleware for K8sMiddleware {
         }
 
         Status::Ok(lines)
+    }
+}
+
+impl TryFrom<k8s_openapi::api::core::v1::Pod> for PodMetadata {
+    type Error = K8sError;
+
+    fn try_from(value: k8s_openapi::api::core::v1::Pod) -> Result<Self, Self::Error> {
+        let real_pod_meta = match value.metadata {
+            Some(v) => v,
+            None => {
+                return Err(K8sError::PodMissingMetaError("metadata"));
+            }
+        };
+
+        let name = match real_pod_meta.name {
+            Some(v) => v,
+            None => {
+                return Err(K8sError::PodMissingMetaError("metadata.name"));
+            }
+        };
+        let namespace = match real_pod_meta.namespace {
+            Some(v) => v,
+            None => {
+                return Err(K8sError::PodMissingMetaError("metadata.namespace"));
+            }
+        };
+
+        Ok(PodMetadata {
+            name: name,
+            namespace: namespace,
+            labels: real_pod_meta.labels.map_or_else(|| KeyValueMap::new(), |v| v.into()),
+            annotations: real_pod_meta.annotations.map_or_else(|| KeyValueMap::new(), |v| v.into())
+        })
     }
 }
 
