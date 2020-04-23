@@ -335,51 +335,38 @@ impl<T: Default> FileSystem<T> {
     }
 
     pub fn resolve_all_paths(&self, entry: &Entry<T>) -> Vec<PathBuf> {
-        let mut resolved_paths = Vec::new();
+        let mut paths = Vec::new();
+        self.resolve_all_paths_helper(entry, &mut paths, Vec::new());
+        paths
+    }
 
+    fn resolve_all_paths_helper(
+        &self,
+        entry: &Entry<T>,
+        paths: &mut Vec<PathBuf>,
+        mut components: Vec<String>,
+    ) {
         let symlinks = self.symlinks.clone();
-        let mut path_builders = Vec::new();
-        path_builders.push((Vec::new(), entry));
-        loop {
-            let (mut components, entry) = match path_builders.pop() {
-                Some(tuple) => tuple,
-                None => break,
-            };
 
-            components.reverse();
-            let mut base_components: Vec<String> =
-                into_components(&self.resolve_direct_path(entry))
-                    .iter()
-                    .map(|x| x.to_str().unwrap().into())
-                    .collect();
-            base_components.append(&mut components);
+        let mut base_components: Vec<String> = into_components(&self.resolve_direct_path(entry))
+            .iter()
+            .map(|x| x.to_str().unwrap().into())
+            .collect(); // build all the components of the path leading up to the current entry
+        base_components.append(&mut components); // add components already discovered from previous recursive step
+        paths.push(base_components.iter().collect()); // condense components of path that lead to the true entry into a PathBuf
 
-            if base_components.len() > 3 {
-                let raw_components = base_components.as_slice();
-                for i in 2..raw_components.len() {
-                    let mut current_path_builder = Vec::new();
-                    current_path_builder.extend_from_slice(&raw_components[0..=i]);
-                    let current_path = PathBuf::from(current_path_builder.join(r"/"));
+        let raw_components = base_components.as_slice();
+        for i in 0..raw_components.len() - components.len() { // only need to iterate components up to current entry
+            let current_path: PathBuf = raw_components[0..=i].to_vec().into_iter().collect();
 
-                    if let HashMapEntry::Occupied(symlinks) =
-                        symlinks.borrow_mut().entry(current_path)
-                    {
-                        let mut symlink_path_builder = Vec::new();
-                        symlink_path_builder.extend_from_slice(&raw_components[(i + 1)..]);
-                        symlink_path_builder.reverse();
-
-                        for symlink_ptr in symlinks.get() {
-                            let symlink = unsafe { &mut *(*symlink_ptr).as_ptr() };
-                            path_builders.push((symlink_path_builder.clone(), symlink));
-                        }
-                    }
+            if let Some(symlinks) = symlinks.borrow().get(&current_path) { // check if path has a symlink to it
+                let symlink_components = raw_components[(i + 1)..].to_vec();
+                for symlink_ptr in symlinks.iter() {
+                    let symlink = unsafe { symlink_ptr.as_ref() };
+                    self.resolve_all_paths_helper(symlink, paths, symlink_components.clone());
                 }
             }
-
-            resolved_paths.push(base_components.into_iter().collect());
         }
-
-        resolved_paths
     }
 
     fn insert<F: FnMut(&mut FileSystem<T>, Event<T>)>(
