@@ -1,5 +1,0 @@
-{
-  "base" : "git:merge-base(master), arc:prompt",
-  "load" : [ "../ldshared/phacility_lib/src" ],
-  "phabricator.uri" : "https://logdna.phacility.com/"
-}
