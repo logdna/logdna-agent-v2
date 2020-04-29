@@ -57,22 +57,27 @@ pub struct K8sMiddleware {
 }
 
 impl K8sMiddleware {
-    pub fn new() -> Self {
-        let mut runtime = Builder::new()
+    pub fn new() -> Result<Self, K8sError> {
+        let mut runtime = match Builder::new()
             .threaded_scheduler()
             .enable_all()
             .core_threads(2)
-            .build()
-            .unwrap_or_else(|e| panic!("unable to build tokio runtime: {}", e));
+            .build() {
+                Ok(v) => v,
+                Err(e) => return Err(K8sError::InitializationError(format!("unable to build tokio runtime: {}", e))),
+            };
         let this = runtime.block_on(async {
-            let node =
-                env::var("NODE_NAME").expect("unable to read environment variable NODE_NAME");
-
-            let config = config::incluster_config()
-                .unwrap_or_else(|e| panic!("unable to get cluster configuration info: {}", e));
+            let config = match config::incluster_config() {
+                Ok(v) => v,
+                Err(e) => return Err(K8sError::InitializationError(format!("unable to get cluster configuration info: {}", e))),
+            };
             let client = APIClient::new(config);
 
-            let params = ListParams::default().fields(&format!("spec.nodeName={}", node));
+            let mut params = ListParams::default();
+            if let Ok(node) = env::var("NODE_NAME") {
+                params = ListParams::default().fields(&format!("spec.nodeName={}", node));
+            }
+
             let mut metadata = HashMap::new();
 
             match Api::<Pod>::all(client.clone()).list(&params).await {
@@ -92,18 +97,20 @@ impl K8sMiddleware {
                     }
                 }
                 Err(e) => {
-                    warn!("unable to poll pods during initialization: {}", e);
+                    return Err(K8sError::InitializationError(format!("unable to poll pods during initialization: {}", e)));
                 }
             }
 
-            K8sMiddleware {
+            Ok(K8sMiddleware {
                 metadata: Mutex::new(metadata),
                 informer: Mutex::new(Informer::new(client, params, Resource::all::<Pod>())),
                 runtime: Mutex::new(None),
-            }
+            })
         });
 
-        *this.runtime.lock() = Some(runtime);
+        if let Ok(ref middleware) = this {
+            *middleware.runtime.lock() = Some(runtime);
+        }
         this
     }
 

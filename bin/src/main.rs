@@ -53,7 +53,10 @@ fn main() {
 
     let mut executor = Executor::new();
     if PathBuf::from("/var/log/containers/").exists() {
-        executor.register(K8sMiddleware::new());
+        match K8sMiddleware::new() {
+            Ok(v) => executor.register(v),
+            Err(e) => warn!("{}", e),
+        }
     }
 
     let mut source_reader = SourceReader::new();
