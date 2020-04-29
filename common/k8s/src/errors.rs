@@ -4,5 +4,8 @@ quick_error! {
         PodMissingMetaError(descr: &'static str) {
             display("pod missing {}", descr)
         }
+        InitializationError(descr: String) {
+            display("failed to initialize kubernetes middleware {}", descr)
+        }
     }
 }

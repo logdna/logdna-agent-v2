@@ -496,7 +496,7 @@ impl<T: Default> FileSystem<T> {
         entries.retain(|other| *other != entry_ptr);
         if entries.len() == 0 {
             watch_descriptors.remove(&wd);
-            self.watcher.unwatch(wd);
+            match self.watcher.unwatch(wd) { _ => {} }; // TODO: Handle this error case
         }
 
         if let Entry::Symlink { link, .. } = entry {
