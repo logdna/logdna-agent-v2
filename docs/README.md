@@ -57,7 +57,8 @@ kubectl delete -f https://raw.githubusercontent.com/logdna/logdna-agent/master/l
 
 ### Prerequisites
 
-* Create an account with LogDNA by following our [quick start guide](https://docs.logdna.com/docs/logdna-quick-start-guide).
+* A LogDNA Account. Create an account with LogDNA by following our [quick start guide](https://docs.logdna.com/docs/logdna-quick-start-guide).
+* A LogDNA Ingestion Key. You can get your ingestion key at the top of [your account's Add a Log Source page](https://app.logdna.com/pages/add-host).
 
 ### Installing on Kubernetes
 
