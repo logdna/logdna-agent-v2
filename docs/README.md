@@ -7,7 +7,7 @@ The LogDNA agent is a blazingly fast, resource efficient log collection client, 
 ![LogDNA Dashboard]
 
 [Rustc Version 1.42+]: https://img.shields.io/badge/rustc-1.42+-lightgray.svg
-[rustc]: https://blog.rust-lang.org/2020/01/30/Rust-1.42.0.html
+[rustc]: https://blog.rust-lang.org/2020/03/12/Rust-1.42.html
 [Join us on LogDNA's Public Slack]: http://chat.logdna.com/
 [LogDNA]: https://logdna.com
 [Rust]: https://www.rust-lang.org/
