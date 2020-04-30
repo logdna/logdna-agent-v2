@@ -62,7 +62,7 @@ kubectl delete -f https://raw.githubusercontent.com/logdna/logdna-agent/master/l
 
 ### Installing on Kubernetes
 
-The agent is compatible with `v1.8+` kubernetes clusters. It can be quickly and effortlessly deployed to all nodes to forward logs from your entire kubernetes cluster by running two commands:
+The agent is compatible with Kubernetes clusters running `v1.9` or greater. It can be quickly and effortlessly deployed to all nodes to forward logs from your entire kubernetes cluster by running two commands:
 
 
 ```
