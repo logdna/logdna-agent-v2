@@ -126,7 +126,7 @@ The agent accepts configuration from two sources, environment variables and a co
 
 ### Configuring Kubernetes
 
-To configure the kubernetes daemonset, copy the [logdna-agent yaml](./k8s/logdna-agent.yaml) and modify the `env` section. For example, to change the hostname add the following:
+To configure the kubernetes daemonset, copy the [logdna-agent yaml](../k8s/logdna-agent.yaml) and modify the `env` section. For example, to change the hostname add the following:
 
 ```yaml
 env:
