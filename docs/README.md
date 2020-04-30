@@ -1,13 +1,13 @@
 # LogDNA Agent
 
-[![Rustc Version 1.41+]][rustc] [Join us on LogDNA's Public Slack]
+[![Rustc Version 1.42+]][rustc] [Join us on LogDNA's Public Slack]
 
 The LogDNA agent is a blazingly fast, resource efficient log collection client, that forwards logs to [LogDNA]. The 2.0+ version of this agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's PaaS web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
 
 ![LogDNA Dashboard]
 
-[Rustc Version 1.41+]: https://img.shields.io/badge/rustc-1.41+-lightgray.svg
-[rustc]: https://blog.rust-lang.org/2020/01/30/Rust-1.41.0.html
+[Rustc Version 1.42+]: https://img.shields.io/badge/rustc-1.42+-lightgray.svg
+[rustc]: https://blog.rust-lang.org/2020/01/30/Rust-1.42.0.html
 [Join us on LogDNA's Public Slack]: http://chat.logdna.com/
 [LogDNA]: https://logdna.com
 [Rust]: https://www.rust-lang.org/
@@ -48,11 +48,8 @@ kubectl get ds logdna-agent -o yaml > old-logdna-agent.yaml
 # 1.x.x
 kubectl delete -f https://raw.githubusercontent.com/logdna/logdna-agent/master/logdna-agent-ds.yaml
 
-# 2.0.0 - 2.1.7
+# 2.x.x
 kubectl delete -f https://raw.githubusercontent.com/logdna/logdna-agent/master/logdna-agent-v2.yaml
-
-# 2.1.8+
-kubectl delete -f https://raw.githubusercontent.com/logdna/logdna-agent-v2/master/k8s/logdna-agent.yaml
 ```
 3. Follow our instructions for [installing the agent on kubernetes](#installing-on-kubernetes).
 
@@ -76,7 +73,7 @@ kubectl create -f https://raw.githubusercontent.com/logdna/logdna-agent-v2/maste
 
 ### Building on Linux
 
-The agent requires `v1.41+` of rustc. If the proper versions of rustc and cargo are installed, then simply run the following command to build the agent:
+The agent requires `v1.42+` of rustc. If the proper versions of rustc and cargo are installed, then simply run the following command to build the agent:
 
 ```
 cargo build --release
