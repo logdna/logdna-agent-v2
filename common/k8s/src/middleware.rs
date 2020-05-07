@@ -62,14 +62,25 @@ impl K8sMiddleware {
             .threaded_scheduler()
             .enable_all()
             .core_threads(2)
-            .build() {
-                Ok(v) => v,
-                Err(e) => return Err(K8sError::InitializationError(format!("unable to build tokio runtime: {}", e))),
-            };
+            .build()
+        {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(K8sError::InitializationError(format!(
+                    "unable to build tokio runtime: {}",
+                    e
+                )))
+            }
+        };
         let this = runtime.block_on(async {
             let config = match config::incluster_config() {
                 Ok(v) => v,
-                Err(e) => return Err(K8sError::InitializationError(format!("unable to get cluster configuration info: {}", e))),
+                Err(e) => {
+                    return Err(K8sError::InitializationError(format!(
+                        "unable to get cluster configuration info: {}",
+                        e
+                    )))
+                }
             };
             let client = APIClient::new(config);
 
@@ -97,7 +108,10 @@ impl K8sMiddleware {
                     }
                 }
                 Err(e) => {
-                    return Err(K8sError::InitializationError(format!("unable to poll pods during initialization: {}", e)));
+                    return Err(K8sError::InitializationError(format!(
+                        "unable to poll pods during initialization: {}",
+                        e
+                    )));
                 }
             }
 
@@ -195,23 +209,19 @@ impl Middleware for K8sMiddleware {
     }
 
     fn process(&self, lines: Vec<LineBuilder>) -> Status {
-        let mut container_line = None;
         for line in lines.iter() {
             if let Some(ref file_name) = line.file {
                 if let Some(key) = parse_container_path(&file_name) {
+                    Metrics::k8s().increment_lines();
+                    let mut container_line = line.clone();
                     if let Some(pod_meta_data) = self.metadata.lock().get(&key) {
-                        Metrics::k8s().increment_lines();
-                        let mut new_line = line.clone();
-                        new_line = new_line.labels(pod_meta_data.labels.clone());
-                        new_line = new_line.annotations(pod_meta_data.annotations.clone());
-                        container_line = Some(new_line);
+                        container_line = container_line
+                            .labels(pod_meta_data.labels.clone())
+                            .annotations(pod_meta_data.annotations.clone());
                     }
+                    return Status::Ok(vec![container_line]);
                 }
             }
-        }
-
-        if let Some(line) = container_line {
-            return Status::Ok(vec![line]);
         }
 
         Status::Ok(lines)
