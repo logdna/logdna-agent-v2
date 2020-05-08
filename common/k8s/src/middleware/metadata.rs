@@ -1,9 +1,5 @@
-use std::collections::HashMap;
-use std::env;
-
-use parking_lot::Mutex;
-use regex::Regex;
-
+use crate::errors::K8sError;
+use futures::stream::StreamExt;
 use http::types::body::{KeyValueMap, LineBuilder};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
@@ -15,18 +11,12 @@ use kube::{
 };
 use metrics::Metrics;
 use middleware::{Middleware, Status};
-
-use futures::stream::StreamExt;
-use tokio::runtime::{Builder, Runtime};
-
-use crate::errors::K8sError;
+use parking_lot::Mutex;
+use std::collections::HashMap;
 use std::convert::TryFrom;
-
-lazy_static! {
-    static ref K8S_REG: Regex = Regex::new(
-        r#"^/var/log/containers/([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)-([a-z0-9]{64}).log$"#
-    ).unwrap_or_else(|e| panic!("K8S_REG Regex::new() failed: {}", e));
-}
+use std::env;
+use tokio::runtime::{Builder, Runtime};
+use crate::middleware::parse_container_path;
 
 quick_error! {
     #[derive(Debug)]
@@ -50,13 +40,13 @@ quick_error! {
     }
 }
 
-pub struct K8sMiddleware {
+pub struct K8sMetadata {
     metadata: Mutex<HashMap<(String, String), PodMetadata>>,
     informer: Mutex<Informer<Pod>>,
     runtime: Mutex<Option<Runtime>>,
 }
 
-impl K8sMiddleware {
+impl K8sMetadata {
     pub fn new() -> Result<Self, K8sError> {
         let mut runtime = match Builder::new()
             .threaded_scheduler()
@@ -115,7 +105,7 @@ impl K8sMiddleware {
                 }
             }
 
-            Ok(K8sMiddleware {
+            Ok(K8sMetadata {
                 metadata: Mutex::new(metadata),
                 informer: Mutex::new(Informer::new(client, params, Resource::all::<Pod>())),
                 runtime: Mutex::new(None),
@@ -181,7 +171,7 @@ impl K8sMiddleware {
     }
 }
 
-impl Middleware for K8sMiddleware {
+impl Middleware for K8sMetadata {
     fn run(&self) {
         let mut runtime = self
             .runtime
@@ -208,22 +198,17 @@ impl Middleware for K8sMiddleware {
         });
     }
 
-    fn process(&self, lines: Vec<LineBuilder>) -> Status {
-        for line in lines.iter() {
+    fn process(&self, mut lines: Vec<LineBuilder>) -> Status {
+        for line in lines.iter_mut() {
             if let Some(ref file_name) = line.file {
                 if let Some(key) = parse_container_path(&file_name) {
-                    Metrics::k8s().increment_lines();
-                    let mut container_line = line.clone();
                     if let Some(pod_meta_data) = self.metadata.lock().get(&key) {
-                        container_line = container_line
-                            .labels(pod_meta_data.labels.clone())
-                            .annotations(pod_meta_data.annotations.clone());
+                        line.annotations = pod_meta_data.annotations.clone().into();
+                        line.labels = pod_meta_data.labels.clone().into();
                     }
-                    return Status::Ok(vec![container_line]);
                 }
             }
         }
-
         Status::Ok(lines)
     }
 }
@@ -253,8 +238,8 @@ impl TryFrom<k8s_openapi::api::core::v1::Pod> for PodMetadata {
         };
 
         Ok(PodMetadata {
-            name: name,
-            namespace: namespace,
+            name,
+            namespace,
             labels: real_pod_meta
                 .labels
                 .map_or_else(|| KeyValueMap::new(), |v| v.into()),
@@ -263,14 +248,6 @@ impl TryFrom<k8s_openapi::api::core::v1::Pod> for PodMetadata {
                 .map_or_else(|| KeyValueMap::new(), |v| v.into()),
         })
     }
-}
-
-fn parse_container_path(path: &str) -> Option<(String, String)> {
-    let captures = K8S_REG.captures(path)?;
-    Some((
-        captures.get(1)?.as_str().into(),
-        captures.get(2)?.as_str().into(),
-    ))
 }
 
 struct PodMetadata {
