@@ -9,7 +9,7 @@ use fs::source::FSSource;
 use http::client::Client;
 #[cfg(use_systemd)]
 use journald::source::JournaldSource;
-use k8s::middleware::K8sMiddleware;
+use k8s::middleware::{K8sDeduplication, K8sMetadata};
 use metrics::Metrics;
 use middleware::Executor;
 use source::SourceReader;
@@ -53,10 +53,11 @@ fn main() {
 
     let mut executor = Executor::new();
     if PathBuf::from("/var/log/containers/").exists() {
-        match K8sMiddleware::new() {
+        executor.register(K8sDeduplication::new());
+        match K8sMetadata::new() {
             Ok(v) => executor.register(v),
             Err(e) => warn!("{}", e),
-        }
+        };
     }
 
     let mut source_reader = SourceReader::new();
