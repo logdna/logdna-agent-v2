@@ -49,7 +49,11 @@ impl Tailer {
                     Metrics::fs().increment_creates();
                     // similar to initiate but sets the offset to 0
                     let entry = unsafe { entry_ptr.as_mut() };
-                    let paths = fs.resolve_all_paths(entry);
+                    let paths = fs.resolve_valid_paths(entry);
+                    if paths.len() == 0 {
+                        return;
+                    }
+
                     match entry {
                         Entry::File { ref mut data, file_handle, .. } => {
                             info!("added {:?}", paths[0]);
@@ -62,15 +66,22 @@ impl Tailer {
                 Event::Write(mut entry_ptr) => {
                     Metrics::fs().increment_writes();
                     let entry = unsafe { entry_ptr.as_mut() };
-                    let paths = fs.resolve_all_paths(entry);
+                    let paths = fs.resolve_valid_paths(entry);
+                    if paths.len() == 0 {
+                        return;
+                    }
+
                     if let Entry::File { ref mut data, file_handle, .. } = entry {
-                            self.tail(file_handle, &paths, data, callback);
+                        self.tail(file_handle, &paths, data, callback);
                     }
                 }
                 Event::Delete(mut entry_ptr) => {
                     Metrics::fs().increment_deletes();
                     let mut entry = unsafe { entry_ptr.as_mut() };
-                    let paths = fs.resolve_all_paths(entry);
+                    let paths = fs.resolve_valid_paths(entry);
+                    if paths.len() == 0 {
+                        return;
+                    }
 
                     if let Entry::Symlink { link, .. } = entry {
                         if let Some(real_entry) = fs.lookup(link) {
@@ -81,7 +92,7 @@ impl Tailer {
                     }
 
                     if let Entry::File { ref mut data, file_handle, .. } = entry {
-                            self.tail(file_handle, &paths, data, callback);
+                        self.tail(file_handle, &paths, data, callback);
                     }
                 }
             };

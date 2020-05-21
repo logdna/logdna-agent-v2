@@ -106,22 +106,22 @@ The agent accepts configuration from two sources, environment variables and a co
 
 | Variable Name(s) | Description | Default |
 |-|-|-|
-|`LOGDNA_INGESTION_KEY`|**Required**: The ingestion key associated with your LogDNA account||
-|`LOGDNA_CONFIG_FILE`|Path to the configuration yaml|`/etc/logdna/config.yaml`|
-|`LOGDNA_HOST`|The host to forward logs to|`logs.logdna.com`|
-|`LOGDNA_ENDPOINT`|The endpoint to forward logs to|`/logs/agent`|
-|`LOGDNA_USE_SSL`|Whether to use a SSL for sending logs|`true`|
-|`LOGDNA_USE_COMPRESSION`|Whether to compress logs before sending|`true`|
-|`LOGDNA_GZIP_LEVEL`|If compression is enabled, this is the gzip compression level to use|`2`|
+|`LOGDNA_INGESTION_KEY`<br>**Deprecated**: `LOGDNA_AGENT_KEY`|**Required**: The ingestion key associated with your LogDNA account||
+|`LOGDNA_CONFIG_FILE`<br>**Deprecated**: `DEFAULT_CONF_FILE`|Path to the configuration yaml|`/etc/logdna/config.yaml`|
+|`LOGDNA_HOST`<br>**Deprecated**: `LDLOGHOST`|The host to forward logs to|`logs.logdna.com`|
+|`LOGDNA_ENDPOINT`<br>**Deprecated**: `LDLOGPATH`|The endpoint to forward logs to|`/logs/agent`|
+|`LOGDNA_USE_SSL`<br>**Deprecated**: `LDLOGSSL`|Whether to use a SSL for sending logs|`true`|
+|`LOGDNA_USE_COMPRESSION`<br>**Deprecated**: `COMPRESS`|Whether to compress logs before sending|`true`|
+|`LOGDNA_GZIP_LEVEL`<br>**Deprecated**: `GZIP_COMPRESS_LEVEL`|If compression is enabled, this is the gzip compression level to use|`2`|
 |`LOGDNA_HOSTNAME`|The hostname metadata to attach to lines forwarded from this agent||
 |`LOGDNA_IP`|The IP metadata to attach to lines forwarded from this agent||
 |`LOGDNA_TAGS`|Comma separated list of tags metadata to attach to lines forwarded from this agent||
 |`LOGDNA_MAC`|The MAC metadata to attach to lines forwarded from this agent||
-|`LOGDNA_LOG_DIRS`|Comma separated list of folders to recursively monitor for log events|`/var/log/`|
-|`LOGDNA_EXCLUSION_RULES`|Comma separated list of glob patterns to exclude files from monitoring <sup>1</sup>|`/var/log/wtmp,/var/log/btmp,/var/log/utmp,/var/log/wtmpx,/var/log/btmpx,/var/log/utmpx,/var/log/asl/**,/var/log/sa/**,/var/log/sar**,/var/log/tallylog,/var/log/fluentd-buffers/**/*`|
-|`LOGDNA_EXCLUSION_REGEX_RULES`|Comma separated list of regex patterns to exclude files from monitoring||
-|`LOGDNA_INCLUSION_RULES`|Comma separated list of glob patterns to includes files for monitoring <sup>1</sup>|`*.log,!(*.*)`|
-|`LOGDNA_INCLUSION_REGEX_RULES`|Comma separated list of regex patterns to exclude files from monitoring||
+|`LOGDNA_LOG_DIRS`<br>**Deprecated**: `LOG_DIRS`|Comma separated list of folders to recursively monitor for log events|`/var/log/`|
+|`LOGDNA_EXCLUSION_RULES`<br>**Deprecated**: `LOGDNA_EXCLUDE`|Comma separated list of glob patterns to exclude files from monitoring <sup>1</sup>|`/var/log/wtmp,/var/log/btmp,/var/log/utmp,/var/log/wtmpx,/var/log/btmpx,/var/log/utmpx,/var/log/asl/**,/var/log/sa/**,/var/log/sar*,/var/log/tallylog,/var/log/fluentd-buffers/**/*,/var/log/pods/**/*`|
+|`LOGDNA_EXCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_EXCLUDE_REGEX`|Comma separated list of regex patterns to exclude files from monitoring||
+|`LOGDNA_INCLUSION_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE`|Comma separated list of glob patterns to includes files for monitoring <sup>1</sup>|`*.log,!(*.*)`|
+|`LOGDNA_INCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE_REGEX`|Comma separated list of regex patterns to exclude files from monitoring||
 
 1. We support [this flavor of globber syntax](https://github.com/CJP10/globber).
 

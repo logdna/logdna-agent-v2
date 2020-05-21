@@ -105,6 +105,7 @@ impl Default for LogConfig {
                     "/var/log/sar*".parse().unwrap(),
                     "/var/log/tallylog".parse().unwrap(),
                     "/var/log/fluentd-buffers/**/*".parse().unwrap(),
+                    "/var/log/pods/**/*".parse().unwrap(),
                 ],
                 regex: Vec::new(),
             }),

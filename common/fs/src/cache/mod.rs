@@ -334,13 +334,13 @@ impl<T: Default> FileSystem<T> {
         components.into_iter().collect()
     }
 
-    pub fn resolve_all_paths(&self, entry: &Entry<T>) -> Vec<PathBuf> {
+    pub fn resolve_valid_paths(&self, entry: &Entry<T>) -> Vec<PathBuf> {
         let mut paths = Vec::new();
-        self.resolve_all_paths_helper(entry, &mut paths, Vec::new());
+        self.resolve_valid_paths_helper(entry, &mut paths, Vec::new());
         paths
     }
 
-    fn resolve_all_paths_helper(
+    fn resolve_valid_paths_helper(
         &self,
         entry: &Entry<T>,
         paths: &mut Vec<PathBuf>,
@@ -353,7 +353,10 @@ impl<T: Default> FileSystem<T> {
             .map(|x| x.to_str().unwrap().into())
             .collect(); // build all the components of the path leading up to the current entry
         base_components.append(&mut components); // add components already discovered from previous recursive step
-        paths.push(base_components.iter().collect()); // condense components of path that lead to the true entry into a PathBuf
+        let path: PathBuf = base_components.iter().collect();
+        if self.is_initial_dir_target(path.to_str().unwrap()) { // only want paths that fall in our watch window
+            paths.push(path); // condense components of path that lead to the true entry into a PathBuf
+        }
 
         let raw_components = base_components.as_slice();
         for i in 0..raw_components.len() - components.len() { // only need to iterate components up to current entry
@@ -363,7 +366,7 @@ impl<T: Default> FileSystem<T> {
                 let symlink_components = raw_components[(i + 1)..].to_vec();
                 for symlink_ptr in symlinks.iter() {
                     let symlink = unsafe { symlink_ptr.as_ref() };
-                    self.resolve_all_paths_helper(symlink, paths, symlink_components.clone());
+                    self.resolve_valid_paths_helper(symlink, paths, symlink_components.clone());
                 }
             }
         }
@@ -1560,7 +1563,7 @@ mod tests {
     }
 
     #[test]
-    fn filesystem_resolve_all_paths() {
+    fn filesystem_resolve_valid_paths() {
         run_test(|| {
             let tempdir = TempDir::new("filesystem").unwrap();
             let path = tempdir.path().to_path_buf();
@@ -1584,7 +1587,7 @@ mod tests {
             let mut fs = new_fs::<()>(path.clone(), None);
 
             let entry = unsafe { &*(fs.lookup(&file_path).unwrap()).as_ptr() };
-            let resolved_paths = fs.resolve_all_paths(entry);
+            let resolved_paths = fs.resolve_valid_paths(entry);
 
             assert!(resolved_paths
                 .iter()

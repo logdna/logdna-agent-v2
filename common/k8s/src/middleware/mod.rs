@@ -1,9 +1,7 @@
 use regex::Regex;
 
-mod deduplication;
 mod metadata;
 
-pub use deduplication::*;
 pub use metadata::*;
 
 lazy_static! {
