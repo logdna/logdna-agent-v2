@@ -66,9 +66,9 @@ The agent is compatible with Kubernetes clusters running `v1.9` or greater. It c
 
 
 ```
-kubectl create -f https://raw.githubusercontent.com/logdna/logdna-agent-v2/master/k8s/logdna-agent-ns.yaml
+kubectl create -f https://raw.githubusercontent.com/logdna/logdna-agent-v2/master/k8s/agent-namespace.yaml
 kubectl create secret generic logdna-agent-key -n logdna-agent --from-literal=logdna-agent-key=<YOUR LOGDNA INGESTION KEY>
-kubectl create -f https://raw.githubusercontent.com/logdna/logdna-agent-v2/master/k8s/logdna-agent.yaml
+kubectl create -f https://raw.githubusercontent.com/logdna/logdna-agent-v2/master/k8s/agent-resources.yaml
 ```
 
 ## Building
