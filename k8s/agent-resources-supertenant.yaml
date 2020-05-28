@@ -1,9 +1,3 @@
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: logdna-agent
----
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -33,6 +27,8 @@ spec:
                 secretKeyRef:
                   name: logdna-agent-key
                   key: logdna-agent-key
+            - name: LOGDNA_ENDPOINT
+              value: /supertenant/logs/ingest
             - name: RUST_LOG
               value: info
             - name: NODE_NAME
