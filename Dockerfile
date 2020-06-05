@@ -44,7 +44,7 @@ COPY . .
 RUN cargo build --release && strip ./target/release/logdna-agent
 
 # Use ubuntu as the final base image
-FROM ubuntu:18.04
+FROM registry.access.redhat.com/ubi8/ubi-minimal:8.2
 
 ARG REPO
 ARG BUILD_TIMESTAMP
@@ -69,9 +69,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 
-RUN apt update -y && \
-apt upgrade -y --fix-missing && \
-apt install ca-certificates -y
+RUN microdnf update -y \
+    && microdnf install ca-certificates -y \
+    && rm -rf /var/cache/yum
 
 # Copy the agent binary from the build stage
 COPY --from=build /opt/logdna-agent-v2/target/release/logdna-agent /work/
