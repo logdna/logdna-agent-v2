@@ -13,7 +13,7 @@ build:		## Build the agent. Set RELEASE=1 to build a release image - defaults to
 
 .PHONY:clean
 clean:		## Clean any artifacts from the build target
-	git clean -xdf
+	$(CARGO) clean
 
 .PHONY:test
 test:		## Run unit tests and linters

@@ -13,15 +13,15 @@ source = { package = "source", path = "../source" }
 #io
 inotify = "0.8"
 #error
-quick-error = "1"
+quick-error = "1.0"
 #utils
 pcre2 = "0.2"
-globber = "0.1.2"
-hashbrown = "0.6"
+globber = "0.1"
+hashbrown = "0.8"
 #logging
 log = "0.4"
-env_logger = "0.6"
-lazy_static = "1.4.0"
+env_logger = "0.7"
+lazy_static = "1.4"
 
 [dev-dependencies]
 tempdir = "0.3"
