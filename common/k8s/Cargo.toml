@@ -11,7 +11,6 @@ http = { package = "http", path = "../http" }
 metrics = { package = "metrics", path = "../metrics" }
 
 crossbeam = "0.7"
-inotify = "0.7"
 regex = "1"
 lazy_static = "1"
 log = "0.4"
@@ -20,6 +19,5 @@ futures = "0.3"
 quick-error = "1"
 parking_lot = "0.9"
 kube = "0.29.0"
-kube-derive = "0.29.0"
 k8s-openapi = { version = "0.7.1", default_features = false, features = ["v1_15"] }
 serde_json = "1"

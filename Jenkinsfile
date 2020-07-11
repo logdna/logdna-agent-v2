@@ -15,8 +15,10 @@ pipeline {
         stage('Prepare Environment') {
             steps {
                 sh 'rustup update'
+                sh 'rustup toolchain install nightly'
                 sh 'rustup component add clippy'
                 sh 'rustup component add rustfmt'
+                sh 'cargo install cargo-udeps --locked'
             }
         }
         stage('Build') {

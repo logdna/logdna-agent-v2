@@ -17,8 +17,9 @@ clean:		## Clean any artifacts from the build target
 
 .PHONY:test
 test:		## Run unit tests and linters
-	$(CARGO) clippy --all-targets $(CARGO_COMPILE_OPTS) -- -D warnings
 	$(CARGO) fmt -- --check
+	$(CARGO) clippy --all-targets $(CARGO_COMPILE_OPTS) -- -D warnings
+	$(CARGO) +nightly udeps --all-targets $(CARGO_COMPILE_OPTS)
 	$(CARGO) test $(CARGO_COMPILE_OPTS)
 
 .PHONY:help
