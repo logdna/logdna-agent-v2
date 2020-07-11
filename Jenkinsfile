@@ -19,19 +19,14 @@ pipeline {
                 sh 'rustup component add rustfmt'
             }
         }
-        stage('Test') {
-            steps {
-                sh 'make test'
-            }
-        }
-        stage('Clean') {
-            steps {
-                sh 'make clean'
-            }
-        }
         stage('Build') {
             steps {
-                sh 'RELEASE=1 make build'
+                sh 'make build RELEASE=1'
+            }
+        }
+        stage('Test') {
+            steps {
+                sh 'make test RELEASE=1'
             }
         }
     }
