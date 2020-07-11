@@ -2,24 +2,24 @@ CARGO = cargo
 DOCKER = docker
 RELEASE ?= 0
 ifeq ($(RELEASE), 0)
-	CARGO_OPTS =
+	CARGO_COMPILE_OPTS =
 else
-	CARGO_OPTS = --release
+	CARGO_COMPILE_OPTS = --release
 endif
 
 .PHONY:build
 build:		## Build the agent. Set RELEASE=1 to build a release image - defaults to 0
-	$(CARGO) build $(CARGO_OPTS)
+	$(CARGO) build $(CARGO_COMPILE_OPTS)
 
 .PHONY:clean
 clean:		## Clean any artifacts from the build target
-	$(CARGO) clean $(CARGO_OPTS)
+	git clean -xdf
 
 .PHONY:test
 test:		## Run unit tests and linters
-	$(CARGO) clippy --all-targets -- -D warnings $(CARGO_OPTS)
-	$(CARGO) fmt -- --check $(CARGO_OPTS)
-	$(CARGO) test $(CARGO_OPTS)
+	$(CARGO) clippy --all-targets $(CARGO_COMPILE_OPTS) -- -D warnings
+	$(CARGO) fmt -- --check
+	$(CARGO) test $(CARGO_COMPILE_OPTS)
 
 .PHONY:help
 help:		## Prints out a helpful description of each possible target
