@@ -3,7 +3,9 @@ def PROJECT_NAME = 'logdna-agent-v2'
 
 pipeline {
     agent {
-        table 'rust'
+        docker {
+            image: 'rust:1.42'
+        }
     }
     options {
         timestamps()
