@@ -18,7 +18,7 @@ pipeline {
                 sh 'rustup toolchain install nightly'
                 sh 'rustup component add clippy'
                 sh 'rustup component add rustfmt'
-                sh 'cargo install cargo-udeps --locked'
+                sh 'cargo +nightly install cargo-udeps --locked'
             }
         }
         stage('Build') {
