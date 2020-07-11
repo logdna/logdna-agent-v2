@@ -1,4 +1,7 @@
 /target
+/common/*/target
+/bin/target
 **/*.rs.bk
 /.idea
 .idea/
+

@@ -142,7 +142,7 @@ impl<T: Default> FileSystem<T> {
                 // descriptors
                 let from_path = match self.watch_descriptors.borrow().get(&from_wd) {
                     Some(entries) => {
-                        if entries.len() == 0 {
+                        if entries.is_empty() {
                             error!("got move event where from watch descriptors maps to no entries: {:?}", from_wd);
                             return;
                         }
@@ -162,7 +162,7 @@ impl<T: Default> FileSystem<T> {
 
                 let to_path = match self.watch_descriptors.borrow().get(&to_wd) {
                     Some(entries) => {
-                        if entries.len() == 0 {
+                        if entries.is_empty() {
                             error!("got move event where to watch descriptors maps to no entries: {:?}", to_wd);
                             return;
                         }
@@ -204,7 +204,7 @@ impl<T: Default> FileSystem<T> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
         let entry_ptr = match self.watch_descriptors.borrow().get(watch_descriptor) {
-            Some(entries) => entries[0].clone(),
+            Some(entries) => entries[0],
             None => {
                 error!(
                     "got create event for untracked watch descriptor: {:?}",
@@ -215,8 +215,8 @@ impl<T: Default> FileSystem<T> {
         };
 
         let entry = unsafe { entry_ptr.as_ref() };
-        let mut path = self.resolve_direct_path(entry).clone();
-        path.push(name.clone());
+        let mut path = self.resolve_direct_path(entry);
+        path.push(name);
 
         if let Some(new_entry) = self.insert(&path, callback) {
             if let Entry::Dir { .. } = unsafe { new_entry.as_ref() } {
@@ -239,7 +239,7 @@ impl<T: Default> FileSystem<T> {
             .get(watch_descriptor)
         {
             for entry_ptr in entries.iter() {
-                callback(self, Event::Write(entry_ptr.clone()));
+                callback(self, Event::Write(*entry_ptr));
             }
         } else {
             error!(
@@ -258,7 +258,7 @@ impl<T: Default> FileSystem<T> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
         let entry_ptr = match self.watch_descriptors.borrow().get(watch_descriptor) {
-            Some(entries) => entries[0].clone(),
+            Some(entries) => entries[0],
             None => {
                 error!(
                     "got delete event for untracked watch descriptor: {:?}",
@@ -269,7 +269,7 @@ impl<T: Default> FileSystem<T> {
         };
 
         let entry = unsafe { entry_ptr.as_ref() };
-        let mut path = self.resolve_direct_path(entry).clone();
+        let mut path = self.resolve_direct_path(entry);
         path.push(name);
 
         self.remove(&path, callback);
@@ -309,9 +309,9 @@ impl<T: Default> FileSystem<T> {
         let from_entry = unsafe { from_entry_ptr.as_ref() };
         let to_entry = unsafe { to_entry_ptr.as_ref() };
 
-        let mut from_path = self.resolve_direct_path(from_entry).clone();
+        let mut from_path = self.resolve_direct_path(from_entry);
         from_path.push(from_name);
-        let mut to_path = self.resolve_direct_path(to_entry).clone();
+        let mut to_path = self.resolve_direct_path(to_entry);
         to_path.push(to_name);
 
         // the entry is expected to exist
@@ -354,15 +354,18 @@ impl<T: Default> FileSystem<T> {
             .collect(); // build all the components of the path leading up to the current entry
         base_components.append(&mut components); // add components already discovered from previous recursive step
         let path: PathBuf = base_components.iter().collect();
-        if self.is_initial_dir_target(path.to_str().unwrap()) { // only want paths that fall in our watch window
+        if self.is_initial_dir_target(path.to_str().unwrap()) {
+            // only want paths that fall in our watch window
             paths.push(path); // condense components of path that lead to the true entry into a PathBuf
         }
 
         let raw_components = base_components.as_slice();
-        for i in 0..raw_components.len() - components.len() { // only need to iterate components up to current entry
+        for i in 0..raw_components.len() - components.len() {
+            // only need to iterate components up to current entry
             let current_path: PathBuf = raw_components[0..=i].to_vec().into_iter().collect();
 
-            if let Some(symlinks) = symlinks.borrow().get(&current_path) { // check if path has a symlink to it
+            if let Some(symlinks) = symlinks.borrow().get(&current_path) {
+                // check if path has a symlink to it
                 let symlink_components = raw_components[(i + 1)..].to_vec();
                 for symlink_ptr in symlinks.iter() {
                     let symlink = unsafe { symlink_ptr.as_ref() };
@@ -416,7 +419,7 @@ impl<T: Default> FileSystem<T> {
 
                     let symlink = Box::new(Entry::Symlink {
                         name: component,
-                        parent: EntryPtr::from(parent),
+                        parent,
                         link: real.clone(),
                         wd,
                         rules: into_rules(real.clone()),
@@ -424,7 +427,7 @@ impl<T: Default> FileSystem<T> {
 
                     self.register(EntryPtr::from(symlink.deref()));
 
-                    if let None = self.insert(&real, callback) {
+                    if self.insert(&real, callback).is_none() {
                         debug!(
                             "inserting symlink {:?} which points to invalid path {:?}",
                             path, real
@@ -445,7 +448,7 @@ impl<T: Default> FileSystem<T> {
 
                     let file = Box::new(Entry::File {
                         name: component,
-                        parent: EntryPtr::from(parent),
+                        parent,
                         wd,
                         data: T::default(),
                         file_handle: OpenOptions::new().read(true).open(path).unwrap(),
@@ -497,9 +500,11 @@ impl<T: Default> FileSystem<T> {
         };
 
         entries.retain(|other| *other != entry_ptr);
-        if entries.len() == 0 {
+        if entries.is_empty() {
             watch_descriptors.remove(&wd);
-            match self.watcher.unwatch(wd) { _ => {} }; // TODO: Handle this error case
+            match self.watcher.unwatch(wd) {
+                _ => {}
+            }; // TODO: Handle this error case
         }
 
         if let Entry::Symlink { link, .. } = entry {
@@ -514,7 +519,7 @@ impl<T: Default> FileSystem<T> {
             };
 
             entries.retain(|other| *other != entry_ptr);
-            if entries.len() == 0 {
+            if entries.is_empty() {
                 symlinks.remove(link);
             }
         }
@@ -627,7 +632,7 @@ impl<T: Default> FileSystem<T> {
 
         // If the path has no parents return root as the parent.
         // This commonly occurs with paths in the filesystem root, e.g /some.file or /somedir
-        if components.len() == 0 {
+        if components.is_empty() {
             return Some(entry);
         }
 
@@ -713,7 +718,7 @@ impl<T: Default> FileSystem<T> {
         components.remove(0);
 
         // If the path has no components there is nothing to look up.
-        if components.len() == 0 {
+        if components.is_empty() {
             return None;
         }
 
@@ -772,7 +777,7 @@ impl<T: Default> FileSystem<T> {
             }
         }
 
-        return false;
+        false
     }
 
     fn is_initial_dir_target(&self, path: &str) -> bool {
@@ -861,7 +866,7 @@ fn into_rules(path: PathBuf) -> Rules {
 }
 
 // Attach rules for all sub paths for a path
-fn append_rules(rules: &mut Rules, mut path: PathBuf) -> () {
+fn append_rules(rules: &mut Rules, mut path: PathBuf) {
     rules.add_inclusion(
         GlobRule::new(path.join(r"**").to_str().expect("invalid unicode in path"))
             .expect("invalid glob rule format"),
@@ -900,7 +905,8 @@ mod tests {
         FileSystem::new(vec![path], rules)
     }
 
-    fn run_test<T: FnOnce() -> () + panic::UnwindSafe>(test: T) -> () {
+    fn run_test<T: FnOnce() -> () + panic::UnwindSafe>(test: T) {
+        #![allow(unused_must_use, clippy::clone_on_copy)]
         LOGGER.clone();
         let result = panic::catch_unwind(|| {
             test();
@@ -1148,7 +1154,7 @@ mod tests {
             let file_path = path.join("file");
             File::create(file_path.clone()).unwrap();
 
-            let mut fs = new_fs::<()>(path.clone(), None);
+            let mut fs = new_fs::<()>(path, None);
 
             assert!(fs.lookup(&file_path).is_some());
 
@@ -1171,7 +1177,7 @@ mod tests {
             create_dir(&a).unwrap();
             symlink(&a, &b).unwrap();
 
-            let mut fs = new_fs::<()>(path.clone(), None);
+            let mut fs = new_fs::<()>(path, None);
 
             remove_dir_all(&b).unwrap();
             fs.read_events(&mut |_, _| {});
@@ -1193,7 +1199,7 @@ mod tests {
             create_dir(&a).unwrap();
             symlink(&a, &b).unwrap();
 
-            let mut fs = new_fs::<()>(path.clone(), None);
+            let mut fs = new_fs::<()>(path, None);
 
             remove_dir_all(&a).unwrap();
             fs.read_events(&mut |_, _| {});
@@ -1215,7 +1221,7 @@ mod tests {
             File::create(a.clone()).unwrap();
             hard_link(&a, &b).unwrap();
 
-            let mut fs = new_fs::<()>(path.clone(), None);
+            let mut fs = new_fs::<()>(path, None);
 
             assert!(fs.lookup(&a).is_some());
             assert!(fs.lookup(&b).is_some());
@@ -1241,7 +1247,7 @@ mod tests {
             File::create(a.clone()).unwrap();
             hard_link(&a, &b).unwrap();
 
-            let mut fs = new_fs::<()>(path.clone(), None);
+            let mut fs = new_fs::<()>(path, None);
 
             remove_file(&a).unwrap();
             fs.read_events(&mut |_, _| {});
@@ -1268,9 +1274,9 @@ mod tests {
             symlink(&file_path, &sym_path).unwrap();
             hard_link(&file_path, &hard_path).unwrap();
 
-            let mut fs = new_fs::<()>(path.clone(), None);
+            let mut fs = new_fs::<()>(path, None);
 
-            rename(&old_dir_path, &new_dir_path);
+            rename(&old_dir_path, &new_dir_path).unwrap();
             fs.read_events(&mut |_, _| {});
 
             assert!(fs.lookup(&old_dir_path).is_none());
@@ -1330,7 +1336,7 @@ mod tests {
 
             let mut fs = new_fs::<()>(old_dir_path.clone(), None);
 
-            rename(&old_dir_path, &new_dir_path);
+            rename(&old_dir_path, &new_dir_path).unwrap();
             fs.read_events(&mut |_, _| {});
 
             assert!(fs.lookup(&new_dir_path).is_none());
@@ -1365,7 +1371,7 @@ mod tests {
             assert!(fs.lookup(&sym_path).is_none());
             assert!(fs.lookup(&hard_path).is_none());
 
-            rename(&old_dir_path, &new_dir_path);
+            rename(&old_dir_path, &new_dir_path).unwrap();
             fs.read_events(&mut |_, _| {});
 
             let entry = fs.lookup(&new_dir_path);
@@ -1413,7 +1419,7 @@ mod tests {
             let file_path = path.join("insert.log");
             let new_path = path.join("new.log");
             File::create(file_path.clone()).unwrap();
-            rename(&file_path, &new_path);
+            rename(&file_path, &new_path).unwrap();
 
             fs.read_events(&mut |_, _| {});
 
@@ -1445,9 +1451,9 @@ mod tests {
             let move_path = other_path.join("outside.log");
             File::create(file_path.clone()).unwrap();
 
-            let mut fs = new_fs::<()>(watch_path.clone(), None);
+            let mut fs = new_fs::<()>(watch_path, None);
 
-            rename(&file_path, &move_path);
+            rename(&file_path, &move_path).unwrap();
 
             fs.read_events(&mut |_, _| {});
 
@@ -1475,9 +1481,9 @@ mod tests {
             let move_path = watch_path.join("outside.log");
             File::create(file_path.clone()).unwrap();
 
-            let mut fs = new_fs::<()>(watch_path.clone(), None);
+            let mut fs = new_fs::<()>(watch_path, None);
 
-            rename(&file_path, &move_path);
+            rename(&file_path, &move_path).unwrap();
             File::create(file_path.clone()).unwrap();
 
             fs.read_events(&mut |_, _| {});
@@ -1512,9 +1518,9 @@ mod tests {
             File::create(file_path.clone()).unwrap();
             symlink(&file_path, &sym_path).unwrap();
 
-            let mut fs = new_fs::<()>(watch_path.clone(), None);
+            let mut fs = new_fs::<()>(watch_path, None);
 
-            rename(&file_path, &move_path);
+            rename(&file_path, &move_path).unwrap();
 
             fs.read_events(&mut |_, _| {});
 
@@ -1545,7 +1551,7 @@ mod tests {
             let sym_path = path.join("test.log");
             File::create(file_path.clone()).unwrap();
 
-            let mut fs = new_fs::<()>(path.clone(), Some(rules));
+            let mut fs = new_fs::<()>(path, Some(rules));
 
             let entry = fs.lookup(&file_path);
             assert!(entry.is_none());
@@ -1584,7 +1590,7 @@ mod tests {
             symlink(&remote_symlink_path, &nested_symlink_path).unwrap();
             symlink(&nested_symlink_path, &double_nested_symlink_path).unwrap();
 
-            let mut fs = new_fs::<()>(path.clone(), None);
+            let mut fs = new_fs::<()>(path, None);
 
             let entry = unsafe { &*(fs.lookup(&file_path).unwrap()).as_ptr() };
             let resolved_paths = fs.resolve_valid_paths(entry);

@@ -102,7 +102,7 @@ impl Config {
         }
 
         let mut params = match raw.http.params {
-            Some(v) => v.clone(),
+            Some(v) => v,
             None => Params {
                 hostname: "".to_string(),
                 mac: None,
@@ -221,7 +221,7 @@ impl<T: FromStr> FromStr for EnvList<T> {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(EnvList(
-            s.split_terminator(",")
+            s.split_terminator(',')
                 .filter_map(|s| T::from_str(s).ok())
                 .collect(),
         ))

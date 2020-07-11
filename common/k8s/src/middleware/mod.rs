@@ -10,7 +10,6 @@ lazy_static! {
     ).unwrap_or_else(|e| panic!("K8S_REG Regex::new() failed: {}", e));
 }
 
-
 fn parse_container_path(path: &str) -> Option<(String, String)> {
     let captures = K8S_REG.captures(path)?;
     Some((

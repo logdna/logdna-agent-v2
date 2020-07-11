@@ -34,6 +34,7 @@ quick_error! {
     }
 }
 
+#[derive(Default)]
 pub struct Retry {
     waiting: SegQueue<PathBuf>,
 }

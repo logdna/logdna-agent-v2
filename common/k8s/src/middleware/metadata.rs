@@ -1,4 +1,5 @@
 use crate::errors::K8sError;
+use crate::middleware::parse_container_path;
 use futures::stream::StreamExt;
 use http::types::body::{KeyValueMap, LineBuilder};
 use k8s_openapi::api::core::v1::Pod;
@@ -16,7 +17,6 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::env;
 use tokio::runtime::{Builder, Runtime};
-use crate::middleware::parse_container_path;
 
 quick_error! {
     #[derive(Debug)]
@@ -242,10 +242,10 @@ impl TryFrom<k8s_openapi::api::core::v1::Pod> for PodMetadata {
             namespace,
             labels: real_pod_meta
                 .labels
-                .map_or_else(|| KeyValueMap::new(), |v| v.into()),
+                .map_or_else(KeyValueMap::new, |v| v.into()),
             annotations: real_pod_meta
                 .annotations
-                .map_or_else(|| KeyValueMap::new(), |v| v.into()),
+                .map_or_else(KeyValueMap::new, |v| v.into()),
         })
     }
 }

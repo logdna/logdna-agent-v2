@@ -35,39 +35,34 @@ impl Tailer {
                     // will initiate a file to it's current length
                     let entry = unsafe { entry_ptr.as_mut() };
                     let path = fs.resolve_direct_path(entry);
-                    match entry {
-                        Entry::File { ref mut data, .. } => {
-                            let mut len = path.metadata().map(|m| m.len()).unwrap_or(0);
-                            if len < 8192 { len = 0 }
-                            info!("initialized {:?} with offset {}", path, len,);
-                            *data = len;
-                        }
-                        _ => {}
-                    };
+
+                    if let Entry::File { ref mut data, .. } = entry {
+                        let mut len = path.metadata().map(|m| m.len()).unwrap_or(0);
+                        if len < 8192 { len = 0 }
+                        info!("initialized {:?} with offset {}", path, len,);
+                        *data = len;
+                    }
                 }
                 Event::New(mut entry_ptr) => {
                     Metrics::fs().increment_creates();
                     // similar to initiate but sets the offset to 0
                     let entry = unsafe { entry_ptr.as_mut() };
                     let paths = fs.resolve_valid_paths(entry);
-                    if paths.len() == 0 {
+                    if paths.is_empty() {
                         return;
                     }
 
-                    match entry {
-                        Entry::File { ref mut data, file_handle, .. } => {
-                            info!("added {:?}", paths[0]);
-                            *data = 0;
-                            self.tail(file_handle, &paths, data, callback);
-                        }
-                        _ => {}
-                    };
+                    if let Entry::File { ref mut data, file_handle, .. } = entry {
+                        info!("added {:?}", paths[0]);
+                        *data = 0;
+                        self.tail(file_handle, &paths, data, callback);
+                    }
                 }
                 Event::Write(mut entry_ptr) => {
                     Metrics::fs().increment_writes();
                     let entry = unsafe { entry_ptr.as_mut() };
                     let paths = fs.resolve_valid_paths(entry);
-                    if paths.len() == 0 {
+                    if paths.is_empty() {
                         return;
                     }
 
@@ -79,7 +74,7 @@ impl Tailer {
                     Metrics::fs().increment_deletes();
                     let mut entry = unsafe { entry_ptr.as_mut() };
                     let paths = fs.resolve_valid_paths(entry);
-                    if paths.len() == 0 {
+                    if paths.is_empty() {
                         return;
                     }
 
@@ -100,13 +95,8 @@ impl Tailer {
     }
 
     // tail a file for new line(s)
-    fn tail<F>(
-        &mut self,
-        file_handle: &File,
-        paths: &Vec<PathBuf>,
-        offset: &mut u64,
-        callback: &mut F,
-    ) where
+    fn tail<F>(&mut self, file_handle: &File, paths: &[PathBuf], offset: &mut u64, callback: &mut F)
+    where
         F: FnMut(Vec<LineBuilder>),
     {
         // get the file len

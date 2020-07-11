@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn single_thread_loop() {
         let limiter = RateLimiter::new(3);
-        for _ in 0..1000000 {
+        for _ in 0..1_000_000 {
             assert_ne!(limiter.get_slot(()).inner.slot, 0);
         }
         assert_eq!(limiter.slots.load(Ordering::SeqCst), 0);
@@ -167,7 +167,7 @@ mod tests {
         for _ in 0..num_cpus::get().max(1) {
             let tmp = limiter.clone();
             let join_handle = spawn(move || {
-                for _ in 0..3000000 {
+                for _ in 0..3_000_000 {
                     let slot = tmp.get_slot(());
                     assert_ne!(slot.inner.slot, 0);
                     assert!(slot.inner.slot <= 3);
@@ -176,7 +176,7 @@ mod tests {
             joins.push(join_handle);
         }
         for join_handle in joins {
-            join_handle.join();
+            join_handle.join().unwrap();
         }
         assert_eq!(limiter.slots.load(Ordering::SeqCst), 0);
     }
@@ -199,7 +199,7 @@ mod tests {
             joins.push(join_handle);
         }
         for join_handle in joins {
-            join_handle.join();
+            join_handle.join().unwrap();
         }
         assert_eq!(limiter.slots.load(Ordering::SeqCst), 0);
     }
