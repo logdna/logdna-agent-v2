@@ -4,7 +4,7 @@ def PROJECT_NAME = 'logdna-agent-v2'
 pipeline {
     agent {
         docker {
-            image 'rust:1.42'
+            image 'rust:1.44'
         }
     }
     options {
