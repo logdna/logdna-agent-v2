@@ -12,6 +12,13 @@ pipeline {
         ansiColor 'xterm'
     }
     stages {
+        Stage('Prepare Environment') {
+            steps {
+                sh 'rustup update'
+                sh 'rustup component add clippy'
+                sh 'rustup component add rustfmt'
+            }
+        }
         stage('Test') {
             steps {
                 sh 'make test'
