@@ -12,7 +12,7 @@ pipeline {
         ansiColor 'xterm'
     }
     stages {
-        Stage('Prepare Environment') {
+        stage('Prepare Environment') {
             steps {
                 sh 'rustup update'
                 sh 'rustup component add clippy'
