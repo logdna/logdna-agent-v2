@@ -1,4 +1,4 @@
-use std::mem::replace;
+use std::mem::take;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -65,7 +65,7 @@ where
 {
     pub fn into_inner(self) -> T {
         match Arc::try_unwrap(self.inner) {
-            Ok(mut inner) => replace(&mut inner.inner, Default::default()),
+            Ok(mut inner) => take(&mut inner.inner),
             Err(new_inner) => new_inner.inner.clone(),
         }
     }
