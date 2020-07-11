@@ -19,7 +19,7 @@ clean:		## Clean any artifacts from the build target
 test:		## Run unit tests and linters
 	$(CARGO) clippy --all-targets -- -D warnings
 	$(CARGO) fmt -- --check
-	#$(CARGO) test
+	$(CARGO) test
 
 .PHONY:help
 help:		## Prints out a helpful description of each possible target
