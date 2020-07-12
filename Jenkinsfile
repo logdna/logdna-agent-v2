@@ -34,7 +34,9 @@ pipeline {
         stage('Deploy to Dockerhub') {
             steps {
                 script {
-                    def buildImage = docker.build("logdna-agent:stable")
+                    docker.withTool("default") {
+                        def buildImage = docker.build("logdna-agent:stable")
+                    }
                 }
             }
         }
