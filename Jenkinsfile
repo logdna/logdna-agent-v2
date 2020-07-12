@@ -12,15 +12,17 @@ pipeline {
         ansiColor 'xterm'
     }
     stages {
-        parallel {
-            stage('Prepare Test Environment') {
-                steps {
-                    sh 'make test-deps'
+        stage('Build') {
+            parallel {
+                stage('Build Test Dependencies') {
+                    steps {
+                        sh 'make test-deps'
+                    }
                 }
-            }
-            stage('Build') {
-                steps {
-                    sh 'make build'
+                stage('Build Agent') {
+                    steps {
+                        sh 'make build'
+                    }
                 }
             }
         }
@@ -31,7 +33,9 @@ pipeline {
         }
         stage('Deploy to Dockerhub') {
             steps {
-                def buildImage = docker.build("logdna-agent:stable")
+                script {
+                    def buildImage = docker.build("logdna-agent:stable")
+                }
             }
         }
     }
