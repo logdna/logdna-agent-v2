@@ -23,12 +23,12 @@ pipeline {
         }
         stage('Build') {
             steps {
-                sh 'make build RELEASE=1'
+                sh 'make build'
             }
         }
         stage('Test') {
             steps {
-                sh 'make test RELEASE=1'
+                sh 'make test'
             }
         }
     }
