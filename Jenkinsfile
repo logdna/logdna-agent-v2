@@ -12,23 +12,26 @@ pipeline {
         ansiColor 'xterm'
     }
     stages {
-        stage('Prepare Environment') {
-            steps {
-                sh 'rustup update'
-                sh 'rustup toolchain install nightly'
-                sh 'rustup component add clippy'
-                sh 'rustup component add rustfmt'
-                sh 'cargo +nightly install cargo-udeps --locked'
+        parallel {
+            stage('Prepare Test Environment') {
+                steps {
+                    sh 'make test-deps'
+                }
             }
-        }
-        stage('Build') {
-            steps {
-                sh 'make build'
+            stage('Build') {
+                steps {
+                    sh 'make build'
+                }
             }
         }
         stage('Test') {
             steps {
                 sh 'make test'
+            }
+        }
+        stage('Deploy to Dockerhub') {
+            steps {
+                def buildImage = docker.build("logdna-agent:stable")
             }
         }
     }

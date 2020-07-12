@@ -30,7 +30,7 @@ RUN LIBDIRS=$(find . -name Cargo.toml -type f -mindepth 2 | sed 's/Cargo.toml//'
     && echo "fn main() {}" > bin/src/main.rs
 
 # Build cached dependencies
-RUN cargo build --release
+RUN make build RELEASE=1
 
 # Delete all cached deps that are local libs
 RUN grep -aL "github.com" target/release/deps/* | xargs rm \
@@ -40,7 +40,7 @@ RUN grep -aL "github.com" target/release/deps/* | xargs rm \
 COPY . .
 
 # Rebuild the agent
-RUN cargo build --release
+RUN make build RELEASE=1
 RUN strip target/release/logdna-agent
 
 # Use ubuntu as the final base image

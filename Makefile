@@ -1,5 +1,6 @@
 CARGO = cargo
 DOCKER = docker
+RUSTUP = rustup
 RELEASE ?= 0
 ifeq ($(RELEASE), 0)
 	CARGO_COMPILE_OPTS =
@@ -21,6 +22,14 @@ test:		## Run unit tests and linters
 	$(CARGO) clippy --all-targets $(CARGO_COMPILE_OPTS) -- -D warnings
 	$(CARGO) +nightly udeps --all-targets $(CARGO_COMPILE_OPTS)
 	$(CARGO) test $(CARGO_COMPILE_OPTS)
+
+.PHONY:test-deps
+test-deps:	## Install dependencies needed for the test target
+	$(RUSTUP) update
+	$(RUSTUP) toolchain install nightly
+	$(RUSTUP) component add clippy
+	$(RUSTUP) component add rustfmt
+	$(CARGO) +nightly install cargo-udeps --locked
 
 .PHONY:help
 help:		## Prints out a helpful description of each possible target
