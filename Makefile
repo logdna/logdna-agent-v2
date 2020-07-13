@@ -56,3 +56,9 @@ build-image: clean	## Build a docker image as specified in the Dockerfile
 		--build-arg VCS_REF=$(VCS_REF) \
 		--build-arg VCS_URL=$(VCS_URL)
 	$(DOCKER) tag $(REPO):$(BUILD_DATE).$(BUILD_VERSION) $(REPO):$(BUILD_VERSION)
+
+.PHONY:publish
+publish:
+	$(DOCKER) tag $(REPO):$(BUILD_VERSION) us.gcr.io/logdna-k8s/$(REPO):$(BUILD_VERSION)
+	# TODO: Use the commitizen add-on for semver tagging of docker images
+	$(DOCKER) push us.gcr.io/logdna-k8s/$(REPO):$(BUILD_VERSION)
