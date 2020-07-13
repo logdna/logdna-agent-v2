@@ -2,7 +2,8 @@ library 'magic-butler-catalogue'
 def PROJECT_NAME = 'logdna-agent-v2'
 
 pipeline {
-    agent none
+    agent any
+
     options {
         timestamps()
         ansiColor 'xterm'

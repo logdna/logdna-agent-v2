@@ -1,4 +1,9 @@
-CARGO = cargo
+RUST_VERSION ?= 1.44.1
+RUST_IMAGE = docker.io/rust
+DOCKER_RUN = docker run --rm
+# --user "$(shell id -u)":"$(shell id -g)"
+
+CARGO = ${DOCKER_RUN} -w /usr/src/myapp -v $(shell pwd):/usr/src/myapp:Z ${RUST_IMAGE}:${RUST_VERSION} cargo
 DOCKER = docker
 RUSTUP = rustup
 RELEASE ?= 0
