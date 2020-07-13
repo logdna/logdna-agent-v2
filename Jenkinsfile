@@ -8,6 +8,7 @@ pipeline {
         ansiColor 'xterm'
     }
     stages {
+        /*
         stage('Build and Test') {
             agent {
                 docker {
@@ -36,13 +37,12 @@ pipeline {
                 }
             }
         }
+        */
         stage('Deploy to Dockerhub') {
             agent any
             steps {
                 script {
-                    docker.withTool("default") {
-                        def buildImage = docker.build("logdna-agent:stable")
-                    }
+                    def buildImage = docker.build("logdna-agent:stable")
                 }
             }
         }
