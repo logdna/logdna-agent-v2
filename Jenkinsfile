@@ -9,42 +9,33 @@ pipeline {
         ansiColor 'xterm'
     }
     stages {
-        /*
-        stage('Build and Test') {
-            agent {
-                docker {
-                    image 'rust:1.41'
-                }
-            }
-            stages {
-                stage('Build') {
-                    parallel {
-                        stage('Build Test Dependencies') {
-                            steps {
-                                sh 'make test-deps'
-                            }
-                        }
-                        stage('Build Agent') {
-                            steps {
-                                sh 'make build'
-                            }
-                        }
+        stage('Build') {
+            parallel {
+                stage('Build Test Dependencies') {
+                    steps {
+                        sh 'make test-deps'
                     }
                 }
-                stage('Test') {
+                stage('Build Agent') {
                     steps {
-                        sh 'make test'
+                        sh 'make build'
                     }
                 }
             }
         }
-        */
-        stage('Deploy to Dockerhub') {
-            agent any
+        stage('Test') {
             steps {
-                script {
-                    def buildImage = docker.build("logdna-agent:stable")
-                }
+                sh 'make test'
+            }
+        }
+        stage('Build Image') {
+            steps {
+                sh 'make build-image'
+            }
+        }
+        stage('Deploy to Dockerhub') {
+            steps {
+                sh 'make publish'
             }
         }
     }

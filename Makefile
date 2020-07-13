@@ -1,10 +1,12 @@
-RUST_VERSION ?= 1.44.1
-RUST_IMAGE = docker.io/rust
-DOCKER_RUN = docker run --rm
-# --user "$(shell id -u)":"$(shell id -g)"
+REPO := $(shell git remote get-url origin | sed 's/\.git//' | cut -f2 -d'/')
 
-CARGO = ${DOCKER_RUN} -w /usr/src/myapp -v $(shell pwd):/usr/src/myapp:Z ${RUST_IMAGE}:${RUST_VERSION} cargo
-DOCKER = docker
+RUST_IMAGE ?= docker.io/rust
+RUST_VERSION ?= 1.44.1
+
+DOCKER ?= docker
+DOCKER_RUN = $(DOCKER) run --rm
+
+CARGO = $(DOCKER_RUN) -w /usr/src/myapp -v $(shell pwd):/usr/src/myapp:Z $(RUST_IMAGE):$(RUST_VERSION) cargo
 RUSTUP = rustup
 RELEASE ?= 0
 ifeq ($(RELEASE), 0)
@@ -38,8 +40,19 @@ test-deps:	## Install dependencies needed for the test target
 
 .PHONY:help
 help:		## Prints out a helpful description of each possible target
-	@awk 'BEGIN {FS = ":.*?## "}; /^.+: .*?## / && !/awk/ {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' ${MAKEFILE_LIST}
+	@awk 'BEGIN {FS = ":.*?## "}; /^.+: .*?## / && !/awk/ {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
-.PHONY:docker
-docker:		## Build a docker image as specified in the Dockerfile
-	$(DOCKER) build .
+.PHONY:build-image
+BUILD_DATE=$(shell date -u +'%Y%m%dT%H%M%SZ')
+BUILD_VERSION=$(shell git describe HEAD --tags --always)
+VCS_REF=$(shell git rev-parse --short HEAD)
+VCS_URL=$(shell git remote get-url origin)
+build-image: clean	## Build a docker image as specified in the Dockerfile
+	$(DOCKER) build . -t $(REPO):$(BUILD_DATE)-$(BUILD_VERSION) \
+		--pull --no-cache=true \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+		--build-arg REPO=$(REPO) \
+		--build-arg VCS_REF=$(VCS_REF) \
+		--build-arg VCS_URL=$(VCS_URL)
+	$(DOCKER) tag $(REPO):$(BUILD_DATE).$(BUILD_VERSION) $(REPO):$(BUILD_VERSION)
