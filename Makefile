@@ -45,20 +45,21 @@ help:		## Prints out a helpful description of each possible target
 .PHONY:build-image
 BUILD_DATE=$(shell date -u +'%Y%m%dT%H%M%SZ')
 BUILD_VERSION=$(shell git describe HEAD --tags --always)
+BUILD_TAG=$(BUILD_DATE).$(BUILD_VERSION)
 VCS_REF=$(shell git rev-parse --short HEAD)
 VCS_URL=$(shell git remote get-url origin)
 build-image: clean	## Build a docker image as specified in the Dockerfile
-	$(DOCKER) build . -t $(REPO):$(BUILD_DATE)-$(BUILD_VERSION) \
+	$(DOCKER) build . -t $(REPO):$(BUILD_TAG)) \
 		--pull --no-cache=true \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
 		--build-arg REPO=$(REPO) \
 		--build-arg VCS_REF=$(VCS_REF) \
 		--build-arg VCS_URL=$(VCS_URL)
-	$(DOCKER) tag $(REPO):$(BUILD_DATE).$(BUILD_VERSION) $(REPO):$(BUILD_VERSION)
+	$(DOCKER) tag $(REPO):$(BUILD_TAG) $(REPO):$(BUILD_VERSION)
 
 .PHONY:publish
 publish:
-	$(DOCKER) tag $(REPO):$(BUILD_VERSION) us.gcr.io/logdna-k8s/$(REPO):$(BUILD_VERSION)
+	$(DOCKER) tag $(REPO):$(BUILD_TAG) us.gcr.io/logdna-k8s/$(REPO):$(BUILD_VERSION)
 	# TODO: Use the commitizen add-on for semver tagging of docker images
 	$(DOCKER) push us.gcr.io/logdna-k8s/$(REPO):$(BUILD_VERSION)
