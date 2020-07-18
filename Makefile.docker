@@ -1,0 +1,68 @@
+REPO := logdna-agent-v2
+DOCKER := docker
+DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/$(REPO)
+DOCKER_PUBLIC_IMAGE := docker.io/logdna/$(REPO)
+DOCKER_IBM_IMAGE := icr.io/ext/$(REPO)
+
+IMAGE_REPO ?= docker.io/rust
+IMAGE_TAG ?= 1.41.1
+IMAGE := $(IMAGE_REPO):$(IMAGE_TAG)
+
+VCS_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
+VCS_REF := $(shell git rev-parse --short HEAD)
+VCS_URL := https://github.com/logdna/logdna-agent-v2
+BUILD_DATE := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+BUILD_VERSION := $(shell sed -nr "s/^version = \"(.+)\"\$$/\1/p" bin/Cargo.toml)
+BUILD_TAG := $(VCS_REF)
+
+MAJOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -f1 -d'.')
+MINOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -f1-2 -d'.')
+PATCH_VERSION := $(shell echo $(BUILD_VERSION) | cut -f1 -d'-')
+PRERELEASE_VERSION := $(shell echo $(BUILD_VERSION) | cut -f2 -d'-')
+
+DOCKER_RUN := docker run --rm -w /build -v $(shell pwd):/build --user "$(shell id -u):$(shell id -g)" $(IMAGE)
+
+.PHONY:test
+test:							## Run unit tests and linters
+	$(DOCKER_RUN) /bin/sh -c "make test-deps && make test"
+
+.PHONY:clean
+clean:
+	docker images -q --filter label=com.logdna.stage=logdna-agent-intermediate | xargs -r -I {} docker rmi {}
+	docker images | grep "$(REPO).*$(BUILD_TAG)" | tr -s ' ' | cut -f3 -d' ' | xargs -r -I {1} /bin/sh -c "docker images | grep \"{1}\" | tr -s ' ' | cut -f1-2 -d' ' --output-delimiter=: | xargs -r -I {2} docker rmi {2}"
+
+.PHONY:build-image
+build-image: clean				## Build a docker image as specified in the Dockerfile
+	$(DOCKER) build . -t $(REPO):$(BUILD_TAG) \
+		--pull --no-cache=true --rm \
+		--build-arg BUILD_IMAGE=$(IMAGE) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+		--build-arg REPO=$(REPO) \
+		--build-arg VCS_REF=$(VCS_REF) \
+		--build-arg VCS_URL=$(VCS_URL)
+	$(DOCKER) tag $(REPO):$(BUILD_TAG) $(REPO):$(BUILD_VERSION)
+
+.PHONY:publish-private
+publish-build: build-image		## Publish a build version of the docker image to our private registry
+	for version in $(BUILD_TAG) $(BUILD_VERSION); do \
+		$(DOCKER) tag $(REPO):$(BUILD_TAG) $(DOCKER_PRIVATE_IMAGE):$${version}; \
+		# $(DOCKER) push $(DOCKER_PRIVATE_IMAGE):$${version}; \
+	done;
+
+.PHONY:publish-public
+publish-public: build-image		## Publish SemVer compliant releases and 'latest' tag
+	# TODO: Have a boolean that prevents this unless forced or run by Jenkins (which can force it)
+	for image in $(DOCKER_PUBLIC_IMAGE) $(DOCKER_IBM_IMAGE); do \
+		for version in $(MAJOR_VERSION) $(MINOR_VERSION) $(PATCH_VERSION) $(BUILD_VERSION) latest; do \
+			if [[ $${version} != $(BUILD_VERSION) ]] && [[ $(PRERELEASE_VERSION) = beta* ]]; then \
+				continue; \
+			fi; \
+			$(DOCKER) tag $(REPO):$(BUILD_TAG) $${image}:$${version}; \
+			# $(DOCKER) push $${image}:$${version}; \
+		done; \
+	done;
+
+.PHONY:help
+help:							## Prints out a helpful description of each possible target
+	@awk 'BEGIN {FS = ":.*?## "}; /^.+: .*?## / && !/awk/ {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)

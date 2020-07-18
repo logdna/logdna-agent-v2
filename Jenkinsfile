@@ -9,34 +9,25 @@ pipeline {
         ansiColor 'xterm'
     }
     stages {
-        stage('Build') {
-            parallel {
-                stage('Build Test Dependencies') {
-                    steps {
-                        sh 'make test-deps'
-                    }
-                }
-                stage('Build Agent') {
-                    steps {
-                        sh 'make build'
-                    }
-                }
+        stage('Build & Test') {
+            steps {
+                sh 'make -f Makefile.docker test'
             }
         }
-        stage('Test') {
+        stage('Clean') {
             steps {
-                sh 'make test'
+                sh 'make clean'
             }
         }
-        stage('Build Image') {
+        stage('Publish') {
             steps {
-                sh 'make build-image'
+                sh 'make -f Makefile.docker publish-public'
             }
         }
-        stage('Deploy to Dockerhub') {
-            steps {
-                sh 'make publish'
-            }
+    }
+    post {
+        always {
+            sh 'make -f Makefile.docker clean'
         }
     }
 }

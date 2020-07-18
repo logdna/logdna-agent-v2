@@ -1,5 +1,10 @@
-# select build image
-FROM rust:1.41 as build
+ARG BUILD_IMAGE
+
+FROM ${BUILD_IMAGE} as build
+
+ARG REPO
+
+LABEL com.logdna.stage="${REPO}-intermediate"
 
 ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
@@ -10,6 +15,7 @@ WORKDIR /opt/logdna-agent-v2
 # Only add dependency lists first for caching
 COPY Cargo.lock                     .
 COPY Cargo.toml                     .
+COPY Makefile                       .
 COPY bin/Cargo.toml                 bin/Cargo.toml
 COPY common/config-macro/Cargo.toml common/config-macro/
 COPY common/config/Cargo.toml       common/config/
@@ -30,7 +36,7 @@ RUN LIBDIRS=$(find . -name Cargo.toml -type f -mindepth 2 | sed 's/Cargo.toml//'
     && echo "fn main() {}" > bin/src/main.rs
 
 # Build cached dependencies
-RUN cargo build --release
+RUN make build RELEASE=1
 
 # Delete all cached deps that are local libs
 RUN grep -aL "github.com" target/release/deps/* | xargs rm \
@@ -40,7 +46,7 @@ RUN grep -aL "github.com" target/release/deps/* | xargs rm \
 COPY . .
 
 # Rebuild the agent
-RUN cargo build --release
+RUN make build RELEASE=1
 RUN strip target/release/logdna-agent
 
 # Use ubuntu as the final base image
@@ -52,17 +58,18 @@ ARG VCS_REF
 ARG VCS_URL
 ARG BUILD_VERSION
 
-LABEL org.label-schema.schema-version="1.0"
-LABEL org.label-schema.url="https://logdna.com"
-LABEL org.label-schema.build-date="${BUILD_DATE}"
-LABEL org.label-schema.maintainer="LogDNA <support@logdna.com>"
-LABEL org.label-schema.name="answerbook/${REPO}"
-LABEL org.label-schema.description="LogDNA Agent V2"
-LABEL org.label-schema.vcs-url="${VCS_URL}"
-LABEL org.label-schema.vcs-ref="${VCS_REF}"
-LABEL org.label-schema.vendor="LogDNA Inc."
-LABEL org.label-schema.version="${BUILD_VERSION}"
-LABEL org.label-schema.docker.cmd="docker run logdna-agent-v2"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.authors="LogDNA <support@logdna.com>"
+LABEL org.opencontainers.image.url="https://logdna.com"
+LABEL org.opencontainers.image.documentation=""
+LABEL org.opencontainers.image.source="${VCS_URL}"
+LABEL org.opencontainers.image.version="${BUILD_VERSION}"
+LABEL org.opencontainers.image.revision="${VCS_REF}"
+LABEL org.opencontainers.image.vendor="LogDNA Inc."
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.ref.name=""
+LABEL org.opencontainers.image.title="LogDNA Agent"
+LABEL org.opencontainers.image.description="The blazingly fast, resource efficient log collection client"
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"

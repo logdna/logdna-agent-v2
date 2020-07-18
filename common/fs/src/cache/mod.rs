@@ -502,9 +502,7 @@ impl<T: Default> FileSystem<T> {
         entries.retain(|other| *other != entry_ptr);
         if entries.is_empty() {
             watch_descriptors.remove(&wd);
-            match self.watcher.unwatch(wd) {
-                _ => {}
-            }; // TODO: Handle this error case
+            let _ = self.watcher.unwatch(wd); // TODO: Handle this error case
         }
 
         if let Entry::Symlink { link, .. } = entry {
@@ -607,7 +605,7 @@ impl<T: Default> FileSystem<T> {
                 .unwrap()
         };
 
-        entry.set_parent(new_parent.clone());
+        entry.set_parent(new_parent);
         entry.set_name(new_name.clone());
         let entry_ptr = EntryPtr::from(entry.deref());
 
