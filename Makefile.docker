@@ -12,7 +12,7 @@ VCS_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 VCS_REF := $(shell git rev-parse --short HEAD)
 VCS_URL := https://github.com/logdna/logdna-agent-v2
 BUILD_DATE := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
-BUILD_VERSION := $(shell sed -nr "s/^version = \"(.+)\"\$$/\1/p" bin/Cargo.toml)
+BUILD_VERSION := $(shell sed -nE "s/^version = \"(.+)\"\$$/\1/p" bin/Cargo.toml)
 BUILD_TAG := $(VCS_REF)
 
 MAJOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -f1 -d'.')
@@ -20,14 +20,23 @@ MINOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -f1-2 -d'.')
 PATCH_VERSION := $(shell echo $(BUILD_VERSION) | cut -f1 -d'-')
 PRERELEASE_VERSION := $(shell echo $(BUILD_VERSION) | cut -f2 -d'-')
 
-DOCKER_RUN := docker run --rm -w /build -v $(shell pwd):/build --user "$(shell id -u):$(shell id -g)" $(IMAGE)
+DOCKER_RUN := docker run --rm -w /build -v $(shell pwd):/build:Z $(IMAGE)
+CHOWN := chown -R $(shell id -u):$(shell id -g) .
+
+.PHONY:build
+build:
+	$(DOCKER_RUN) /bin/sh -c "make build && $(CHOWN)"
 
 .PHONY:test
 test:							## Run unit tests and linters
-	$(DOCKER_RUN) /bin/sh -c "make test-deps && make test"
+	$(DOCKER_RUN) /bin/sh -c "make test-deps && make test && $(CHOWN)"
 
 .PHONY:clean
 clean:
+	$(DOCKER_RUN) /bin/sh -c "make clean"
+
+.PHONY:docker-clean
+docker-clean:
 	docker images -q --filter label=com.logdna.stage=logdna-agent-intermediate | xargs -r -I {} docker rmi {}
 	docker images | grep "$(REPO).*$(BUILD_TAG)" | tr -s ' ' | cut -f3 -d' ' | xargs -r -I {1} /bin/sh -c "docker images | grep \"{1}\" | tr -s ' ' | cut -f1-2 -d' ' --output-delimiter=: | xargs -r -I {2} docker rmi {2}"
 
