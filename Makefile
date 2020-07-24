@@ -1,10 +1,9 @@
 CARGO := cargo
 RUSTUP := rustup
-RELEASE ?= 0
-ifeq ($(RELEASE), 0)
-	CARGO_COMPILE_OPTS :=
-else
+ifeq ($(RELEASE), 1)
 	CARGO_COMPILE_OPTS := --release
+else
+	CARGO_COMPILE_OPTS :=
 endif
 
 .PHONY:build

@@ -31,11 +31,11 @@ DOCKER_RUN := docker run --rm -w /build -v $(shell pwd):/build:Z $(IMAGE)
 # artifacts back to the host machine.
 CHOWN := chown -R $(shell id -u):$(shell id -g) .
 
-CLEAN_DOCKER_IMAGES = if [[ ! -z "docker images -q --filter $(1)" ]]; then docker images -q --filter $(1) | xargs -I {} docker rmi -f {}; fi
+CLEAN_DOCKER_IMAGES = if [[ ! -z "docker images -q --filter $(1)" ]]; then docker images -q --filter $(1) | head -n 1 | xargs -I {} docker rmi -f {}; fi
 
 .PHONY:build
 build:
-	$(DOCKER_RUN) /bin/sh -c "make build && $(CHOWN)"
+	$(DOCKER_RUN) /bin/sh -c "make build RELEASE=$(RELEASE) && $(CHOWN)"
 
 .PHONY:test
 test:							## Run unit tests and linters
