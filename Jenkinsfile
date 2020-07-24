@@ -9,25 +9,49 @@ pipeline {
         ansiColor 'xterm'
     }
     stages {
-        stage('Build & Test') {
+        stage('Test') {
             steps {
-                sh 'make -f Makefile.docker test'
+                sh 'echo "hello" #make -f Makefile.docker test'
+            }
+            post {
+                success {
+                    sh 'make -f Makefile.docker clean'
+                }
             }
         }
-        stage('Clean') {
-            steps {
-                sh 'make clean'
+        stage('Build & Publish Images') {
+            stages {
+                stage('Build Image') {
+                    steps {
+                        sh 'make -f Makefile.docker build-image'
+                    }
+                }
+                stage('Publish Images') {
+                    parallel {
+                        stage('Publish Public Images') {
+                            when {
+                                branch pattern: "\\d\\.\\d", comparator: "REGEXP"
+                            }
+                            steps {
+                                sh 'make -f Makefile.docker publish-public'
+                            }
+                        }
+                        stage('Publish Private Images) {
+                            when {
+                              branch 'master'
+                            }
+                            steps {
+                                sh 'make -f Makefile.docker publish-private'
+                            }
+                        }
+                    }
+                }
             }
-        }
-        stage('Publish') {
-            steps {
-                sh 'make -f Makefile.docker publish-public'
+            post {
+                always {
+                    sh 'make -f Makefile.docker docker-clean'
+                }
             }
-        }
-    }
-    post {
-        always {
-            sh 'make -f Makefile.docker clean'
         }
     }
 }

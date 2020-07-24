@@ -46,14 +46,14 @@ clean:
 	$(DOCKER_RUN) /bin/sh -c "make clean && $(CHOWN)"
 
 .PHONY:docker-clean
-docker-clean: clean
+docker-clean:
 	@# Clean any intermediate agent images, left over from the multi-stage build
 	$(call CLEAN_DOCKER_IMAGES,label=com.logdna.stage=$(REPO)-build)
 	@# Clean any final agent images
 	$(call CLEAN_DOCKER_IMAGES,label=com.logdna.stage=$(REPO)-final)
 
 .PHONY:build-image
-build-image: docker-clean				## Build a docker image as specified in the Dockerfile
+build-image: ## Build a docker image as specified in the Dockerfile
 	$(DOCKER) build . -t $(REPO):$(BUILD_TAG) \
 		--pull --no-cache=true --rm \
 		--build-arg BUILD_IMAGE=$(IMAGE) \
@@ -65,7 +65,7 @@ build-image: docker-clean				## Build a docker image as specified in the Dockerf
 	$(DOCKER) tag $(REPO):$(BUILD_TAG) $(REPO):$(BUILD_VERSION)
 
 .PHONY:publish-private
-publish-build: build-image		## Publish a build version of the docker image to our private registry
+publish-build: ## Publish a build version of the docker image to our private registry
 	for version in $(BUILD_TAG) $(BUILD_VERSION); do \
 		$(DOCKER) tag $(REPO):$(BUILD_TAG) $(DOCKER_PRIVATE_IMAGE):$${version}; \
 	done;
