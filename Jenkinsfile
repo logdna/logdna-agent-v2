@@ -36,7 +36,7 @@ pipeline {
                                 sh 'make -f Makefile.docker publish-public'
                             }
                         }
-                        stage('Publish Private Images) {
+                        stage('Publish Private Images') {
                             when {
                               branch 'master'
                             }
