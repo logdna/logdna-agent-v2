@@ -1,17 +1,20 @@
 REPO := logdna-agent-v2
+
 DOCKER := docker
-DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/$(REPO)
-DOCKER_PUBLIC_IMAGE := docker.io/logdna/$(REPO)
-DOCKER_IBM_IMAGE := icr.io/ext/$(REPO)
+DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/logdna-agent-v2
+DOCKER_PUBLIC_IMAGE := docker.io/logdna/logdna-agent
+DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
 
+# The image repo and tag can be modified e.g.
+# `make -f Makefile.docker build IMAGE=docker.io/rust:1.42.0`
 IMAGE_REPO ?= docker.io/rust
-IMAGE_TAG ?= 1.41.1
-IMAGE := $(IMAGE_REPO):$(IMAGE_TAG)
+IMAGE_TAG ?= 1.42
+IMAGE ?= $(IMAGE_REPO):$(IMAGE_TAG)
+IMAGE := $(IMAGE)
 
-VCS_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 VCS_REF := $(shell git rev-parse --short HEAD)
 VCS_URL := https://github.com/logdna/logdna-agent-v2
-BUILD_DATE := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+BUILD_TIMESTAMP := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUILD_VERSION := $(shell sed -nE "s/^version = \"(.+)\"\$$/\1/p" bin/Cargo.toml)
 BUILD_TAG := $(VCS_REF)
 
@@ -21,7 +24,14 @@ PATCH_VERSION := $(shell echo $(BUILD_VERSION) | cut -f1 -d'-')
 PRERELEASE_VERSION := $(shell echo $(BUILD_VERSION) | cut -f2 -d'-')
 
 DOCKER_RUN := docker run --rm -w /build -v $(shell pwd):/build:Z $(IMAGE)
+
+# This is to reliably maintain permissions in a cross compatible manner
+# (tested on Linux and Mac). The docker container needs the correct
+# permissions to build artifcats, but also needs to give ownership of build
+# artifacts back to the host machine.
 CHOWN := chown -R $(shell id -u):$(shell id -g) .
+
+CLEAN_DOCKER_IMAGES = if [[ ! -z "docker images -q --filter $(1)" ]]; then docker images -q --filter $(1) | xargs -I {} docker rmi -f {}; fi
 
 .PHONY:build
 build:
@@ -33,19 +43,21 @@ test:							## Run unit tests and linters
 
 .PHONY:clean
 clean:
-	$(DOCKER_RUN) /bin/sh -c "make clean"
+	$(DOCKER_RUN) /bin/sh -c "make clean && $(CHOWN)"
 
 .PHONY:docker-clean
-docker-clean:
-	docker images -q --filter label=com.logdna.stage=logdna-agent-intermediate | xargs -r -I {} docker rmi {}
-	docker images | grep "$(REPO).*$(BUILD_TAG)" | tr -s ' ' | cut -f3 -d' ' | xargs -r -I {1} /bin/sh -c "docker images | grep \"{1}\" | tr -s ' ' | cut -f1-2 -d' ' --output-delimiter=: | xargs -r -I {2} docker rmi {2}"
+docker-clean: clean
+	@# Clean any intermediate agent images, left over from the multi-stage build
+	$(call CLEAN_DOCKER_IMAGES,label=com.logdna.stage=$(REPO)-build)
+	@# Clean any final agent images
+	$(call CLEAN_DOCKER_IMAGES,label=com.logdna.stage=$(REPO)-final)
 
 .PHONY:build-image
-build-image: clean				## Build a docker image as specified in the Dockerfile
+build-image: docker-clean				## Build a docker image as specified in the Dockerfile
 	$(DOCKER) build . -t $(REPO):$(BUILD_TAG) \
 		--pull --no-cache=true --rm \
 		--build-arg BUILD_IMAGE=$(IMAGE) \
-		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
 		--build-arg REPO=$(REPO) \
 		--build-arg VCS_REF=$(VCS_REF) \
@@ -56,21 +68,21 @@ build-image: clean				## Build a docker image as specified in the Dockerfile
 publish-build: build-image		## Publish a build version of the docker image to our private registry
 	for version in $(BUILD_TAG) $(BUILD_VERSION); do \
 		$(DOCKER) tag $(REPO):$(BUILD_TAG) $(DOCKER_PRIVATE_IMAGE):$${version}; \
-		# $(DOCKER) push $(DOCKER_PRIVATE_IMAGE):$${version}; \
 	done;
+		# $(DOCKER) push $(DOCKER_PRIVATE_IMAGE):$${version}; \
 
 .PHONY:publish-public
-publish-public: build-image		## Publish SemVer compliant releases and 'latest' tag
-	# TODO: Have a boolean that prevents this unless forced or run by Jenkins (which can force it)
+publish-public: #build-image		## Publish SemVer compliant releases and 'latest' tag
+	@# TODO: Have a boolean that prevents this unless forced or run by Jenkins (which can force it)
 	for image in $(DOCKER_PUBLIC_IMAGE) $(DOCKER_IBM_IMAGE); do \
 		for version in $(MAJOR_VERSION) $(MINOR_VERSION) $(PATCH_VERSION) $(BUILD_VERSION) latest; do \
 			if [[ $${version} != $(BUILD_VERSION) ]] && [[ $(PRERELEASE_VERSION) = beta* ]]; then \
 				continue; \
 			fi; \
 			$(DOCKER) tag $(REPO):$(BUILD_TAG) $${image}:$${version}; \
-			# $(DOCKER) push $${image}:$${version}; \
 		done; \
 	done;
+			# $(DOCKER) push $${image}:$${version}; \
 
 .PHONY:help
 help:							## Prints out a helpful description of each possible target

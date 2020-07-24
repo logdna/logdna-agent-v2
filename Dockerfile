@@ -4,7 +4,7 @@ FROM ${BUILD_IMAGE} as build
 
 ARG REPO
 
-LABEL com.logdna.stage="${REPO}-intermediate"
+LABEL com.logdna.stage="${REPO}-build"
 
 ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
@@ -36,29 +36,31 @@ RUN LIBDIRS=$(find . -name Cargo.toml -type f -mindepth 2 | sed 's/Cargo.toml//'
     && echo "fn main() {}" > bin/src/main.rs
 
 # Build cached dependencies
-RUN make build RELEASE=1
+# RUN make build RELEASE=1
 
 # Delete all cached deps that are local libs
-RUN grep -aL "github.com" target/release/deps/* | xargs rm \
-  && rm target/release/deps/libconfig_macro*.so
+# RUN grep -aL "github.com" target/release/deps/* | xargs rm \
+#  && rm target/release/deps/libconfig_macro*.so
 
 # Add the actual agent source files
 COPY . .
 
 # Rebuild the agent
-RUN make build RELEASE=1
-RUN strip target/release/logdna-agent
+# RUN make build RELEASE=1
+# RUN strip target/release/logdna-agent
 
 # Use ubuntu as the final base image
 FROM ubuntu:18.04
 
 ARG REPO
-ARG BUILD_DATE
+ARG BUILD_TIMESTAMP
 ARG VCS_REF
 ARG VCS_URL
 ARG BUILD_VERSION
 
-LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL com.logdna.stage="${REPO}-final"
+
+LABEL org.opencontainers.image.created="${BUILD_TIMESTAMP}"
 LABEL org.opencontainers.image.authors="LogDNA <support@logdna.com>"
 LABEL org.opencontainers.image.url="https://logdna.com"
 LABEL org.opencontainers.image.documentation=""
@@ -80,7 +82,7 @@ apt upgrade -y --fix-missing && \
 apt install ca-certificates -y
 
 # Copy the agent binary from the build stage
-COPY --from=build /opt/logdna-agent-v2/target/release/logdna-agent /work/
+# COPY --from=build /opt/logdna-agent-v2/target/release/logdna-agent /work/
 WORKDIR /work/
 RUN chmod -R 777 .
 
