@@ -36,18 +36,18 @@ RUN LIBDIRS=$(find . -name Cargo.toml -type f -mindepth 2 | sed 's/Cargo.toml//'
     && echo "fn main() {}" > bin/src/main.rs
 
 # Build cached dependencies
-# RUN make build RELEASE=1
+RUN make build RELEASE=1
 
 # Delete all cached deps that are local libs
-# RUN grep -aL "github.com" target/release/deps/* | xargs rm \
-#  && rm target/release/deps/libconfig_macro*.so
+RUN grep -aL "github.com" target/release/deps/* | xargs rm \
+    && rm target/release/deps/libconfig_macro*.so
 
 # Add the actual agent source files
 COPY . .
 
 # Rebuild the agent
-# RUN make build RELEASE=1
-# RUN strip target/release/logdna-agent
+RUN make build RELEASE=1
+RUN strip target/release/logdna-agent
 
 # Use ubuntu as the final base image
 FROM ubuntu:18.04

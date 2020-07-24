@@ -12,7 +12,7 @@ pipeline {
     stages {
         stage('Test') {
             steps {
-                sh 'echo "hello" #make -f Makefile.docker test'
+                sh 'make -f Makefile.docker test'
             }
             post {
                 success {
