@@ -34,19 +34,19 @@ CHOWN := chown -R $(shell id -u):$(shell id -g) .
 CLEAN_DOCKER_IMAGES = if [[ ! -z "docker images -q --filter $(1)" ]]; then docker images -q --filter $(1) | head -n 1 | xargs -I {} docker rmi -f {}; fi
 
 .PHONY:build
-build:
+build: ## (Runs in a docker container) Build the agent. Set RELEASE=1 to build a release image - defaults to 0
 	$(DOCKER_RUN) /bin/sh -c "make build RELEASE=$(RELEASE) && $(CHOWN)"
 
 .PHONY:test
-test:							## Run unit tests and linters
+test: ## (Runs in a docker container) Installs the necessary dependencies and then checks rust syntax, docker syntax, rust warnings, outdated dependencies, security vulnerabilities, and unit tests
 	$(DOCKER_RUN) /bin/sh -c "make test-deps && make test && $(CHOWN)"
 
 .PHONY:clean
-clean:
+clean: ## (Runs in a docker container) Clean all artifacts from the build process
 	$(DOCKER_RUN) /bin/sh -c "make clean && $(CHOWN)"
 
-.PHONY:docker-clean
-docker-clean:
+.PHONY:clean-images
+clean-images: ## Cleans the intermediate and final agent images left over from the build-image target
 	@# Clean any intermediate agent images, left over from the multi-stage build
 	$(call CLEAN_DOCKER_IMAGES,label=com.logdna.stage=$(REPO)-build)
 	@# Clean any final agent images
@@ -65,14 +65,14 @@ build-image: ## Build a docker image as specified in the Dockerfile
 	$(DOCKER) tag $(REPO):$(BUILD_TAG) $(REPO):$(BUILD_VERSION)
 
 .PHONY:publish-private
-publish-build: ## Publish a build version of the docker image to our private registry
+publish-private: ## Publish a build version of the docker image to our private registry
 	for version in $(BUILD_TAG) $(BUILD_VERSION); do \
 		$(DOCKER) tag $(REPO):$(BUILD_TAG) $(DOCKER_PRIVATE_IMAGE):$${version}; \
+		$(DOCKER) push $(DOCKER_PRIVATE_IMAGE):$${version}; \
 	done;
-		# $(DOCKER) push $(DOCKER_PRIVATE_IMAGE):$${version}; \
 
 .PHONY:publish-public
-publish-public: #build-image		## Publish SemVer compliant releases and 'latest' tag
+publish-public: ## Publish SemVer compliant releases to our public registries
 	@# TODO: Have a boolean that prevents this unless forced or run by Jenkins (which can force it)
 	for image in $(DOCKER_PUBLIC_IMAGE) $(DOCKER_IBM_IMAGE); do \
 		for version in $(MAJOR_VERSION) $(MINOR_VERSION) $(PATCH_VERSION) $(BUILD_VERSION) latest; do \
@@ -80,10 +80,10 @@ publish-public: #build-image		## Publish SemVer compliant releases and 'latest' 
 				continue; \
 			fi; \
 			$(DOCKER) tag $(REPO):$(BUILD_TAG) $${image}:$${version}; \
+			$(DOCKER) push $${image}:$${version}; \
 		done; \
 	done;
-			# $(DOCKER) push $${image}:$${version}; \
 
 .PHONY:help
-help:							## Prints out a helpful description of each possible target
+help: ## Prints out a helpful description of each possible target
 	@awk 'BEGIN {FS = ":.*?## "}; /^.+: .*?## / && !/awk/ {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)

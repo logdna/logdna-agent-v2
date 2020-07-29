@@ -50,7 +50,7 @@ pipeline {
             }
             post {
                 always {
-                    sh 'make -f Makefile.docker docker-clean'
+                    sh 'make -f Makefile.docker clean-images'
                 }
             }
         }

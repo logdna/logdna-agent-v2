@@ -36,11 +36,11 @@ RUN LIBDIRS=$(find . -name Cargo.toml -type f -mindepth 2 | sed 's/Cargo.toml//'
     && echo "fn main() {}" > bin/src/main.rs
 
 # Build cached dependencies
-RUN make build RELEASE=1
+RUN cargo build --release
 
 # Delete all cached deps that are local libs
 RUN grep -aL "github.com" target/release/deps/* | xargs rm \
-    && rm target/release/deps/libconfig_macro*.so
+  && rm target/release/deps/libconfig_macro*.so
 
 # Add the actual agent source files
 COPY . .
@@ -82,7 +82,7 @@ apt upgrade -y --fix-missing && \
 apt install ca-certificates -y
 
 # Copy the agent binary from the build stage
-# COPY --from=build /opt/logdna-agent-v2/target/release/logdna-agent /work/
+COPY --from=build /opt/logdna-agent-v2/target/release/logdna-agent /work/
 WORKDIR /work/
 RUN chmod -R 777 .
 
