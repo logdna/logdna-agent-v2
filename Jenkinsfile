@@ -8,13 +8,14 @@ def boolean changesMatch(String pathRegex) {
     ) == 0
 }
 
-def RUST_IMAGE = 'docker.pkg.github.com/answerbook/docker-images/logdna-agent-rust:latest'
-
 pipeline {
     agent any
     options {
         timestamps()
         ansiColor 'xterm'
+    }
+    environment {
+        RUST_IMAGE = 'docker.pkg.github.com/answerbook/docker-images/logdna-agent-rust:latest'
     }
     stages {
         stage('Build Rust Image') {
@@ -31,17 +32,18 @@ pipeline {
             steps {
                 sh 'echo yo #make -f Makefile.docker rust-image'
                 script {
-                    RUST_IMAGE = sh 'make -f Makefile.docker get-rust-image'
+                    env.RUST_IMAGE = 'test'
+                    env.RUST_IMAGE = sh 'make -f Makefile.docker get-rust-image'
                 }
             }
         }
         stage('Test') {
             steps {
-                sh 'make -f Makefile.docker test IMAGE=${RUST_IMAGE}'
+                sh 'make -f Makefile.docker test IMAGE=${env.RUST_IMAGE}'
             }
             post {
                 success {
-                    sh 'make -f Makefile.docker clean IMAGE=${RUST_IMAGE}'
+                    sh 'make -f Makefile.docker clean IMAGE=${env.RUST_IMAGE}'
                 }
             }
         }
@@ -49,7 +51,7 @@ pipeline {
             stages {
                 stage('Build Image') {
                     steps {
-                        sh 'make -f Makefile.docker build-image IMAGE=${RUST_IMAGE}'
+                        sh 'make -f Makefile.docker build-image IMAGE=${env.RUST_IMAGE}'
                     }
                 }
                 stage('Publish Images') {
