@@ -5,6 +5,12 @@ FROM ${BUILD_IMAGE}-slim as build
 ARG REPO
 ARG VCS_REF
 
+LABEL com.logdna.stage="${REPO}-build"
+LABEL com.logdna.tag="${VCS_REF}"
+
+ARG REPO
+ARG VCS_REF
+
 WORKDIR /opt/rust-image
 
 COPY Makefile .
@@ -18,6 +24,12 @@ RUN apt-get update && apt-get install -y \
 RUN make test-deps
 
 FROM ${BUILD_IMAGE}-slim
+
+ARG REPO
+ARG VCS_REF
+
+LABEL com.logdna.stage="${REPO}-final"
+LABEL com.logdna.tag="${VCS_REF}"
 
 RUN apt-get update && apt-get install -y \
   make \

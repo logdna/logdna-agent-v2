@@ -3,10 +3,12 @@ def PROJECT_NAME = 'logdna-agent-v2'
 
 pipeline {
     agent any
-
     options {
         timestamps()
         ansiColor 'xterm'
+    }
+    environment {
+        RUST_IMAGE = 'docker.pkg.github.com/answerbook/docker-images/logdna-agent-rust:latest'
     }
     stages {
         stage('Build Rust Image') {
@@ -18,15 +20,18 @@ pipeline {
             }
             steps {
                 sh 'make -f Makefile.docker rust-image'
+                script {
+                    env.RUST_IMAGE_TAG = sh 'make -f Makefile.docker get-rust-image'
+                }
             }
         }
         stage('Test') {
             steps {
-                sh 'make -f Makefile.docker test'
+                sh 'make -f Makefile.docker test IMAGE=${RUST_IMAGE}'
             }
             post {
                 success {
-                    sh 'make -f Makefile.docker clean'
+                    sh 'make -f Makefile.docker clean IMAGE=${RUST_IMAGE}'
                 }
             }
         }
@@ -34,7 +39,7 @@ pipeline {
             stages {
                 stage('Build Image') {
                     steps {
-                        sh 'make -f Makefile.docker build-image'
+                        sh 'make -f Makefile.docker build-image IMAGE=${RUST_IMAGE}'
                     }
                 }
                 stage('Publish Images') {
@@ -79,9 +84,7 @@ pipeline {
     }
     post {
         always {
-            script {
-                println(currentBuild.changeSets)
-            }
+            sh 'make -f Makefile.docker clean-rust-image'
         }
     }
 }
