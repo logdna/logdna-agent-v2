@@ -39,7 +39,7 @@ pipeline {
         }
         stage('Test') {
             steps {
-                sh 'make -f Makefile.docker test IMAGE=${env.RUST_IMAGE}'
+                sh "make -f Makefile.docker test IMAGE=${env.RUST_IMAGE}"
             }
             post {
                 success {
