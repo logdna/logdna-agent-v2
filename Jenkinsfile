@@ -11,7 +11,7 @@ pipeline {
     stages {
         stage('Build Rust Image') {
             when {
-                changeset "Makefile" "rust-image/**/*"
+                changeset "Makefile", "rust-image/**/*"
             }
             steps {
                 sh 'make -f Makefile.docker rust-image'
@@ -55,7 +55,7 @@ pipeline {
                         stage('Publish CI Rust Image') {
                             when {
                                 branch 'master'
-                                changeset "Makefile" "rust-image/**/*"
+                                changeset "Makefile", "rust-image/**/*"
                             }
                             steps {
                                 sh 'make -f Makefile.docker publish-rust'
