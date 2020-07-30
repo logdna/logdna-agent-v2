@@ -21,7 +21,7 @@ pipeline {
             steps {
                 sh 'make -f Makefile.docker rust-image'
                 script {
-                    env.RUST_IMAGE_TAG = sh 'make -f Makefile.docker get-rust-image'
+                    env.RUST_IMAGE = sh 'make -f Makefile.docker get-rust-image'
                 }
             }
         }
