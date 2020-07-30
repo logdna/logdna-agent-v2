@@ -3,7 +3,7 @@ def PROJECT_NAME = 'logdna-agent-v2'
 
 def boolean changesMatch(String pathRegex) {
     return !env.CHANGE_TARGET || sh(
-        script: "git diff --name-only origin/${env.CHANGE_TARGET}...${env.GIT_COMMIT} | grep \"${pathRegex}\""
+        script: "git diff --name-only origin/${env.CHANGE_TARGET}...${env.GIT_COMMIT} | grep \"${pathRegex}\"",
         returnStatus: true
     ) == 0
 }
