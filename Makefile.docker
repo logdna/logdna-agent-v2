@@ -1,4 +1,5 @@
 REPO := logdna-agent-v2
+RUST_REPO := logdna-agent-rust
 
 DOCKER := docker
 DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/logdna-agent-v2
@@ -45,11 +46,20 @@ build: ## (Runs in a docker container) Build the agent. Set RELEASE=1 to build a
 
 .PHONY:test
 test: ## (Runs in a docker container) Installs the necessary dependencies and then checks rust syntax, docker syntax, rust warnings, outdated dependencies, security vulnerabilities, and unit tests
-	$(DOCKER_RUN) /bin/sh -c "make test-deps && make test && $(CHOWN)"
+	$(DOCKER_RUN) /bin/sh -c "make test && $(CHOWN)"
 
 .PHONY:clean
 clean: ## (Runs in a docker container) Clean all artifacts from the build process
 	$(DOCKER_RUN) /bin/sh -c "make clean && $(CHOWN)"
+
+.PHONY:rust-image
+rust-image: ## Build a superset of the Rust image that contains necessary dependencies to test the agent
+	$(DOCKER) build . -t $(RUST_REPO):$(BUILD_TAG) \
+		-f rust-image/Dockerfile \
+		--pull --no-cache=true --rm \
+		--build-arg BUILD_IMAGE=$(IMAGE) \
+		--build-arg REPO=$(RUST_REPO) \
+		--build-arg VCS_REF=$(VCS_REF)
 
 .PHONY:clean-images
 clean-images: ## Cleans the intermediate and final agent images left over from the build-image target
@@ -89,6 +99,13 @@ publish-public: ## Publish SemVer compliant releases to our public registries
 			$(DOCKER) push $${image}:$${version}; \
 		done; \
 	done;
+
+.PHONY:publish-rust
+publish-rust: ## Publish superset rust image (see target rust-image)
+	$(DOCKER) tag $(RUST_REPO):$(BUILD_TAG) docker.pkg.github.com/answerbook/docker-images/rust:latest
+	$(DOCKER) tag $(RUST_REPO):$(BUILD_TAG) us.gcr.io/logdna-k8s/rust:latest
+	$(DOCKER) push docker.pkg.github.com/answerbook/docker-images/rust:latest
+	$(DOCKER) push us.gcr.io/logdna-k8s/rust:latest
 
 .PHONY:help
 help: ## Prints out a helpful description of each possible target

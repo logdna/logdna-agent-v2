@@ -9,6 +9,14 @@ pipeline {
         ansiColor 'xterm'
     }
     stages {
+        stage('Build Rust Image') {
+            when {
+                changeset "Makefile" "rust-image/**/*"
+            }
+            steps {
+                sh 'make -f Makefile.docker rust-image'
+            }
+        }
         stage('Test') {
             steps {
                 sh 'make -f Makefile.docker test'
@@ -38,10 +46,19 @@ pipeline {
                         }
                         stage('Publish Private Images') {
                             when {
-                              branch 'master'
+                                branch 'master'
                             }
                             steps {
                                 sh 'make -f Makefile.docker publish-private'
+                            }
+                        }
+                        stage('Publish CI Rust Image') {
+                            when {
+                                branch 'master'
+                                changeset "Makefile" "rust-image/**/*"
+                            }
+                            steps {
+                                sh 'make -f Makefile.docker publish-rust'
                             }
                         }
                     }
@@ -51,6 +68,13 @@ pipeline {
                 always {
                     sh 'make -f Makefile.docker clean-images'
                 }
+            }
+        }
+    }
+    post {
+        always {
+            script {
+                println(currentBuild.changeSets)
             }
         }
     }
