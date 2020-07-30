@@ -1,6 +1,13 @@
 library 'magic-butler-catalogue'
 def PROJECT_NAME = 'logdna-agent-v2'
 
+def boolean changesMatch(String pathRegex) {
+    return !env.CHANGE_TARGET || sh(
+        script: "git diff --name-only origin/${env.CHANGE_TARGET}...${env.GIT_COMMIT} | grep \"${pathRegex}\""
+        returnStatus: true
+    ) == 0
+}
+
 pipeline {
     agent any
     options {
@@ -14,8 +21,12 @@ pipeline {
         stage('Build Rust Image') {
             when {
                 anyOf {
-                    changeset "Makefile"
-                    changeset "rust-image/**/*"
+                    expression {
+                        return changesMatch('^Makefile$')
+                    }
+                    expression {
+                        return changesMatch('^rust-image/')
+                    }
                 }
             }
             steps {
@@ -64,8 +75,12 @@ pipeline {
                             when {
                                 branch 'master'
                                 anyOf {
-                                    changeset "Makefile"
-                                    changeset "rust-image/**/*"
+                                    expression {
+                                        return changesMatch('^Makefile$')
+                                    }
+                                    expression {
+                                        return changesMatch('^rust-image/')
+                                    }
                                 }
                             }
                             steps {
