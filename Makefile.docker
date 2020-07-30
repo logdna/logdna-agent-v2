@@ -31,7 +31,13 @@ DOCKER_RUN := docker run --rm -w /build -v $(shell pwd):/build:Z $(IMAGE)
 # artifacts back to the host machine.
 CHOWN := chown -R $(shell id -u):$(shell id -g) .
 
-CLEAN_DOCKER_IMAGES = if [[ ! -z "docker images -q --filter $(1)" ]]; then docker images -q --filter $(1) | head -n 1 | xargs -I {} docker rmi -f {}; fi
+ifeq ($(ALL), 1)
+	CLEAN_ADDTL_FILTERS :=
+else
+	CLEAN_ADDTL_FILTERS := --filter label=com.logdna.tag=$(BUILD_TAG)
+endif
+
+CLEAN_DOCKER_IMAGES = if [[ ! -z "docker images -q --filter $(1) $(CLEAN_ADDTL_FILTERS)" ]]; then docker images -q --filter $(1) $(CLEAN_ADDTL_FILTERS) | head -n 1 | xargs -I {} docker rmi -f {}; fi
 
 .PHONY:build
 build: ## (Runs in a docker container) Build the agent. Set RELEASE=1 to build a release image - defaults to 0
