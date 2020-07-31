@@ -57,7 +57,7 @@ clean-images: ## Cleans the intermediate and final agent images left over from t
 	@# Clean any intermediate agent images, left over from the multi-stage build
 	$(call CLEAN_DOCKER_IMAGES,--filter label=com.logdna.stage=$(REPO)-build $(CLEAN_ADDTL_FILTERS))
 	@# Clean any final agent images
-	$(call CLEAN_DOCKER_IMAGES,--filter label=com.logdna.stage=$(REPO)-final $CLEAN_ADDTL_FILTERS))
+	$(call CLEAN_DOCKER_IMAGES,--filter label=com.logdna.stage=$(REPO)-final $(CLEAN_ADDTL_FILTERS))
 
 .PHONY:build-image
 build-image: ## Build a docker image as specified in the Dockerfile
