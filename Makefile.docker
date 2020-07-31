@@ -40,6 +40,13 @@ endif
 
 CLEAN_DOCKER_IMAGES = if [[ ! -z "docker images -q $(1)" ]]; then docker images -q $(1) | head -n 1 | xargs -I {} docker rmi -f {}; fi
 
+PULL ?= 1
+ifeq ($(PULL), 1)
+	PULL_OPTS := --pull
+else
+	PULL_OPTS :=
+endif
+
 .PHONY:build
 build: ## (Runs in a docker container) Build the agent. Set RELEASE=1 to build a release image - defaults to 0
 	$(DOCKER_RUN) /bin/sh -c "make build RELEASE=$(RELEASE) && $(CHOWN)"
@@ -62,7 +69,7 @@ clean-images: ## Cleans the intermediate and final agent images left over from t
 .PHONY:build-image
 build-image: ## Build a docker image as specified in the Dockerfile
 	$(DOCKER) build . -t $(REPO):$(BUILD_TAG) \
-		--pull --no-cache=true --rm \
+		$(PULL_OPTS) --no-cache=true --rm \
 		--build-arg BUILD_IMAGE=$(IMAGE) \
 		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \

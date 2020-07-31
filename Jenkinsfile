@@ -52,7 +52,7 @@ pipeline {
             stages {
                 stage('Build Image') {
                     steps {
-                        sh "make -f Makefile.docker build-image IMAGE=${RUST_IMAGE}"
+                        sh "make -f Makefile.docker build-image IMAGE=${RUST_IMAGE} PULL=0"
                     }
                 }
                 stage('Publish Images') {
