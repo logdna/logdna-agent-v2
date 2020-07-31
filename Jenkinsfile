@@ -29,7 +29,7 @@ pipeline {
                 }
             }
             steps {
-                sh 'echo yo #make -f Makefile.docker rust-image'
+                sh 'make -f Makefile.docker rust-image'
                 script {
                     RUST_IMAGE = sh(
                         script: 'make -f Makefile.docker get-rust-image',
