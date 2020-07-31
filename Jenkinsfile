@@ -32,7 +32,7 @@ pipeline {
                 sh 'echo yo #make -f Makefile.docker rust-image'
                 script {
                     RUST_IMAGE = sh(
-                        script: 'make -f Makefile.docker get-rust-image'
+                        script: 'make -f Makefile.docker get-rust-image',
                         returnStdout: true
                     )
                 }
