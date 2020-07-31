@@ -8,14 +8,13 @@ def boolean changesMatch(String pathRegex) {
     ) == 0
 }
 
+def RUST_IMAGE = 'docker.pkg.github.com/answerbook/docker-images/logdna-agent-rust:latest'
+
 pipeline {
     agent any
     options {
         timestamps()
         ansiColor 'xterm'
-    }
-    environment {
-        RUST_IMAGE = 'docker.pkg.github.com/answerbook/docker-images/logdna-agent-rust:latest'
     }
     stages {
         stage('Build Rust Image') {
