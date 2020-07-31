@@ -55,40 +55,36 @@ pipeline {
                         sh "make -f Makefile.docker build-image IMAGE=${RUST_IMAGE}"
                     }
                 }
-                stage('Publish Images') {
-                    parallel {
-                        stage('Publish Public Images') {
-                            when {
-                                branch pattern: "\\d\\.\\d", comparator: "REGEXP"
+                stage('Publish Public Images') {
+                    when {
+                        branch pattern: "\\d\\.\\d", comparator: "REGEXP"
+                    }
+                    steps {
+                        sh 'make -f Makefile.docker publish-public'
+                    }
+                }
+                stage('Publish Private Images') {
+                    when {
+                        branch 'master'
+                    }
+                    steps {
+                        sh 'make -f Makefile.docker publish-private'
+                    }
+                }
+                stage('Publish CI Rust Image') {
+                    when {
+                        branch 'master'
+                        anyOf {
+                            expression {
+                                return changesMatch('^Makefile$')
                             }
-                            steps {
-                                sh 'make -f Makefile.docker publish-public'
-                            }
-                        }
-                        stage('Publish Private Images') {
-                            when {
-                                branch 'master'
-                            }
-                            steps {
-                                sh 'make -f Makefile.docker publish-private'
-                            }
-                        }
-                        stage('Publish CI Rust Image') {
-                            when {
-                                branch 'master'
-                                anyOf {
-                                    expression {
-                                        return changesMatch('^Makefile$')
-                                    }
-                                    expression {
-                                        return changesMatch('^rust-image/')
-                                    }
-                                }
-                            }
-                            steps {
-                                sh 'make -f Makefile.docker publish-rust'
+                            expression {
+                                return changesMatch('^rust-image/')
                             }
                         }
+                    }
+                    steps {
+                        sh 'make -f Makefile.docker publish-rust'
                     }
                 }
             }
