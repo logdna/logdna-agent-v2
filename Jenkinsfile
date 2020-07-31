@@ -39,11 +39,11 @@ pipeline {
         }
         stage('Test') {
             steps {
-                sh 'make -f Makefile.docker test IMAGE=${RUST_IMAGE}'
+                sh "make -f Makefile.docker test IMAGE=${RUST_IMAGE}"
             }
             post {
                 success {
-                    sh 'make -f Makefile.docker clean IMAGE=${RUST_IMAGE}'
+                    sh "make -f Makefile.docker clean IMAGE=${RUST_IMAGE}"
                 }
             }
         }
@@ -51,7 +51,7 @@ pipeline {
             stages {
                 stage('Build Image') {
                     steps {
-                        sh 'make -f Makefile.docker build-image IMAGE=${RUST_IMAGE}'
+                        sh "make -f Makefile.docker build-image IMAGE=${RUST_IMAGE}"
                     }
                 }
                 stage('Publish Images') {
