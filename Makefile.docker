@@ -22,7 +22,6 @@ BUILD_TAG := $(VCS_REF)
 MAJOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -f1 -d'.')
 MINOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -f1-2 -d'.')
 PATCH_VERSION := $(shell echo $(BUILD_VERSION) | cut -f1 -d'-')
-PRERELEASE_VERSION := $(shell echo $(BUILD_VERSION) | cut -f2 -d'-')
 
 DOCKER_RUN := docker run --rm -w /build -v $(shell pwd):/build:Z $(IMAGE)
 
@@ -33,12 +32,12 @@ DOCKER_RUN := docker run --rm -w /build -v $(shell pwd):/build:Z $(IMAGE)
 CHOWN := chown -R $(shell id -u):$(shell id -g) .
 
 ifeq ($(ALL), 1)
-	CLEAN_ADDTL_FILTERS :=
+	CLEAN_TAG := *
 else
-	CLEAN_ADDTL_FILTERS := --filter label=com.logdna.tag=$(BUILD_TAG)
+	CLEAN_TAG := $(BUILD_TAG)
 endif
 
-CLEAN_DOCKER_IMAGES = if [[ ! -z "docker images -q $(1)" ]]; then docker images -q $(1) | head -n 1 | xargs -I {} docker rmi -f {}; fi
+CLEAN_DOCKER_IMAGES = if [[ ! -z "docker images -q $(1)" ]]; then docker images -q $(1) | xargs rmi -f; fi
 
 PULL ?= 1
 ifeq ($(PULL), 1)
@@ -61,10 +60,8 @@ clean: ## (Runs in a docker container) Clean all artifacts from the build proces
 
 .PHONY:clean-images
 clean-images: ## Cleans the intermediate and final agent images left over from the build-image target
-	@# Clean any intermediate agent images, left over from the multi-stage build
-	$(call CLEAN_DOCKER_IMAGES,--filter label=com.logdna.stage=$(REPO)-build $(CLEAN_ADDTL_FILTERS))
-	@# Clean any final agent images
-	$(call CLEAN_DOCKER_IMAGES,--filter label=com.logdna.stage=$(REPO)-final $(CLEAN_ADDTL_FILTERS))
+	@# Clean any agent images, left over from the multi-stage build
+	$(call CLEAN_DOCKER_IMAGES,$(REPO):$(CLEAN_TAG))
 
 .PHONY:build-image
 build-image: ## Build a docker image as specified in the Dockerfile
@@ -90,38 +87,10 @@ publish-public: ## Publish SemVer compliant releases to our public registries
 	@# TODO: Have a boolean that prevents this unless forced or run by Jenkins (which can force it)
 	for image in $(DOCKER_PUBLIC_IMAGE) $(DOCKER_IBM_IMAGE); do \
 		for version in $(MAJOR_VERSION) $(MINOR_VERSION) $(PATCH_VERSION) $(BUILD_VERSION) latest; do \
-			if [[ $${version} != $(BUILD_VERSION) ]] && [[ $(PRERELEASE_VERSION) = beta* ]]; then \
-				continue; \
-			fi; \
 			$(DOCKER) tag $(REPO):$(BUILD_TAG) $${image}:$${version}; \
 			$(DOCKER) push $${image}:$${version}; \
 		done; \
 	done;
-
-.PHONY:get-rust-image
-get-rust-image:
-	@echo $(RUST_REPO):$(BUILD_TAG)
-
-.PHONY:rust-image
-rust-image: ## Build a superset of the Rust image that contains necessary dependencies to test the agent
-	$(DOCKER) build . -t $(RUST_REPO):$(BUILD_TAG) \
-		-f rust-image/Dockerfile \
-		--pull --no-cache=true --rm \
-		--build-arg BUILD_IMAGE=$(IMAGE) \
-		--build-arg REPO=$(RUST_REPO) \
-		--build-arg VCS_REF=$(VCS_REF)
-
-.PHONY:publish-rust
-publish-rust: ## Publish superset rust image (see target rust-image)
-	$(DOCKER) tag $(RUST_REPO):$(BUILD_TAG) docker.pkg.github.com/answerbook/docker-images/$(RUST_REPO):latest
-	$(DOCKER) tag $(RUST_REPO):$(BUILD_TAG) us.gcr.io/logdna-k8s/$(RUST_REPO):latest
-	$(DOCKER) push docker.pkg.github.com/answerbook/docker-images/$(RUST_REPO):latest
-	$(DOCKER) push us.gcr.io/logdna-k8s/$(RUST_REPO):latest
-
-.PHONY:clean-rust-image
-clean-rust-image:
-	$(call CLEAN_DOCKER_IMAGES,--filter label=com.logdna.stage=$(RUST_REPO)-build $(CLEAN_ADDTL_FILTERS))
-	$(call CLEAN_DOCKER_IMAGES,--filter label=com.logdna.stage=$(RUST_REPO)-build $(CLEAN_ADDTL_FILTERS))
 
 .PHONY:help
 help: ## Prints out a helpful description of each possible target

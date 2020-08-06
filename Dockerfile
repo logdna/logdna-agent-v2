@@ -2,12 +2,6 @@ ARG BUILD_IMAGE
 
 FROM ${BUILD_IMAGE} as build
 
-ARG REPO
-ARG VCS_REF
-
-LABEL com.logdna.stage="${REPO}-build"
-LABEL com.logdna.tag="${VCS_REF}"
-
 ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 
@@ -59,9 +53,6 @@ ARG BUILD_TIMESTAMP
 ARG VCS_REF
 ARG VCS_URL
 ARG BUILD_VERSION
-
-LABEL com.logdna.stage="${REPO}-final"
-LABEL com.logdna.tag="${VCS_REF}"
 
 LABEL org.opencontainers.image.created="${BUILD_TIMESTAMP}"
 LABEL org.opencontainers.image.authors="LogDNA <support@logdna.com>"
