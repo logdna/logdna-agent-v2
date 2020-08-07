@@ -37,7 +37,7 @@ else
 	CLEAN_TAG := $(BUILD_TAG)
 endif
 
-CLEAN_DOCKER_IMAGES = if [[ ! -z "docker images -q $(1)" ]]; then docker images -q $(1) | xargs rmi -f; fi
+CLEAN_DOCKER_IMAGES = if [[ ! -z "docker images -q $(1)" ]]; then docker images -q $(1) | xargs docker rmi -f; fi
 
 PULL ?= 1
 ifeq ($(PULL), 1)
