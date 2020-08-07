@@ -56,6 +56,7 @@ endif
 .PHONY:build
 build: ## Build the agent. Set RELEASE=1 to build a release image - defaults to 0
 	$(CARGO) build $(CARGO_COMPILE_OPTS)
+	strip target/release/logdna-agent
 
 .PHONY:clean
 clean: ## Clean all artifacts from the build process

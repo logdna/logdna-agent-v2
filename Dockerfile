@@ -43,7 +43,6 @@ COPY . .
 
 # Rebuild the agent
 RUN make build RELEASE=1
-RUN strip target/release/logdna-agent
 
 # Use ubuntu as the final base image
 FROM ubuntu:18.04
