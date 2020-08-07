@@ -11,11 +11,11 @@ pipeline {
     stages {
         stage('Test') {
             steps {
-                sh "make -f Makefile.docker test IMAGE_REPO=${RUST_IMAGE_REPO}"
+                sh "make docker-test IMAGE_REPO=${RUST_IMAGE_REPO}"
             }
             post {
                 success {
-                    sh "make -f Makefile.docker clean IMAGE_REPO=${RUST_IMAGE_REPO}"
+                    sh "make docker-clean IMAGE_REPO=${RUST_IMAGE_REPO}"
                 }
             }
         }
@@ -23,7 +23,7 @@ pipeline {
             stages {
                 stage('Build Image') {
                     steps {
-                        sh "make -f Makefile.docker build-image PULL=0 IMAGE_REPO=${RUST_IMAGE_REPO}"
+                        sh "make docker-build-image PULL=0 IMAGE_REPO=${RUST_IMAGE_REPO}"
                     }
                 }
                 stage('Publish Images') {
@@ -32,8 +32,12 @@ pipeline {
                             when {
                                 branch pattern: "\\d\\.\\d", comparator: "REGEXP"
                             }
+                            input {
+                                message "Should we publish the versioned image?"
+                                ok "Publish image"
+                            }
                             steps {
-                                sh 'make -f Makefile.docker publish-public'
+                                sh 'make docker-publish-public'
                             }
                         }
                         stage('Publish Private Images') {
@@ -41,7 +45,7 @@ pipeline {
                                 branch 'master'
                             }
                             steps {
-                                sh 'make -f Makefile.docker publish-private'
+                                sh 'make docker-publish-private'
                             }
                         }
                     }
@@ -49,7 +53,7 @@ pipeline {
             }
             post {
                 always {
-                    sh 'make -f Makefile.docker clean-images'
+                    sh 'make docker-clean-images'
                 }
             }
         }
