@@ -11,7 +11,7 @@ pipeline {
     stages {
         stage('Test') {
             steps {
-                sh "make docker-test IMAGE_REPO=${RUST_IMAGE_REPO}"
+                sh "make docker-test-all-flow IMAGE_REPO=${RUST_IMAGE_REPO}"
             }
             post {
                 success {
@@ -23,7 +23,7 @@ pipeline {
             stages {
                 stage('Build Image') {
                     steps {
-                        sh "make docker-build-image PULL=0 IMAGE_REPO=${RUST_IMAGE_REPO}"
+                        sh "make docker-build-image IMAGE_REPO=${RUST_IMAGE_REPO}"
                     }
                 }
                 stage('Publish Images') {

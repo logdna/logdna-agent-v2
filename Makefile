@@ -1,7 +1,7 @@
 REPO := logdna-agent-v2
 
 # The image repo and tag can be modified e.g.
-# `make -f Makefile.docker build IMAGE=docker.io/rust:1.42.0`
+# `make docker-build IMAGE=docker.io/rust:1.42.0`
 IMAGE_REPO ?= docker.io/rust
 IMAGE_TAG ?= 1.42
 IMAGE ?= $(IMAGE_REPO):$(IMAGE_TAG)
@@ -44,52 +44,36 @@ else
 	PULL_OPTS :=
 endif
 
-CARGO := cargo
-RUSTUP := rustup
-
+RELEASE ?= 0
 ifeq ($(RELEASE), 1)
-	CARGO_COMPILE_OPTS := --release
+	BUILD_OPTS := --profile release
 else
-	CARGO_COMPILE_OPTS :=
+	BUILD_OPTS :=
 endif
-
-.PHONY:build
-build: ## Build the agent. Set RELEASE=1 to build a release image - defaults to 0
-	$(CARGO) build $(CARGO_COMPILE_OPTS)
-	strip target/release/logdna-agent
-
-.PHONY:clean
-clean: ## Clean all artifacts from the build process
-	$(CARGO) clean
-
-.PHONY:test
-test: ## Check rust syntax, docker syntax, rust warnings, outdated dependencies, security vulnerabilities, and unit tests
-	$(CARGO) fmt -- --check
-	$(CARGO) clippy --all-targets $(CARGO_COMPILE_OPTS) -- -D warnings
-	$(CARGO) +nightly udeps --all-targets $(CARGO_COMPILE_OPTS)
-	$(CARGO) audit
-	$(CARGO) test $(CARGO_COMPILE_OPTS)
-
-.PHONY:test-deps
-test-deps: ## Install dependencies needed for the test target
-	$(RUSTUP) update
-	$(RUSTUP) toolchain install nightly
-	$(RUSTUP) component add clippy
-	$(RUSTUP) component add rustfmt
-	$(CARGO) +nightly install cargo-udeps
-	$(CARGO) install cargo-audit
 
 .PHONY:docker-build
 docker-build: ## (Runs in a docker container) Build the agent. Set RELEASE=1 to build a release image - defaults to 0
-	$(DOCKER_RUN) /bin/sh -c "make build RELEASE=$(RELEASE) && $(CHOWN)"
+	$(DOCKER_RUN) /bin/sh -c "cargo make build $(BUILD_OPTS) && $(CHOWN)"
+
+.PHONY:docker-build-flow
+docker-build-flow: ## (Runs in a docker container) Clean any build artifacts and then build a fresh agent. Set RELEASE=1 to build a release image - defaults to 0
+	$(DOCKER_RUN) /bin/sh -c "cargo make build-flow $(BUILD_OPTS) && $(CHOWN)"
 
 .PHONY:docker-test
-docker-test: ## (Runs in a docker container) Installs the necessary dependencies and then checks rust syntax, docker syntax, rust warnings, outdated dependencies, security vulnerabilities, and unit tests
-	$(DOCKER_RUN) /bin/sh -c "make test && $(CHOWN)"
+docker-test: ## (Runs in a docker container) Run unit tests
+	$(DOCKER_RUN) /bin/sh -c "cargo make test && $(CHOWN)"
+
+.PHONY:docker-test-flow
+docker-test-flow: ## (Runs in a docker container) Clean any build artifacts and then run unit tests
+	$(DOCKER_RUN) /bin/sh -c "cargo make test-flow && $(CHOWN)"
+
+.PHONY:docker-test-all-flow
+docker-test-all-flow: ## (Runs in a docker container) Clean any build artifacts and then checks rust syntax, docker syntax, rust warnings, outdated dependencies, security vulnerabilities, and finally runs unit tests
+	$(DOCKER_RUN) /bin/sh -c "cargo make test-all-flow && $(CHOWN)"
 
 .PHONY:docker-clean
 docker-clean: ## (Runs in a docker container) Clean all artifacts from the build process
-	$(DOCKER_RUN) /bin/sh -c "make clean && $(CHOWN)"
+	$(DOCKER_RUN) /bin/sh -c "cargo make clean && $(CHOWN)"
 
 .PHONY:docker-clean-images
 docker-clean-images: ## Cleans the intermediate and final agent images left over from the build-image target

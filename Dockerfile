@@ -11,7 +11,7 @@ WORKDIR /opt/logdna-agent-v2
 # Only add dependency lists first for caching
 COPY Cargo.lock                     .
 COPY Cargo.toml                     .
-COPY Makefile                       .
+COPY Makefile.toml                  .
 COPY bin/Cargo.toml                 bin/Cargo.toml
 COPY common/config-macro/Cargo.toml common/config-macro/
 COPY common/config/Cargo.toml       common/config/
@@ -42,7 +42,7 @@ RUN grep -aL "github.com" target/release/deps/* | xargs rm \
 COPY . .
 
 # Rebuild the agent
-RUN make build RELEASE=1
+RUN cargo make build --profile release
 
 # Use ubuntu as the final base image
 FROM ubuntu:18.04

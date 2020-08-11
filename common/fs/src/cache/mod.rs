@@ -888,7 +888,7 @@ mod tests {
     use std::fs::{copy, create_dir, hard_link, remove_dir_all, remove_file, rename, File};
     use std::os::unix::fs::symlink;
     use std::panic;
-    use tempdir::TempDir;
+    use tempfile::TempDir;
 
     lazy_static! {
         static ref LOGGER: () = env_logger::init();
@@ -903,7 +903,7 @@ mod tests {
         FileSystem::new(vec![path], rules)
     }
 
-    fn run_test<T: FnOnce() -> () + panic::UnwindSafe>(test: T) {
+    fn run_test<T: FnOnce() + panic::UnwindSafe>(test: T) {
         #![allow(unused_must_use, clippy::clone_on_copy)]
         LOGGER.clone();
         let result = panic::catch_unwind(|| {
@@ -917,7 +917,7 @@ mod tests {
     #[test]
     fn filesystem_rotate_create_move() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let mut fs = new_fs::<()>(path.clone(), None);
@@ -966,7 +966,7 @@ mod tests {
     #[test]
     fn filesystem_rotate_create_copy() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let mut fs = new_fs::<()>(path.clone(), None);
@@ -1016,7 +1016,7 @@ mod tests {
     #[test]
     fn filesystem_create_dir() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let mut fs = new_fs::<()>(path.clone(), None);
@@ -1031,7 +1031,7 @@ mod tests {
     #[test]
     fn filesystem_create_file() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let mut fs = new_fs::<()>(path.clone(), None);
@@ -1047,7 +1047,7 @@ mod tests {
     #[test]
     fn filesystem_create_symlink() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let mut fs = new_fs::<()>(path.clone(), None);
@@ -1081,7 +1081,7 @@ mod tests {
     #[test]
     fn filesystem_create_hardlink() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let mut fs = new_fs::<()>(path.clone(), None);
@@ -1115,7 +1115,7 @@ mod tests {
     #[test]
     fn filesystem_delete_filled_dir() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let file_path = path.join("file.log");
@@ -1146,7 +1146,7 @@ mod tests {
     #[test]
     fn filesystem_delete_file() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let file_path = path.join("file");
@@ -1167,7 +1167,7 @@ mod tests {
     #[test]
     fn filesystem_delete_symlink() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let a = path.join("a");
@@ -1189,7 +1189,7 @@ mod tests {
     #[test]
     fn filesystem_delete_symlink_pointee() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let a = path.join("a");
@@ -1211,7 +1211,7 @@ mod tests {
     #[test]
     fn filesystem_delete_hardlink() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let a = path.join("a");
@@ -1237,7 +1237,7 @@ mod tests {
     #[test]
     fn filesystem_delete_hardlink_pointee() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let a = path.join("a");
@@ -1259,7 +1259,7 @@ mod tests {
     #[test]
     fn filesystem_move_dir_internal() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let old_dir_path = path.join("old");
@@ -1319,7 +1319,7 @@ mod tests {
     #[test]
     fn filesystem_move_dir_out() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let old_dir_path = path.join("old");
@@ -1348,7 +1348,7 @@ mod tests {
     #[test]
     fn filesystem_move_dir_in() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let old_dir_path = path.join("old");
@@ -1409,7 +1409,7 @@ mod tests {
     #[test]
     fn filesystem_move_file_internal() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let mut fs = new_fs::<()>(path.clone(), None);
@@ -1437,7 +1437,7 @@ mod tests {
     #[test]
     fn filesystem_move_file_out() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let watch_path = path.join("watch");
@@ -1467,7 +1467,7 @@ mod tests {
     #[test]
     fn filesystem_move_file_in() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let watch_path = path.join("watch");
@@ -1502,7 +1502,7 @@ mod tests {
     #[test]
     fn filesystem_move_symlink_file_out() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let watch_path = path.join("watch");
@@ -1537,7 +1537,7 @@ mod tests {
     #[test]
     fn filesystem_watch_symlink_w_excluded_target() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let mut rules = Rules::new();
@@ -1569,7 +1569,7 @@ mod tests {
     #[test]
     fn filesystem_resolve_valid_paths() {
         run_test(|| {
-            let tempdir = TempDir::new("filesystem").unwrap();
+            let tempdir = TempDir::new().unwrap();
             let path = tempdir.path().to_path_buf();
 
             let test_dir_path = path.join("testdir");

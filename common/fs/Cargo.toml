@@ -24,4 +24,4 @@ env_logger = "0.7"
 lazy_static = "1.4"
 
 [dev-dependencies]
-tempdir = "0.3"
+tempfile = "3.1"
