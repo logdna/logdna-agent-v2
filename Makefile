@@ -93,7 +93,7 @@ release-major: ## Create a new major beta release and push to github
 	$(call CHANGE_VERSION,$(NEW_VERSION))
 	$(DOCKER_RUN) $(ENTRYPOINT) "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
-	git commit -sS -m "[Beta] Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
+	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
 
@@ -103,36 +103,39 @@ release-minor: ## Create a new minor beta release and push to github
 	$(call CHANGE_VERSION,$(NEW_VERSION))
 	$(DOCKER_RUN) $(ENTRYPOINT) "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
-	git commit -sS -m "[Beta] Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
+	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
 
 .PHONY:release-patch
 release-patch: ## Create a new patch beta release and push to github
-	$(call CHANGE_VERSION,$(MAJOR_VERSION).$(MINOR_VERSION).$(shell expr $(PATCH_VERSION) + 1)-beta.1)
+	$(eval NEW_VERSION := $(MAJOR_VERSION).$(MINOR_VERSION).$(shell expr $(PATCH_VERSION) + 1)-beta.1)
+	$(call CHANGE_VERSION,$(NEW_VERSION))
 	$(DOCKER_RUN) $(ENTRYPOINT) "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
-	git commit -sS -m "[Beta] Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
+	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
 
 .PHONY:release-beta
 release-beta: ## Bump the beta version and push to github
 	@if [ "$(BETA_VERSION)" = "0" ]; then echo "Can't create a new beta on top of an existing version, use release-[major|minor|patch] targets instead"; exit 1; fi
-	$(call CHANGE_VERSION,$(MAJOR_VERSION).$(MINOR_VERSION).$(PATCH_VERSION)-beta.$(shell expr $(BETA_VERSION) + 1))
+	$(eval NEW_VERSION := $(MAJOR_VERSION).$(MINOR_VERSION).$(PATCH_VERSION)-beta.$(shell expr $(BETA_VERSION) + 1))
+	$(call CHANGE_VERSION,$(NEW_VERSION))
 	$(DOCKER_RUN) $(ENTRYPOINT) "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
-	git commit -sS -m "[Beta] Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
+	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
 
 .PHONY:release
 release: ## Create a new release from the current beta and push to github
 	@if [ "$(BETA_VERSION)" = "0" ]; then echo "Can't release from a non-beta version"; exit 1; fi
-	$(call CHANGE_VERSION,$(MAJOR_VERSION).$(MINOR_VERSION).$(PATCH_VERSION))
+	$(eval NEW_VERSION := $(MAJOR_VERSION).$(MINOR_VERSION).$(PATCH_VERSION))
+	$(call CHANGE_VERSION,$(NEW_VERSION))
 	$(DOCKER_RUN) $(ENTRYPOINT) "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
-	git commit -sS -m "[Release] Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
+	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
 
