@@ -1542,7 +1542,9 @@ mod tests {
 
             let mut rules = Rules::new();
             rules.add_inclusion(GlobRule::new("*.log").unwrap());
-            rules.add_inclusion(GlobRule::new(&*format!("{}{}", tempdir.path().to_str().unwrap(), "*")).unwrap());
+            rules.add_inclusion(
+                GlobRule::new(&*format!("{}{}", tempdir.path().to_str().unwrap(), "*")).unwrap(),
+            );
             rules.add_exclusion(GlobRule::new("*.tmp").unwrap());
 
             let file_path = path.join("test.tmp");
