@@ -152,9 +152,10 @@ build-image: ## Build a docker image as specified in the Dockerfile
 	$(DOCKER) tag $(REPO):$(BUILD_TAG) $(REPO):$(BUILD_VERSION)
 
 .PHONY:publish-image
-publish: ## Publish SemVer compliant releases to our registroies
-	for image in $(DOCKER_PUBLIC_IMAGE) $(DOCKER_IBM_IMAGE) $(DOCKER_PRIVATE_IMAGE); do \
-		for version in $(MAJOR_VERSION) $(MINOR_VERSION) $(PATCH_VERSION) $(BUILD_VERSION) latest; do \
+publish-image: ## Publish SemVer compliant releases to our registroies
+	$(eval TARGET_VERSIONS := $(BUILD_VERSION) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION) latest"; fi))
+	@for image in $(DOCKER_PRIVATE_IMAGE) $(DOCKER_PUBLIC_IMAGE) $(DOCKER_IBM_IMAGE); do \
+		for version in $(TARGET_VERSIONS); do \
 			$(DOCKER) tag $(REPO):$(BUILD_TAG) $${image}:$${version}; \
 			$(DOCKER) push $${image}:$${version}; \
 		done; \
