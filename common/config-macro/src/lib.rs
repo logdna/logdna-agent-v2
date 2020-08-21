@@ -172,7 +172,7 @@ fn generate_tests(
         }
 
         if let Some(test_data) = example_map.get(&field) {
-            if let Some(_) = default_map.get(&field) {
+            if default_map.get(&field).is_some() {
                 tests.append_all(quote! {
                     for env in &[#tokens] {
                         // reset env vars

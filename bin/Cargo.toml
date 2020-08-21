@@ -30,7 +30,7 @@ journald = { package = "journald", path = "../common/journald", optional = true 
 source = { package = "source", path = "../common/source" }
 
 log = "0.4"
-env_logger = "0.6"
+env_logger = "0.7"
 serde_yaml = "0.8"
 jemallocator = "0.3"
 

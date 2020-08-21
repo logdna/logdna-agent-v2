@@ -112,6 +112,7 @@ impl Metrics {
     }
 }
 
+#[derive(Default)]
 pub struct Fs {
     events: AtomicU64,
     creates: AtomicU64,
@@ -237,6 +238,13 @@ impl Memory {
     }
 }
 
+impl Default for Memory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Default)]
 pub struct Http {
     requests: AtomicU64,
     limit_hits: AtomicU64,
@@ -294,6 +302,7 @@ impl Http {
     }
 }
 
+#[derive(Default)]
 pub struct K8s {
     lines: AtomicU64,
     polls: AtomicU64,

@@ -75,10 +75,10 @@ kubectl create -f https://raw.githubusercontent.com/logdna/logdna-agent-v2/maste
 
 ### Building on Linux
 
-The agent requires `v1.42+` of rustc. If the proper versions of rustc and cargo are installed, then simply run the following command to build the agent:
+The agent requires `v1.42+` of rustc [cargo-make](https://github.com/sagiegurari/cargo-make) to build. If the proper versions of rustc, cargo, and cargo-make are installed; then simply run the following command to build the agent:
 
 ```
-cargo build --release
+cargo make build-flow
 ```
 
 The compiled binary will be built to `./target/release/logdna-agent`.
@@ -88,7 +88,7 @@ The compiled binary will be built to `./target/release/logdna-agent`.
 To build a Docker image of the agent, ensure docker is installed properly, verify the docker engine is running, and then run the following command:
 
 ```
-docker build .
+make docker-build-image
 ```
 
 The resulting image can be found by listing the images:

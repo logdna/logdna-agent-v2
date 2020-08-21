@@ -75,50 +75,51 @@ impl TryFrom<RawConfig> for Config {
     fn try_from(raw: RawConfig) -> Result<Self, Self::Error> {
         let mut template_builder = RequestTemplate::builder();
 
-        template_builder.api_key(raw.http.ingestion_key.filter(|s| !s.is_empty()).ok_or(
+        template_builder.api_key(
+            raw.http
+                .ingestion_key
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| {
+                    ConfigError::MissingFieldOrEnvVar(
+                        "http.ingestion_key",
+                        EnvConfig::ingestion_key_vars(),
+                    )
+                })?,
+        );
+
+        let use_ssl = raw.http.use_ssl.ok_or_else(|| {
+            ConfigError::MissingFieldOrEnvVar("http.use_ssl", EnvConfig::use_ssl_vars())
+        })?;
+
+        if use_ssl {
+            template_builder.schema(Schema::Https);
+        } else {
+            template_builder.schema(Schema::Http);
+        }
+
+        let use_compression = raw.http.use_compression.ok_or_else(|| {
             ConfigError::MissingFieldOrEnvVar(
-                "http.ingestion_key",
-                EnvConfig::ingestion_key_vars(),
-            ),
-        )?);
-
-        let use_ssl = raw.http.use_ssl.ok_or(ConfigError::MissingFieldOrEnvVar(
-            "http.use_ssl",
-            EnvConfig::use_ssl_vars(),
-        ))?;
-
-        match use_ssl {
-            true => template_builder.schema(Schema::Https),
-            false => template_builder.schema(Schema::Http),
-        };
-
-        let use_compression = raw
-            .http
-            .use_compression
-            .ok_or(ConfigError::MissingFieldOrEnvVar(
                 "http.use_compression",
                 EnvConfig::use_compression_vars(),
-            ))?;
+            )
+        })?;
 
-        let gzip_level = raw
-            .http
-            .gzip_level
-            .ok_or(ConfigError::MissingFieldOrEnvVar(
-                "http.gzip_level",
-                EnvConfig::gzip_level_vars(),
-            ))?;
+        let gzip_level = raw.http.gzip_level.ok_or_else(|| {
+            ConfigError::MissingFieldOrEnvVar("http.gzip_level", EnvConfig::gzip_level_vars())
+        })?;
 
-        match use_compression {
-            true => template_builder.encoding(Encoding::GzipJson(Compression::new(gzip_level))),
-            false => template_builder.encoding(Encoding::Json),
-        };
+        if use_compression {
+            template_builder.encoding(Encoding::GzipJson(Compression::new(gzip_level)));
+        } else {
+            template_builder.encoding(Encoding::Json);
+        }
 
-        template_builder.host(raw.http.host.filter(|s| !s.is_empty()).ok_or(
-            ConfigError::MissingFieldOrEnvVar("http.host", EnvConfig::host_vars()),
-        )?);
+        template_builder.host(raw.http.host.filter(|s| !s.is_empty()).ok_or_else(|| {
+            ConfigError::MissingFieldOrEnvVar("http.host", EnvConfig::host_vars())
+        })?);
 
-        template_builder.endpoint(raw.http.endpoint.filter(|s| !s.is_empty()).ok_or(
-            ConfigError::MissingFieldOrEnvVar("http.endpoint", EnvConfig::endpoint_vars()),
+        template_builder.endpoint(raw.http.endpoint.filter(|s| !s.is_empty()).ok_or_else(
+            || ConfigError::MissingFieldOrEnvVar("http.endpoint", EnvConfig::endpoint_vars()),
         )?);
 
         template_builder.params(
@@ -131,8 +132,8 @@ impl TryFrom<RawConfig> for Config {
         if let Ok(sys_info) = sys_info::linux_os_release() {
             info = format!(
                 "{}/{}",
-                sys_info.name.unwrap_or("unknown".to_string()),
-                sys_info.version.unwrap_or("unknown".to_string()),
+                sys_info.name.unwrap_or_else(|| "unknown".to_string()),
+                sys_info.version.unwrap_or_else(|| "unknown".to_string()),
             )
         }
 
@@ -157,7 +158,7 @@ impl TryFrom<RawConfig> for Config {
         };
 
         let mut log = LogConfig {
-            dirs: raw.log.dirs.into_iter().map(|s| PathBuf::from(s)).collect(),
+            dirs: raw.log.dirs.into_iter().collect(),
             rules: Rules::new(),
         };
 
@@ -239,7 +240,7 @@ mod tests {
 
     #[test]
     fn e2e() {
-        remove_file("test.yaml");
+        let _ = remove_file("test.yaml");
 
         let file = OpenOptions::new()
             .create(true)
@@ -253,7 +254,7 @@ mod tests {
 
             EnvConfig::ingestion_key_vars()
                 .iter()
-                .for_each(|k| env::remove_var(k));
+                .for_each(env::remove_var);
             env::set_var(&EnvConfig::config_file_vars()[0], "test.yaml");
             assert!(Config::new().is_err());
 
@@ -262,7 +263,7 @@ mod tests {
 
             EnvConfig::inclusion_rules_vars()
                 .iter()
-                .for_each(|k| env::remove_var(k));
+                .for_each(env::remove_var);
             let old_len = Config::new().unwrap().log.rules.inclusion_list().len();
             env::set_var(&EnvConfig::inclusion_rules_vars()[0], "test.log,test2.log");
             assert_eq!(
