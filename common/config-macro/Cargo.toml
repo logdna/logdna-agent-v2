@@ -11,4 +11,4 @@ proc-macro = true
 quote = "0.6"
 syn = { version = "0.15", features = ["full","printing", "extra-traits"] }
 proc-macro2 = "0.4"
-hashbrown = "0.6"
+hashbrown = "0.8"

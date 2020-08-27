@@ -1,9 +1,10 @@
 use http::types::body::LineBuilder;
 
 pub trait Source<'a> {
-    fn drain(&mut self, callback: &mut Box<dyn FnMut(Vec<LineBuilder>) + 'a>);
+    fn drain(&mut self, callback: &mut (dyn FnMut(Vec<LineBuilder>) + 'a));
 }
 
+#[derive(Default)]
 pub struct SourceReader<'a> {
     sources: Vec<Box<dyn Source<'a>>>,
 }

@@ -43,7 +43,7 @@ fn main() {
         }
     };
 
-    spawn(move || Metrics::start());
+    spawn(Metrics::start);
 
     let client = Rc::new(RefCell::new(Client::new(config.http.template)));
     client
