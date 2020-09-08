@@ -1,13 +1,13 @@
 use crate::errors::K8sError;
+use crate::middleware::parse_container_path;
 use futures::stream::StreamExt;
 use http::types::body::{KeyValueMap, LineBuilder};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
-    api::{ListParams, Resource, WatchEvent},
-    client::APIClient,
-    config,
+    api::{ListParams, WatchEvent},
+    config::Config,
     runtime::Informer,
-    Api,
+    Api, Client,
 };
 use metrics::Metrics;
 use middleware::{Middleware, Status};
@@ -16,7 +16,6 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::env;
 use tokio::runtime::{Builder, Runtime};
-use crate::middleware::parse_container_path;
 
 quick_error! {
     #[derive(Debug)]
@@ -63,7 +62,7 @@ impl K8sMetadata {
             }
         };
         let this = runtime.block_on(async {
-            let config = match config::incluster_config() {
+            let config = match Config::from_cluster_env() {
                 Ok(v) => v,
                 Err(e) => {
                     return Err(K8sError::InitializationError(format!(
@@ -72,7 +71,7 @@ impl K8sMetadata {
                     )))
                 }
             };
-            let client = APIClient::new(config);
+            let client = Client::new(config);
 
             let mut params = ListParams::default();
             if let Ok(node) = env::var("NODE_NAME") {
@@ -107,7 +106,7 @@ impl K8sMetadata {
 
             Ok(K8sMetadata {
                 metadata: Mutex::new(metadata),
-                informer: Mutex::new(Informer::new(client, params, Resource::all::<Pod>())),
+                informer: Mutex::new(Informer::new(Api::all(client)).params(params)),
                 runtime: Mutex::new(None),
             })
         });
@@ -163,6 +162,19 @@ impl K8sMetadata {
                     .lock()
                     .remove(&(pod_meta_data.name, pod_meta_data.namespace));
                 Metrics::k8s().increment_deletes();
+            }
+            WatchEvent::Bookmark(pod) => {
+                let pod_meta_data = match PodMetadata::try_from(pod) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        warn!("ignoring pod deleted event: {}", e);
+                        return;
+                    }
+                };
+                debug!(
+                    "got bookmark event for pod=\"{}\",namespace=\"{}\"",
+                    &pod_meta_data.name, &pod_meta_data.namespace
+                )
             }
             WatchEvent::Error(e) => {
                 debug!("kubernetes api error event: {:?}", e);
@@ -242,10 +254,10 @@ impl TryFrom<k8s_openapi::api::core::v1::Pod> for PodMetadata {
             namespace,
             labels: real_pod_meta
                 .labels
-                .map_or_else(|| KeyValueMap::new(), |v| v.into()),
+                .map_or_else(KeyValueMap::new, |v| v.into()),
             annotations: real_pod_meta
                 .annotations
-                .map_or_else(|| KeyValueMap::new(), |v| v.into()),
+                .map_or_else(KeyValueMap::new, |v| v.into()),
         })
     }
 }

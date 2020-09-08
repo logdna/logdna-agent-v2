@@ -19,7 +19,7 @@ impl FSSource {
 }
 
 impl<'a> Source<'a> for FSSource {
-    fn drain(&mut self, mut callback: &mut Box<dyn FnMut(Vec<LineBuilder>) + 'a>) {
+    fn drain(&mut self, mut callback: &mut (dyn FnMut(Vec<LineBuilder>) + 'a)) {
         let tailer = &mut self.tailer;
         tailer.process(&mut callback);
     }

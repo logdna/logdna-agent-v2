@@ -1,5 +1,6 @@
-# select build image
-FROM rust:1.42 as build
+ARG BUILD_IMAGE
+
+FROM ${BUILD_IMAGE} as build
 
 ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
@@ -24,8 +25,8 @@ COPY common/source/Cargo.toml       common/source/
 # Create required scaffolding for dependencies
 RUN LIBDIRS=$(find . -name Cargo.toml -type f -mindepth 2 | sed 's/Cargo.toml//') \
     && for LIBDIR in ${LIBDIRS}; do \
-        mkdir ${LIBDIR}/src \
-        && touch ${LIBDIR}/src/lib.rs; \
+        mkdir "${LIBDIR}/src" \
+        && touch "${LIBDIR}/src/lib.rs"; \
     done \
     && echo "fn main() {}" > bin/src/main.rs
 
@@ -40,11 +41,29 @@ RUN grep -aL "github.com" target/release/deps/* | xargs rm \
 COPY . .
 
 # Rebuild the agent
-RUN cargo build --release
-RUN strip target/release/logdna-agent
+RUN cargo build --release && strip ./target/release/logdna-agent
 
 # Use ubuntu as the final base image
 FROM ubuntu:18.04
+
+ARG REPO
+ARG BUILD_TIMESTAMP
+ARG VCS_REF
+ARG VCS_URL
+ARG BUILD_VERSION
+
+LABEL org.opencontainers.image.created="${BUILD_TIMESTAMP}"
+LABEL org.opencontainers.image.authors="LogDNA <support@logdna.com>"
+LABEL org.opencontainers.image.url="https://logdna.com"
+LABEL org.opencontainers.image.documentation=""
+LABEL org.opencontainers.image.source="${VCS_URL}"
+LABEL org.opencontainers.image.version="${BUILD_VERSION}"
+LABEL org.opencontainers.image.revision="${VCS_REF}"
+LABEL org.opencontainers.image.vendor="LogDNA Inc."
+LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.ref.name=""
+LABEL org.opencontainers.image.title="LogDNA Agent"
+LABEL org.opencontainers.image.description="The blazingly fast, resource efficient log collection client"
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"

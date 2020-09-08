@@ -76,7 +76,7 @@ impl Default for HttpConfig {
             gzip_level: Some(2),
             ingestion_key: None,
             params: Params::builder()
-                .hostname(get_hostname().unwrap_or(String::new()))
+                .hostname(get_hostname().unwrap_or_default())
                 .build()
                 .ok(),
             body_size: Some(2 * 1024 * 1024),

@@ -44,7 +44,7 @@ pub mod source {
                 .seek(JournalSeek::Tail)
                 .expect("Could not seek to tail of journald logs");
 
-            JournaldSource { reader: reader }
+            JournaldSource { reader }
         }
 
         fn process_next_record(&mut self) -> RecordStatus {

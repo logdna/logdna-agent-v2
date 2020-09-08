@@ -13,6 +13,7 @@ pub trait Middleware: Send + Sync + 'static {
     fn process(&self, lines: Vec<LineBuilder>) -> Status;
 }
 
+#[derive(Default)]
 pub struct Executor {
     middlewares: Vec<Arc<dyn Middleware>>,
 }
@@ -50,9 +51,10 @@ impl Executor {
             }
         }
 
-        match skipped {
-            true => None,
-            false => Some(lines),
+        if skipped {
+            None
+        } else {
+            Some(lines)
         }
     }
 }
