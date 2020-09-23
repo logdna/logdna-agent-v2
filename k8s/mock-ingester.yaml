@@ -8,6 +8,81 @@ metadata:
     app.kubernetes.io/instance: logdna-agent
     app.kubernetes.io/version: 2.1.9-beta.2
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: logdna-agent
+  namespace: logdna-agent
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 2.1.9-beta.2
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: logdna-agent
+  name: logdna-agent
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 2.1.9-beta.2
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get","list", "create", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: logdna-agent
+  namespace: logdna-agent
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 2.1.9-beta.2
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: logdna-agent
+subjects:
+  - kind: ServiceAccount
+    name: logdna-agent
+    namespace: logdna-agent
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1beta1
+metadata:
+  name: logdna-agent
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 2.1.9-beta.2
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get","list", "create", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get","list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: logdna-agent
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 2.1.9-beta.2
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: logdna-agent
+subjects:
+  - kind: ServiceAccount
+    name: logdna-agent
+    namespace: logdna-agent
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -103,78 +178,3 @@ spec:
         - name: logdnahostname
           hostPath:
             path: /etc/hostname
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: logdna-agent
-  namespace: logdna-agent
-  labels:
-    app.kubernetes.io/name: logdna-agent
-    app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.1.9-beta.2
----
-kind: ClusterRole
-apiVersion: rbac.authorization.k8s.io/v1beta1
-metadata:
-  name: logdna-agent
-  labels:
-    app.kubernetes.io/name: logdna-agent
-    app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.1.9-beta.2
-rules:
-  - apiGroups: [""]
-    resources: ["events"]
-    verbs: ["get","list", "create", "watch"]
-  - apiGroups: [""]
-    resources: ["pods"]
-    verbs: ["get","list", "watch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  namespace: logdna-agent
-  name: logdna-agent
-  labels:
-    app.kubernetes.io/name: logdna-agent
-    app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.1.9-beta.2
-rules:
-  - apiGroups: [""]
-    resources: ["configmaps"]
-    verbs: ["get","list", "create", "watch"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: logdna-agent
-  namespace: logdna-agent
-  labels:
-    app.kubernetes.io/name: logdna-agent
-    app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.1.9-beta.2
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: logdna-agent
-subjects:
-  - kind: ServiceAccount
-    name: logdna-agent
-    namespace: logdna-agent
----
-apiVersion: rbac.authorization.k8s.io/v1beta1
-kind: ClusterRoleBinding
-metadata:
-  name: logdna-agent
-  labels:
-    app.kubernetes.io/name: logdna-agent
-    app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.1.9-beta.2
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: logdna-agent
-subjects:
-  - kind: ServiceAccount
-    name: logdna-agent
-    namespace: logdna-agent
