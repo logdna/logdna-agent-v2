@@ -3,6 +3,10 @@ kind: DaemonSet
 metadata:
   name: logdna-agent
   namespace: logdna-agent
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 2.1.9-beta.2
 spec:
   updateStrategy:
     type: RollingUpdate
@@ -15,6 +19,9 @@ spec:
     metadata:
       labels:
         app: logdna-agent
+        app.kubernetes.io/name: logdna-agent
+        app.kubernetes.io/instance: logdna-agent
+        app.kubernetes.io/version: 2.1.9-beta.2
     spec:
       serviceAccountName: logdna-agent
       containers:
@@ -82,11 +89,19 @@ kind: ServiceAccount
 metadata:
   name: logdna-agent
   namespace: logdna-agent
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 2.1.9-beta.2
 ---
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1beta1
 metadata:
   name: logdna-agent
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 2.1.9-beta.2
 rules:
   - apiGroups: [""]
     resources: ["events"]
@@ -100,6 +115,10 @@ kind: Role
 metadata:
   namespace: logdna-agent
   name: logdna-agent
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 2.1.9-beta.2
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
@@ -110,6 +129,10 @@ kind: RoleBinding
 metadata:
   name: logdna-agent
   namespace: logdna-agent
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 2.1.9-beta.2
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -123,6 +146,10 @@ apiVersion: rbac.authorization.k8s.io/v1beta1
 kind: ClusterRoleBinding
 metadata:
   name: logdna-agent
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 2.1.9-beta.2
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
