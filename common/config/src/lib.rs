@@ -21,6 +21,12 @@ pub mod env;
 pub mod error;
 pub mod raw;
 
+// Symbols that will be populated in the main.rs file
+extern "Rust" {
+    static PKG_NAME: &'static str;
+    static PKG_VERSION: &'static str;
+}
+
 #[derive(Debug)]
 pub struct Config {
     pub http: HttpConfig,
@@ -137,12 +143,15 @@ impl TryFrom<RawConfig> for Config {
             )
         }
 
-        template_builder.user_agent(format!(
-            "{}/{} ({})",
-            env!("CARGO_PKG_NAME"),
-            env!("CARGO_PKG_VERSION"),
-            info
-        ));
+        // Read the PKG_NAME and PKG_VERSION defined in the main.rs or test module.
+        // Safety: unsafe is required to read from extern statics. This is safe as we control
+        // the externed symbols that are being referenced, they are defined within the agent code base.
+        // The program will not link unless these are defined somewhere in the crate graph and
+        // if there are duplicate symbols with the same name it will also result in a linker error
+        // so as long as the symbols we create are &'static str's then this is completely safe.
+        let (pkg_name, pkg_version) = unsafe { (PKG_NAME, PKG_VERSION) };
+
+        template_builder.user_agent(format!("{}/{} ({})", pkg_name, pkg_version, info));
 
         let http = HttpConfig {
             template: template_builder.build()?,
@@ -217,6 +226,14 @@ pub fn get_hostname() -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+
+    // Provide values for extern symbols PKG_NAME and PKG_VERSION
+    // when building this module on it's own
+    #[no_mangle]
+    pub static PKG_NAME: &str = "test";
+    #[no_mangle]
+    pub static PKG_VERSION: &str = "test";
+
     use std::env;
     use std::fs::{remove_file, OpenOptions};
 
