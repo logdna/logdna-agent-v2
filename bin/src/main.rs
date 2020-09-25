@@ -23,6 +23,15 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 static SLEEP_DURATION: Duration = Duration::from_millis(10);
 
+// Statically include the CARGO_PKG_NAME and CARGO_PKG_VERSIONs in the binary
+// and export under the PKG_NAME and PKG_VERSION symbols.
+// These are used to identify the application and version, for example as part
+// of the user agent string.
+#[no_mangle]
+pub static PKG_NAME: &str = env!("CARGO_PKG_NAME");
+#[no_mangle]
+pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[cfg(use_systemd)]
 fn register_journald_source(source_reader: &mut SourceReader) {
     source_reader.register(JournaldSource::new());
