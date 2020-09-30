@@ -73,6 +73,10 @@ pub struct Config {
     #[env(LOGDNA_INCLUSION_REGEX_RULES, LOGDNA_INCLUDE_REGEX)]
     #[example("/var/log/.*,/var/data/.*")]
     pub inclusion_regex_rules: Option<EnvList<String>>,
+
+    #[env(LOGDNA_JOURNALD_PATHS)]
+    #[example("/var/log/journal")]
+    pub journald_paths: Option<EnvList<PathBuf>>,
 }
 
 impl Config {
@@ -193,6 +197,11 @@ impl Config {
                     raw.log.include = Some(rules);
                 }
             }
+        }
+
+        if let Some(mut v) = self.journald_paths {
+            let paths = raw.journald.paths.get_or_insert(Vec::new());
+            paths.append(&mut v);
         }
 
         raw

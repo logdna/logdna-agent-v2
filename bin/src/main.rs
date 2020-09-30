@@ -7,10 +7,10 @@ use std::thread::spawn;
 use config::Config;
 use env_logger::Env;
 use fs::tail::Tailer as FSSource;
+use futures::future::Either;
 use futures::StreamExt;
 use http::client::Client;
-#[cfg(use_systemd)]
-use journald::source::JournaldSource;
+use journald::source::create_source;
 use k8s::middleware::K8sMetadata;
 use metrics::Metrics;
 use middleware::Executor;
@@ -31,14 +31,6 @@ static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 pub static PKG_NAME: &str = env!("CARGO_PKG_NAME");
 #[no_mangle]
 pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-// #[cfg(use_systemd)]
-// fn register_journald_source(source_reader: &mut SourceReader) {
-//     source_reader.register(JournaldSource::new());
-// }
-
-// #[cfg(not(use_systemd))]
-// fn register_journald_source(_source_reader: &mut SourceReader) {}
 
 fn main() {
     env_logger::from_env(Env::default().default_filter_or("info")).init();
@@ -71,18 +63,25 @@ fn main() {
 
     let mut fs_tailer_buf = [0u8; 4096];
     let mut fs_source = FSSource::new(config.log.dirs, config.log.rules);
+
+    let journald_source = create_source(&config.journald.paths);
     // Create the runtime
     let mut rt = Runtime::new().unwrap();
 
     // Execute the future, blocking the current thread until completion
     rt.block_on(async {
-        let fs_source = fs_source
-            .process(&mut fs_tailer_buf)
-            .expect("except Failed to create FS Tailer");
+        let fs_source = Either::Left(
+            fs_source
+                .process(&mut fs_tailer_buf)
+                .expect("except Failed to create FS Tailer"),
+        );
+        let journald_source = Either::Right(journald_source);
         pin_mut!(fs_source);
+        pin_mut!(journald_source);
 
         let mut sources = futures::stream::SelectAll::new();
         sources.push(&mut fs_source);
+        sources.push(&mut journald_source);
 
         sources
             .for_each(|lines| async {
