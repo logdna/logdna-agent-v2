@@ -20,6 +20,7 @@ pub struct Metrics {
     memory: Memory,
     http: Http,
     k8s: K8s,
+    journald: Journald,
 }
 
 impl Metrics {
@@ -30,6 +31,7 @@ impl Metrics {
             memory: Memory::new(),
             http: Http::new(),
             k8s: K8s::new(),
+            journald: Journald::new(),
         }
     }
 
@@ -49,6 +51,7 @@ impl Metrics {
         Metrics::memory().reset();
         Metrics::http().reset();
         Metrics::k8s().reset();
+        Metrics::journald().reset();
     }
 
     pub fn elapsed() -> u64 {
@@ -71,11 +74,16 @@ impl Metrics {
         &METRICS.k8s
     }
 
+    pub fn journald() -> &'static Journald {
+        &METRICS.journald
+    }
+
     pub fn print() -> String {
         let fs = Metrics::fs();
         let memory = Metrics::memory();
         let http = Metrics::http();
         let k8s = Metrics::k8s();
+        let journald = Metrics::journald();
 
         let object = object! {
             "fs" => object!{
@@ -105,6 +113,10 @@ impl Metrics {
                 "deletes" => k8s.read_deletes(),
                 "events" => k8s.read_events(),
                 "notifies" => k8s.read_notifies(),
+            },
+            "journald" => object!{
+                "lines" => journald.read_lines(),
+                "bytes" => journald.read_bytes(),
             },
         };
 
@@ -379,5 +391,41 @@ impl K8s {
 
     pub fn read_notifies(&self) -> u64 {
         self.notifies.load(Ordering::Relaxed)
+    }
+}
+
+#[derive(Default)]
+pub struct Journald {
+    lines: AtomicU64,
+    bytes: AtomicU64,
+}
+
+impl Journald {
+    pub fn new() -> Self {
+        Self {
+            lines: AtomicU64::new(0),
+            bytes: AtomicU64::new(0),
+        }
+    }
+
+    pub fn reset(&self) {
+        self.lines.store(0, Ordering::Relaxed);
+        self.bytes.store(0, Ordering::Relaxed);
+    }
+
+    pub fn increment_lines(&self) {
+        self.lines.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn read_lines(&self) -> u64 {
+        self.lines.load(Ordering::Relaxed)
+    }
+
+    pub fn add_bytes(&self, num: u64) {
+        self.bytes.fetch_add(num, Ordering::Relaxed);
+    }
+
+    pub fn read_bytes(&self) -> u64 {
+        self.bytes.load(Ordering::Relaxed)
     }
 }

@@ -26,7 +26,7 @@ config = { package = "config", path = "../common/config" }
 middleware = { package = "middleware", path = "../common/middleware" }
 k8s = { package = "k8s", path = "../common/k8s" }
 metrics = { package = "metrics", path = "../common/metrics" }
-journald = { package = "journald", path = "../common/journald", optional = true }
+journald = { package = "journald", path = "../common/journald" }
 
 log = "0.4"
 env_logger = "0.7"
@@ -39,7 +39,7 @@ pin-utils = "0.1"
 [features]
 default = []
 integration_tests = []
-use_systemd = ["journald", "journald/use_systemd"]
+journald_tests = ["journald/journald_tests"]
 
 [dev-dependencies]
 assert_cmd = "1"

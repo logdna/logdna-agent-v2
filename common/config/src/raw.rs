@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 pub struct Config {
     pub http: HttpConfig,
     pub log: LogConfig,
+    pub journald: JournaldConfig,
 }
 
 impl Config {
@@ -51,6 +52,12 @@ pub struct LogConfig {
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+pub struct JournaldConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paths: Option<Vec<PathBuf>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct Rules {
     pub glob: Vec<String>,
     pub regex: Vec<String>,
@@ -61,6 +68,7 @@ impl Default for Config {
         Config {
             http: HttpConfig::default(),
             log: LogConfig::default(),
+            journald: JournaldConfig::default(),
         }
     }
 }
@@ -110,6 +118,12 @@ impl Default for LogConfig {
                 regex: Vec::new(),
             }),
         }
+    }
+}
+
+impl Default for JournaldConfig {
+    fn default() -> Self {
+        JournaldConfig { paths: None }
     }
 }
 

@@ -31,6 +31,7 @@ extern "Rust" {
 pub struct Config {
     pub http: HttpConfig,
     pub log: LogConfig,
+    pub journald: JournaldConfig,
 }
 
 #[derive(Debug)]
@@ -44,6 +45,11 @@ pub struct HttpConfig {
 pub struct LogConfig {
     pub dirs: Vec<PathBuf>,
     pub rules: Rules,
+}
+
+#[derive(Debug)]
+pub struct JournaldConfig {
+    pub paths: Vec<PathBuf>,
 }
 
 impl Config {
@@ -191,7 +197,15 @@ impl TryFrom<RawConfig> for Config {
             }
         }
 
-        Ok(Config { http, log })
+        let journald = JournaldConfig {
+            paths: raw.journald.paths.unwrap_or_default().into_iter().collect(),
+        };
+
+        Ok(Config {
+            http,
+            log,
+            journald,
+        })
     }
 }
 
