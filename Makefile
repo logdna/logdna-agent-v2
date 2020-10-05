@@ -1,9 +1,9 @@
 REPO := logdna-agent-v2
 
 # The image repo and tag can be modified e.g.
-# `make build RUST_IMAGE=docker.io/rust:1.42.0`
-RUST_IMAGE_REPO ?= docker.io/rust
-RUST_IMAGE_TAG ?= 1.42
+# `make build RUST_IMAGE=docker.io/rust:1.42.0 RUST_IMAGE_TAG=latest`
+RUST_IMAGE_REPO ?= docker.io/logdna/build-images
+RUST_IMAGE_TAG ?= rust-buster-stable
 RUST_IMAGE ?= $(RUST_IMAGE_REPO):$(RUST_IMAGE_TAG)
 RUST_IMAGE := $(RUST_IMAGE)
 
