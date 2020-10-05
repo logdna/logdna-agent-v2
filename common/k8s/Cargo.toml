@@ -14,7 +14,7 @@ crossbeam = "0.7"
 regex = "1.0"
 lazy_static = "1.0"
 log = "0.4"
-tokio = { version = "0.2", features = ["full"] }
+tokio = { version = "0.2", features = ["rt-threaded"] }
 futures = "0.3"
 quick-error = "1.0"
 parking_lot = "0.11"
