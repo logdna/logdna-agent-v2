@@ -1,7 +1,5 @@
 library 'magic-butler-catalogue'
 def PROJECT_NAME = 'logdna-agent-v2'
-def RUST_IMAGE_REPO = 'us.gcr.io/logdna-k8s/rust'
-def RUST_IMAGE_TAG = '1.42'
 
 pipeline {
     agent any
@@ -12,17 +10,21 @@ pipeline {
     triggers {
         cron(env.BRANCH_NAME ==~ /\d\.\d/ ? 'H H 1,15 * *' : '')
     }
+    environment {
+        RUST_IMAGE_REPO = 'us.gcr.io/logdna-k8s/rust'
+        RUST_IMAGE_TAG = '1.42'
+    }
     stages {
         stage('Test') {
             steps {
                 sh """
-                    make lint RUST_IMAGE_REPO=${RUST_IMAGE_REPO} RUST_IMAGE_TAG=${RUST_IMAGE_TAG}
-                    make test RUST_IMAGE_REPO=${RUST_IMAGE_REPO} RUST_IMAGE_TAG=${RUST_IMAGE_TAG}
+                    make lint
+                    make test
                 """
             }
             post {
                 success {
-                    sh "make clean RUST_IMAGE_REPO=${RUST_IMAGE_REPO} RUST_IMAGE_TAG=${RUST_IMAGE_TAG}"
+                    sh "make clean"
                 }
             }
         }
@@ -30,7 +32,7 @@ pipeline {
             stages {
                 stage('Build Image') {
                     steps {
-                        sh "make build-image RUST_IMAGE_REPO=${RUST_IMAGE_REPO} RUST_IMAGE_TAG=${RUST_IMAGE_TAG}"
+                        sh "make build-image"
                     }
                 }
                 stage('Check Publish Images') {
