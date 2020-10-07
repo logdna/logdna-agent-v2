@@ -38,4 +38,10 @@ pin-utils = "0.1"
 
 [features]
 default = []
+integration_tests = []
 use_systemd = ["journald", "journald/use_systemd"]
+
+[dev-dependencies]
+assert_cmd = "1"
+predicates = "1"
+tempfile = "3"
