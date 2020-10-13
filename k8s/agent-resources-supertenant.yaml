@@ -115,8 +115,6 @@ spec:
                   key: logdna-agent-key
             - name: LOGDNA_ENDPOINT
               value: /supertenant/logs/ingest
-            - name: RUST_LOG
-              value: info
             - name: NODE_NAME
               valueFrom:
                 fieldRef:

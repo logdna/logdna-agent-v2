@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::thread::spawn;
 
 use config::Config;
+use env_logger::Env;
 use fs::tail::Tailer as FSSource;
 use futures::StreamExt;
 use http::client::Client;
@@ -40,7 +41,7 @@ pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 // fn register_journald_source(_source_reader: &mut SourceReader) {}
 
 fn main() {
-    env_logger::init();
+    env_logger::from_env(Env::default().default_filter_or("info")).init();
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
 
     let config = match Config::new() {
