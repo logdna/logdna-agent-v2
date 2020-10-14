@@ -27,12 +27,14 @@ middleware = { package = "middleware", path = "../common/middleware" }
 k8s = { package = "k8s", path = "../common/k8s" }
 metrics = { package = "metrics", path = "../common/metrics" }
 journald = { package = "journald", path = "../common/journald", optional = true }
-source = { package = "source", path = "../common/source" }
 
 log = "0.4"
 env_logger = "0.7"
 serde_yaml = "0.8"
 jemallocator = "0.3"
+futures = "0.3"
+tokio = { version = "0.2", features = ["rt-threaded"] }
+pin-utils = "0.1"
 
 [features]
 default = []

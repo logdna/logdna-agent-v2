@@ -7,3 +7,5 @@ edition = "2018"
 [dependencies]
 #local
 http = { package = "http", path = "../http" }
+
+tokio = "0.2"

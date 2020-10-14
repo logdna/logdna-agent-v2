@@ -12,7 +12,7 @@ pub mod cache;
 pub mod error;
 /// Traits and types for defining exclusion and inclusion rules
 pub mod rule;
-/// The source for filesystem generated lines
+/// Defines the source implementation for fs
 pub mod source;
 /// Defines the tailer used to tail directories or single files
 pub mod tail;

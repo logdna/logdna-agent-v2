@@ -1,8 +1,11 @@
 use crate::cache::entry::EntryPtr;
 
 /// Represents a filesystem event
-#[derive(Debug)]
-pub enum Event<T> {
+#[derive(Debug, Clone)]
+pub enum Event<T>
+where
+    T: Clone,
+{
     /// A file was created initialized
     Initialize(EntryPtr<T>),
     /// A new file was created
