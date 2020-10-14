@@ -56,19 +56,23 @@ REMOTE_BRANCH := $(shell git branch -vv | awk '/^\*/{split(substr($$4, 2, length
 
 .PHONY:build
 build: ## Build the agent
-	$(RUST_COMMAND) "cargo build"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo build"
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
-	$(RUST_COMMAND) "cargo build --release && strip ./target/release/logdna-agent"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo build --release && strip ./target/release/logdna-agent"
 
 .PHONY:test
 test: ## Run unit tests
-	$(RUST_COMMAND) "cargo test"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo test"
+
+.PHONY:integration-test
+integration-test: ## Run integration tests
+	$(RUST_COMMAND) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full" "cargo test --manifest-path bin/Cargo.toml --features integration_tests -- --nocapture"
 
 .PHONY:clean
 clean: ## Clean all artifacts from the build process
-	$(RUST_COMMAND) "cargo clean"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo clean"
 
 .PHONY:clean-docker
 clean-docker: ## Cleans the intermediate and final agent images left over from the build-image target
@@ -82,19 +86,19 @@ clean-all: clean-docker ## Deep cleans the project and removed any docker images
 
 .PHONY:lint-format
 lint-format: ## Checks for formatting errors
-	$(RUST_COMMAND) "cargo fmt -- --check"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo fmt -- --check"
 
 .PHONY:lint-clippy
 lint-clippy: ## Checks for code errors
-	$(RUST_COMMAND) "cargo clippy --all-targets -- -D warnings"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo clippy --all-targets -- -D warnings"
 
 .PHONY:lint-audit
 lint-audit: ## Audits packages for issues
-	$(RUST_COMMAND) "cargo audit"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo audit"
 
 .PHONY:lint-docker
 lint-docker: ## Lint the Dockerfile for issues
-	$(HADOLINT_COMMAND) "hadolint Dockerfile --ignore DL3006"
+	$(HADOLINT_COMMAND) "" "hadolint Dockerfile --ignore DL3006"
 
 .PHONY:lint
 lint: lint-docker lint-format lint-clippy lint-audit ## Runs all the linters
@@ -106,7 +110,7 @@ release-major: ## Create a new major beta release and push to github
 	@if [ ! "$(REMOTE_BRANCH)" = "master" ]; then echo "Can't create the major beta release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"master\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
-	$(RUST_COMMAND) "cargo generate-lockfile"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
@@ -120,7 +124,7 @@ release-minor: ## Create a new minor beta release and push to github
 	@if [ ! "$(REMOTE_BRANCH)" = "master" ]; then echo "Can't create the minor beta release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"master\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
-	$(RUST_COMMAND) "cargo generate-lockfile"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
@@ -133,7 +137,7 @@ release-patch: ## Create a new patch beta release and push to github
 	@if [ ! "$(REMOTE_BRANCH)" = "$(TARGET_BRANCH)" ]; then echo "Can't create the patch release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"$(TARGET_BRANCH)\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
-	$(RUST_COMMAND) "cargo generate-lockfile"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
@@ -146,7 +150,7 @@ release-beta: ## Bump the beta version and push to github
 	$(eval NEW_VERSION := $(TARGET_BRANCH).$(PATCH_VERSION)-beta.$(shell expr $(BETA_VERSION) + 1))
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
-	$(RUST_COMMAND) "cargo generate-lockfile"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
@@ -159,7 +163,7 @@ release: ## Create a new release from the current beta and push to github
 	$(eval NEW_VERSION := $(TARGET_BRANCH).$(PATCH_VERSION))
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
-	$(RUST_COMMAND) "cargo generate-lockfile"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
