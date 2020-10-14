@@ -27,10 +27,7 @@ pub enum Status {
 impl Status {
     /// Converts a status into a bool, returning true if the status is ok and false otherwise
     pub fn is_ok(&self) -> bool {
-        match self {
-            Status::Ok => true,
-            _ => false,
-        }
+        matches!(self, Status::Ok)
     }
 }
 

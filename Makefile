@@ -8,18 +8,26 @@ RUST_IMAGE ?= $(RUST_IMAGE_REPO):$(RUST_IMAGE_TAG)
 RUST_IMAGE := $(RUST_IMAGE)
 
 HADOLINT_IMAGE_REPO ?= hadolint/hadolint
-HADOLINT_IMAGE_TAG ?= v1.8.0
+HADOLINT_IMAGE_TAG ?= v1.18.0-debian
 HADOLINT_IMAGE ?= $(HADOLINT_IMAGE_REPO):$(HADOLINT_IMAGE_TAG)
-HADLINT_IMAGE := $(HADOLINT_IMAGE)
+HADOLINT_IMAGE := $(HADOLINT_IMAGE)
 
-DOCKER := docker
-DOCKER_DISPATCH := ./docker/dispatch.sh "/build" "$(shell pwd):/build:Z"
+SHELLCHECK_IMAGE_REPO ?= koalaman/shellcheck-alpine
+SHELLCHECK_IMAGE_TAG ?= stable
+SHELLCHECK_IMAGE ?= $(SHELLCHECK_IMAGE_REPO):$(SHELLCHECK_IMAGE_TAG)
+SHELLCHECK_IMAGE := $(SHELLCHECK_IMAGE)
+
+WORKDIR :=/build
+DOCKER := DOCKER_BUILDKIT=1 docker
+DOCKER_DISPATCH := ./docker/dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
 DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/logdna-agent-v2
 DOCKER_PUBLIC_IMAGE := docker.io/logdna/logdna-agent
 DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
 
+export CARGO_CACHE ?= $(shell pwd)/.cargo_cache
 RUST_COMMAND := $(DOCKER_DISPATCH) $(RUST_IMAGE)
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
+SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
 VCS_REF := $(shell git rev-parse --short HEAD)
 VCS_URL := https://github.com/logdna/$(REPO)
@@ -54,6 +62,8 @@ CHANGE_K8S_VERSION = sed 's/\(.*\)app\.kubernetes\.io\/version\(.\).*$$/\1app.ku
 
 REMOTE_BRANCH := $(shell git branch -vv | awk '/^\*/{split(substr($$4, 2, length($$4)-2), arr, "/"); print arr[2]}')
 
+AWS_SHARED_CREDENTIALS_FILE=$(HOME)/.aws/credentials
+
 .PHONY:build
 build: ## Build the agent
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo build"
@@ -72,16 +82,15 @@ integration-test: ## Run integration tests
 
 .PHONY:clean
 clean: ## Clean all artifacts from the build process
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo clean"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "rm -fr target/* \$$CARGO_HOME/registry/* \$$CARGO_HOME/git/*"
 
 .PHONY:clean-docker
 clean-docker: ## Cleans the intermediate and final agent images left over from the build-image target
 	@# Clean any agent images, left over from the multi-stage build
 	if [[ ! -z "$(shell docker images -q $(REPO):$(CLEAN_TAG))" ]]; then docker images -q $(REPO):$(CLEAN_TAG) | xargs docker rmi -f; fi
 
-
 .PHONY:clean-all
-clean-all: clean-docker ## Deep cleans the project and removed any docker images
+clean-all: clean-docker clean ## Deep cleans the project and removed any docker images
 	git clean -xdf
 
 .PHONY:lint-format
@@ -100,8 +109,12 @@ lint-audit: ## Audits packages for issues
 lint-docker: ## Lint the Dockerfile for issues
 	$(HADOLINT_COMMAND) "" "hadolint Dockerfile --ignore DL3006"
 
+.PHONY:lint-shell
+lint-shell: ## Lint the Dockerfile for issues
+	$(SHELLCHECK_COMMAND) "" "shellcheck docker/dispatch.sh"
+
 .PHONY:lint
-lint: lint-docker lint-format lint-clippy lint-audit ## Runs all the linters
+lint: lint-docker lint-shell lint-format lint-clippy lint-audit ## Runs all the linters
 
 .PHONY:release-major
 release-major: ## Create a new major beta release and push to github
@@ -172,13 +185,17 @@ release: ## Create a new release from the current beta and push to github
 .PHONY:build-image
 build-image: ## Build a docker image as specified in the Dockerfile
 	$(DOCKER) build . -t $(REPO):$(BUILD_TAG) \
-		$(PULL_OPTS) --no-cache=true --rm \
+		--progress=plain \
+		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
+		--rm \
 		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
 		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
 		--build-arg REPO=$(REPO) \
 		--build-arg VCS_REF=$(VCS_REF) \
-		--build-arg VCS_URL=$(VCS_URL)
+		--build-arg VCS_URL=$(VCS_URL) \
+		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
+		--build-arg SCCACHE_REGION=$(SCCACHE_REGION)
 
 .PHONY:publish-image
 publish-image: ## Publish SemVer compliant releases to our registroies
