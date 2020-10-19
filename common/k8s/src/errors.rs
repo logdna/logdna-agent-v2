@@ -1,11 +1,9 @@
-quick_error! {
-    #[derive(Debug,Clone)]
-    pub enum K8sError {
-        PodMissingMetaError(descr: &'static str) {
-            display("pod missing {}", descr)
-        }
-        InitializationError(descr: String) {
-            display("failed to initialize kubernetes middleware {}", descr)
-        }
-    }
+use thiserror::Error;
+
+#[derive(Clone, Debug, Error)]
+pub enum K8sError {
+    #[error("pod missing {0}")]
+    PodMissingMetaError(&'static str),
+    #[error("failed to initialize kubernetes middleware {0}")]
+    InitializationError(String),
 }

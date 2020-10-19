@@ -15,28 +15,17 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::env;
+use thiserror::Error;
 use tokio::runtime::{Builder, Runtime};
 
-quick_error! {
-    #[derive(Debug)]
-    enum Error {
-        Io(e: std::io::Error) {
-            from()
-            display("{}", e)
-        }
-        Utf(e: std::string::FromUtf8Error) {
-            from()
-            display("{}", e)
-        }
-        Regex {
-            from()
-            display("failed to parse path")
-        }
-        K8s(e: kube::Error) {
-            from()
-            display("{}", e)
-        }
-    }
+#[derive(Error, Debug)]
+enum Error {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Utf(#[from] std::string::FromUtf8Error),
+    #[error(transparent)]
+    K8s(#[from] kube::Error),
 }
 
 pub struct K8sMetadata {

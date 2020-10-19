@@ -1,7 +1,5 @@
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate quick_error;
 
 pub mod client;
 pub mod limit;

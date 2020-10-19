@@ -1,7 +1,5 @@
 #[macro_use]
 extern crate log;
-#[macro_use]
-extern crate quick_error;
 #[allow(unused_imports)]
 #[macro_use]
 extern crate lazy_static;
