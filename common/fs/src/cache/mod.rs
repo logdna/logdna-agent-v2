@@ -17,8 +17,11 @@ use std::path::{Component, PathBuf};
 use std::ptr::NonNull;
 use std::sync::{Arc, Mutex};
 
+pub mod dir_path;
 pub mod entry;
 pub mod event;
+pub use dir_path::{DirPathBuf, DirPathBufError};
+
 mod watch;
 
 type Children<T> = HashMap<OsString, Box<Entry<T>>>;
@@ -45,7 +48,12 @@ impl<'a, T: 'a + Default> FileSystem<T>
 where
     T: Clone + std::fmt::Debug,
 {
-    pub fn new(inital_dirs: Vec<PathBuf>, rules: Rules) -> Self {
+    pub fn new(initial_dirs: Vec<DirPathBuf>, rules: Rules) -> Self {
+        initial_dirs.iter().for_each(|path| {
+            if !path.is_dir() {
+                panic!("initial dirs must be dirs")
+            }
+        });
         let mut watcher = Watcher::new().expect("unable to initialize inotify");
 
         let root = Box::new(Entry::Dir {
@@ -56,8 +64,8 @@ where
         });
 
         let mut initial_dir_rules = Rules::new();
-        for path in inital_dirs.iter() {
-            append_rules(&mut initial_dir_rules, path.clone());
+        for path in initial_dirs.iter() {
+            append_rules(&mut initial_dir_rules, path.as_ref().into());
         }
 
         let mut fs = Self {
@@ -73,8 +81,11 @@ where
         let root = EntryPtr::from(fs.root.deref_mut());
         fs.register(root);
 
-        for dir in inital_dirs.iter() {
-            let mut path_cpy = dir.clone();
+        for dir in initial_dirs
+            .into_iter()
+            .map(|path| -> PathBuf { path.into() })
+        {
+            let mut path_cpy: PathBuf = dir.clone();
             loop {
                 if !path_cpy.exists() {
                     path_cpy.pop();
@@ -84,7 +95,7 @@ where
                 }
             }
 
-            for path in recursive_scan(dir) {
+            for path in recursive_scan(&dir) {
                 let mut events = Vec::new();
                 fs.insert(&path, &mut events);
                 for event in events {
@@ -896,6 +907,8 @@ fn append_rules(rules: &mut Rules, mut path: PathBuf) {
 mod tests {
     use super::*;
     use crate::rule::{GlobRule, Rules};
+    use crate::test::LOGGER;
+    use std::convert::TryInto;
     use std::fs::{copy, create_dir, hard_link, remove_dir_all, remove_file, rename, File};
     use std::os::unix::fs::symlink;
     use std::panic;
@@ -925,10 +938,6 @@ mod tests {
         }};
     }
 
-    lazy_static! {
-        static ref LOGGER: () = env_logger::init();
-    }
-
     fn new_fs<T: Default + Clone + std::fmt::Debug>(
         path: PathBuf,
         rules: Option<Rules>,
@@ -938,7 +947,13 @@ mod tests {
             rules.add_inclusion(GlobRule::new(r"**").unwrap());
             rules
         });
-        FileSystem::new(vec![path], rules)
+        FileSystem::new(
+            vec![path
+                .as_path()
+                .try_into()
+                .unwrap_or_else(|_| panic!("{:?} is not a directory!", path))],
+            rules,
+        )
     }
 
     fn run_test<T: FnOnce() + panic::UnwindSafe>(test: T) {
@@ -1386,11 +1401,14 @@ mod tests {
     #[test]
     fn filesystem_move_dir_in() {
         run_test(|| {
-            let tempdir = TempDir::new().unwrap();
-            let path = tempdir.path().to_path_buf();
+            let old_tempdir = TempDir::new().unwrap();
+            let old_path = old_tempdir.path().to_path_buf();
 
-            let old_dir_path = path.join("old");
-            let new_dir_path = path.join("new");
+            let new_tempdir = TempDir::new().unwrap();
+            let new_path = new_tempdir.path().to_path_buf();
+
+            let old_dir_path = old_path.join("old");
+            let new_dir_path = new_path.join("new");
             let file_path = old_dir_path.join("file.log");
             let sym_path = old_dir_path.join("sym.log");
             let hard_path = old_dir_path.join("hard.log");
@@ -1399,7 +1417,7 @@ mod tests {
             symlink(&file_path, &sym_path).unwrap();
             hard_link(&file_path, &hard_path).unwrap();
 
-            let fs = Arc::new(Mutex::new(new_fs::<()>(new_dir_path.clone(), None)));
+            let fs = Arc::new(Mutex::new(new_fs::<()>(new_path, None)));
 
             assert!(lookup_entry!(fs, old_dir_path).is_none());
             assert!(lookup_entry!(fs, new_dir_path).is_none());

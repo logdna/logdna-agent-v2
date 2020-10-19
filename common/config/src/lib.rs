@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;
@@ -11,6 +11,7 @@ use std::time::Duration;
 use flate2::Compression;
 
 use fs::rule::{GlobRule, RegexRule, Rules};
+use fs::tail::{DirPathBuf, Lookback};
 use http::types::request::{Encoding, RequestTemplate, Schema};
 
 use crate::env::Config as EnvConfig;
@@ -43,8 +44,9 @@ pub struct HttpConfig {
 
 #[derive(Debug)]
 pub struct LogConfig {
-    pub dirs: Vec<PathBuf>,
+    pub dirs: Vec<DirPathBuf>,
     pub rules: Rules,
+    pub lookback: Lookback,
 }
 
 #[derive(Debug)]
@@ -173,8 +175,25 @@ impl TryFrom<RawConfig> for Config {
         };
 
         let mut log = LogConfig {
-            dirs: raw.log.dirs.into_iter().collect(),
+            dirs: raw
+                .log
+                .dirs
+                .into_iter()
+                // Filter off paths that are not directories and warn about them
+                .filter_map(|d| {
+                    d.try_into()
+                        .map_err(|e| {
+                            warn!("{}", e);
+                        })
+                        .ok()
+                })
+                .collect(),
             rules: Rules::new(),
+            lookback: raw
+                .log
+                .lookback
+                .map(|s| s.parse::<Lookback>())
+                .unwrap_or_else(|| Ok(Lookback::default()))?,
         };
 
         if let Some(rules) = raw.log.include {

@@ -14,3 +14,10 @@ pub mod rule;
 pub mod source;
 /// Defines the tailer used to tail directories or single files
 pub mod tail;
+
+#[cfg(test)]
+pub mod test {
+    lazy_static! {
+        pub static ref LOGGER: () = env_logger::init();
+    }
+}
