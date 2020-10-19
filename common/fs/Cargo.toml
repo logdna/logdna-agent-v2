@@ -12,7 +12,7 @@ metrics = { package = "metrics", path = "../metrics" }
 #io
 inotify = "0.8"
 #error
-quick-error = "1.0"
+thiserror = "1.0"
 #utils
 pcre2 = "0.2"
 globber = "0.1"
@@ -21,9 +21,9 @@ hashbrown = "0.8"
 log = "0.4"
 env_logger = "0.7"
 lazy_static = "1.4"
-tokio = "0.2"
 
 #async
+tokio = "0.2"
 futures = "0.3"
 futures-core = "0.3"
 futures-util = "0.3"

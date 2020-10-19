@@ -10,28 +10,22 @@ use crate::types::body::IngestBody;
 use metrics::Metrics;
 use std::path::PathBuf;
 
-quick_error! {
-    #[derive(Debug)]
-    pub enum Error {
-        Io(e: std::io::Error) {
-            from()
-        }
-        Serde(e: serde_json::Error){
-            from()
-        }
-        Recv(e: crossbeam::RecvError){
-            from()
-        }
-        Send(e: crossbeam::SendError<IngestBody>){
-            from()
-        }
-        NonUTF8(path: std::path::PathBuf){
-            display("{:?} is not valid utf8", path)
-        }
-        InvalidFileName(s: std::string::String){
-            display("{} is not a valid file name", s)
-        }
-    }
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Serde(#[from] serde_json::Error),
+    #[error(transparent)]
+    Recv(#[from] crossbeam::RecvError),
+    #[error(transparent)]
+    Send(#[from] crossbeam::SendError<IngestBody>),
+    #[error("{0:?} is not valid utf8")]
+    NonUTF8(std::path::PathBuf),
+    #[error("{0} is not a valid file name")]
+    InvalidFileName(std::string::String),
 }
 
 #[derive(Default)]
