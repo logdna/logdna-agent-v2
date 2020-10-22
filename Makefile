@@ -64,6 +64,18 @@ REMOTE_BRANCH := $(shell git branch -vv | awk '/^\*/{split(substr($$4, 2, length
 
 AWS_SHARED_CREDENTIALS_FILE=$(HOME)/.aws/credentials
 
+_TAC= awk '{line[NR]=$$0} END {for (i=NR; i>=1; i--) print line[i]}'
+TEST_RULES=
+# Dynamically generate test targets for each workspace
+define TEST_RULE
+TEST_RULES=$(TEST_RULES)test-$(1): <> Run unit tests for $(1) crate\\n
+test-$(1):
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo test -p $(1)"
+endef
+
+CRATES=$(shell sed -e '/members/,/]/!d' Cargo.toml | tail -n +2 | $(_TAC) | tail -n +2 | $(_TAC) | sed 's/,//' | xargs -n1 -I{} sh -c 'grep -E "^name *=" {}/Cargo.toml | tail -n1' | sed 's/name *= *"\([A-Za-z0-9_\-]*\)"/\1/')
+$(foreach _crate, $(CRATES), $(eval $(call TEST_RULE,$(strip $(_crate)))))
+
 .PHONY:build
 build: ## Build the agent
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo build"
@@ -218,3 +230,4 @@ run-release: ## Run the release version of the agent
 .PHONY:help
 help: ## Prints out a helpful description of each possible target
 	@awk 'BEGIN {FS = ":.*?## "}; /^.+: .*?## / && !/awk/ {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@$(SHELL) -c "echo '$(TEST_RULES)'" |  awk 'BEGIN {FS = ":.*?<> "}; /^.+: .*?<> / && !/awk/ {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
