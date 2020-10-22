@@ -12,10 +12,18 @@ pipeline {
     }
     environment {
         RUST_IMAGE_REPO = 'us.gcr.io/logdna-k8s/rust'
-        RUST_IMAGE_TAG = '1.42'
+        RUST_IMAGE_TAG = 'buster-stable'
+        SCCACHE_BUCKET = 'logdna-sccache-us-west-2'
+        SCCACHE_REGION = 'us-west-2'
+        CARGO_INCREMENTAL = 'false'
     }
     stages {
-        stage('Test') {
+        stage('Pull Build Image') {
+            steps {
+                sh "docker pull ${RUST_IMAGE_REPO}:${RUST_IMAGE_TAG}"
+            }
+        }
+        stage ("Lint and Test"){
             environment {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
@@ -28,11 +36,18 @@ pipeline {
                     // current structure
                     LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
                 }
-                sh """
-                    make lint
-                    make test
-                    make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
-                """
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws',
+                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                ]]){
+                    sh """
+                        make lint
+                        make test
+                        make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
+                    """
+                }
             }
             post {
                 success {
@@ -40,29 +55,49 @@ pipeline {
                 }
             }
         }
-        stage('Build & Publish Images') {
-            stages {
-                stage('Build Image') {
-                    steps {
-                        sh "make build-image"
-                    }
+        stage('Build Release Image') {
+            steps {
+                withCredentials([[
+                    $class: 'AmazonWebServicesCredentialsBinding',
+                    credentialsId: 'aws',
+                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                ]]){
+                    sh """
+                        echo "[default]" > ${PWD}/.aws_creds
+                        echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds
+                        echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds
+                        make build-image AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds
+                    """
                 }
-                stage('Check Publish Images') {
-                    when {
-                        branch pattern: "\\d\\.\\d", comparator: "REGEXP"
+            }
+            post {
+                always {
+                    sh "rm ${PWD}/.aws_creds"
+                }
+            }
+        }
+        stage('Check Publish Images') {
+            when {
+                branch pattern: "\\d\\.\\d", comparator: "REGEXP"
+            }
+            stages {
+                stage('Publish Images') {
+                    input {
+                        message "Should we publish the versioned image?"
+                        ok "Publish image"
                     }
-                    stages {
-                        stage('Publish Images') {
-                            input {
-                                message "Should we publish the versioned image?"
-                                ok "Publish image"
-                            }
-                            steps {
-                                script {
-                                    withRegistry('https://docker.io', 'dockerhub-username-password') {
-                                        withRegistry('https://icr.io', 'icr-username-password') {
-                                            sh 'make publish'
-                                        }
+                    steps {
+                        script {
+                            withRegistry('https://docker.io', 'dockerhub-username-password') {
+                                withRegistry('https://icr.io', 'icr-username-password') {
+                                    withCredentials([[
+                                        $class: 'AmazonWebServicesCredentialsBinding',
+                                        credentialsId: 'aws',
+                                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                    ]]){
+                                        sh 'make publish'
                                     }
                                 }
                             }
