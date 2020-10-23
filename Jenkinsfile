@@ -8,6 +8,7 @@ pipeline {
         ansiColor 'xterm'
     }
     triggers {
+        issueCommentTrigger('.*test this please.*')
         cron(env.BRANCH_NAME ==~ /\d\.\d/ ? 'H H 1,15 * *' : '')
     }
     environment {
@@ -18,6 +19,17 @@ pipeline {
         CARGO_INCREMENTAL = 'false'
     }
     stages {
+        stage('Validate PR Source') {
+          when {
+            expression { env.CHANGE_FORK }
+            not {
+                triggeredBy 'issueCommentCause'
+            }
+          }
+          steps {
+            error("A maintainer needs to approve this PR with a comment of '${TRIGGER_STRING}'")
+          }
+        }
         stage('Pull Build Image') {
             steps {
                 sh "docker pull ${RUST_IMAGE_REPO}:${RUST_IMAGE_TAG}"
