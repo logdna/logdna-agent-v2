@@ -56,7 +56,7 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     cargo build --release && strip ./target/release/logdna-agent && \
     sccache --show-stats
 
-# Use ubuntu as the final base image
+# Use Red Hat Universal Base Image Minimal as the final base image
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.2
 
 ARG REPO
