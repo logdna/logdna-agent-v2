@@ -135,7 +135,7 @@ fn main() {
                 if let Some(lines) = executor.process(lines) {
                     for line in lines {
                         // TODO upgrade to async hyper
-                        client.borrow_mut().send(line)
+                        client.borrow_mut().send(line).await
                     }
                 }
             })
