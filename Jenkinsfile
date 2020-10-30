@@ -1,5 +1,6 @@
 library 'magic-butler-catalogue'
 def PROJECT_NAME = 'logdna-agent-v2'
+def TRIGGER_PATTERN = '.*@logdnabot.*'
 
 pipeline {
     agent any
@@ -8,7 +9,7 @@ pipeline {
         ansiColor 'xterm'
     }
     triggers {
-        issueCommentTrigger('.*test this please.*')
+        issueCommentTrigger(TRIGGER_PATTERN)
         cron(env.BRANCH_NAME ==~ /\d\.\d/ ? 'H H 1,15 * *' : '')
     }
     environment {
@@ -27,7 +28,7 @@ pipeline {
             }
           }
           steps {
-            error("A maintainer needs to approve this PR with a comment of '${TRIGGER_STRING}'")
+            error("A maintainer needs to approve this PR for CI by commenting")
           }
         }
         stage('Pull Build Image') {
