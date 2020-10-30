@@ -15,6 +15,7 @@ use rcgen::generate_simple_self_signed;
 use rustls::internal::pemfile;
 
 #[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn api_key_missing() {
     let mut cmd = Command::cargo_bin("logdna-agent").unwrap();
     cmd.env_clear()
