@@ -18,16 +18,17 @@ The LogDNA agent is a blazingly fast, resource efficient log collection client, 
 
 * [Upgrading](#upgrading)
     * [Preamble](#preamble)
-	* [Upgrading on Kubernetes](#upgrading-on-kubernetes)
+    * [Upgrading on Kubernetes](#upgrading-on-kubernetes)
 * [Installing](#installing)
     * [Prerequisites](#prerequisites)
-	* [Installing on Kubernetes](#installing-on-kubernetes)
+    * [Installing on Kubernetes](#installing-on-kubernetes)
 * [Building](#building)
-	* [Building on Linux](#building-on-linux)
-	* [Building on Docker](#building-on-docker)
+    * [Building on Linux](#building-on-linux)
+    * [Building on Docker](#building-on-docker)
 * [Configuration](#configuration)
     * [Options](#options)
     * [Configuring Kubernetes](#configuring-kubernetes)
+    * [Run as Non-Root](#run-as-non-root)
 
 ## Upgrading
 
@@ -137,3 +138,20 @@ env:
 ```
 
 Check out [Kubernetes documentation](https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/) for more information about injecting environment variables into applications!
+
+### Run as Non-Root
+
+Beginning with version 2.2 of the agent, the Dockerfile supports running the agent as a non-root user. This behavior; however, is not the default as to make the new version backwards compatible with old versions of the agent yamls. Make the following changes to your DaemonSet to run the agent as non-root:
+
+Add a new section to the `logdna-agent` container in the `logdna-agent` DaemonSet [`spec.template.spec.containers.0`]:
+
+```yaml
+securityContext:
+  runAsUser: 5000
+  runAsGroup: 5000
+  capabilities:
+    add:
+      - DAC_READ_SEARCH
+    drop:
+      - all
+```
