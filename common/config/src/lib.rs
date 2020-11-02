@@ -13,6 +13,7 @@ use flate2::Compression;
 use fs::rule::{GlobRule, RegexRule, Rules};
 use fs::tail::{DirPathBuf, Lookback};
 use http::types::request::{Encoding, RequestTemplate, Schema};
+use k8s::K8sEventLogConf;
 
 use crate::env::Config as EnvConfig;
 use crate::error::ConfigError;
@@ -47,6 +48,7 @@ pub struct LogConfig {
     pub dirs: Vec<DirPathBuf>,
     pub rules: Rules,
     pub lookback: Lookback,
+    pub log_k8s_events: K8sEventLogConf,
 }
 
 #[derive(Debug)]
@@ -194,6 +196,20 @@ impl TryFrom<RawConfig> for Config {
                 .lookback
                 .map(|s| s.parse::<Lookback>())
                 .unwrap_or_else(|| Ok(Lookback::default()))?,
+            log_k8s_events: if let Some(s) = raw.log.log_k8s_events {
+                match s.parse::<K8sEventLogConf>() {
+                    Ok(s) => s,
+                    Err(e) => {
+                        warn!(
+                            "Failed to parse LOGDNA_LOG_K8S_EVENTS defaulting to never. error: {}",
+                            e
+                        );
+                        K8sEventLogConf::Never
+                    }
+                }
+            } else {
+                K8sEventLogConf::Never
+            },
         };
 
         if let Some(rules) = raw.log.include {
