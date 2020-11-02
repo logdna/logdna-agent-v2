@@ -91,8 +91,8 @@ COPY --from=build /opt/logdna-agent-v2/target/release/logdna-agent /work/
 WORKDIR /work/
 RUN chmod -R 777 .
 
-RUN setcap "cap_dac_read_search+p" /work/logdna-agent
-RUN groupadd -g 500 logdna && \
+RUN setcap "cap_dac_read_search+eip" /work/logdna-agent
+RUN groupadd -g 5000 logdna && \
 useradd -u 5000 -g logdna logdna
 
 CMD ["./logdna-agent"]

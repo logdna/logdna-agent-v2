@@ -99,9 +99,6 @@ spec:
         app.kubernetes.io/instance: logdna-agent
         app.kubernetes.io/version: 2.1.9-beta.2
     spec:
-      securityContext:
-        runAsUser: 5000
-        runAsGroup: 5000
       serviceAccountName: logdna-agent
       containers:
         - name: logdna-agent
@@ -143,8 +140,6 @@ spec:
               mountPath: /etc/os-release
             - name: logdnahostname
               mountPath: /etc/logdna-hostname
-          securityContext:
-            allowPrivilegeEscalation: false
       volumes:
         - name: varlog
           hostPath:
