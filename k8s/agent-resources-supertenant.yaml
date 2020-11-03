@@ -104,6 +104,12 @@ spec:
         - name: logdna-agent
           image: logdna/logdna-agent:stable
           imagePullPolicy: Always
+          securityContext:
+            capabilities:
+              add:
+                - DAC_READ_SEARCH
+              drop:
+                - all
           env:
             - name: LOGDNA_AGENT_KEY
               valueFrom:

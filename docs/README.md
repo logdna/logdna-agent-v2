@@ -143,15 +143,10 @@ Check out [Kubernetes documentation](https://kubernetes.io/docs/tasks/inject-dat
 
 Beginning with version 2.2 of the agent, the Dockerfile supports running the agent as a non-root user. This behavior; however, is not the default as to make the new version backwards compatible with old versions of the agent yamls. Make the following changes to your DaemonSet to run the agent as non-root:
 
-Add a new section to the `logdna-agent` container in the `logdna-agent` DaemonSet [`spec.template.spec.containers.0`]:
+Add two new fields, `runAsUser` and `runAsGroup`, to the `securityContext` section found in the `logdna-agent` container in the `logdna-agent` DaemonSet [`spec.template.spec.containers.0.securityContext`]:
 
 ```yaml
 securityContext:
   runAsUser: 5000
   runAsGroup: 5000
-  capabilities:
-    add:
-      - DAC_READ_SEARCH
-    drop:
-      - all
 ```
