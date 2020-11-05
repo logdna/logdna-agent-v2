@@ -49,6 +49,8 @@ pub struct LogConfig {
     pub include: Option<Rules>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exclude: Option<Rules>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lookback: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
@@ -117,6 +119,7 @@ impl Default for LogConfig {
                 ],
                 regex: Vec::new(),
             }),
+            lookback: None,
         }
     }
 }

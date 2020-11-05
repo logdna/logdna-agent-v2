@@ -62,7 +62,7 @@ fn main() {
     executor.init();
 
     let mut fs_tailer_buf = [0u8; 4096];
-    let mut fs_source = FSSource::new(config.log.dirs, config.log.rules);
+    let mut fs_source = FSSource::new(config.log.dirs, config.log.rules, config.log.lookback);
 
     let journald_source = create_source(&config.journald.paths);
     // Create the runtime

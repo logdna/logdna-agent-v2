@@ -88,6 +88,12 @@ impl<T: Serialize> Serialize for Slot<T> {
     }
 }
 
+impl<T> AsRef<T> for Slot<T> {
+    fn as_ref(&self) -> &T {
+        &self.inner.inner
+    }
+}
+
 #[derive(Debug)]
 struct InnerSlot<T> {
     inner: T,

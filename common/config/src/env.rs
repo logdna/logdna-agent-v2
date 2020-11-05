@@ -77,6 +77,10 @@ pub struct Config {
     #[env(LOGDNA_JOURNALD_PATHS)]
     #[example("/var/log/journal")]
     pub journald_paths: Option<EnvList<PathBuf>>,
+
+    #[env(LOGDNA_LOOKBACK)]
+    #[example("none")]
+    pub lookback: Option<String>,
 }
 
 impl Config {
@@ -202,6 +206,10 @@ impl Config {
         if let Some(mut v) = self.journald_paths {
             let paths = raw.journald.paths.get_or_insert(Vec::new());
             paths.append(&mut v);
+        }
+
+        if self.lookback.is_some() {
+            raw.log.lookback = self.lookback;
         }
 
         raw

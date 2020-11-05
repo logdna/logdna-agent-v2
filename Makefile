@@ -85,9 +85,13 @@ build: ## Build the agent
 build-release: ## Build a release version of the agent
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo build --release && strip ./target/release/logdna-agent"
 
+.PHONY:check
+check: ## Run unit tests
+	$(RUST_COMMAND) "" "cargo check --all-targets"
+
 .PHONY:test
-test: test-journald ## Runs all the tests
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo test"
+test: test-journald ## Run unit tests
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo test --no-run && cargo test"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests
@@ -99,7 +103,7 @@ test-journald: ## Run journald unit tests
 
 .PHONY:clean
 clean: ## Clean all artifacts from the build process
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "rm -fr target/* \$$CARGO_HOME/registry/* \$$CARGO_HOME/git/*"
+	$(RUST_COMMAND) "" "rm -fr target/* \$$CARGO_HOME/registry/* \$$CARGO_HOME/git/*"
 
 .PHONY:clean-docker
 clean-docker: ## Cleans the intermediate and final agent images left over from the build-image target

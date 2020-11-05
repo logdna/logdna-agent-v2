@@ -229,6 +229,7 @@ dependencies = [
  "serde",
  "serde_yaml",
  "sys-info",
+ "tempfile",
 ]
 
 [[package]]
