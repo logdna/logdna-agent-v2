@@ -1,8 +1,10 @@
 use std::fmt::Debug;
+use std::path::PathBuf;
 use std::str::FromStr;
 
 use globber::{Error as PatternError, Pattern};
 use pcre2::{bytes::Regex, Error as RegexError};
+use std::os::unix::ffi::OsStrExt;
 
 /// A list of rules
 pub type RuleList = Vec<Box<dyn Rule + Send>>;
@@ -10,7 +12,7 @@ pub type RuleList = Vec<Box<dyn Rule + Send>>;
 /// A trait for implementing a rule, see GlobRule/RegexRule for an example
 pub trait Rule: Debug {
     /// Takes a value and returns true or false based on if it matches
-    fn matches(&self, value: &str) -> bool;
+    fn matches(&self, value: &PathBuf) -> bool;
 }
 
 /// Used for representing matches on Rules
@@ -47,7 +49,7 @@ impl Rules {
         }
     }
     /// Check if value is included (matches at least one inclusion rule)
-    pub fn included<'a, T: Into<&'a str>>(&self, value: T) -> Status {
+    pub fn included<'a, T: Into<&'a PathBuf>>(&self, value: T) -> Status {
         let value = value.into();
         for rule in &self.inclusion {
             if rule.matches(value) {
@@ -57,7 +59,7 @@ impl Rules {
         Status::NotIncluded
     }
     /// Check if value is excluded (matches none of the exclusion rules)
-    pub fn excluded<'a, T: Into<&'a str>>(&self, value: T) -> Status {
+    pub fn excluded<'a, T: Into<&'a PathBuf>>(&self, value: T) -> Status {
         let value = value.into();
         for rule in &self.exclusion {
             if rule.matches(value) {
@@ -67,7 +69,7 @@ impl Rules {
         Status::Ok
     }
     /// Returns true if the value is included but not excluded
-    pub fn passes<'a, T: Into<&'a str>>(&self, value: T) -> Status {
+    pub fn passes<'a, T: Into<&'a PathBuf>>(&self, value: T) -> Status {
         let value = value.into();
 
         if self.included(value) == Status::NotIncluded {
@@ -116,8 +118,10 @@ impl RegexRule {
 }
 
 impl Rule for RegexRule {
-    fn matches(&self, value: &str) -> bool {
-        self.inner.is_match(value.as_bytes()).unwrap_or(false)
+    fn matches(&self, value: &PathBuf) -> bool {
+        self.inner
+            .is_match(value.as_os_str().as_bytes())
+            .unwrap_or(false)
     }
 }
 
@@ -145,8 +149,8 @@ impl GlobRule {
 }
 
 impl Rule for GlobRule {
-    fn matches(&self, value: &str) -> bool {
-        self.inner.matches(value)
+    fn matches(&self, value: &PathBuf) -> bool {
+        self.inner.matches(&value.to_string_lossy())
     }
 }
 

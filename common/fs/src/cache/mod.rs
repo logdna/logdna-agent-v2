@@ -225,9 +225,9 @@ where
                     }
                 };
 
-                let is_to_path_ok = self.passes(to_path.to_str().unwrap());
+                let is_to_path_ok = self.passes(&to_path);
 
-                let is_from_path_ok = self.passes(from_path.to_str().unwrap());
+                let is_from_path_ok = self.passes(&from_path);
 
                 if is_to_path_ok && is_from_path_ok {
                     self.process_move(&from_wd, from_name, &to_wd, to_name, events);
@@ -364,7 +364,7 @@ where
         let mut components = Vec::new();
 
         loop {
-            components.push(entry.name().to_str().unwrap().to_string());
+            components.push(entry.name());
 
             entry = match entry.parent() {
                 Some(entry) => unsafe { &*entry.as_ptr() },
@@ -386,15 +386,12 @@ where
         &self,
         entry: &Entry<T>,
         paths: &mut Vec<PathBuf>,
-        mut components: Vec<String>,
+        mut components: Vec<OsString>,
     ) {
-        let mut base_components: Vec<String> = into_components(&self.resolve_direct_path(entry))
-            .iter()
-            .map(|x| x.to_str().unwrap().into())
-            .collect(); // build all the components of the path leading up to the current entry
+        let mut base_components: Vec<OsString> = into_components(&self.resolve_direct_path(entry));
         base_components.append(&mut components); // add components already discovered from previous recursive step
         let path: PathBuf = base_components.iter().collect();
-        if self.is_initial_dir_target(path.to_str().unwrap()) {
+        if self.is_initial_dir_target(&path) {
             // only want paths that fall in our watch window
             paths.push(path); // condense components of path that lead to the true entry into a PathBuf
         }
@@ -416,7 +413,7 @@ where
     }
 
     fn insert(&mut self, path: &PathBuf, events: &mut Vec<Event<T>>) -> Option<EntryPtr<T>> {
-        if !self.passes(path.to_str().unwrap()) {
+        if !self.passes(path) {
             info!("ignoring {:?}", path);
             return None;
         }
@@ -584,7 +581,7 @@ where
             Entry::Symlink { ref link, .. } => {
                 // This is a hacky way to check if there are any remaining
                 // symlinks pointing to `link`
-                if !self.passes(link.to_str().unwrap()) {
+                if !self.passes(link) {
                     self.remove(&link, events);
                 }
 
@@ -775,7 +772,7 @@ where
         }
     }
 
-    fn is_symlink_target(&self, path: &str) -> bool {
+    fn is_symlink_target(&self, path: &PathBuf) -> bool {
         for (_, symlink_ptrs) in self.symlinks.iter() {
             for symlink_ptr in symlink_ptrs.iter() {
                 let symlink = unsafe { (*symlink_ptr).as_ref() };
@@ -800,7 +797,7 @@ where
         false
     }
 
-    fn is_initial_dir_target(&self, path: &str) -> bool {
+    fn is_initial_dir_target(&self, path: &PathBuf) -> bool {
         if let Status::Ok = self.initial_dir_rules.passes(path) {
             if let Status::Ok = self.master_rules.passes(path) {
                 return true;
@@ -811,7 +808,7 @@ where
     }
 
     // a helper for checking if a path passes exclusion/inclusion rules
-    fn passes(&self, path: &str) -> bool {
+    fn passes(&self, path: &PathBuf) -> bool {
         self.is_initial_dir_target(path) || self.is_symlink_target(path)
     }
 }
@@ -872,7 +869,7 @@ fn into_components(path: &PathBuf) -> Vec<OsString> {
     path.components()
         .filter_map(|c| match c {
             Component::RootDir => Some("/".into()),
-            Component::Normal(path) => Some(path.to_os_string()),
+            Component::Normal(path) => Some(path.into()),
             _ => None,
         })
         .collect()
