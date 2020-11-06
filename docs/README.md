@@ -16,61 +16,45 @@ The LogDNA agent is a blazingly fast, resource efficient log collection client, 
 
 ## Table of Contents
 
-* [Upgrading](#upgrading)
-    * [Preamble](#preamble)
-    * [Upgrading on Kubernetes](#upgrading-on-kubernetes)
-* [Installing](#installing)
-    * [Prerequisites](#prerequisites)
-    * [Installing on Kubernetes](#installing-on-kubernetes)
+* [Managing Deployments](#managing-deployments)
+  * [Installing](#installing)
+  * [Upgrading](#upgrading)
+  * [Uninstalling](#uninstalling)
+  * [More Information](#more-information)
 * [Building](#building)
-    * [Building on Linux](#building-on-linux)
-    * [Building on Docker](#building-on-docker)
+  * [Building on Linux](#building-on-linux)
+  * [Building on Docker](#building-on-docker)
 * [Configuration](#configuration)
-    * [Options](#options)
-    * [Configuring Kubernetes](#configuring-kubernetes)
-    * [Run as Non-Root](#run-as-non-root)
+  * [Options](#options)
+  * [Configuring the Environment](#configuring-the-environment)
+  * [Configuring Lookback](#configuring-lookback)
 
-## Upgrading
+## Managing Deployments
 
-### Preamble
+The agent has been tested for deployment to Kubernetes 1.9+ and OpenShift 4.6+ environments. 
 
-The agent comes with configuration files that allow it to be deployed to a number of environments. Often, these configuration files, once set, do not change whereas the image they use can update. This introduces issues where configuration files can fall behind and not provide the up to date features that come with evolving tools. We aim to make changes in the agent backwards compatible with old configuration files, but recommend regularly ensuring your config is up to date. The agent will try to alert users when it can't use new features.
+### Installing
 
-### Upgrading on Kubernetes
+* [Installing Kubernetes](KUBERNETES.md#installing)
+* [Installing OpenShift](OPENSHIFT.md#installing)
 
-We recommend doing a complete reinstall of the agent by removing the existing configuration and installing the latest one.
+### Upgrading
 
-1. A backup of your existing agent yaml is highly recommended:
-```
-kubectl get ds logdna-agent -o yaml > old-logdna-agent.yaml
-```
-2. Delete the existing agent using the yaml you installed with:
-```
-# 1.x.x
-kubectl delete -f https://raw.githubusercontent.com/logdna/logdna-agent/master/logdna-agent-ds.yaml
+* [Upgrading Kubernetes](KUBERNETES.md#upgrading)
+* [Upgrading OpenShift](OPENSHIFT.md#upgrading)
 
-# 2.0.x
-kubectl delete -f https://raw.githubusercontent.com/logdna/logdna-agent/master/logdna-agent-v2.yaml
-```
-3. Follow our instructions for [installing the agent on kubernetes](#installing-on-kubernetes).
+### Uninstalling
 
-## Installing
+* [Uninstalling Kubernetes](KUBERNETES.md#uninstalling)
+* [Uninstalling OpenShift](OPENSHIFT.md#uninstalling)
 
-### Prerequisites
+### More Information
 
-* A LogDNA Account. Create an account with LogDNA by following our [quick start guide](https://docs.logdna.com/docs/logdna-quick-start-guide).
-* A LogDNA Ingestion Key. You can get your ingestion key at the top of [your account's Add a Log Source page](https://app.logdna.com/pages/add-host).
+More information about managing your deployments is documented for [Kubernetes](KUBERNETES.md) or [OpenShift](OPENSHIFT.md). This includes topics such as
 
-### Installing on Kubernetes
-
-The agent is compatible with Kubernetes clusters running `v1.9` or greater. It can be quickly and effortlessly deployed to all nodes to forward logs from your entire kubernetes cluster by running two commands:
-
-
-```
-kubectl apply -f https://assets.logdna.com/clients/agent-namespace.yaml
-kubectl create secret generic logdna-agent-key -n logdna-agent --from-literal=logdna-agent-key=<YOUR LOGDNA INGESTION KEY>
-kubectl apply -f https://assets.logdna.com/clients/agent-resources.yaml
-```
+* Version specific upgrade paths
+* Running the agent as a non-root user
+* Collecting node logs through Journald
 
 ## Building
 
@@ -97,7 +81,7 @@ The resulting image can be found by listing the images:
 ```console
 foo@bar:~$ docker images
 REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
-<none>              <none>              f541543bcd7f        64 seconds ago      119MB
+logdna-agent-v2     dcd54a0             e471b3d8a409        22 seconds ago      135MB
 ```
 
 ## Configuration
@@ -125,12 +109,14 @@ The agent accepts configuration from two sources, environment variables and a co
 |`LOGDNA_INCLUSION_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE`|Comma separated list of glob patterns to includes files for monitoring <sup>1</sup>|`*.log,!(*.*)`|
 |`LOGDNA_INCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE_REGEX`|Comma separated list of regex patterns to exclude files from monitoring||
 |`LOGDNA_JOURNALD_PATHS`|Comma separated list of paths (directories or files) of journald paths to monitor||
+|`LOGDNA_LOOKBACK`|The lookback strategy on startup|`smallfiles`|
+|`LOGDNA_LOG_K8S_EVENTS`|Whether the agent shoudl capture Kubernetes Events|`always`|
 
 1. We support [this flavor of globber syntax](https://github.com/CJP10/globber).
 
-### Configuring Kubernetes
+### Configuring the Environment
 
-To configure the kubernetes daemonset, copy the [logdna-agent yaml](../k8s/logdna-agent.yaml) and modify the `env` section. For example, to change the hostname add the following:
+To configure the DaemonSet, make modifications to the envs section of the DameonSet [`spec.template.spec.containers.0.env`]. For example, to change the hostname add the following environment variable to the `env` list:
 
 ```yaml
 env:
@@ -140,14 +126,27 @@ env:
 
 Check out [Kubernetes documentation](https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/) for more information about injecting environment variables into applications!
 
-### Run as Non-Root
+### Configuring Lookback
 
-Beginning with version 2.2 of the agent, the Dockerfile supports running the agent as a non-root user. This behavior; however, is not the default as to make the new version backwards compatible with old versions of the agent yamls. Make the following changes to your DaemonSet to run the agent as non-root:
+The lookback strategy determines how the agent handles existing container logs on startup. This strategy is determined by `LOGDNA_LOOKBACK`. There's a limited set of valid values for this option:
 
-Add two new fields, `runAsUser` and `runAsGroup`, to the `securityContext` section found in the `logdna-agent` container in the `logdna-agent` DaemonSet [`spec.template.spec.containers.0.securityContext`]:
+* `start` - Always start at the beginning of the files.
+* `smallfiles` - If the file is less than 8KiB, start at the beginning. Otherwise, start at the end.
+* `none` - Always start at the end of the files.
+* __Note:__ The default option is `smallfiles`
 
-```yaml
-securityContext:
-  runAsUser: 5000
-  runAsGroup: 5000
-```
+### Configuring Journald
+
+If the agent pods have access to journald log files or directories, monitoring can be enabled on them with the `LOGDNA_JOURNALD_PATHS`. Common values include `/var/log/journald` and `/run/systemd/journal`. To specify both, use a comma separated list: `/var/log/journald,/run/systemd/journal`.
+
+Take a look at enabling journald monitoring for [Kubernetes](KUBERNETES.md#collecting-node-journald-logs) or [OpenShift](OPENSHIFT.md#collecting-node-journald-logs).
+
+### Configuring Events
+
+Kubernetes and OpenShift Events are by default automatically captured by the agent. This feature can be controlled by the `LOGDNA_LOG_K8S_EVENTS` option with only two valid values:
+
+* `always` - Always capture Events
+* `never` - Never capture Events
+* __Note:__ The default option is `always`
+
+> :warning: Due to a number of issues with Kubernetes, the agent collects events from the entire cluster including multiple nodes. To prevent duplicate logs when running multiple pods, the agents defer responsibilty of capturing Events to the oldest pod in the cluster. If that pod is killed, the next oldest pod will take over responsibility and continue from where the previous pod left off.
