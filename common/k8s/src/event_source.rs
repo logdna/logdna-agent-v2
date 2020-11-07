@@ -31,8 +31,20 @@ use crate::errors::{K8sError, K8sEventStreamError};
 
 use crate::restarting_stream::{RequiresRestart, RestartingStream};
 
+use regex::Regex;
+
 const CONTAINER_NAME: &str = "logdna-agent";
-impl From<Event> for EventLogLine {
+
+lazy_static! {
+    static ref APP_REGEX: Regex = {
+        match Regex::new(r"\{(.+?)\}") {
+            Ok(regex) => regex,
+            Err(e) => panic!("Unable to compile kube event source's app regex: {:?}", e),
+        }
+    };
+}
+
+impl From<Event> for EventLog {
     // Replicate the Reporter's formatting
     fn from(event: Event) -> Self {
         let Event {
@@ -45,6 +57,7 @@ impl From<Event> for EventLogLine {
             involved_object,
             last_timestamp,
             first_timestamp,
+            event_time,
             ..
         } = event;
         let ObjectReference {
@@ -81,7 +94,7 @@ impl From<Event> for EventLogLine {
         let app = app.or_else(|| component.clone());
 
         let age = match (last_timestamp.as_ref(), first_timestamp.as_ref()) {
-            (Some(last), Some(first)) if last > first => Some(last.0 - first.0),
+            (Some(last), Some(first)) if last >= first => Some(last.0 - first.0),
             _ => None,
         };
 
@@ -93,19 +106,20 @@ impl From<Event> for EventLogLine {
             }
         });
 
-        EventLogLine {
-            level: type_,
+        let line = EventLogLine {
             message: match (
                 reason.as_ref(),
                 count.as_ref(),
                 duration.as_ref(),
+                event_time.is_some(),
                 message.as_ref(),
             ) {
+                (Some(r), Some(c), Some(d), _, Some(m)) => {
+                    Some(format!("{}  (x{} {})  {}", r, c, d, m))
+                }
                 (Some(r), None, None, true, Some(m)) => Some(format!("{}  {}", r, m)),
                 _ => None,
             },
-            _name: host,
-            _app: app,
             kube: EventLogLineInner {
                 type_: "event".to_string(),
                 action,
@@ -117,7 +131,7 @@ impl From<Event> for EventLogLine {
                 component,
                 node,
                 first_time: first_timestamp,
-                time: last_timestamp,
+                time: last_timestamp.or_else(|| event_time.map(|time| Time(time.0))),
                 age: age
                     .map(|age| {
                         age.num_seconds()
@@ -128,27 +142,27 @@ impl From<Event> for EventLogLine {
                     .flatten(),
                 count,
             },
+        };
+
+        EventLog {
+            line,
+            host,
+            app,
+            level: type_,
         }
     }
 }
 
-// TODO test from...
-
 #[derive(Serialize, Debug)]
 struct EventLogLine {
     #[serde(skip_serializing_if = "Option::is_none")]
-    _name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    level: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    _app: Option<String>,
     kube: EventLogLineInner,
 }
 
 #[derive(Serialize, Debug)]
 struct EventLogLineInner {
+    #[serde(rename = "type")]
     type_: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     action: Option<String>,
@@ -174,6 +188,37 @@ struct EventLogLineInner {
     age: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     count: Option<i32>,
+}
+
+// TODO test from...
+struct EventLog {
+    line: EventLogLine,
+    host: Option<String>,
+    app: Option<String>,
+    level: Option<String>,
+}
+
+impl TryFrom<EventLog> for LineBuilder {
+    type Error = K8sEventStreamError;
+
+    fn try_from(value: EventLog) -> Result<Self, Self::Error> {
+        serde_json::to_string(&value.line)
+            .map_err(K8sEventStreamError::SerializationError)
+            .map(|e| {
+                debug!("logging event: {}", e);
+                let mut line = LineBuilder::new().line(e);
+                if let Some(host) = &value.host {
+                    line = line.host(host);
+                }
+                if let Some(app) = &value.app {
+                    line = line.app(app);
+                }
+                if let Some(level) = &value.level {
+                    line = line.level(level);
+                }
+                line
+            })
+    }
 }
 
 pub struct K8sEventStream {
@@ -382,16 +427,12 @@ impl K8sEventStream {
                                 let this_event_time = e
                                     .last_timestamp
                                     .as_ref()
-                                    .map(|t| NonZeroI64::new(t.0.timestamp() - 2))
-                                    .flatten();
+                                    .and_then(|t| NonZeroI64::new(t.0.timestamp() - 2));
 
-                                let ret = serde_json::to_string(&EventLogLine::from(e))
-                                    .map_err(K8sEventStreamError::SerializationError)
-                                    .map(|e| {
-                                        debug!("logging event: {}", e);
-                                        Metrics::k8s().increment_lines();
-                                        vec![LineBuilder::new().line(e)]
-                                    });
+                                let ret = LineBuilder::try_from(EventLog::from(e)).map(|l| {
+                                    Metrics::k8s().increment_lines();
+                                    vec![l]
+                                });
                                 if ret.is_ok() {
                                     latest_event_time.store(this_event_time)
                                 };
