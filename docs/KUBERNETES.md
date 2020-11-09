@@ -178,7 +178,7 @@ The agent can access Journald logs from the host node by mounting the logs from 
 ### Enabling Journald on the Node
 
 Follow the steps below to ensure journald logs are written to `/var/log/journald`:
-1. Gain root access to your node
+1. Login as root on your node
 2. Ensure the `journald.conf`, usually found at `/etc/systemd/`, sets `Storage=persistent`. Look at the [journald.conf documentation](https://www.freedesktop.org/software/systemd/man/journald.conf.html) for more information
 3. Create the directory `/var/log/journald`: `mkdir -p /var/log/journald`
 
