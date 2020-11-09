@@ -82,10 +82,9 @@ Older versions of our configurations do not provide these labels. In that case, 
 * **Upgrade Steps:**
   1. If you have changes you want to persist to the new DaemonSet, backup the old DaemonSet.
      1. Run `kubectl get daemonset -o yaml logdna-agent > old-logdna-agent-daemon-set.yaml`.
-     2. Copy any desired changes from `old-logdna-agent-daemon-set.yaml` to the DaemonSet object in `k8s/agent-resources.yaml`
-  2. Remove the old DaemonSet in the default namespace
-     1. Run `kubectl delete daemonset logdna-agent`
-  3. Install the latest agent by following the [installation steps](#installation-steps)
+     2. Copy any desired changes from `old-logdna-agent-daemon-set.yaml` to the DaemonSet object in `k8s/agent-resources.yaml`.
+  2. Remove the old DaemonSet in the default namespace; run `kubectl delete daemonset logdna-agent`.
+  3. [Install the latest agent](#installation-steps).
 
 > :warning: View the warning about backing up the DaemonSet at the bottom of the list of upgrade paths.
 

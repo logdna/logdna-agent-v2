@@ -87,8 +87,7 @@ Older versions of our configurations do not provide these labels. In that case, 
      1. Run `oc get daemonset -o yaml logdna-agent > old-logdna-agent-daemon-set.yaml`.
      2. Copy any desired changes from `old-logdna-agent-daemon-set.yaml` to the DaemonSet object in `k8s/agent-resources-openshift.yaml`
   2. If you want to continue using journald, follow the steps for [enabling journald monitoring on the agent](#enabling-journald-monitoring-on-the-agent).
-  3. Overwrite the DaemonSet as well as create the new OpenShift objects.
-     1. Run `oc apply -f k8s/agent-resources-openshift.yaml`
+  3. Overwrite the DaemonSet as well as create the new OpenShift objects; run `oc apply -f k8s/agent-resources-openshift.yaml`
 
 > :warning: Exporting OpenShift objects with "oc get \<resource\> -o yaml" includes extra information about the object's state. This data does not need to be copied over to the new YAML file.
 
