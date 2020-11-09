@@ -1,6 +1,6 @@
 # LogDNA Agent on OpenShift
 
-The agent has been tested on OpenShift 4.4, but should be compatible with any OpenShift cluster packaged with Kubernetes version 1.9 or greater.
+The agent is supported for OpenShift 4.6.
 
 ## Table of Contents
 
@@ -19,7 +19,7 @@ The agent has been tested on OpenShift 4.4, but should be compatible with any Op
 
 ## Installing
 
-The agent can be effortless installed in your cluster using a set of yamls we provide. These yamls contain the minimum necessary OpenShift Objects and settings to run the agent. Teams should review and modify these yamls for the specific needs of their clusters.
+The agent can be installed in your cluster using a set of YAML files we provide. These files contain the minimum necessary OpenShift Objects and settings to run the agent. Teams should review and modify these YAML files for the specific needs of their clusters.
 
 ### Installation Prerequisites
 
@@ -58,9 +58,9 @@ There are two components that can be upgraded independent of each other for each
 
 ### Upgrading the Configuration
 
-Not every version update of the agent makes a change to our supplied configuration yamls. These changes will be outlined in our release page to help you determine if you need to update your configuration.
+Not every version update of the agent makes a change to our supplied configuration YAML files. These changes will be outlined in our release page to help you determine if you need to update your configuration.
 
-Due to how the agent has evolved over time, certain versions of the agent configuration yamls require different paths to be updated successfully.
+Due to how the agent has evolved over time, certain versions of the agent configuration YAML files require different paths to be updated successfully.
 
 If you are unsure of what version of the configuration you have, you can always check the `app.kubernetes.io/version` label of the DaemonSet:
 
@@ -90,11 +90,11 @@ Older versions of our configurations do not provide these labels. In that case, 
   3. Overwrite the DaemonSet as well as create the new OpenShift Objects.
      1. Run `oc apply -f k8s/agent-resources-openshift.yaml`
 
-> :warning: Exporting OpenShift Objects with "oc get \<resource\> -o yaml" includes extra information about the Object's state. This data does not need to be copied over to the new yaml.
+> :warning: Exporting OpenShift Objects with "oc get \<resource\> -o yaml" includes extra information about the Object's state. This data does not need to be copied over to the new YAML file.
 
 ### Upgrading the Image
 
-The image contains the actual agent code that is run on the Pods created by the DaemonSet. New versions of the agent always strive to be backwards compatibility with old configuration versions. Any breaking changes will be outlined on our release page. We always recommend upgrading to the latest configuration to get the best feature support for the agent.
+The image contains the actual agent code that is run on the Pods created by the DaemonSet. New versions of the agent always strive for backwards compatibility with old configuration versions. Any breaking changes will be outlined on our release page. We always recommend upgrading to the latest configuration to get the best feature support for the agent.
 
 The upgrade path for the image depends on which image tag you are using in your DaemonSet.
 
@@ -111,11 +111,13 @@ oc patch daemonset logdna-agent --type json -p '[{"op":"replace","path":"/spec/t
 ```
 
 The specific tag you should use depends on your requirements, we offer a list of tags for varying compatibility:
-1. `stable` - Updates with each major, minor, and patch version updates
-2. `2` - Updates with each minor and patch version updates under `2.x.x`
-3. `2.2` - Updates with each patch version update under `2.2.x`
-4. `2.2.0` - Targets a specific version of the agent
-5. **Note:** This list isn't exhaustive; for a full list check out the [logdna-agent dockerhub page](https://hub.docker.com/r/logdna/logdna-agent)
+1. `latest` - Update with each new revision including public betas
+2. `stable` - Updates with each major, minor, and patch version updates
+3. `2` - Updates with each minor and patch version updates under `2.x.x`
+4. `2.2` - Updates with each patch version update under `2.2.x`
+5. `2.2.0` - Targets a specific version of the agent
+
+**Note:** This list isn't exhaustive; for a full list check out the [logdna-agent dockerhub page](https://hub.docker.com/r/logdna/logdna-agent)
 
 ## Uninstalling
 
@@ -175,7 +177,7 @@ To enable Journald monitoring in the agent, add a new environment variable, `LOG
 ```console
 oc patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"LOGDNA_JOURNALD_PATHS","value":"/var/log/journald/-"}}]'
 ```
-* If you are modifying a yaml:
+* If you are modifying a YAML file:
   1. Add the new environment variable to the envs section of the DaemonSet Object in `k8s/agent-resources-openshift.yaml` [`spec.template.spec.containers.0.env`]
   2. Apply the new configuration file, run `oc apply -f k8s/agent-resources-openshift.yaml`
 

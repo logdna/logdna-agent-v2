@@ -4,15 +4,12 @@
 
 The LogDNA agent is a blazingly fast, resource efficient log collection client, that forwards logs to [LogDNA]. The 2.0+ version of this agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
 
-![LogDNA Dashboard]
-
 [Rustc Version 1.42+]: https://img.shields.io/badge/rustc-1.42+-lightgray.svg
 [rustc]: https://blog.rust-lang.org/2020/03/12/Rust-1.42.html
 [Join us on LogDNA's Public Slack]: http://chat.logdna.com/
 [LogDNA]: https://logdna.com
 [Rust]: https://www.rust-lang.org/
 [Kubernetes]: https://kubernetes.io/
-[LogDNA Dashboard]: https://files.readme.io/ac5200b-Screen_Shot_2019-07-09_at_7.52.28_AM.png
 
 ## Table of Contents
 
@@ -20,7 +17,8 @@ The LogDNA agent is a blazingly fast, resource efficient log collection client, 
   * [Installing](#installing)
   * [Upgrading](#upgrading)
   * [Uninstalling](#uninstalling)
-  * [More Information](#more-information)
+  * [Run as Non-Root](#run-as-non-root)
+  * [Additional Installation Options](#additional-installation-options)
 * [Building](#building)
   * [Building on Linux](#building-on-linux)
   * [Building on Docker](#building-on-docker)
@@ -31,30 +29,42 @@ The LogDNA agent is a blazingly fast, resource efficient log collection client, 
 
 ## Managing Deployments
 
-The agent has been tested for deployment to Kubernetes 1.9+ and OpenShift 4.6+ environments. 
+The agent is supported for Kubernetes 1.9+ and OpenShift 4.6+ environments. 
 
 ### Installing
+
+Environment specifc instructions regarding installing and deploying the agent to your cluster.
 
 * [Installing Kubernetes](KUBERNETES.md#installing)
 * [Installing OpenShift](OPENSHIFT.md#installing)
 
 ### Upgrading
 
+Environment specific instructions for upgrading from old versions of the agent.
+
 * [Upgrading Kubernetes](KUBERNETES.md#upgrading)
 * [Upgrading OpenShift](OPENSHIFT.md#upgrading)
 
 ### Uninstalling
 
+Environment specific instructions for removing the agent entirely.
+
 * [Uninstalling Kubernetes](KUBERNETES.md#uninstalling)
 * [Uninstalling OpenShift](OPENSHIFT.md#uninstalling)
 
-### More Information
+### Run as Non-Root
+
+By default the agent is ran as root. Below are environment specific instructions for running the agent as a non-root user.
+
+* [Running as Non-Root on Kubernetes](KUBERNETES.md#run-as-non-root)
+* [Running as Non-Root on OpenShift](OPENSHIFT.md#run-as-non-root)
+
+### Additional Installation Options
 
 More information about managing your deployments is documented for [Kubernetes](KUBERNETES.md) or [OpenShift](OPENSHIFT.md). This includes topics such as
 
 * Version specific upgrade paths
-* Running the agent as a non-root user
-* Collecting node logs through Journald
+* Collecting system logs through Journald
 
 ## Building
 
@@ -80,15 +90,15 @@ The resulting image can be found by listing the images:
 
 ```console
 foo@bar:~$ docker images
-REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
-logdna-agent-v2     dcd54a0             e471b3d8a409        22 seconds ago      135MB
+REPOSITORY              TAG                 IMAGE ID            CREATED             SIZE
+logdna-agent-v2         dcd54a0             e471b3d8a409        22 seconds ago      135MB
 ```
 
 ## Configuration
 
 ### Options
 
-The agent accepts configuration from two sources, environment variables and a configuration yaml. The default configuration yaml location is `/etc/logdna/config.yaml`. The following options are available:
+The agent accepts configuration from two sources, environment variables and a configuration YAML file. The default configuration yaml file is located at `/etc/logdna/config.yaml`. The following options are available:
 
 | Variable Name(s) | Description | Default |
 |-|-|-|
@@ -149,4 +159,4 @@ Kubernetes and OpenShift Events are by default automatically captured by the age
 * `never` - Never capture Events
 * __Note:__ The default option is `always`
 
-> :warning: Due to a number of issues with Kubernetes, the agent collects events from the entire cluster including multiple nodes. To prevent duplicate logs when running multiple pods, the agents defer responsibilty of capturing Events to the oldest pod in the cluster. If that pod is killed, the next oldest pod will take over responsibility and continue from where the previous pod left off.
+> :warning: Due to a ["won't fix" bug in the Kubernetes API](https://github.com/kubernetes/kubernetes/issues/41743), the agent collects events from the entire cluster including multiple nodes. To prevent duplicate logs when running multiple pods, the agents defer responsibilty of capturing Events to the oldest pod in the cluster. If that pod is killed, the next oldest pod will take over responsibility and continue from where the previous pod left off.
