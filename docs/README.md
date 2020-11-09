@@ -120,7 +120,7 @@ The agent accepts configuration from two sources, environment variables and a co
 |`LOGDNA_INCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE_REGEX`|Comma separated list of regex patterns to exclude files from monitoring||
 |`LOGDNA_JOURNALD_PATHS`|Comma separated list of paths (directories or files) of journald paths to monitor||
 |`LOGDNA_LOOKBACK`|The lookback strategy on startup|`smallfiles`|
-|`LOGDNA_LOG_K8S_EVENTS`|Whether the agent shoudl capture Kubernetes Events|`always`|
+|`LOGDNA_LOG_K8S_EVENTS`|Whether the agent shoudl capture Kubernetes events|`always`|
 
 1. We support [this flavor of globber syntax](https://github.com/CJP10/globber).
 
@@ -153,10 +153,10 @@ Take a look at enabling journald monitoring for [Kubernetes](KUBERNETES.md#colle
 
 ### Configuring Events
 
-Kubernetes and OpenShift Events are by default automatically captured by the agent. This feature can be controlled by the `LOGDNA_LOG_K8S_EVENTS` option with only two valid values:
+Kubernetes and OpenShift events are by default automatically captured by the agent. This feature can be controlled by the `LOGDNA_LOG_K8S_EVENTS` option with only two valid values:
 
-* `always` - Always capture Events
-* `never` - Never capture Events
+* `always` - Always capture events
+* `never` - Never capture events
 * __Note:__ The default option is `always`
 
-> :warning: Due to a ["won't fix" bug in the Kubernetes API](https://github.com/kubernetes/kubernetes/issues/41743), the agent collects events from the entire cluster including multiple nodes. To prevent duplicate logs when running multiple pods, the agents defer responsibilty of capturing Events to the oldest pod in the cluster. If that pod is killed, the next oldest pod will take over responsibility and continue from where the previous pod left off.
+> :warning: Due to a ["won't fix" bug in the Kubernetes API](https://github.com/kubernetes/kubernetes/issues/41743), the agent collects events from the entire cluster including multiple nodes. To prevent duplicate logs when running multiple pods, the agents defer responsibilty of capturing events to the oldest pod in the cluster. If that pod is killed, the next oldest pod will take over responsibility and continue from where the previous pod left off.

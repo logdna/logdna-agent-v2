@@ -20,7 +20,7 @@ The agent is compatible with Kubernetes versions 1.9 and greater; however, we al
 
 ## Installing
 
-The agent can be installed in your cluster using a set of YAML files we provide. These files contain the minimum necessary Kubernetes Objects and settings to run the agent. Teams should review and modify these YAML files for the specific needs of their clusters.
+The agent can be installed in your cluster using a set of YAML files we provide. These files contain the minimum necessary Kubernetes objects and settings to run the agent. Teams should review and modify these YAML files for the specific needs of their clusters.
 
 ### Installation Prerequisites
 
@@ -78,11 +78,11 @@ Older versions of our configurations do not provide these labels. In that case, 
 * **Example Configuration Yamls:**
   * [v1.x.x](https://raw.githubusercontent.com/logdna/logdna-agent/master/logdna-agent-ds.yaml)
   * [v2.0.x](https://raw.githubusercontent.com/logdna/logdna-agent/master/logdna-agent-v2.yaml)
-* **Differences:** This configuration does not include the new logdna-agent namespace and is lacking a number of new Kubernetes Objects.
+* **Differences:** This configuration does not include the new logdna-agent namespace and is lacking a number of new Kubernetes objects.
 * **Upgrade Steps:**
   1. If you have changes you want to persist to the new DaemonSet, backup the old DaemonSet.
      1. Run `kubectl get daemonset -o yaml logdna-agent > old-logdna-agent-daemon-set.yaml`.
-     2. Copy any desired changes from `old-logdna-agent-daemon-set.yaml` to the DaemonSet Object in `k8s/agent-resources.yaml`
+     2. Copy any desired changes from `old-logdna-agent-daemon-set.yaml` to the DaemonSet object in `k8s/agent-resources.yaml`
   2. Remove the old DaemonSet in the default namespace
      1. Run `kubectl delete daemonset logdna-agent`
   3. Install the latest agent by following the [installation steps](#installation-steps)
@@ -93,15 +93,15 @@ Older versions of our configurations do not provide these labels. In that case, 
 
 * **Example Configuration Yamls:**
   * [v2.1.x](https://raw.githubusercontent.com/logdna/logdna-agent/master/logdna-agent-v2-beta.yaml)
-* **Differences:** This configuration contains the same namespace and Kubernetes Objects. The only differences are some changes to the DaemonSet.
+* **Differences:** This configuration contains the same namespace and Kubernetes objects. The only differences are some changes to the DaemonSet.
 * **Upgrade Steps:**
   1. If you have changes you want to persist to the new DaemonSet, backup the old DaemonSet.
      1. Run `kubectl get daemonset -o yaml -n logdna-agent logdna-agent > old-logdna-agent-daemon-set.yaml`.
-     2. Copy any desired changes from `old-logdna-agent-daemon-set.yaml` to the DaemonSet Object in `k8s/agent-resources.yaml`
+     2. Copy any desired changes from `old-logdna-agent-daemon-set.yaml` to the DaemonSet object in `k8s/agent-resources.yaml`
   2. Apply the latest configuration yaml
      1. Run `kubectl apply -f k8s/agent-resources.yaml`
 
-> :warning: Exporting Kubernetes Objects with "kubectl get \<resource\> -o yaml" includes extra information about the Object's state. This data does not need to be copied over to the new YAML file.
+> :warning: Exporting Kubernetes objects with "kubectl get \<resource\> -o yaml" includes extra information about the object's state. This data does not need to be copied over to the new YAML file.
 
 ### Upgrading the Image
 
@@ -131,7 +131,7 @@ kubectl patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"rep
 
 ## Uninstalling
 
-The default configuration places all of the Kubernetes Objects in a unique namespace. To completely remove all traces of the agent you need to simply delete this namespace:
+The default configuration places all of the Kubernetes objects in a unique namespace. To completely remove all traces of the agent you need to simply delete this namespace:
 
 ```console
 kubectl delete -f k8s/agent-namespace.yaml
@@ -192,7 +192,7 @@ To enable Journald monitoring in the agent, add a new environment variable, `LOG
 kubectl patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"LOGDNA_JOURNALD_PATHS","value":"/var/log/journald/-"}}]'
 ```
 * If you are modifying a YAML file:
-  1. Add the new environment variable to the envs section of the DaemonSet Object in `k8s/agent-resources.yaml` [`spec.template.spec.containers.0.env`]
+  1. Add the new environment variable to the envs section of the DaemonSet object in `k8s/agent-resources.yaml` [`spec.template.spec.containers.0.env`]
   2. Apply the new configuration file, run `kubectl apply -f k8s/agent-resources.yaml`
 
  ```yaml

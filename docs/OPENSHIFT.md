@@ -19,7 +19,7 @@ The agent is supported for OpenShift 4.6.
 
 ## Installing
 
-The agent can be installed in your cluster using a set of YAML files we provide. These files contain the minimum necessary OpenShift Objects and settings to run the agent. Teams should review and modify these YAML files for the specific needs of their clusters.
+The agent can be installed in your cluster using a set of YAML files we provide. These files contain the minimum necessary OpenShift objects and settings to run the agent. Teams should review and modify these YAML files for the specific needs of their clusters.
 
 ### Installation Prerequisites
 
@@ -81,16 +81,16 @@ Older versions of our configurations do not provide these labels. In that case, 
 
 * **Example Configuration Yamls:**
   * [v1.x.x](https://raw.githubusercontent.com/logdna/logdna-agent/master/logdna-agent-ds-os.yaml)
-* **Differences:** This configuration is lacking a number of new OpenShift Objects. It also uses a removed environment variable for controlling journald monitoring, `USEJOURNALD`.
+* **Differences:** This configuration is lacking a number of new OpenShift objects. It also uses a removed environment variable for controlling journald monitoring, `USEJOURNALD`.
 * **Upgrade Steps:**
   1. If you have changes you want to persist to the new DaemonSet, backup the old DaemonSet.
      1. Run `oc get daemonset -o yaml logdna-agent > old-logdna-agent-daemon-set.yaml`.
-     2. Copy any desired changes from `old-logdna-agent-daemon-set.yaml` to the DaemonSet Object in `k8s/agent-resources-openshift.yaml`
+     2. Copy any desired changes from `old-logdna-agent-daemon-set.yaml` to the DaemonSet object in `k8s/agent-resources-openshift.yaml`
   2. If you want to continue using journald, follow the steps for [enabling journald monitoring on the agent](#enabling-journald-monitoring-on-the-agent).
-  3. Overwrite the DaemonSet as well as create the new OpenShift Objects.
+  3. Overwrite the DaemonSet as well as create the new OpenShift objects.
      1. Run `oc apply -f k8s/agent-resources-openshift.yaml`
 
-> :warning: Exporting OpenShift Objects with "oc get \<resource\> -o yaml" includes extra information about the Object's state. This data does not need to be copied over to the new YAML file.
+> :warning: Exporting OpenShift objects with "oc get \<resource\> -o yaml" includes extra information about the object's state. This data does not need to be copied over to the new YAML file.
 
 ### Upgrading the Image
 
@@ -121,7 +121,7 @@ The specific tag you should use depends on your requirements, we offer a list of
 
 ## Uninstalling
 
-The default configuration places all of the OpenShift Objects in a unique project. To completely remove all traces of the agent you need to simply delete the `logdna-agent` project within the Web UI.
+The default configuration places all of the OpenShift objects in a unique project. To completely remove all traces of the agent you need to simply delete the `logdna-agent` project within the Web UI.
 
 __Note__: OpenShift has no way to delete projects with the `oc` CLI. View OpenShift's documentation for [managing projects](https://docs.openshift.com/container-platform/4.6/applications/projects/working-with-projects.html).
 
@@ -178,7 +178,7 @@ To enable Journald monitoring in the agent, add a new environment variable, `LOG
 oc patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"LOGDNA_JOURNALD_PATHS","value":"/var/log/journald/-"}}]'
 ```
 * If you are modifying a YAML file:
-  1. Add the new environment variable to the envs section of the DaemonSet Object in `k8s/agent-resources-openshift.yaml` [`spec.template.spec.containers.0.env`]
+  1. Add the new environment variable to the envs section of the DaemonSet object in `k8s/agent-resources-openshift.yaml` [`spec.template.spec.containers.0.env`]
   2. Apply the new configuration file, run `oc apply -f k8s/agent-resources-openshift.yaml`
 
  ```yaml
