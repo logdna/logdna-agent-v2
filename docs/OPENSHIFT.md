@@ -171,7 +171,7 @@ To enable Journald monitoring in the agent, add a new environment variable, `LOG
 * If you are updating an already deployed agent:
   1. You can patch the existing agent by running.
 ```console
-oc patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"LOGDNA_JOURNALD_PATHS","value":"/var/log/journal/-"}}]'
+oc patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"add","path":"/spec/template/spec/containers/0/env/-","value":{"name":"LOGDNA_JOURNALD_PATHS","value":"/var/log/journal"}}]'
 ```
 * If you are modifying a YAML file:
   1. Add the new environment variable to the envs section of the DaemonSet object in `k8s/agent-resources-openshift.yaml` [`spec.template.spec.containers.0.env`].
