@@ -33,28 +33,22 @@ The agent is supported for Kubernetes 1.9+ and OpenShift 4.6+ environments.
 
 ### Installing
 
-Environment specifc instructions regarding installing and deploying the agent to your cluster.
-
-* [Installing Kubernetes](KUBERNETES.md#installing)
-* [Installing OpenShift](OPENSHIFT.md#installing)
+* [Installing on Kubernetes](KUBERNETES.md#installing)
+* [Installing on OpenShift](OPENSHIFT.md#installing)
 
 ### Upgrading
 
-Environment specific instructions for upgrading from old versions of the agent.
-
-* [Upgrading Kubernetes](KUBERNETES.md#upgrading)
-* [Upgrading OpenShift](OPENSHIFT.md#upgrading)
+* [Upgrading on Kubernetes](KUBERNETES.md#upgrading)
+* [Upgrading on OpenShift](OPENSHIFT.md#upgrading)
 
 ### Uninstalling
 
-Environment specific instructions for removing the agent entirely.
-
-* [Uninstalling Kubernetes](KUBERNETES.md#uninstalling)
-* [Uninstalling OpenShift](OPENSHIFT.md#uninstalling)
+* [Uninstalling on Kubernetes](KUBERNETES.md#uninstalling)
+* [Uninstalling on OpenShift](OPENSHIFT.md#uninstalling)
 
 ### Running as Non-Root
 
-By default the agent is ran as root. Below are environment specific instructions for running the agent as a non-root user.
+By default the agent will run as root. Below are environment-specific instructions for running the agent as a non-root user.
 
 * [Running as Non-Root on Kubernetes](KUBERNETES.md#run-as-non-root)
 * [Running as Non-Root on OpenShift](OPENSHIFT.md#run-as-non-root)
@@ -126,7 +120,7 @@ The agent accepts configuration from two sources, environment variables and a co
 
 ### Configuring the Environment
 
-To configure the DaemonSet, make modifications to the envs section of the DameonSet [`spec.template.spec.containers.0.env`]. For example, to change the hostname add the following environment variable to the `env` list:
+To configure the DaemonSet, modify the envs section of the DameonSet [`spec.template.spec.containers.0.env`]. For example, to change the hostname add the following environment variable to the `env` list:
 
 ```yaml
 env:
@@ -138,12 +132,12 @@ Check out [Kubernetes documentation](https://kubernetes.io/docs/tasks/inject-dat
 
 ### Configuring Lookback
 
-The lookback strategy determines how the agent handles existing container logs on startup. This strategy is determined by `LOGDNA_LOOKBACK`. There's a limited set of valid values for this option:
+The lookback strategy determines how the agent handles existing files on startup. This strategy is determined by `LOGDNA_LOOKBACK`. The set of valid values for this option are:
 
-* `start` - Always start at the beginning of the files.
-* `smallfiles` - If the file is less than 8KiB, start at the beginning. Otherwise, start at the end.
-* `none` - Always start at the end of the files.
-* __Note:__ The default option is `smallfiles`
+* `start` - Always start at the beginning of the file
+* `smallfiles` - If the file is less than 8KiB, start at the beginning. Otherwise, start at the end
+* `none` - Always start at the end of the file
+* __Note:__ The default option is `smallfiles`.
 
 ### Configuring Journald
 
@@ -153,10 +147,14 @@ Take a look at enabling journald monitoring for [Kubernetes](KUBERNETES.md#colle
 
 ### Configuring Events
 
-Kubernetes and OpenShift events are by default automatically captured by the agent. This feature can be controlled by the `LOGDNA_LOG_K8S_EVENTS` option with only two valid values:
+A Kubernetes event is exactly what it sounds like: a resource type that is automatically generated when state changes occur in other resources, or when errors or other messages manifest across the system. Monitoring events is useful for debugging your Kubernetes cluster.
+
+By default, the LogDNA agent captures Kubernetes events (and OpenShift events, as well, since OpenShift is built on top of Kubernetes clusters).
+
+To control whether the LogDNA agent collects Kubernetes events, configure the `LOGDNA_LOG_K8s_EVENTS` option using on of these two values:
 
 * `always` - Always capture events
 * `never` - Never capture events
-* __Note:__ The default option is `always`
+__Note:__ The default option is `always`.
 
-> :warning: Due to a ["won't fix" bug in the Kubernetes API](https://github.com/kubernetes/kubernetes/issues/41743), the agent collects events from the entire cluster including multiple nodes. To prevent duplicate logs when running multiple pods, the agents defer responsibilty of capturing events to the oldest pod in the cluster. If that pod is killed, the next oldest pod will take over responsibility and continue from where the previous pod left off.
+> :warning: Due to a ["won't fix" bug in the Kubernetes API](https://github.com/kubernetes/kubernetes/issues/41743), the LogDNA agent collects events from the entire cluster, including multiple nodes. To prevent duplicate logs when running multiple pods, the LogDNA agent pods defer responsibilty of capturing events to the oldest pod in the cluster. If that pod is down, the next oldest LogDNA agent pod will take over responsibility and continue from where the previous pod left off.
