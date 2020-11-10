@@ -1,8 +1,7 @@
 use crate::error::JournalError;
-use chrono::{Local, TimeZone};
 use futures::{channel::oneshot, stream::Stream as FutureStream};
 use http::types::body::LineBuilder;
-use log::warn;
+use log::{info, warn};
 use metrics::Metrics;
 use std::{
     mem::drop,
@@ -14,7 +13,7 @@ use std::{
     },
     task::{Context, Poll, Waker},
     thread::{self, JoinHandle},
-    time::{Duration, UNIX_EPOCH},
+    time::{Duration, SystemTime},
 };
 use systemd::journal::{Journal, JournalFiles, JournalRecord, JournalSeek};
 
@@ -208,28 +207,33 @@ impl Reader {
             Err(e) => return Err(JournalError::BadRead(e)),
         };
 
-        let timestamp = match self
+        match self
             .reader
             .timestamp()
-            .map(|timestamp| timestamp.duration_since(UNIX_EPOCH))
+            .ok()
+            .map(|timestamp| SystemTime::now().duration_since(timestamp).ok())
+            .flatten()
         {
-            Ok(Ok(timestamp)) => Local
-                .timestamp(timestamp.as_secs() as i64, 0)
-                .format("%b %d %H:%M:%S")
-                .to_string(),
-            Ok(Err(_)) | Err(_) => {
-                warn!("unable to read timestamp associated with journald record");
-                Local::now().format("%b %d %H:%M:%S").to_string()
+            Some(duration) => {
+                // Reject any records with a timestamp older than 30 seconds
+                if duration >= Duration::from_secs(30) {
+                    info!("Received a stale journald record, reseeking pointer");
+                    if let Err(e) = self.reader.seek(JournalSeek::Tail) {
+                        return Err(JournalError::BadRead(e));
+                    }
+                }
             }
-        };
+            None => {
+                warn!("Unable to read timestamp associated with journald record");
+            }
+        } //TODO: Actually bake the timestamp into the outgoing line
 
-        self.process_default_record(&record, timestamp)
+        self.process_default_record(&record)
     }
 
     fn process_default_record(
         &self,
         record: &JournalRecord,
-        _timestamp: String,
     ) -> Result<Option<LineBuilder>, JournalError> {
         let message = match record.get(KEY_MESSAGE) {
             Some(message) => message,
