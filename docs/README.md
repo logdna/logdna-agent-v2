@@ -141,7 +141,7 @@ The lookback strategy determines how the agent handles existing files on startup
 
 ### Configuring Journald
 
-If the agent pods have access to journald log files or directories, monitoring can be enabled on them with the `LOGDNA_JOURNALD_PATHS`. Common values include `/var/log/journald` and `/run/systemd/journal`. To specify both, use a comma separated list: `/var/log/journald,/run/systemd/journal`.
+If the agent pods have access to journald log files or directories, monitoring can be enabled on them with the `LOGDNA_JOURNALD_PATHS`. Common values include `/var/log/journal` and `/run/systemd/journal`. To specify both, use a comma separated list: `/var/log/journal,/run/systemd/journal`.
 
 Take a look at enabling journald monitoring for [Kubernetes](KUBERNETES.md#collecting-node-journald-logs) or [OpenShift](OPENSHIFT.md#collecting-node-journald-logs).
 
