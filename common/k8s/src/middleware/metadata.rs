@@ -1,14 +1,13 @@
 use crate::errors::K8sError;
 use crate::middleware::parse_container_path;
-use futures::stream::StreamExt;
+use futures::stream::TryStreamExt;
 use http::types::body::{KeyValueMap, LineBuilder};
 use k8s_openapi::api::core::v1::Pod;
-use kube::{
-    api::{ListParams, WatchEvent},
-    config::Config,
-    runtime::Informer,
-    Api, Client,
-};
+use kube::{api::ListParams, config::Config, Api, Client};
+
+use kube_runtime::watcher;
+use kube_runtime::watcher::Event as WatcherEvent;
+
 use metrics::Metrics;
 use middleware::{Middleware, Status};
 use parking_lot::Mutex;
@@ -30,10 +29,11 @@ enum Error {
 
 pub struct K8sMetadata {
     metadata: Mutex<HashMap<(String, String), PodMetadata>>,
-    informer: Mutex<Informer<Pod>>,
+    api: Api<Pod>,
     runtime: Mutex<Option<Runtime>>,
 }
 
+// TODO refactor to use kube-rs Reflector instead of manually managing hashmap
 impl K8sMetadata {
     pub fn new() -> Result<Self, K8sError> {
         let mut runtime = match Builder::new()
@@ -95,7 +95,7 @@ impl K8sMetadata {
 
             Ok(K8sMetadata {
                 metadata: Mutex::new(metadata),
-                informer: Mutex::new(Informer::new(Api::all(client)).params(params)),
+                api: Api::<Pod>::all(client),
                 runtime: Mutex::new(None),
             })
         });
@@ -106,69 +106,47 @@ impl K8sMetadata {
         this
     }
 
-    fn handle_pod(&self, event: WatchEvent<Pod>) {
+    fn handle_pod(&self, event: kube_runtime::watcher::Event<Pod>) -> Result<(), K8sError> {
         match event {
-            WatchEvent::Added(pod) => {
-                let pod_meta_data = match PodMetadata::try_from(pod) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        warn!("ignoring pod added event: {}", e);
-                        return;
-                    }
-                };
-                self.metadata.lock().insert(
-                    (pod_meta_data.name.clone(), pod_meta_data.namespace.clone()),
-                    pod_meta_data,
-                );
-                Metrics::k8s().increment_creates();
-            }
-            WatchEvent::Modified(pod) => {
-                let new_pod_meta_data = match PodMetadata::try_from(pod) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        warn!("ignoring pod modified event: {}", e);
-                        return;
-                    }
-                };
-                if let Some(old_pod_meta_data) = self
-                    .metadata
-                    .lock()
-                    .get_mut(&(new_pod_meta_data.name, new_pod_meta_data.namespace))
-                {
-                    old_pod_meta_data.labels = new_pod_meta_data.labels;
-                    old_pod_meta_data.annotations = new_pod_meta_data.annotations;
-                }
-            }
-            WatchEvent::Deleted(pod) => {
-                let pod_meta_data = match PodMetadata::try_from(pod) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        warn!("ignoring pod deleted event: {}", e);
-                        return;
-                    }
-                };
+            WatcherEvent::Applied(pod) => {
+                let pod_meta_data = PodMetadata::try_from(pod)?;
+                let mut metadata = self.metadata.lock();
+                metadata
+                    .entry((pod_meta_data.name.clone(), pod_meta_data.namespace.clone()))
+                    .and_modify(|e| {
+                        Metrics::k8s().increment_creates();
+                        *e = pod_meta_data.clone()
+                    })
+                    .or_insert_with(|| {
+                        Metrics::k8s().increment_creates();
+                        pod_meta_data
+                    });
+            } // insert or update
+            WatcherEvent::Deleted(pod) => {
+                let pod_meta_data = PodMetadata::try_from(pod)?;
                 self.metadata
                     .lock()
                     .remove(&(pod_meta_data.name, pod_meta_data.namespace));
                 Metrics::k8s().increment_deletes();
-            }
-            WatchEvent::Bookmark(pod) => {
-                let pod_meta_data = match PodMetadata::try_from(pod) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        warn!("ignoring pod deleted event: {}", e);
-                        return;
-                    }
-                };
-                debug!(
-                    "got bookmark event for pod=\"{}\",namespace=\"{}\"",
-                    &pod_meta_data.name, &pod_meta_data.namespace
-                )
-            }
-            WatchEvent::Error(e) => {
-                debug!("kubernetes api error event: {:?}", e);
+            } // remove
+            WatcherEvent::Restarted(pods) => {
+                let mut metadata = self.metadata.lock();
+                for pod in pods {
+                    let pod_meta_data = PodMetadata::try_from(pod)?;
+                    metadata
+                        .entry((pod_meta_data.name.clone(), pod_meta_data.namespace.clone()))
+                        .and_modify(|e| {
+                            Metrics::k8s().increment_creates();
+                            *e = pod_meta_data.clone()
+                        })
+                        .or_insert_with(|| {
+                            Metrics::k8s().increment_creates();
+                            pod_meta_data
+                        });
+                }
             }
         }
+        Ok(())
     }
 }
 
@@ -179,23 +157,18 @@ impl Middleware for K8sMetadata {
             .lock()
             .take()
             .expect("tokio runtime not initialized");
-        let informer = self.informer.lock();
 
         runtime.block_on(async move {
-            loop {
-                let mut pods = match informer.poll().await {
-                    Ok(v) => v.boxed(),
-                    Err(e) => {
-                        error!("unable to poll kubernetes api for pods: {}", e);
-                        continue;
-                    }
-                };
-                Metrics::k8s().increment_polls();
-
-                while let Some(Ok(event)) = pods.next().await {
-                    self.handle_pod(event);
-                }
-            }
+            let watcher = watcher(self.api.clone(), ListParams::default());
+            watcher
+                .try_for_each(|p| async move {
+                    self.handle_pod(p)
+                        .unwrap_or_else(|e| log::warn!("Unable to process pod event: {}", e));
+                    Ok(())
+                })
+                .await
+                .map_err(|e| log::warn!("Watch Stream Error: {}", e))
+                .unwrap();
         });
     }
 
@@ -218,12 +191,7 @@ impl TryFrom<k8s_openapi::api::core::v1::Pod> for PodMetadata {
     type Error = K8sError;
 
     fn try_from(value: k8s_openapi::api::core::v1::Pod) -> Result<Self, Self::Error> {
-        let real_pod_meta = match value.metadata {
-            Some(v) => v,
-            None => {
-                return Err(K8sError::PodMissingMetaError("metadata"));
-            }
-        };
+        let real_pod_meta = value.metadata;
 
         let name = match real_pod_meta.name {
             Some(v) => v,
@@ -251,6 +219,7 @@ impl TryFrom<k8s_openapi::api::core::v1::Pod> for PodMetadata {
     }
 }
 
+#[derive(Clone)]
 struct PodMetadata {
     name: String,
     namespace: String,

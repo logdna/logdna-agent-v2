@@ -81,6 +81,10 @@ pub struct Config {
     #[env(LOGDNA_LOOKBACK)]
     #[example("none")]
     pub lookback: Option<String>,
+
+    #[env(LOGDNA_LOG_K8S_EVENTS)]
+    #[example("always")]
+    pub log_k8s_events: Option<String>,
 }
 
 impl Config {
@@ -206,6 +210,10 @@ impl Config {
         if let Some(mut v) = self.journald_paths {
             let paths = raw.journald.paths.get_or_insert(Vec::new());
             paths.append(&mut v);
+        }
+
+        if self.log_k8s_events.is_some() {
+            raw.log.log_k8s_events = self.log_k8s_events;
         }
 
         if self.lookback.is_some() {

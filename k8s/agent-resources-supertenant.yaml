@@ -118,6 +118,14 @@ spec:
                   key: logdna-agent-key
             - name: LOGDNA_ENDPOINT
               value: /supertenant/logs/ingest
+            - name: POD_APP_LABEL
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['app.kubernetes.io/name']
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
