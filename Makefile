@@ -156,7 +156,7 @@ release-major: ## Create a new major beta release and push to github
 
 .PHONY:release-minor
 release-minor: ## Create a new minor beta release and push to github
-	$(eval TARGET_BRANCH := $(shell expr $(MAJOR_VERSION).$(MINOR_VERSION) + 1))
+	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(shell expr $(MINOR_VERSION) + 1))
 	$(eval NEW_VERSION := $(TARGET_BRANCH).0-beta.1)
 	@if [ ! "$(REMOTE_BRANCH)" = "master" ]; then echo "Can't create the minor beta release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"master\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
@@ -196,8 +196,8 @@ release-beta: ## Bump the beta version and push to github
 .PHONY:release
 release: ## Create a new release from the current beta and push to github
 	@if [ "$(BETA_VERSION)" = "0" ]; then echo "Can't release from a non-beta version"; exit 1; fi
-	$(eval TARGET_BRANCH := $(shell expr $(MAJOR_VERSION).$(MINOR_VERSION) + 1))
-	$(eval NEW_VERSION := $(TARGET_BRANCH).$(PATCH_VERSION))
+	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(MINOR_VERSION))
+	$(eval NEW_VERSION := $(TARGET_BRANCH).0)
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
