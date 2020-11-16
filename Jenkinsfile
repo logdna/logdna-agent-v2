@@ -101,8 +101,8 @@ pipeline {
                         ok "Publish image"
                     }
                     steps {
-                        withRegistry('https://docker.io', 'dockerhub-username-password') {
-                            withRegistry('https://icr.io', 'icr-username-password') {
+                        withDockerRegistry('https://docker.io', 'dockerhub-username-password') {
+                            withDockerRegistry('https://icr.io', 'icr-username-password') {
                                 withCredentials([[
                                     $class: 'AmazonWebServicesCredentialsBinding',
                                     credentialsId: 'aws',
