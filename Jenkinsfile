@@ -102,8 +102,8 @@ pipeline {
                     }
                     steps {
                         script{
-                            withDockerRegistry([url: 'https://docker.io', credentialsId: 'dockerhub-username-password']) {
-                                withDockerRegistry([url: 'https://icr.io', credentialsId: 'icr-username-password']) {
+                            withDockerRegistry([url: 'https://docker.io', credentialsId: 'dockerhub-access-token']) {
+                                withDockerRegistry([url: 'https://icr.io', credentialsId: 'icr-iamapikey']) {
                                     withCredentials([[
                                         $class: 'AmazonWebServicesCredentialsBinding',
                                         credentialsId: 'aws',
