@@ -7,7 +7,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.2.0-beta.9
+    app.kubernetes.io/version: 2.2.0-beta.10
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
@@ -21,7 +21,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.2.0-beta.9
+    app.kubernetes.io/version: 2.2.0-beta.10
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -38,7 +38,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.2.0-beta.9
+    app.kubernetes.io/version: 2.2.0-beta.10
 rules:
   - apiGroups: [""]
     resources: ["events"]
@@ -54,7 +54,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.2.0-beta.9
+    app.kubernetes.io/version: 2.2.0-beta.10
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -72,7 +72,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.2.0-beta.9
+    app.kubernetes.io/version: 2.2.0-beta.10
 spec:
   updateStrategy:
     type: RollingUpdate
@@ -87,7 +87,7 @@ spec:
         app: logdna-agent
         app.kubernetes.io/name: logdna-agent
         app.kubernetes.io/instance: logdna-agent
-        app.kubernetes.io/version: 2.2.0-beta.9
+        app.kubernetes.io/version: 2.2.0-beta.10
     spec:
       serviceAccountName: logdna-agent
       containers:
