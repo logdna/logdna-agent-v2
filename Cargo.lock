@@ -1334,7 +1334,7 @@ dependencies = [
 
 [[package]]
 name = "logdna-agent"
-version = "2.2.0-beta.10"
+version = "2.2.0-beta.11"
 dependencies = [
  "assert_cmd",
  "config",
