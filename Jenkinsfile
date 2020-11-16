@@ -101,17 +101,15 @@ pipeline {
                         ok "Publish image"
                     }
                     steps {
-                        script {
-                            withRegistry('https://docker.io', 'dockerhub-username-password') {
-                                withRegistry('https://icr.io', 'icr-username-password') {
-                                    withCredentials([[
-                                        $class: 'AmazonWebServicesCredentialsBinding',
-                                        credentialsId: 'aws',
-                                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                    ]]){
-                                        sh 'make publish'
-                                    }
+                        withRegistry('https://docker.io', 'dockerhub-username-password') {
+                            withRegistry('https://icr.io', 'icr-username-password') {
+                                withCredentials([[
+                                    $class: 'AmazonWebServicesCredentialsBinding',
+                                    credentialsId: 'aws',
+                                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                ]]){
+                                    sh 'make publish'
                                 }
                             }
                         }
