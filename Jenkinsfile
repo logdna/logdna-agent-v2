@@ -92,7 +92,7 @@ pipeline {
         }
         stage('Check Publish Images') {
             when {
-                branch pattern: "\\d\\.\\d", comparator: "REGEXP"
+                branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
             }
             stages {
                 stage('Publish Images') {
