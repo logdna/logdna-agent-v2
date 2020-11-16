@@ -149,6 +149,7 @@ release-major: ## Create a new major beta release and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
+	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
@@ -163,9 +164,11 @@ release-minor: ## Create a new minor beta release and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
+	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
+	git checkout $(TARGET_BRANCH) || git checkout -b $(TARGET_BRANCH)
 
 .PHONY:release-patch
 release-patch: ## Create a new patch beta release and push to github
@@ -176,9 +179,11 @@ release-patch: ## Create a new patch beta release and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
+	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
+	git checkout $(TARGET_BRANCH) || git checkout -b $(TARGET_BRANCH)
 
 .PHONY:release-beta
 release-beta: ## Bump the beta version and push to github
@@ -189,9 +194,11 @@ release-beta: ## Bump the beta version and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
+	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
+	git checkout $(TARGET_BRANCH) || git checkout -b $(TARGET_BRANCH)
 
 .PHONY:release
 release: ## Create a new release from the current beta and push to github
@@ -202,9 +209,11 @@ release: ## Create a new release from the current beta and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
+	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
+	git checkout $(TARGET_BRANCH) || git checkout -b $(TARGET_BRANCH)
 
 .PHONY:build-image
 build-image: ## Build a docker image as specified in the Dockerfile
