@@ -1,6 +1,6 @@
 # LogDNA Agent on OpenShift
 
-The agent is supported for OpenShift 4.6.
+The agent is supported for OpenShift 4.5.
 
 ## Table of Contents
 
