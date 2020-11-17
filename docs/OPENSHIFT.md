@@ -1,6 +1,6 @@
 # LogDNA Agent on OpenShift
 
-The agent is supported for OpenShift&reg 4.5 and newer.
+The agent is supported for Red Hat OpenShift:registered: 4.5 and newer.
 
 ## Table of Contents
 
