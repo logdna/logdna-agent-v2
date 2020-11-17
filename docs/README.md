@@ -28,14 +28,14 @@ The LogDNA agent is a fast, resource-efficient log collection client that forwar
 
 ## Managing Deployments
 
-The agent is supported for Kubernetes&reg 1.9+ and OpenShift&reg 4.6+ environments.
+The agent is supported for Kubernetes<sup>:registered:</sup> 1.9+ and Red Hat<sup>:registered:</sup> OpenShift<sup>:registered:</sup> 4.5+ environments.
 
 ### Installing
 
 __NOTE__: The Kubernetes manifest YAML files in this repository (and referenced in this
 documentation) describe the version of the LogDNA Agent in the current commit
 tree and no other version of the LogDNA agent. If you apply the kubernetes manifest
-found in the current tree then your cluster _will_ be running the version descibed
+found in the current tree then your cluster _will_ be running the version described
 by the current commit which may not be ready for general use.
 
 You MUST ensure that the current tree is checked out to the branch/tag is the
@@ -43,7 +43,7 @@ version you intend to install, if you install a pre-release version of the
 agent your logs may not be collected.
 
 To install a specific version you should ensure you checkout the tag for that
-version before applying any yamls from the current tree.
+version before applying any YAML files from the current tree.
 
 For example to install the a particular 2.2 beta you would run
 ```bash
@@ -88,9 +88,9 @@ git clone https://github.com/logdna/logdna-agent-v2.git
 cd logdna-agent-v2
 ```
 
-### Building Docker&reg image
+### Building Docker image
 
-To build a Docker&reg image of the agent, ensure the docker command is installed properly, verify that the Docker&reg engine is running, and then run the following command:
+To build a Docker<sup>:registered:</sup> image of the agent, ensure the Docker command is installed properly, verify that the Docker engine is running, and then run the following command:
 
 ```
 make build-image
@@ -173,11 +173,11 @@ Take a look at enabling journald monitoring for [Kubernetes](KUBERNETES.md#colle
 
 ### Configuring Events
 
-A Kubernetes&reg event is exactly what it sounds like: a resource type that is automatically generated when state changes occur in other resources, or when errors or other messages manifest across the system. Monitoring events is useful for debugging your Kubernetes cluster.
+A Kubernetes event is exactly what it sounds like: a resource type that is automatically generated when state changes occur in other resources, or when errors or other messages manifest across the system. Monitoring events is useful for debugging your Kubernetes cluster.
 
-By default, the LogDNA agent captures Kubernetes&reg events (and OpenShift&reg events, as well, since OpenShift&reg is built on top of Kubernetes&reg clusters).
+By default, the LogDNA agent captures Kubernetes events (and OpenShift events, as well, since OpenShift is built on top of Kubernetes clusters).
 
-To control whether the LogDNA agent collects Kubernetes&reg events, configure the `LOGDNA_LOG_K8s_EVENTS` environment variable using on of these two values:
+To control whether the LogDNA agent collects Kubernetes events, configure the `LOGDNA_LOG_K8s_EVENTS` environment variable using on of these two values:
 
 * `always` - Always capture events
 * `never` - Never capture events
