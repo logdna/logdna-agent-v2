@@ -51,7 +51,7 @@ logdna-agent-jb2rg   1/1     Running   0          7s
 
 > :warning: By default the agent will run as root. To run the agent as a non-root user, refer to the section [Run as Non-Root](#run-as-non-root) below.
 
-> :note: To run as non-root, your OpenShift container must still be marked as privileged.
+**Note:** To run as non-root, your OpenShift container must still be marked as privileged.
 
 ## Upgrading
 
@@ -135,7 +135,7 @@ oc delete serviceaccount logdna-agent
 
 By default the agent is configured to run as root; however, the DaemonSet can be modified to run the agent as a non-root user.
 
-> :note: To run as non-root the agent container must still be marked as privileged.
+**Note:** To run as non-root the agent container must still be marked as privileged.
 
 This is accomplished through Linux capabilities and turning the agent binary into a "capability-dumb binary." The binary is given `CAP_DAC_READ_SEARCH` to read all files on the file system. The image already comes with this change and the necessary user and group. The only required step is configuring the agent DaemonSet to run as the user and group `5000:5000`.
 
