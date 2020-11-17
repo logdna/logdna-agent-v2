@@ -2,9 +2,7 @@
 
 [![Rustc Version 1.42+]][rustc] [Join us on LogDNA's Public Slack]
 
-The LogDNA agent is a blazingly fast, resource efficient log collection client, that forwards logs to [LogDNA]. The 2.0+ version of this agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
-
-![LogDNA Dashboard]
+The LogDNA agent is a blazingly fast, resource-efficient log collection client, that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
 
 [Rustc Version 1.42+]: https://img.shields.io/badge/rustc-1.42+-lightgray.svg
 [rustc]: https://blog.rust-lang.org/2020/03/12/Rust-1.42.html
@@ -12,65 +10,55 @@ The LogDNA agent is a blazingly fast, resource efficient log collection client, 
 [LogDNA]: https://logdna.com
 [Rust]: https://www.rust-lang.org/
 [Kubernetes]: https://kubernetes.io/
-[LogDNA Dashboard]: https://files.readme.io/ac5200b-Screen_Shot_2019-07-09_at_7.52.28_AM.png
 
 ## Table of Contents
 
-* [Upgrading](#upgrading)
-    * [Preamble](#preamble)
-    * [Upgrading on Kubernetes](#upgrading-on-kubernetes)
-* [Installing](#installing)
-    * [Prerequisites](#prerequisites)
-    * [Installing on Kubernetes](#installing-on-kubernetes)
+* [Managing Deployments](#managing-deployments)
+  * [Installing](#installing)
+  * [Upgrading](#upgrading)
+  * [Uninstalling](#uninstalling)
+  * [Running as Non-Root](#running-as-non-root)
+  * [Additional Installation Options](#additional-installation-options)
 * [Building](#building)
-    * [Building on Linux](#building-on-linux)
-    * [Building on Docker](#building-on-docker)
+  * [Building on Linux](#building-on-linux)
+  * [Building on Docker](#building-on-docker)
 * [Configuration](#configuration)
-    * [Options](#options)
-    * [Configuring Kubernetes](#configuring-kubernetes)
-    * [Run as Non-Root](#run-as-non-root)
+  * [Options](#options)
+  * [Configuring the Environment](#configuring-the-environment)
+  * [Configuring Lookback](#configuring-lookback)
 
-## Upgrading
+## Managing Deployments
 
-### Preamble
+The agent is supported for Kubernetes 1.9+ and OpenShift 4.6+ environments. 
 
-The agent comes with configuration files that allow it to be deployed to a number of environments. Often, these configuration files, once set, do not change whereas the image they use can update. This introduces issues where configuration files can fall behind and not provide the up to date features that come with evolving tools. We aim to make changes in the agent backwards compatible with old configuration files, but recommend regularly ensuring your config is up to date. The agent will try to alert users when it can't use new features.
+### Installing
 
-### Upgrading on Kubernetes
+* [Installing on Kubernetes](KUBERNETES.md#installing)
+* [Installing on OpenShift](OPENSHIFT.md#installing)
 
-We recommend doing a complete reinstall of the agent by removing the existing configuration and installing the latest one.
+### Upgrading
 
-1. A backup of your existing agent yaml is highly recommended:
-```
-kubectl get ds logdna-agent -o yaml > old-logdna-agent.yaml
-```
-2. Delete the existing agent using the yaml you installed with:
-```
-# 1.x.x
-kubectl delete -f https://raw.githubusercontent.com/logdna/logdna-agent/master/logdna-agent-ds.yaml
+* [Upgrading on Kubernetes](KUBERNETES.md#upgrading)
+* [Upgrading on OpenShift](OPENSHIFT.md#upgrading)
 
-# 2.0.x
-kubectl delete -f https://raw.githubusercontent.com/logdna/logdna-agent/master/logdna-agent-v2.yaml
-```
-3. Follow our instructions for [installing the agent on kubernetes](#installing-on-kubernetes).
+### Uninstalling
 
-## Installing
+* [Uninstalling on Kubernetes](KUBERNETES.md#uninstalling)
+* [Uninstalling on OpenShift](OPENSHIFT.md#uninstalling)
 
-### Prerequisites
+### Running as Non-Root
 
-* A LogDNA Account. Create an account with LogDNA by following our [quick start guide](https://docs.logdna.com/docs/logdna-quick-start-guide).
-* A LogDNA Ingestion Key. You can get your ingestion key at the top of [your account's Add a Log Source page](https://app.logdna.com/pages/add-host).
+By default the agent will run as root. Below are environment-specific instructions for running the agent as a non-root user.
 
-### Installing on Kubernetes
+* [Running as Non-Root on Kubernetes](KUBERNETES.md#run-as-non-root)
+* [Running as Non-Root on OpenShift](OPENSHIFT.md#run-as-non-root)
 
-The agent is compatible with Kubernetes clusters running `v1.9` or greater. It can be quickly and effortlessly deployed to all nodes to forward logs from your entire kubernetes cluster by running two commands:
+### Additional Installation Options
 
+More information about managing your deployments is documented for [Kubernetes](KUBERNETES.md) or [OpenShift](OPENSHIFT.md). This includes topics such as
 
-```
-kubectl apply -f https://assets.logdna.com/clients/agent-namespace.yaml
-kubectl create secret generic logdna-agent-key -n logdna-agent --from-literal=logdna-agent-key=<YOUR LOGDNA INGESTION KEY>
-kubectl apply -f https://assets.logdna.com/clients/agent-resources.yaml
-```
+* Version specific upgrade paths
+* Collecting system logs through Journald
 
 ## Building
 
@@ -96,15 +84,15 @@ The resulting image can be found by listing the images:
 
 ```console
 foo@bar:~$ docker images
-REPOSITORY          TAG                 IMAGE ID            CREATED             SIZE
-<none>              <none>              f541543bcd7f        64 seconds ago      119MB
+REPOSITORY              TAG                 IMAGE ID            CREATED             SIZE
+logdna-agent-v2         dcd54a0             e471b3d8a409        22 seconds ago      135MB
 ```
 
 ## Configuration
 
 ### Options
 
-The agent accepts configuration from two sources, environment variables and a configuration yaml. The default configuration yaml location is `/etc/logdna/config.yaml`. The following options are available:
+The agent accepts configuration from two sources, environment variables and a configuration YAML file. The default configuration yaml file is located at `/etc/logdna/config.yaml`. The following options are available:
 
 | Variable Name(s) | Description | Default |
 |-|-|-|
@@ -125,13 +113,14 @@ The agent accepts configuration from two sources, environment variables and a co
 |`LOGDNA_INCLUSION_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE`|Comma separated list of glob patterns to includes files for monitoring <sup>1</sup>|`*.log,!(*.*)`|
 |`LOGDNA_INCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE_REGEX`|Comma separated list of regex patterns to exclude files from monitoring||
 |`LOGDNA_JOURNALD_PATHS`|Comma separated list of paths (directories or files) of journald paths to monitor||
-|`LOGDNA_LOG_K8S_EVENTS`|Whether to log kubernetes events|`always|never`|
+|`LOGDNA_LOOKBACK`|The lookback strategy on startup|`smallfiles`|
+|`LOGDNA_LOG_K8S_EVENTS`|Whether the agent should capture Kubernetes events|`always`|
 
 1. We support [this flavor of globber syntax](https://github.com/CJP10/globber).
 
-### Configuring Kubernetes
+### Configuring the Environment
 
-To configure the kubernetes daemonset, copy the [logdna-agent yaml](../k8s/logdna-agent.yaml) and modify the `env` section. For example, to change the hostname add the following:
+To configure the DaemonSet, modify the envs section of the DameonSet [`spec.template.spec.containers.0.env`]. For example, to change the hostname add the following environment variable to the `env` list:
 
 ```yaml
 env:
@@ -141,14 +130,31 @@ env:
 
 Check out [Kubernetes documentation](https://kubernetes.io/docs/tasks/inject-data-application/define-environment-variable-container/) for more information about injecting environment variables into applications!
 
-### Run as Non-Root
+### Configuring Lookback
 
-Beginning with version 2.2 of the agent, the Dockerfile supports running the agent as a non-root user. This behavior; however, is not the default as to make the new version backwards compatible with old versions of the agent yamls. Make the following changes to your DaemonSet to run the agent as non-root:
+The lookback strategy determines how the agent handles existing files on startup. This strategy is determined by `LOGDNA_LOOKBACK`. The set of valid values for this option are:
 
-Add two new fields, `runAsUser` and `runAsGroup`, to the `securityContext` section found in the `logdna-agent` container in the `logdna-agent` DaemonSet [`spec.template.spec.containers.0.securityContext`]:
+* `start` - Always start at the beginning of the file
+* `smallfiles` - If the file is less than 8KiB, start at the beginning. Otherwise, start at the end
+* `none` - Always start at the end of the file
+* __Note:__ The default option is `smallfiles`.
 
-```yaml
-securityContext:
-  runAsUser: 5000
-  runAsGroup: 5000
-```
+### Configuring Journald
+
+If the agent pods have access to journald log files or directories, monitoring can be enabled on them with the `LOGDNA_JOURNALD_PATHS`. Common values include `/var/log/journal` and `/run/systemd/journal`. To specify both, use a comma separated list: `/var/log/journal,/run/systemd/journal`.
+
+Take a look at enabling journald monitoring for [Kubernetes](KUBERNETES.md#collecting-node-journald-logs) or [OpenShift](OPENSHIFT.md#collecting-node-journald-logs).
+
+### Configuring Events
+
+A Kubernetes event is exactly what it sounds like: a resource type that is automatically generated when state changes occur in other resources, or when errors or other messages manifest across the system. Monitoring events is useful for debugging your Kubernetes cluster.
+
+By default, the LogDNA agent captures Kubernetes events (and OpenShift events, as well, since OpenShift is built on top of Kubernetes clusters).
+
+To control whether the LogDNA agent collects Kubernetes events, configure the `LOGDNA_LOG_K8s_EVENTS` environment veriable using on of these two values:
+
+* `always` - Always capture events
+* `never` - Never capture events
+__Note:__ The default option is `always`.
+
+> :warning: Due to a ["won't fix" bug in the Kubernetes API](https://github.com/kubernetes/kubernetes/issues/41743), the LogDNA agent collects events from the entire cluster, including multiple nodes. To prevent duplicate logs when running multiple pods, the LogDNA agent pods defer responsibilty of capturing events to the oldest pod in the cluster. If that pod is down, the next oldest LogDNA agent pod will take over responsibility and continue from where the previous pod left off.
