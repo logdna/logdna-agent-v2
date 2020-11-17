@@ -92,7 +92,7 @@ pipeline {
         }
         stage('Check Publish Images') {
             when {
-                branch pattern: "\\d\\.\\d", comparator: "REGEXP"
+                branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
             }
             stages {
                 stage('Publish Images') {
@@ -102,17 +102,13 @@ pipeline {
                     }
                     steps {
                         script {
-                            withRegistry('https://docker.io', 'dockerhub-username-password') {
-                                withRegistry('https://icr.io', 'icr-username-password') {
-                                    withCredentials([[
-                                        $class: 'AmazonWebServicesCredentialsBinding',
-                                        credentialsId: 'aws',
-                                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                    ]]){
-                                        sh 'make publish'
-                                    }
-                                }
+                            withCredentials([[
+                                $class: 'AmazonWebServicesCredentialsBinding',
+                                credentialsId: 'aws',
+                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                            ]]){
+                                sh 'make publish-image'
                             }
                         }
                     }

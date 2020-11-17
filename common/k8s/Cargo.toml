@@ -10,6 +10,8 @@ middleware = { package = "middleware", path = "../middleware" }
 http = { package = "http", path = "../http" }
 metrics = { package = "metrics", path = "../metrics" }
 
+chrono = { version = "0.4", features = ["serde"] }
+chrono-humanize = "0.1"
 crossbeam = "0.7"
 regex = "1.0"
 lazy_static = "1.0"
@@ -18,6 +20,11 @@ tokio = { version = "0.2", features = ["rt-threaded"] }
 futures = "0.3"
 thiserror = "1.0"
 parking_lot = "0.11"
-kube = "0.35"
-k8s-openapi = { version = "0.8", default_features = false, features = ["v1_15"] }
+kube = "0.43"
+kube-runtime = "0.43"
+k8s-openapi = { version = "0.9", default_features = false, features = ["v1_15"] }
+serde = { version = "1.0", features = ["derive"]}
 serde_json = "1.0"
+pin-utils = "0.1"
+pin-project = "1"
+itertools = "0.9"

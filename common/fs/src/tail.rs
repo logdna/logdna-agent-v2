@@ -84,8 +84,6 @@ impl Tailer {
             let fs = self.fs_cache.clone();
             let lookback_config = self.lookback_config.clone();
             move |event| {
-
-                info!("Processing event {:?}", event);
                 let mut final_lines = Vec::new();
 
                 let mut fs = fs.lock().expect("Couldn't lock fs");

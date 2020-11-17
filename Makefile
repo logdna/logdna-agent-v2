@@ -32,6 +32,7 @@ SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
 VCS_REF := $(shell git rev-parse --short HEAD)
 VCS_URL := https://github.com/logdna/$(REPO)
+BUILD_DATE := $(shell date -u +'%Y-%m-%d')
 BUILD_TIMESTAMP := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUILD_VERSION := $(shell sed -nE "s/^version = \"(.+)\"\$$/\1/p" bin/Cargo.toml)
 BUILD_TAG := $(VCS_REF)
@@ -60,6 +61,8 @@ endif
 CHANGE_BIN_VERSION = awk '{sub(/^version = ".+"$$/, "version = \"$(1)\"")}1' bin/Cargo.toml >> bin/Cargo.toml.tmp && mv bin/Cargo.toml.tmp bin/Cargo.toml
 
 CHANGE_K8S_VERSION = sed 's/\(.*\)app\.kubernetes\.io\/version\(.\).*$$/\1app.kubernetes.io\/version\2 $(1)/g' $(2) >> $(2).tmp && mv $(2).tmp $(2)
+
+CHANGE_K8S_IMAGE = sed 's/\(logdna\/logdna-agent.\).*$$/\1$(1)/g' $(2) >> $(2).tmp && mv $(2).tmp $(2)
 
 REMOTE_BRANCH := $(shell git branch -vv | awk '/^\*/{split(substr($$4, 2, length($$4)-2), arr, "/"); print arr[2]}')
 
@@ -146,8 +149,10 @@ release-major: ## Create a new major beta release and push to github
 	@if [ ! "$(REMOTE_BRANCH)" = "master" ]; then echo "Can't create the major beta release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"master\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
+	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
+	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
@@ -155,16 +160,19 @@ release-major: ## Create a new major beta release and push to github
 
 .PHONY:release-minor
 release-minor: ## Create a new minor beta release and push to github
-	$(eval TARGET_BRANCH := $(shell expr $(MAJOR_VERSION).$(MINOR_VERSION) + 1))
+	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(shell expr $(MINOR_VERSION) + 1))
 	$(eval NEW_VERSION := $(TARGET_BRANCH).0-beta.1)
 	@if [ ! "$(REMOTE_BRANCH)" = "master" ]; then echo "Can't create the minor beta release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"master\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
+	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
+	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
+	git checkout $(TARGET_BRANCH) || git checkout -b $(TARGET_BRANCH)
 
 .PHONY:release-patch
 release-patch: ## Create a new patch beta release and push to github
@@ -173,11 +181,14 @@ release-patch: ## Create a new patch beta release and push to github
 	@if [ ! "$(REMOTE_BRANCH)" = "$(TARGET_BRANCH)" ]; then echo "Can't create the patch release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"$(TARGET_BRANCH)\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
+	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
+	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
+	git checkout $(TARGET_BRANCH) || git checkout -b $(TARGET_BRANCH)
 
 .PHONY:release-beta
 release-beta: ## Bump the beta version and push to github
@@ -186,24 +197,30 @@ release-beta: ## Bump the beta version and push to github
 	$(eval NEW_VERSION := $(TARGET_BRANCH).$(PATCH_VERSION)-beta.$(shell expr $(BETA_VERSION) + 1))
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
+	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
+	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
+	git checkout $(TARGET_BRANCH) || git checkout -b $(TARGET_BRANCH)
 
 .PHONY:release
 release: ## Create a new release from the current beta and push to github
 	@if [ "$(BETA_VERSION)" = "0" ]; then echo "Can't release from a non-beta version"; exit 1; fi
-	$(eval TARGET_BRANCH := $(shell expr $(MAJOR_VERSION).$(MINOR_VERSION) + 1))
-	$(eval NEW_VERSION := $(TARGET_BRANCH).$(PATCH_VERSION))
+	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(MINOR_VERSION))
+	$(eval NEW_VERSION := $(TARGET_BRANCH).0)
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
+	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
+	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
+	git checkout $(TARGET_BRANCH) || git checkout -b $(TARGET_BRANCH)
 
 .PHONY:build-image
 build-image: ## Build a docker image as specified in the Dockerfile
@@ -222,7 +239,7 @@ build-image: ## Build a docker image as specified in the Dockerfile
 
 .PHONY:publish-image
 publish-image: ## Publish SemVer compliant releases to our registroies
-	$(eval TARGET_VERSIONS := $(BUILD_VERSION) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-build.$(shell docker images -q $(REPO):$(BUILD_TAG)) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION) latest"; fi))
+	$(eval TARGET_VERSIONS := $(BUILD_VERSION) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(shell docker images -q $(REPO):$(BUILD_TAG)) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION) latest"; fi))
 	@for image in $(DOCKER_PRIVATE_IMAGE) $(DOCKER_PUBLIC_IMAGE) $(DOCKER_IBM_IMAGE); do \
 		for version in $(TARGET_VERSIONS); do \
 			$(DOCKER) tag $(REPO):$(BUILD_TAG) $${image}:$${version}; \

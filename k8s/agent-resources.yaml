@@ -7,7 +7,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.1.9-beta.2
+    app.kubernetes.io/version: 2.2.0-beta.10
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -17,7 +17,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.1.9-beta.2
+    app.kubernetes.io/version: 2.2.0-beta.10
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
@@ -31,7 +31,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.1.9-beta.2
+    app.kubernetes.io/version: 2.2.0-beta.10
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -48,7 +48,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.1.9-beta.2
+    app.kubernetes.io/version: 2.2.0-beta.10
 rules:
   - apiGroups: [""]
     resources: ["events"]
@@ -64,7 +64,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.1.9-beta.2
+    app.kubernetes.io/version: 2.2.0-beta.10
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -82,7 +82,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 2.1.9-beta.2
+    app.kubernetes.io/version: 2.2.0-beta.10
 spec:
   updateStrategy:
     type: RollingUpdate
@@ -97,12 +97,12 @@ spec:
         app: logdna-agent
         app.kubernetes.io/name: logdna-agent
         app.kubernetes.io/instance: logdna-agent
-        app.kubernetes.io/version: 2.1.9-beta.2
+        app.kubernetes.io/version: 2.2.0-beta.10
     spec:
       serviceAccountName: logdna-agent
       containers:
         - name: logdna-agent
-          image: logdna/logdna-agent:stable
+          image: logdna/logdna-agent:2.2.0-beta.10
           imagePullPolicy: Always
           securityContext:
             capabilities:
@@ -116,6 +116,14 @@ spec:
                 secretKeyRef:
                   name: logdna-agent-key
                   key: logdna-agent-key
+            - name: POD_APP_LABEL
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['app.kubernetes.io/name']
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: NODE_NAME
               valueFrom:
                 fieldRef:
