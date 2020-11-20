@@ -45,12 +45,13 @@ agent your logs may not be collected.
 To install a specific version you should ensure you checkout the tag for that
 version before applying any YAML files from the current tree.
 
-For example to install the a particular 2.2 beta you would run
+For example to install a particular 2.2 beta you would run the following command
+in the repo's root directory before following the install instructions relevant
+for your cluster.
+
 ```bash
 git checkout 2.2.0-beta.10
 ```
-in the repo's root directory before following the install instructions relevant
-for your cluster.
 
 * [Installing on Kubernetes](KUBERNETES.md#installing)
 * [Installing on OpenShift](OPENSHIFT.md#installing)
@@ -146,7 +147,7 @@ The agent accepts configuration from two sources, environment variables and a co
 
 ### Configuring the Environment
 
-To configure the DaemonSet, modify the envs section of the DameonSet [`spec.template.spec.containers.0.env`]. For example, to change the hostname add the following environment variable to the `env` list:
+To configure the DaemonSet, modify the envs section of the DaemonSet [`spec.template.spec.containers.0.env`]. For example, to change the hostname add the following environment variable to the `env` list:
 
 ```yaml
 env:
