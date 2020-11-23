@@ -1,6 +1,6 @@
 # LogDNA Agent on OpenShift
 
-The agent is supported for OpenShift 4.5.
+The agent is supported for Red Hat<sup>:registered:</sup> OpenShift<sup>:registered:</sup> 4.5 and newer.
 
 ## Table of Contents
 
@@ -50,6 +50,8 @@ logdna-agent-jb2rg   1/1     Running   0          7s
 ```
 
 > :warning: By default the agent will run as root. To run the agent as a non-root user, refer to the section [Run as Non-Root](#run-as-non-root) below.
+
+**Note:** To run as non-root, your OpenShift container must still be marked as privileged.
 
 ## Upgrading
 
@@ -133,6 +135,8 @@ oc delete serviceaccount logdna-agent
 
 By default the agent is configured to run as root; however, the DaemonSet can be modified to run the agent as a non-root user.
 
+**Note:** To run as non-root the agent container must still be marked as privileged.
+
 This is accomplished through Linux capabilities and turning the agent binary into a "capability-dumb binary." The binary is given `CAP_DAC_READ_SEARCH` to read all files on the file system. The image already comes with this change and the necessary user and group. The only required step is configuring the agent DaemonSet to run as the user and group `5000:5000`.
 
 Add two new fields, `runAsUser` and `runAsGroup`, to the `securityContext` section found in the `logdna-agent` container in the `logdna-agent` DaemonSet inside of `k8s/agent-resources-openshift.yaml` [`spec.template.spec.containers.0.securityContext`]:
@@ -163,7 +167,7 @@ The agent can access Journald logs from the host node by mounting the logs from 
 
 ### Enabling Journald on the Node
 
-Follow OpenShifts documentation for [enabling Journald on your nodes](https://docs.openshift.com/container-platform/4.6/logging/config/cluster-logging-systemd.html).
+Follow OpenShift's documentation for [enabling Journald on your nodes](https://docs.openshift.com/container-platform/4.6/logging/config/cluster-logging-systemd.html).
 
 ### Enabling Journald Monitoring on the Agent
 

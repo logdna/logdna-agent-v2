@@ -1,6 +1,6 @@
 # LogDNA Agent on Kubernetes
 
-The agent is compatible with Kubernetes versions 1.9 and greater; however, we always recommend running the latest stable version.
+The agent is compatible with Kubernetes<sup>:registered:</sup> versions 1.9 and greater; however, we always recommend running the most recent stable version.
 
 ## Table of Contents
 

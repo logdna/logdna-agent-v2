@@ -2,7 +2,7 @@
 
 [![Rustc Version 1.42+]][rustc] [Join us on LogDNA's Public Slack]
 
-The LogDNA agent is a blazingly fast, resource-efficient log collection client, that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
+The LogDNA agent is a fast, resource-efficient log collection client that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
 
 [Rustc Version 1.42+]: https://img.shields.io/badge/rustc-1.42+-lightgray.svg
 [rustc]: https://blog.rust-lang.org/2020/03/12/Rust-1.42.html
@@ -20,8 +20,7 @@ The LogDNA agent is a blazingly fast, resource-efficient log collection client, 
   * [Running as Non-Root](#running-as-non-root)
   * [Additional Installation Options](#additional-installation-options)
 * [Building](#building)
-  * [Building on Linux](#building-on-linux)
-  * [Building on Docker](#building-on-docker)
+  * [Building Docker image](#building-on-docker)
 * [Configuration](#configuration)
   * [Options](#options)
   * [Configuring the Environment](#configuring-the-environment)
@@ -29,9 +28,30 @@ The LogDNA agent is a blazingly fast, resource-efficient log collection client, 
 
 ## Managing Deployments
 
-The agent is supported for Kubernetes 1.9+ and OpenShift 4.6+ environments. 
+The agent is supported for Kubernetes<sup>:registered:</sup> 1.9+ and Red Hat<sup>:registered:</sup> OpenShift<sup>:registered:</sup> 4.5+ environments.
 
 ### Installing
+
+__NOTE__: The Kubernetes manifest YAML files in this repository (and referenced in this
+documentation) describe the version of the LogDNA Agent in the current commit
+tree and no other version of the LogDNA agent. If you apply the kubernetes manifest
+found in the current tree then your cluster _will_ be running the version described
+by the current commit which may not be ready for general use.
+
+You MUST ensure that the current tree is checked out to the branch/tag is the
+version you intend to install, if you install a pre-release version of the
+agent your logs may not be collected.
+
+To install a specific version you should ensure you checkout the tag for that
+version before applying any YAML files from the current tree.
+
+For example to install a particular 2.2 beta you would run the following command
+in the repo's root directory before following the install instructions relevant
+for your cluster.
+
+```bash
+git checkout 2.2.0-beta.10
+```
 
 * [Installing on Kubernetes](KUBERNETES.md#installing)
 * [Installing on OpenShift](OPENSHIFT.md#installing)
@@ -60,21 +80,18 @@ More information about managing your deployments is documented for [Kubernetes](
 * Version specific upgrade paths
 * Collecting system logs through Journald
 
-## Building
+## Building Agent v2
 
-### Building on Linux
-
-The agent requires `v1.42+` of rustc [cargo-make](https://github.com/sagiegurari/cargo-make) to build. If the proper versions of rustc and cargo are installed; then simply run the following command to build the agent:
+Clone and cd into this repository:
 
 ```
-cargo build
+git clone https://github.com/logdna/logdna-agent-v2.git
+cd logdna-agent-v2
 ```
 
-The compiled binary will be built to `./target/release/logdna-agent`.
+### Building Docker image
 
-### Building on Docker
-
-To build a Docker image of the agent, ensure docker is installed properly, verify the docker engine is running, and then run the following command:
+To build a Docker<sup>:registered:</sup> image of the agent, ensure the Docker command is installed properly, verify that the Docker engine is running, and then run the following command:
 
 ```
 make build-image
@@ -87,6 +104,16 @@ foo@bar:~$ docker images
 REPOSITORY              TAG                 IMAGE ID            CREATED             SIZE
 logdna-agent-v2         dcd54a0             e471b3d8a409        22 seconds ago      135MB
 ```
+
+### Building agent binary on Linux
+
+The agent requires `v1.42+` of rustc [cargo-make](https://github.com/sagiegurari/cargo-make) to build. If the proper versions of rustc and cargo are installed; then simply run the following command to build the agent:
+
+```
+cargo build --release
+```
+
+The compiled binary will be built to `./target/release/logdna-agent`.
 
 ## Configuration
 
@@ -120,7 +147,7 @@ The agent accepts configuration from two sources, environment variables and a co
 
 ### Configuring the Environment
 
-To configure the DaemonSet, modify the envs section of the DameonSet [`spec.template.spec.containers.0.env`]. For example, to change the hostname add the following environment variable to the `env` list:
+To configure the DaemonSet, modify the envs section of the DaemonSet [`spec.template.spec.containers.0.env`]. For example, to change the hostname add the following environment variable to the `env` list:
 
 ```yaml
 env:
@@ -151,7 +178,7 @@ A Kubernetes event is exactly what it sounds like: a resource type that is autom
 
 By default, the LogDNA agent captures Kubernetes events (and OpenShift events, as well, since OpenShift is built on top of Kubernetes clusters).
 
-To control whether the LogDNA agent collects Kubernetes events, configure the `LOGDNA_LOG_K8s_EVENTS` environment veriable using on of these two values:
+To control whether the LogDNA agent collects Kubernetes events, configure the `LOGDNA_LOG_K8s_EVENTS` environment variable using on of these two values:
 
 * `always` - Always capture events
 * `never` - Never capture events
