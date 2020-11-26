@@ -92,7 +92,7 @@ spec:
       serviceAccountName: logdna-agent
       containers:
         - name: logdna-agent
-          image: 2.2.0-beta.11
+          image: logdna/logdna-agent:2.2.0-beta.10
           imagePullPolicy: Always
           securityContext:
             privileged: true
