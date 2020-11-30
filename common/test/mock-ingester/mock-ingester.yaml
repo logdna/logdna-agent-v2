@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-ingester
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-ingester
+  template:
+    metadata:
+      labels:
+        app: mock-ingester
+    spec:
+      containers:
+        - name: mock-ingester
+          image: logdna/mock-ingester:latest
+          imagePullPolicy: Always
+          env:
+            - name: RUST_LOG
+              value: info
+          ports:
+            - containerPort: 1337
+              name: mock-ingester
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-ingester
+spec:
+  selector:
+    app: mock-ingester
+  ports:
+    - port: 80
+      targetPort: 1337
+  type: LoadBalancer

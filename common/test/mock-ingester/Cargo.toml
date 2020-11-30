@@ -1,0 +1,24 @@
+[package]
+name = "logdna-mock-ingester"
+version = "0.1.0"
+authors = ["Connor Peticca <cjpet10@gmail.com>"]
+edition = "2018"
+default-run = "https_ingester"
+
+[[bin]]
+name = "https_ingester"
+path = "src/bin/https_ingester.rs"
+
+[dependencies]
+async-compression = { version ="0.3", features = ["stream", "gzip"]}
+hyper = "0.13"
+futures = "0.3"
+rcgen = "0.8"
+rustls = "0.18"
+rustls-native-certs = { version = "0.4.0", optional = true }
+tokio = { version = "0.2", features = ["full"] }
+tokio-rustls = "0.14.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+env_logger = "0.7"
+log = "0.4"
