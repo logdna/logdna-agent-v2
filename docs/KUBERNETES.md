@@ -13,7 +13,6 @@ The agent is compatible with Kubernetes<sup>:registered:</sup> versions 1.9 and 
     * [Upgrading from Configuration v2.1.x](#upgrading-from-configuration-v21x)
   * [Upgrading the Image](#upgrading-the-image)
 * [Uninstalling](#uninstalling)
-* [Run as Non-Root](#run-as-non-root)
 * [Collecting Node Journald Logs](#collecting-node-journald-logs)
   * [Enabling Journald on the Node](#enabling-journald-on-the-node)
   * [Enabling Journald Monitoring on the Agent](#enabling-journald-monitoring-on-the-agent)
@@ -44,8 +43,6 @@ foo@bar:~$ kubectl get pods -n logdna-agent --watch
 NAME                 READY   STATUS    RESTARTS   AGE
 logdna-agent-hcvhn   1/1     Running   0          10s
 ```
-
-> :warning: By default the agent will run as root. To run the agent as a non-root user, refer to the section [Run as Non-Root](#run-as-non-root) below.
 
 ## Upgrading
 
@@ -137,32 +134,6 @@ If you're sharing the namespace with other applications, and thus you need to le
 ```console
 kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get --show-kind --ignore-not-found -n <NAMESPACE> -l app.kubernetes.io/name=logdna-agent -o name | xargs kubectl delete -n <NAMESPACE>
 kubectl delete secret -n <NAMESPACE> logdna-agent-key
-```
-
-## Run as Non-Root
-
-By default the agent is configured to run as root; however, the DaemonSet can be modified to run the agent as a non-root user.
-
-This is accomplished through Linux capabilities and turning the agent binary into a "capability-dumb binary." The binary is given `CAP_DAC_READ_SEARCH` to read all files on the file system. The image already comes with this change and the necessary user and group. The only required step is configuring the agent DaemonSet to run as the user and group `5000:5000`.
-
-Add two new fields, `runAsUser` and `runAsGroup`, to the `securityContext` section found in the `logdna-agent` container in the `logdna-agent` DaemonSet inside of `k8s/agent-resources.yaml` [`spec.template.spec.containers.0.securityContext`]:
-
-```yaml
-securityContext:
-  runAsUser: 5000
-  runAsGroup: 5000
-```
-
-Apply the updated configuration to your cluster:
-
-```console
-kubectl apply -f k8s/agent-resources.yaml
-```
-
-Alternatively, update the DaemonSet configuration directly by using the following patch command:
-
-```console
-kubectl patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"add","path":"/spec/template/spec/containers/0/securityContext/runAsUser","value":5000},{"op":"add","path":"/spec/template/spec/containers/0/securityContext/runAsGroup","value":5000}]'
 ```
 
 ## Collecting Node Journald Logs

@@ -17,7 +17,6 @@ The LogDNA agent is a fast, resource-efficient log collection client that forwar
   * [Installing](#installing)
   * [Upgrading](#upgrading)
   * [Uninstalling](#uninstalling)
-  * [Running as Non-Root](#running-as-non-root)
   * [Additional Installation Options](#additional-installation-options)
 * [Building](#building)
   * [Building Docker image](#building-on-docker)
@@ -65,13 +64,6 @@ git checkout 2.2.0-beta.10
 
 * [Uninstalling on Kubernetes](KUBERNETES.md#uninstalling)
 * [Uninstalling on OpenShift](OPENSHIFT.md#uninstalling)
-
-### Running as Non-Root
-
-By default the agent will run as root. Below are environment-specific instructions for running the agent as a non-root user.
-
-* [Running as Non-Root on Kubernetes](KUBERNETES.md#run-as-non-root)
-* [Running as Non-Root on OpenShift](OPENSHIFT.md#run-as-non-root)
 
 ### Additional Installation Options
 
