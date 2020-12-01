@@ -53,7 +53,7 @@ predicates = "1"
 tempfile = "3"
 rustls = "0.18"
 rcgen = "0.8"
-logdna_mock_ingester = { package = "logdna-mock-ingester", git = "ssh://git@github.com:/answerbook/mock-ingester.git", branch = "librarify" }
+logdna_mock_ingester = { package = "logdna-mock-ingester", path = "../common/test/mock-ingester" }
 tokio-test = "0.2"
 
 [build-dependencies]

@@ -102,24 +102,23 @@ impl Service<Request<Body>> for Svc {
                         raw_line.push('\n')
                     }
 
-                    let orig_file_name = line
-                        .file
-                        .unwrap_or_else(|| " unknown".into());
+                    let orig_file_name = line.file.unwrap_or_else(|| " unknown".into());
 
                     let file_name = orig_file_name.replace("/", "-").clone();
                     let file_name = &file_name[1..];
 
                     let mut files = files.lock().await;
                     let (ref line_count, ref mut file) =
-                        files.entry(orig_file_name.into())
-                          .or_insert_with(|| {
+                        files.entry(orig_file_name.into()).or_insert_with(|| {
                             info!("creating {}", file_name);
-                            (AtomicUsize::new(0),
-                             OpenOptions::new()
-                                .create(true)
-                                .append(true)
-                                .open(&file_name)
-                                .unwrap())
+                            (
+                                AtomicUsize::new(0),
+                                OpenOptions::new()
+                                    .create(true)
+                                    .append(true)
+                                    .open(&file_name)
+                                    .unwrap(),
+                            )
                         });
 
                     line_count.fetch_add(1, Ordering::Relaxed);
