@@ -93,7 +93,7 @@ git clone https://github.com/logdna/logdna-agent-v2.git
 cd logdna-agent-v2
 ```
 
-Next, select how you want to build the image: using Docker or an agent binary on Linux.
+Next, select how you want to build the agent: as a docker image or as a Linux binary.
 
 ### Building Docker image
 
