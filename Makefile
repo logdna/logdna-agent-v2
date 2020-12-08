@@ -32,7 +32,7 @@ SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
 VCS_REF := $(shell git rev-parse --short HEAD)
 VCS_URL := https://github.com/logdna/$(REPO)
-BUILD_DATE := $(shell date -u +'%Y-%m-%d')
+BUILD_DATE := $(shell date -u +'%Y%m%d')
 BUILD_TIMESTAMP := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUILD_VERSION := $(shell sed -nE "s/^version = \"(.+)\"\$$/\1/p" bin/Cargo.toml)
 BUILD_TAG := $(VCS_REF)
