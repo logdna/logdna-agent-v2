@@ -1,14 +1,5 @@
 ---
 apiVersion: v1
-kind: Namespace
-metadata:
-  name: logdna-agent
-  labels:
-    app.kubernetes.io/name: logdna-agent
-    app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.0.0-beta.1
----
-apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: logdna-agent
@@ -113,14 +104,44 @@ spec:
         - name: logdna-agent
           image: logdna/logdna-agent:3.0.0-beta.1
           imagePullPolicy: Always
+          securityContext:
+            capabilities:
+              add:
+                - DAC_READ_SEARCH
+              drop:
+                - all
           env:
             - name: LOGDNA_AGENT_KEY
               valueFrom:
                 secretKeyRef:
                   name: logdna-agent-key
                   key: logdna-agent-key
+            - name: LOGDNA_ENDPOINT
+              optional: true
+              valueFrom:
+                configMapRef:
+                  name: logdna-agent
+                  key: LOGDNA_ENDPOINT
+            - name: LOGDNA_TAGS
+              optional: true
+              valueFrom:
+                configMapRef:
+                  name: logdna-agent
+                  key: LOGDNA_TAGS
+            - name: POD_APP_LABEL
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['app.kubernetes.io/name']
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: RUST_LOG
-              value: info
+              default: info
+              valueFrom:
+                configMapRef:
+                  name: logdna-agent
+                  key: RUST_LOG
             - name: NODE_NAME
               valueFrom:
                 fieldRef:

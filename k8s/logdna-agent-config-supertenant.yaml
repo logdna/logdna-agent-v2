@@ -1,0 +1,7 @@
+apiVersion: v1
+data:
+  LOGDNA_ENDPOINT: /supertenant/logs/ingest
+kind: ConfigMap
+metadata:
+  name: logdna-agent
+  namespace: logdna-agent
