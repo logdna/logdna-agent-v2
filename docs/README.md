@@ -111,7 +111,7 @@ REPOSITORY              TAG                 IMAGE ID            CREATED         
 logdna-agent-v2         dcd54a0             e471b3d8a409        22 seconds ago      135MB
 ```
 
-You can also obtain the image and review our tagging scheme on [DockerHub](https://hub.docker.com/r/logdna/logdna-agent.)
+You can also obtain the image and review our tagging scheme on [DockerHub](https://hub.docker.com/r/logdna/logdna-agent).
 
 ### Building Agent Binary on Linux
 
