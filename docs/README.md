@@ -20,21 +20,23 @@ The LogDNA agent is a fast, resource-efficient log collection client that forwar
   * [Running as Non-Root](#running-as-non-root)
   * [Additional Installation Options](#additional-installation-options)
 * [Building](#building)
-  * [Building Docker image](#building-on-docker)
+  * [Building Docker image](#building-docker-image)
 * [Configuration](#configuration)
   * [Options](#options)
   * [Configuring the Environment](#configuring-the-environment)
   * [Configuring Lookback](#configuring-lookback)
+  * [Configuring Journald](#configuring-journald)
+  * [Configuring Kubernetes Events](#configuring-events)
 
 ## Managing Deployments
 
-The agent is supported for Kubernetes<sup>:registered:</sup> 1.9+ and Red Hat<sup>:registered:</sup> OpenShift<sup>:registered:</sup> 4.5+ environments.
+The agent is supported for Kubernetes 1.9+ and Red Hat OpenShift 4.5+ environments.
 
 ### Installing
 
 __NOTE__: The Kubernetes manifest YAML files in this repository (and referenced in this
 documentation) describe the version of the LogDNA Agent in the current commit
-tree and no other version of the LogDNA agent. If you apply the kubernetes manifest
+tree and no other version of the LogDNA agent. If you apply the Kubernetes manifest
 found in the current tree then your cluster _will_ be running the version described
 by the current commit which may not be ready for general use.
 
@@ -82,16 +84,20 @@ More information about managing your deployments is documented for [Kubernetes](
 
 ## Building Agent v2
 
-Clone and cd into this repository:
+Obtain the source code to build the agent from our [GitHub repository](https://github.com/logdna/logdna-agent-v2). You can either download the source files as a .zip file, or clone the repository.
+
+* Use the following commands to clone and then cd into this repository:
 
 ```
 git clone https://github.com/logdna/logdna-agent-v2.git
 cd logdna-agent-v2
 ```
 
+Next, select how you want to build the agent: as a docker image or as a Linux binary.
+
 ### Building Docker image
 
-To build a Docker<sup>:registered:</sup> image of the agent, ensure the Docker command is installed properly, verify that the Docker engine is running, and then run the following command:
+To build a Docker image of the agent, ensure the Docker command is installed properly, verify that the Docker engine is running, and then run the following command:
 
 ```
 make build-image
@@ -105,7 +111,9 @@ REPOSITORY              TAG                 IMAGE ID            CREATED         
 logdna-agent-v2         dcd54a0             e471b3d8a409        22 seconds ago      135MB
 ```
 
-### Building agent binary on Linux
+You can also obtain the image and review our tagging scheme on [DockerHub](https://hub.docker.com/r/logdna/logdna-agent).
+
+### Building Agent Binary on Linux
 
 The agent requires `v1.42+` of rustc [cargo-make](https://github.com/sagiegurari/cargo-make) to build. If the proper versions of rustc and cargo are installed; then simply run the following command to build the agent:
 
