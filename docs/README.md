@@ -54,6 +54,8 @@ specific tag's version number) in the repo's root directory before following the
 git checkout major.minor.patch-beta.n
 ```
 
+To view a list of all available release versions, use you terminal to run the command `git tag -l` in the agent installation directory.
+
 * [Installing on Kubernetes](KUBERNETES.md#installing)
 * [Installing on OpenShift](OPENSHIFT.md#installing)
 
