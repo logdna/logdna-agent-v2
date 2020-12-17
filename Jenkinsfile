@@ -2,6 +2,7 @@ library 'magic-butler-catalogue'
 def PROJECT_NAME = 'logdna-agent-v2'
 def TRIGGER_PATTERN = '.*@logdnabot.*'
 def publishImage = false
+def runBenchmarks = false
 
 pipeline {
     agent any
@@ -67,6 +68,90 @@ pipeline {
                 success {
                     sh "make clean"
                 }
+            }
+        }
+        stage('Run performance regression testing') {
+            when {
+               not {
+                   branch 'master'
+               }
+            }
+            stages {
+                stage('Manual approval for regression testing') {
+                    steps {
+                        script {
+                            runBenchmarks = true
+                            try {
+                                timeout(time: 30, unit: 'SECONDS') {
+                                    input(message: 'Run optional performance regression tests?')
+                                }
+                            } catch (err) {
+                                runBenchmarks = false
+                            }
+                        }
+                    }
+                }
+                stage('Run benchmarks') {
+                    when {
+                        expression { return runBenchmarks == true }
+                    }
+                    steps {
+                        script {
+                            withCredentials([[
+                                $class: 'AmazonWebServicesCredentialsBinding',
+                                credentialsId: 'aws',
+                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                            ]]){
+                                // TODO: Modify Jenkins worker image to include terraform
+                                sh script: '''
+                                    # Install terraform, it should be moved to the image
+                                    if ! command -v terraform &> /dev/null
+                                    then
+                                        echo "Installing terraform"
+                                        curl -o terraform.zip "https://releases.hashicorp.com/terraform/0.14.2/terraform_0.14.2_linux_amd64.zip"
+                                        unzip terraform.zip
+                                        sudo mv terraform /usr/local/bin/
+                                        terraform --version
+                                    fi
+                                ''', label: 'Install terraform'
+
+                                timeout(time: 15, unit: 'MINUTES') {
+                                    sh script: '''
+                                        echo "Running performance benchmarks for $GIT_BRANCH with master as baseline"
+                                        rm -Rf agent-benchmarks
+                                        git clone -q https://github.com/logdna/agent-benchmarks.git && cd agent-benchmarks
+                                        echo "" > dummy_github_id_rsa
+                                        terraform init ./terraform/
+                                        terraform apply -auto-approve -var="baseline_agent_type=rust" -var="compare_agent_type=rust" -var="compare_agent_branch=$GIT_BRANCH" -var="test_scenario=2" -var="path_to_ssh_key=dummy_github_id_rsa" -var="aws_access_key=$AWS_ACCESS_KEY_ID" -var="aws_secret_key=$AWS_SECRET_ACCESS_KEY" -var="bucket_folder=$GIT_BRANCH-$BUILD_NUMBER" ./terraform/
+                                    ''', label: 'Run benchmarks using terraform'
+                                }
+
+                                echo "Memory usage: https://agent-benchmarks-results.s3.us-east-2.amazonaws.com/${env.GIT_BRANCH}-${env.BUILD_NUMBER}/memory-series.png"
+                                echo "CPU histogram (this branch): https://agent-benchmarks-results.s3.us-east-2.amazonaws.com/${env.GIT_BRANCH}-${env.BUILD_NUMBER}/benchmarks/compare/cpu.txt"
+                                echo "CPU histogram (baseline): https://agent-benchmarks-results.s3.us-east-2.amazonaws.com/${env.GIT_BRANCH}-${env.BUILD_NUMBER}/benchmarks/baseline/cpu.txt"
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            withCredentials([[
+                                $class: 'AmazonWebServicesCredentialsBinding',
+                                credentialsId: 'aws',
+                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                            ]]){
+                                retry(3) {
+                                    sh script: '''
+                                        cd agent-benchmarks
+                                        terraform destroy -auto-approve ./terraform/
+                                    ''', label: 'Destroy resources using terraform'
+                                }
+                            }
+                        }
+                    }
+                }
+
             }
         }
         stage('Build Release Image') {
