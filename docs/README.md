@@ -44,7 +44,7 @@ You MUST ensure that the current tree is checked out to the branch/tag is the
 version you intend to install, if you install a pre-release version of the
 agent your logs may not be collected.
 
-To install a specific version you should ensure you checkout the exact tag for that
+To install a specific version you should ensure that you check out the exact tag for that
 version before applying any YAML files from the current tree.
 
 For example, to install a specific version, say a particular build of a beta, you would run the following command (with the 
