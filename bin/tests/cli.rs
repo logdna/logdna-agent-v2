@@ -3,6 +3,7 @@ use predicates::prelude::*;
 
 use tempfile::tempdir;
 
+use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::Command;
@@ -130,4 +131,33 @@ fn test_read_file_appended_in_the_background() {
     assert!(total_lines_written > 0);
     assert_eq!(occurrences, expected_occurrences);
     agent_handle.kill().unwrap();
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_append_and_delete() {
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let file_path = dir.join("file1.log");
+    File::create(&file_path).expect("Could not create file");
+
+    let mut agent_handle = common::spawn_agent(&dir.to_str().unwrap());
+
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+    common::append_to_file_continuously(&file_path, 1000, 50).expect("Could not append");
+    fs::remove_file(&file_path).expect("Could not remove file");
+
+    // Immediately, start appending in a new file
+    common::append_to_file_continuously(&file_path, 5, 5).expect("Could not append");
+
+    common::wait_for_file_event("unwatching", &file_path, &mut stderr_reader);
+    common::wait_for_file_event("added", &file_path, &mut stderr_reader);
+
+    for _ in 0..5 {
+        assert!(agent_handle.try_wait().ok().unwrap().is_none());
+        thread::sleep(std::time::Duration::from_millis(20));
+    }
+
+    agent_handle.kill().expect("Could not kill process");
 }

@@ -8,6 +8,8 @@ use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
 use std::thread;
 
+static LINE: &str = "Nov 30 09:14:47 sample-host-name sampleprocess[1204]: Hello from process";
+
 pub struct FileContext {
     pub file_path: PathBuf,
     pub stop_handle: Box<dyn FnOnce() -> i32>,
@@ -27,9 +29,8 @@ pub fn start_append_to_file(dir: &Path, delay_ms: u64) -> FileContext {
         let delay = time::Duration::from_millis(delay_ms);
 
         let mut lines_written = 0;
-        let line = "Nov 30 09:14:47 sample-host-name sampleprocess[1204]: Hello from process";
         while let Err(TryRecvError::Empty) = rx.try_recv() {
-            if let Err(e) = writeln!(file, "{}", line) {
+            if let Err(e) = writeln!(file, "{}", LINE) {
                 eprintln!("Couldn't write to file: {}", e);
                 return Err(e);
             }
@@ -56,6 +57,30 @@ pub fn start_append_to_file(dir: &Path, delay_ms: u64) -> FileContext {
     }
 }
 
+pub fn append_to_file_continuously(
+    file_path: &PathBuf,
+    lines: i32,
+    sync_every: i32,
+) -> Result<(), std::io::Error> {
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&file_path)?;
+
+    for i in 0..lines {
+        if let Err(e) = writeln!(file, "{}", LINE) {
+            eprintln!("Couldn't write to file: {}", e);
+            return Err(e);
+        }
+
+        if i % sync_every == 0 {
+            file.sync_all()?;
+        }
+    }
+    file.sync_all()?;
+    Ok(())
+}
+
 pub fn spawn_agent(dir_path: &str) -> Child {
     let mut cmd = Command::cargo_bin("logdna-agent").unwrap();
 
@@ -77,4 +102,22 @@ pub fn spawn_agent(dir_path: &str) -> Child {
         .stderr(Stdio::piped());
 
     agent.spawn().expect("Failed to start agent")
+}
+
+pub fn wait_for_file_event(event: &str, file_path: &PathBuf, stderr_reader: &mut dyn BufRead) {
+    let mut line = String::new();
+    let file_name = &file_path.file_name().unwrap().to_str().unwrap();
+    let event_text = format!("{} \"/tmp/", event);
+    for _safeguard in 0..100_000 {
+        stderr_reader.read_line(&mut line).unwrap();
+        if line.contains(&event_text) && line.contains(file_name) {
+            return;
+        }
+        line.clear();
+    }
+
+    panic!(
+        "file {:?} event {:?} not found in agent output",
+        file_path, event
+    );
 }
