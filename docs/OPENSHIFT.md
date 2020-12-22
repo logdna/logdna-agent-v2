@@ -39,7 +39,7 @@ oc adm policy add-scc-to-user privileged system:serviceaccount:logdna-agent:logd
 ```
 3. Create the remaining resources:
 ```console
-oc apply -f k8s/agent-resources-openshift.yaml
+oc apply -f https://raw.githubusercontent.com/jondkelley/logdna-agent-v2/2.2/k8s/agent-resources-openshift.yaml
 ```
 4. Monitor the pods for startup success:
 ```console
@@ -146,7 +146,7 @@ oc patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"add","pa
 ```
 * If you are modifying a YAML file:
   1. Add the new environment variable to the envs section of the DaemonSet object in `k8s/agent-resources-openshift.yaml` [`spec.template.spec.containers.0.env`].
-  2. Apply the new configuration file, run `oc apply -f k8s/agent-resources-openshift.yaml`.
+  2. Apply the new configuration file, run `oc apply -f agent-resources-openshift.yaml`.
 
  ```yaml
  env:
