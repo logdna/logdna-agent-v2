@@ -1,5 +1,6 @@
 use assert_cmd::cargo::CommandCargoExt;
 use core::time;
+use std::fs;
 use std::fs::OpenOptions;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
@@ -134,5 +135,11 @@ pub fn assert_agent_running(agent_handle: &mut Child) {
     for _ in 0..10 {
         thread::sleep(std::time::Duration::from_millis(20));
         assert!(agent_handle.try_wait().ok().unwrap().is_none());
+    }
+}
+
+pub fn create_dirs<P: AsRef<Path>>(dirs: &[P]) {
+    for dir in dirs {
+        fs::create_dir(dir).expect("Unable to create dir");
     }
 }
