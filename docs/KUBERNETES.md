@@ -33,9 +33,9 @@ The agent can be installed in your cluster using a set of YAML files we provide.
 1. Navigate to the root directory of the cloned `logdna-agent-v2` repository.
 2. Run the following commands to configure and start the agent:
 ```console
-kubectl apply -f k8s/agent-namespace.yaml
+kubectl apply -f https://raw.githubusercontent.com/logdna/logdna-agent-v2/2.2/k8s/agent-namespace.yaml
 kubectl create secret generic logdna-agent-key -n logdna-agent --from-literal=logdna-agent-key=<YOUR LOGDNA INGESTION KEY>
-kubectl apply -f k8s/agent-resources.yaml
+kubectl apply -f https://raw.githubusercontent.com/logdna/logdna-agent-v2/2.2/k8s/agent-resources.yaml
 ```
 3. Monitor the pods for startup success:
 ```console
@@ -126,7 +126,7 @@ kubectl patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"rep
 The default configuration places all of the Kubernetes objects in a unique namespace. To completely remove all traces of the agent you need to simply delete this namespace:
 
 ```console
-kubectl delete -f k8s/agent-namespace.yaml
+kubectl delete -f https://raw.githubusercontent.com/logdna/logdna-agent-v2/2.2/k8s/agent-namespace.yaml
 ```
 
 If you're sharing the namespace with other applications, and thus you need to leave the namespace, you can instead remove all traces by deleting the agent with a label filter. You'll also need to remove the logdna-agent-key secret which doesn't have a label:
