@@ -145,11 +145,11 @@ fn test_append_and_delete() {
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
     common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
-    common::append_to_file_continuously(&file_path, 1000, 50).expect("Could not append");
+    common::append_to_file(&file_path, 10_000, 50).expect("Could not append");
     fs::remove_file(&file_path).expect("Could not remove file");
 
     // Immediately, start appending in a new file
-    common::append_to_file_continuously(&file_path, 5, 5).expect("Could not append");
+    common::append_to_file(&file_path, 5, 5).expect("Could not append");
 
     common::wait_for_file_event("unwatching", &file_path, &mut stderr_reader);
     common::wait_for_file_event("added", &file_path, &mut stderr_reader);
@@ -158,6 +158,36 @@ fn test_append_and_delete() {
         assert!(agent_handle.try_wait().ok().unwrap().is_none());
         thread::sleep(std::time::Duration::from_millis(20));
     }
+
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_append_and_move() {
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let file1_path = dir.join("file1.log");
+    let file2_path = dir.join("file2.log");
+    File::create(&file1_path).expect("Could not create file");
+
+    let mut agent_handle = common::spawn_agent(&dir.to_str().unwrap());
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    common::wait_for_file_event("initialized", &file1_path, &mut stderr_reader);
+    common::append_to_file(&file1_path, 10_000, 50).expect("Could not append");
+    fs::rename(&file1_path, &file2_path).expect("Could not move file");
+    fs::remove_file(&file2_path).expect("Could not remove file");
+
+    // Immediately, start appending in a new file
+    common::append_to_file(&file1_path, 5, 5).expect("Could not append");
+
+    // Should be added back
+    common::wait_for_file_event("added", &file1_path, &mut stderr_reader);
+
+    thread::sleep(std::time::Duration::from_millis(20));
+
+    // Verify that the agent is still running
+    assert!(agent_handle.try_wait().ok().unwrap().is_none());
 
     agent_handle.kill().expect("Could not kill process");
 }

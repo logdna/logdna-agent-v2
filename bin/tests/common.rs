@@ -57,7 +57,7 @@ pub fn start_append_to_file(dir: &Path, delay_ms: u64) -> FileContext {
     }
 }
 
-pub fn append_to_file_continuously(
+pub fn append_to_file(
     file_path: &PathBuf,
     lines: i32,
     sync_every: i32,
@@ -75,6 +75,7 @@ pub fn append_to_file_continuously(
 
         if i % sync_every == 0 {
             file.sync_all()?;
+            thread::sleep(time::Duration::from_millis(5));
         }
     }
     file.sync_all()?;
@@ -108,7 +109,7 @@ pub fn wait_for_file_event(event: &str, file_path: &PathBuf, stderr_reader: &mut
     let mut line = String::new();
     let file_name = &file_path.file_name().unwrap().to_str().unwrap();
     let event_text = format!("{} \"/tmp/", event);
-    for _safeguard in 0..100_000 {
+    for _safeguard in 0..10_000_000 {
         stderr_reader.read_line(&mut line).unwrap();
         if line.contains(&event_text) && line.contains(file_name) {
             return;
