@@ -1,6 +1,7 @@
 use assert_cmd::cargo::CommandCargoExt;
 use core::time;
 use std::fs::OpenOptions;
+use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -58,7 +59,7 @@ pub fn start_append_to_file(dir: &Path, delay_ms: u64) -> FileContext {
 }
 
 pub fn append_to_file(
-    file_path: &PathBuf,
+    file_path: &Path,
     lines: i32,
     sync_every: i32,
 ) -> Result<(), std::io::Error> {
@@ -118,7 +119,7 @@ pub fn spawn_agent(dir_path: &str) -> Child {
 pub fn wait_for_file_event(event: &str, file_path: &PathBuf, stderr_reader: &mut dyn BufRead) {
     let mut line = String::new();
     let file_name = &file_path.file_name().unwrap().to_str().unwrap();
-    for _safeguard in 0..10_000_000 {
+    for _safeguard in 0..500_000 {
         stderr_reader.read_line(&mut line).unwrap();
         if line.contains(event) && line.contains(file_name) {
             return;
@@ -134,6 +135,15 @@ pub fn wait_for_file_event(event: &str, file_path: &PathBuf, stderr_reader: &mut
 
 /// Verifies that the agent is still running
 pub fn assert_agent_running(agent_handle: &mut Child) {
-    thread::sleep(std::time::Duration::from_millis(20));
     assert!(agent_handle.try_wait().ok().unwrap().is_none());
+    for _ in 0..10 {
+        thread::sleep(std::time::Duration::from_millis(20));
+        assert!(agent_handle.try_wait().ok().unwrap().is_none());
+    }
+}
+
+pub fn create_dirs<P: AsRef<Path>>(dirs: &[P]) {
+    for dir in dirs {
+        fs::create_dir(dir).expect("Unable to create dir");
+    }
 }

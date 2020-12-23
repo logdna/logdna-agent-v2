@@ -7,7 +7,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::Command;
 use std::thread;
-use std::{env, fs};
+use std::fs;
 
 mod common;
 
@@ -220,8 +220,8 @@ fn test_truncate_file() {
 #[cfg_attr(not(target_os = "linux"), ignore)]
 fn test_dangling_symlinks() {
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
-    let current_dir = env::current_dir().unwrap();
-    let file_path = current_dir.join("file1.log");
+    let data_dir = tempdir().expect("Could not create temp dir").into_path();
+    let file_path = data_dir.join("file1.log");
     let symlink_path = log_dir.join("file1.log");
     common::append_to_file(&file_path, 100, 50).expect("Could not append");
 
@@ -250,8 +250,8 @@ fn test_dangling_symlinks() {
 #[cfg_attr(not(target_os = "linux"), ignore)]
 fn test_append_after_symlinks_delete() {
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
-    let current_dir = env::current_dir().unwrap();
-    let file_path = current_dir.join("file1.log");
+    let data_dir = tempdir().expect("Could not create temp dir").into_path();
+    let file_path = data_dir.join("file1.log");
     let symlink_path = log_dir.join("file1.log");
     common::append_to_file(&file_path, 100, 50).expect("Could not append");
 
@@ -270,6 +270,47 @@ fn test_append_after_symlinks_delete() {
 
     // Delete the original file
     fs::remove_file(&file_path).expect("Could not remove file");
+
+    common::assert_agent_running(&mut agent_handle);
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg_attr(not(target_os = "linux"), ignore)]
+fn test_directory_symlinks_delete() {
+    let log_dir = tempdir().expect("Could not create temp dir").into_path();
+    let data_dir = tempdir().expect("Could not create temp dir").into_path();
+
+    let dir_1_path = data_dir.join("dir_1");
+    let dir_1_1_path = dir_1_path.join("dir_1_1");
+    let dir_1_2_path = dir_1_path.join("dir_1_2");
+    let dir_1_2_1_path = dir_1_2_path.join("dir_1_2_1");
+    let file1_path = dir_1_1_path.join("file1.log");
+    let file2_path = dir_1_2_1_path.join("file2.log");
+    let file3_path = dir_1_2_1_path.join("file3.log");
+    let symlink_path = log_dir.join("dir_1_link");
+
+    common::create_dirs(&[&dir_1_path, &dir_1_1_path, &dir_1_2_path, &dir_1_2_1_path]);
+
+    common::append_to_file(&file1_path, 100, 50).expect("Could not append");
+    common::append_to_file(&file2_path, 100, 50).expect("Could not append");
+    common::append_to_file(&file3_path, 100, 50).expect("Could not append");
+
+    let mut agent_handle = common::spawn_agent(&log_dir.to_str().unwrap());
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    std::os::unix::fs::symlink(&dir_1_path, &symlink_path).unwrap();
+
+    common::wait_for_file_event("initialized", &file1_path, &mut stderr_reader);
+
+    common::append_to_file(&file1_path, 1_000, 50).expect("Could not append");
+    common::append_to_file(&file2_path, 1_000, 50).expect("Could not append");
+    common::append_to_file(&file3_path, 1_000, 50).expect("Could not append");
+
+    fs::remove_file(&symlink_path).expect("Could not remove symlink");
+
+    common::wait_for_file_event("unwatching", &file3_path, &mut stderr_reader);
 
     common::assert_agent_running(&mut agent_handle);
     agent_handle.kill().expect("Could not kill process");
