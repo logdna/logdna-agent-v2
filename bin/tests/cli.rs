@@ -4,9 +4,11 @@ use predicates::prelude::*;
 use tempfile::tempdir;
 
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::process::Command;
 use std::thread;
+
+mod common;
 
 #[test]
 fn api_key_missing() {
@@ -25,30 +27,12 @@ fn api_key_missing() {
 fn api_key_present() {
     let dir = tempdir().expect("Couldn't create temp dir...");
 
-    let mut cmd = Command::cargo_bin("logdna-agent").unwrap();
-
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
 
     let before_file_path = dir.path().join("before.log");
     let mut file = File::create(&before_file_path).expect("Couldn't create temp log file...");
 
-    let ingestion_key =
-        std::env::var("LOGDNA_INGESTION_KEY").expect("LOGDNA_INGESTION_KEY env var not set");
-    assert!(ingestion_key != "");
-    let agent = cmd
-        .env_clear()
-        .env("RUST_LOG", "debug")
-        .env("RUST_BACKTRACE", "full")
-        .env("LOGDNA_LOG_DIRS", &dir_path)
-        .env(
-            "LOGDNA_HOST",
-            std::env::var("LOGDNA_HOST").expect("LOGDNA_HOST env var not set"),
-        )
-        .env("LOGDNA_INGESTION_KEY", ingestion_key)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-
-    let mut handle = agent.spawn().expect("Failed to start agent");
+    let mut handle = common::spawn_agent(&dir_path);
     // Dump the agent's stdout
     // TODO: assert that it's successfully uploaded
 
@@ -115,4 +99,35 @@ fn api_key_present() {
     .eval(&output));
 
     handle.wait().unwrap();
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_read_file_appended_in_the_background() {
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let mut agent_handle = common::spawn_agent(&dir.to_str().unwrap());
+
+    let context = common::start_append_to_file(&dir, 5);
+
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    let mut line = String::new();
+    let mut occurrences = 0;
+    let expected_occurrences = 100;
+
+    for _safeguard in 0..100_000 {
+        stderr_reader.read_line(&mut line).unwrap();
+        if line.contains("sendings lines for") && line.contains("appended.log") {
+            occurrences += 1;
+        }
+        line.clear();
+
+        if occurrences == expected_occurrences {
+            break;
+        }
+    }
+
+    let total_lines_written = (context.stop_handle)();
+    assert!(total_lines_written > 0);
+    assert_eq!(occurrences, expected_occurrences);
+    agent_handle.kill().unwrap();
 }
