@@ -2,7 +2,7 @@ use assert_cmd::cargo::CommandCargoExt;
 use core::time;
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
@@ -13,7 +13,7 @@ pub struct FileContext {
     pub stop_handle: Box<dyn FnOnce() -> i32>,
 }
 
-pub fn start_append_to_file(dir: &PathBuf, delay_ms: u64) -> FileContext {
+pub fn start_append_to_file(dir: &Path, delay_ms: u64) -> FileContext {
     let file_path = dir.join("appended.log");
     let inner_file_path = file_path.clone();
     let (tx, rx) = mpsc::channel();
