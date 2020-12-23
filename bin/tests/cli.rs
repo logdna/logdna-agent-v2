@@ -3,11 +3,11 @@ use predicates::prelude::*;
 
 use tempfile::tempdir;
 
-use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::Command;
 use std::thread;
+use std::{env, fs};
 
 mod common;
 
@@ -212,5 +212,65 @@ fn test_truncate_file() {
 
     common::assert_agent_running(&mut agent_handle);
 
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg_attr(not(target_os = "linux"), ignore)]
+fn test_dangling_symlinks() {
+    let log_dir = tempdir().expect("Could not create temp dir").into_path();
+    let current_dir = env::current_dir().unwrap();
+    let file_path = current_dir.join("file1.log");
+    let symlink_path = log_dir.join("file1.log");
+    common::append_to_file(&file_path, 100, 50).expect("Could not append");
+
+    let mut agent_handle = common::spawn_agent(&log_dir.to_str().unwrap());
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    std::os::unix::fs::symlink(&file_path, &symlink_path).unwrap();
+    common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+    common::append_to_file(&file_path, 100, 20).expect("Could not append");
+
+    // Remove original file first
+    fs::remove_file(&file_path).expect("Could not remove file");
+
+    common::wait_for_file_event("unwatching", &file_path, &mut stderr_reader);
+
+    // Remove the dangling symlink also
+    fs::remove_file(&symlink_path).expect("Could not remove symlink");
+    common::wait_for_file_event("unwatching", &file_path, &mut stderr_reader);
+
+    common::assert_agent_running(&mut agent_handle);
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg_attr(not(target_os = "linux"), ignore)]
+fn test_append_after_symlinks_delete() {
+    let log_dir = tempdir().expect("Could not create temp dir").into_path();
+    let current_dir = env::current_dir().unwrap();
+    let file_path = current_dir.join("file1.log");
+    let symlink_path = log_dir.join("file1.log");
+    common::append_to_file(&file_path, 100, 50).expect("Could not append");
+
+    let mut agent_handle = common::spawn_agent(&log_dir.to_str().unwrap());
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    std::os::unix::fs::symlink(&file_path, &symlink_path).unwrap();
+    common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+    common::append_to_file(&file_path, 100, 20).expect("Could not append");
+
+    // Remove symlink first
+    fs::remove_file(&symlink_path).expect("Could not remove symlink");
+
+    // Append to the original file
+    common::append_to_file(&file_path, 1_000, 20).expect("Could not append");
+
+    // Delete the original file
+    fs::remove_file(&file_path).expect("Could not remove file");
+
+    common::assert_agent_running(&mut agent_handle);
     agent_handle.kill().expect("Could not kill process");
 }
