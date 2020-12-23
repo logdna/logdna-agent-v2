@@ -1,8 +1,8 @@
 use assert_cmd::cargo::CommandCargoExt;
 use core::time;
-use std::fs::OpenOptions;
 use std::fs;
-use std::io::Write;
+use std::fs::OpenOptions;
+use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
@@ -58,11 +58,7 @@ pub fn start_append_to_file(dir: &Path, delay_ms: u64) -> FileContext {
     }
 }
 
-pub fn append_to_file(
-    file_path: &Path,
-    lines: i32,
-    sync_every: i32,
-) -> Result<(), std::io::Error> {
+pub fn append_to_file(file_path: &Path, lines: i32, sync_every: i32) -> Result<(), std::io::Error> {
     let mut file = OpenOptions::new()
         .append(true)
         .create(true)

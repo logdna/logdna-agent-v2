@@ -3,11 +3,11 @@ use predicates::prelude::*;
 
 use tempfile::tempdir;
 
+use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::Command;
 use std::thread;
-use std::fs;
 
 mod common;
 
