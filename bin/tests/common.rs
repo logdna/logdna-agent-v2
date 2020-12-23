@@ -82,6 +82,15 @@ pub fn append_to_file(
     Ok(())
 }
 
+pub fn truncate_file(file_path: &PathBuf) -> Result<(), std::io::Error> {
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(&file_path)?
+        .set_len(0)?;
+    Ok(())
+}
+
 pub fn spawn_agent(dir_path: &str) -> Child {
     let mut cmd = Command::cargo_bin("logdna-agent").unwrap();
 
@@ -105,13 +114,13 @@ pub fn spawn_agent(dir_path: &str) -> Child {
     agent.spawn().expect("Failed to start agent")
 }
 
+/// Blocks until a certain event is logged by the agent
 pub fn wait_for_file_event(event: &str, file_path: &PathBuf, stderr_reader: &mut dyn BufRead) {
     let mut line = String::new();
     let file_name = &file_path.file_name().unwrap().to_str().unwrap();
-    let event_text = format!("{} \"/tmp/", event);
     for _safeguard in 0..10_000_000 {
         stderr_reader.read_line(&mut line).unwrap();
-        if line.contains(&event_text) && line.contains(file_name) {
+        if line.contains(event) && line.contains(file_name) {
             return;
         }
         line.clear();
@@ -121,4 +130,10 @@ pub fn wait_for_file_event(event: &str, file_path: &PathBuf, stderr_reader: &mut
         "file {:?} event {:?} not found in agent output",
         file_path, event
     );
+}
+
+/// Verifies that the agent is still running
+pub fn assert_agent_running(agent_handle: &mut Child) {
+    thread::sleep(std::time::Duration::from_millis(20));
+    assert!(agent_handle.try_wait().ok().unwrap().is_none());
 }

@@ -154,10 +154,7 @@ fn test_append_and_delete() {
     common::wait_for_file_event("unwatching", &file_path, &mut stderr_reader);
     common::wait_for_file_event("added", &file_path, &mut stderr_reader);
 
-    for _ in 0..5 {
-        assert!(agent_handle.try_wait().ok().unwrap().is_none());
-        thread::sleep(std::time::Duration::from_millis(20));
-    }
+    common::assert_agent_running(&mut agent_handle);
 
     agent_handle.kill().expect("Could not kill process");
 }
@@ -184,10 +181,36 @@ fn test_append_and_move() {
     // Should be added back
     common::wait_for_file_event("added", &file1_path, &mut stderr_reader);
 
-    thread::sleep(std::time::Duration::from_millis(20));
+    common::assert_agent_running(&mut agent_handle);
 
-    // Verify that the agent is still running
-    assert!(agent_handle.try_wait().ok().unwrap().is_none());
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_truncate_file() {
+    // K8s uses copytruncate, see https://github.com/kubernetes/kubernetes/issues/38495
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let file_path = dir.join("file1.log");
+    common::append_to_file(&file_path, 100, 50).expect("Could not append");
+
+    let mut agent_handle = common::spawn_agent(&dir.to_str().unwrap());
+
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+    common::append_to_file(&file_path, 10_000, 20).expect("Could not append");
+    common::truncate_file(&file_path).expect("Could not truncate file");
+
+    // Immediately, start appending to the truncated file
+    common::append_to_file(&file_path, 5, 5).expect("Could not append");
+    common::wait_for_file_event("truncated", &file_path, &mut stderr_reader);
+
+    // Continue appending
+    common::append_to_file(&file_path, 100, 5).expect("Could not append");
+    common::wait_for_file_event("tailer sendings lines", &file_path, &mut stderr_reader);
+
+    common::assert_agent_running(&mut agent_handle);
 
     agent_handle.kill().expect("Could not kill process");
 }
