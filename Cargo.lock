@@ -581,6 +581,7 @@ dependencies = [
  "log",
  "metrics",
  "pcre2",
+ "slotmap",
  "tempfile",
  "thiserror",
  "tokio 0.2.24",
@@ -2210,6 +2211,15 @@ name = "slab"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c111b5bd5695e56cffe5129854aa230b39c93a305372fdbb2668ca2394eea9f8"
+
+[[package]]
+name = "slotmap"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b3059d4bc9651b8515c4ab661829cc08ec3b79051bd7fbc234ac0d957eb9696b"
+dependencies = [
+ "version_check",
+]
 
 [[package]]
 name = "smallvec"
