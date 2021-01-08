@@ -30,6 +30,8 @@ RUST_COMMAND := $(DOCKER_DISPATCH) $(RUST_IMAGE)
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
+INTEGRATION_TEST_THREADS ?= 8
+
 VCS_REF := $(shell git rev-parse --short HEAD)
 VCS_URL := https://github.com/logdna/$(REPO)
 BUILD_DATE := $(shell date -u +'%Y%m%d')
@@ -98,7 +100,7 @@ test: test-journald ## Run unit tests
 
 .PHONY:integration-test
 integration-test: ## Run integration tests
-	$(RUST_COMMAND) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full" "cargo test --manifest-path bin/Cargo.toml --features integration_tests -- --nocapture"
+	$(RUST_COMMAND) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full" "cargo test --manifest-path bin/Cargo.toml --features integration_tests -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
