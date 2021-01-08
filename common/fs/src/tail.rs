@@ -12,7 +12,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use futures::{Stream, StreamExt};
-use std::cell::{Ref, RefMut};
 
 use thiserror::Error;
 
@@ -88,9 +87,9 @@ impl Tailer {
             move |event| {
                 let mut final_lines = Vec::new();
 
-                let mut fs = fs.lock().expect("Couldn't lock fs");
+                let fs = fs.lock().expect("Couldn't lock fs");
                 match event {
-                    Event::Initialize(mut entry_ptr) => {
+                    Event::Initialize(entry_ptr) => {
                         // will initiate a file to it's current length
                         if let Some(entry) = fs.entries.borrow().get(entry_ptr){
                             let path = fs.resolve_direct_path(&entry.borrow(), &fs.entries.borrow());
@@ -122,7 +121,7 @@ impl Tailer {
                             }
                         };
                     }
-                    Event::New(mut entry_ptr) => {
+                    Event::New(entry_ptr) => {
                         Metrics::fs().increment_creates();
                         // similar to initiate but sets the offset to 0
                         if let Some(entry) = fs.entries.borrow().get(entry_ptr){
@@ -147,7 +146,7 @@ impl Tailer {
 
 
                     }
-                    Event::Write(mut entry_ptr) => {
+                    Event::Write(entry_ptr) => {
                         Metrics::fs().increment_writes();
                         if let Some(entry) = fs.entries.borrow().get(entry_ptr){
                             let paths = fs.resolve_valid_paths(&entry.borrow(), &fs.entries.borrow());
@@ -169,15 +168,15 @@ impl Tailer {
                             }
                         }
                     }
-                    Event::Delete(mut entry_ptr) => {
+                    Event::Delete(entry_ptr) => {
                         Metrics::fs().increment_deletes();
                         let entries = fs.entries.borrow();
                         if let Some(mut entry) = entries.get(entry_ptr){
-                            let paths = fs.resolve_valid_paths((&entry.borrow()).clone(), &entries);
+                            let paths = fs.resolve_valid_paths(&entry.borrow(), &entries);
                             debug!("Delete Event");
                             if !paths.is_empty() {
                                 if let Entry::Symlink { link, .. } = entry.borrow().deref() {
-                                    if let Some(real_entry) = fs.lookup(link, &entries).clone() {
+                                    if let Some(real_entry) = fs.lookup(link, &entries) {
                                         if let Some(r_entry) = entries.get(real_entry){
                                             entry = r_entry
                                         }
