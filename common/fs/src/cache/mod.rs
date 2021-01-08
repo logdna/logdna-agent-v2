@@ -2,23 +2,24 @@ use crate::cache::entry::Entry;
 use crate::cache::event::Event;
 use crate::cache::watch::{WatchEvent, Watcher};
 use crate::rule::{GlobRule, Rules, Status};
+
+use std::cell::RefCell;
+use std::ffi::OsString;
+use std::fmt;
+use std::fs::read_dir;
+use std::fs::OpenOptions;
+use std::iter::FromIterator;
+use std::ops::Deref;
+use std::path::{Component, PathBuf};
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
+
 use futures::{Stream, StreamExt};
 use hashbrown::hash_map::Entry as HashMapEntry;
 use hashbrown::HashMap;
 use inotify::WatchDescriptor;
 use metrics::Metrics;
 use slotmap::{DefaultKey, SlotMap};
-use std::cell::{Ref, RefCell, RefMut};
-use std::ffi::OsString;
-use std::fmt;
-use std::fs::read_dir;
-use std::fs::OpenOptions;
-use std::iter::FromIterator;
-use std::ops::{Deref, DerefMut};
-use std::path::{Component, PathBuf};
-use std::ptr::NonNull;
-use std::rc::Rc;
-use std::sync::{Arc, Mutex};
 
 pub mod dir_path;
 pub mod entry;
@@ -281,11 +282,10 @@ where
             path.push(name);
 
             if let Some(new_entry) = self.insert(&path, events, _entries) {
-                let is_dir = match _entries.get(new_entry).map(|n_e| n_e.borrow()).as_deref() {
-                    Some(Entry::Dir { .. }) => true,
-                    _ => false,
-                };
-                if is_dir {
+                if matches!(
+                    _entries.get(new_entry).map(|n_e| n_e.borrow()).as_deref(),
+                    Some(_)
+                ) {
                     for new_path in recursive_scan(&path) {
                         self.insert(&new_path, events, _entries);
                     }
@@ -505,7 +505,7 @@ where
             if let Some(children) = parent.borrow_mut().children_mut() {
                 match children.entry(component.clone()) {
                     HashMapEntry::Occupied(v) => Some(Action::Return(*v.get())),
-                    HashMapEntry::Vacant(v) => match path.read_link() {
+                    HashMapEntry::Vacant(_) => match path.read_link() {
                         Ok(real) => Some(Action::CreateSymlink(real)),
                         Err(_) => Some(Action::CreateFile),
                     },
@@ -674,7 +674,7 @@ where
         events: &mut Vec<Event>,
         _entries: &mut SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
     ) -> Option<()> {
-        let mut parent = self.lookup(&path.parent()?.into(), _entries)?;
+        let parent = self.lookup(&path.parent()?.into(), _entries)?;
         let component = into_components(path).pop()?;
 
         let to_drop = if let Some(parent) = _entries.get(parent) {
@@ -687,7 +687,8 @@ where
             unreachable!();
         };
         if let Some(entry) = to_drop {
-            Some(self.drop_entry(entry, events, _entries))
+            self.drop_entry(entry, events, _entries);
+            Some(())
         } else {
             None
         }
@@ -706,7 +707,7 @@ where
             match entry.borrow().deref() {
                 Entry::Dir { children, .. } => {
                     for (_, child) in children {
-                        _children.push(child.clone());
+                        _children.push(*child);
                         //self.drop_entry(*child, events, _entries);
                     }
                 }
@@ -744,7 +745,7 @@ where
         events: &mut Vec<Event>,
         _entries: &mut SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
     ) -> Option<DefaultKey> {
-        let mut new_parent = self
+        let new_parent = self
             .create_dir(&to.parent().unwrap().into(), _entries)
             .unwrap();
         match self.lookup(from, _entries) {
@@ -785,9 +786,7 @@ where
 
                 Some(entry_ptr)
             }
-            None => {
-                return self.insert(to, events, _entries);
-            }
+            None => self.insert(to, events, _entries),
         }
     }
 
@@ -828,11 +827,11 @@ where
                                 _entries.get(entry_ptr).map(|entry_ref| {
                                     match entry_ref.borrow().deref() {
                                         Entry::Symlink { link, .. } => Action::Lookup(link.clone()),
-                                        _ => Action::Return(entry_ptr.clone()),
+                                        _ => Action::Return(entry_ptr),
                                     }
                                 })
                             }
-                            HashMapEntry::Vacant(v) => match current_path.read_link() {
+                            HashMapEntry::Vacant(_) => match current_path.read_link() {
                                 Ok(real) => Some(Action::CreateSymlink(real)),
                                 Err(_) => Some(Action::CreateDir),
                             },
@@ -968,7 +967,7 @@ where
                 .children()
                 .expect("expected directory entry")
                 .get(&last_component)
-                .map(|k| *k)
+                .copied()
         } else {
             unreachable!();
         }
@@ -1408,7 +1407,7 @@ mod tests {
             let _fs = fs.lock().expect("couldn't lock fs");
             let _entries = &_fs.entries;
             let _entries = _entries.borrow();
-            let _entry = _entries.get(entry.clone()).unwrap();
+            let _entry = _entries.get(entry).unwrap();
             let _entry = _entry.borrow();
             match _entry.deref() {
                 Entry::File { wd, .. } => {

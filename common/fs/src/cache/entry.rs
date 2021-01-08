@@ -1,12 +1,13 @@
-use crate::cache::Children;
-use crate::rule::Rules;
-use inotify::WatchDescriptor;
-use slotmap::DefaultKey;
 use std::cell::RefCell;
 use std::ffi::OsString;
 use std::fs::File;
 use std::path::PathBuf;
-use std::ptr::NonNull;
+
+use inotify::WatchDescriptor;
+use slotmap::DefaultKey;
+
+use crate::cache::Children;
+use crate::rule::Rules;
 
 #[derive(Debug)]
 pub enum Entry<T> {

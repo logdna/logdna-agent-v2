@@ -1,4 +1,4 @@
-use slotmap::{DefaultKey, SlotMap};
+use slotmap::DefaultKey;
 /// Represents a filesystem event
 #[derive(Debug, Clone)]
 pub enum Event {
