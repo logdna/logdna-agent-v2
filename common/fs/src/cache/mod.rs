@@ -908,12 +908,10 @@ where
 
                             match self.create_dir(&real, _entries) {
                                 Some(v) => Some(v),
-                                None => {
-                                    panic!(
-                                        "unable to create symlink directory for entry {:?}",
-                                        &real
-                                    )
-                                }
+                                None => panic!(
+                                    "unable to create symlink directory for entry {:?}",
+                                    &real
+                                ),
                             }
                         }
                     }
