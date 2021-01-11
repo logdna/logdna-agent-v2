@@ -7,7 +7,7 @@ use http::types::body::LineBuilder;
 use metrics::Metrics;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -95,8 +95,7 @@ impl Tailer {
                             let path = fs.resolve_direct_path(&entry.borrow(), &fs.entries.borrow());
                             debug!("Initialise Event");
 
-                            if let Entry::File { ref data, .. } = entry.borrow().deref() {
-                                let mut data = data.borrow_mut();
+                            if let Entry::File { ref mut data, .. } = entry.borrow_mut().deref_mut() {
                                 *data = match lookback_config {
                                     Lookback::Start => {
                                         info!("initialized {:?} with offset {}", path, 0);
@@ -129,15 +128,14 @@ impl Tailer {
                             debug!("New Event");
                             if !paths.is_empty() {
                                 if let Entry::File {
-                                    ref data,
+                                    ref mut data,
                                     file_handle,
                                     ..
-                                } = entry.borrow().deref()
+                                } = entry.borrow_mut().deref_mut()
                                 {
-                                    let mut data = data.borrow_mut();
                                     info!("added {:?}", paths[0]);
                                     *data = 0;
-                                    if let Some(mut lines) = Tailer::tail(file_handle, &paths, &mut data) {
+                                    if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
                                         final_lines.append(&mut lines);
                                     }
                                 }
@@ -154,13 +152,12 @@ impl Tailer {
                             if !paths.is_empty() {
 
                                 if let  Entry::File {
-                                    ref data,
+                                    ref mut data,
                                     file_handle,
                                     ..
-                                } = entry.borrow().deref()
+                                } = entry.borrow_mut().deref_mut()
                                 {
-                                    let mut data = data.borrow_mut();
-                                    if let Some(mut lines) = Tailer::tail(file_handle, &paths, &mut data) {
+                                    if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
                                         final_lines.append(&mut lines);
                                     }
                                 }
@@ -186,13 +183,12 @@ impl Tailer {
                                 }
 
                                 if let Entry::File {
-                                    ref data,
+                                    ref mut data,
                                     file_handle,
                                     ..
-                                } = entry.borrow().deref()
+                                } = entry.borrow_mut().deref_mut()
                                 {
-                                    let mut data = data.borrow_mut();
-                                    if let Some(mut lines) = Tailer::tail(file_handle, &paths, &mut data) {
+                                    if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
                                         final_lines.append(&mut lines);
                                     }
                                 }

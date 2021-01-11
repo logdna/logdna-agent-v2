@@ -286,10 +286,7 @@ where
             path.push(name);
 
             if let Some(new_entry) = self.insert(&path, events, _entries) {
-                if matches!(
-                    _entries.get(new_entry).map(|n_e| n_e.borrow()).as_deref(),
-                    Some(_)
-                ) {
+                if matches!(_entries.get(new_entry).map(|n_e| n_e.borrow()), Some(_)) {
                     for new_path in recursive_scan(&path) {
                         self.insert(&new_path, events, _entries);
                     }
@@ -531,7 +528,7 @@ where
                         name: component.clone(),
                         parent: parent_ref,
                         wd,
-                        data: RefCell::new(T::default()),
+                        data: T::default(),
                         file_handle: OpenOptions::new().read(true).open(path).unwrap(),
                     }));
 

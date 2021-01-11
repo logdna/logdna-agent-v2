@@ -1,11 +1,10 @@
-use std::cell::RefCell;
 use std::ffi::OsString;
 use std::fs::File;
 use std::path::PathBuf;
 
 use inotify::WatchDescriptor;
 
-use crate::cache::{Children,EntryKey};
+use crate::cache::{Children, EntryKey};
 use crate::rule::Rules;
 
 #[derive(Debug)]
@@ -14,7 +13,7 @@ pub enum Entry<T> {
         name: OsString,
         parent: EntryKey,
         wd: WatchDescriptor,
-        data: RefCell<T>,
+        data: T,
         file_handle: File,
     },
     Dir {
@@ -87,13 +86,6 @@ impl<T> Entry<T> {
     pub fn watch_descriptor(&self) -> &WatchDescriptor {
         match self {
             Entry::Dir { wd, .. } | Entry::Symlink { wd, .. } | Entry::File { wd, .. } => wd,
-        }
-    }
-
-    pub fn data_mut(&mut self) -> Option<&mut T> {
-        match self {
-            Entry::Dir { .. } | Entry::Symlink { .. } => None,
-            Entry::File { data, .. } => Some(data.get_mut()),
         }
     }
 
