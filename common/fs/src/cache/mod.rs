@@ -394,23 +394,22 @@ where
     ) -> PathBuf {
         let mut components = Vec::new();
 
-        let mut name = entry.name().clone();
+        let mut name: Option<OsString> = Some(entry.name().clone());
         let mut entry_ptr: Option<DefaultKey> = entry.parent();
 
-        loop {
-            components.push(name);
-
-            entry_ptr = match entry_ptr {
-                Some(parent_ptr) => match _entries.get(parent_ptr) {
-                    Some(parent_entry) => {
-                        let e = parent_entry.borrow();
-                        name = e.name().clone();
-                        parent_entry.borrow().parent()
-                    }
-                    None => break,
-                },
-                None => break,
+        while let Some(parent_ptr) = entry_ptr {
+            if let Some(name) = name.take() {
+                components.push(name);
             }
+
+            entry_ptr = match _entries.get(parent_ptr) {
+                Some(parent_entry) => {
+                    let e = parent_entry.borrow();
+                    name = Some(e.name().clone());
+                    parent_entry.borrow().parent()
+                }
+                None => None,
+            };
         }
 
         components.reverse();
