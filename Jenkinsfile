@@ -1,6 +1,7 @@
 library 'magic-butler-catalogue'
 def PROJECT_NAME = 'logdna-agent-v2'
 def TRIGGER_PATTERN = '.*@logdnabot.*'
+def publishImage = false
 
 pipeline {
     agent any
@@ -95,10 +96,23 @@ pipeline {
                 branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
             }
             stages {
+                stage('Check Publish Image or Timeout') {
+                    steps {
+                        script {
+                            publishImage = true
+                            try {
+                                timeout(time: 5, unit: 'MINUTES') {
+                                    input(message: 'Should we publish the versioned image?')
+                                }
+                            } catch (err) {
+                                publishImage = false
+                            }
+                        }
+                    }
+                }
                 stage('Publish Images') {
-                    input {
-                        message "Should we publish the versioned image?"
-                        ok "Publish image"
+                    when {
+                        expression { return publishImage == true }
                     }
                     steps {
                         script {
