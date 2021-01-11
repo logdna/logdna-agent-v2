@@ -292,7 +292,7 @@ where
                 };
             }
         } else {
-            unreachable!();
+            error!("Failed to find entry");
         };
     }
 
@@ -339,7 +339,7 @@ where
             path.push(name);
             self.remove(&path, events, _entries);
         } else {
-            unreachable!();
+            error!("Failed to find entry");
         };
     }
 
@@ -461,7 +461,7 @@ where
                             _entries,
                         );
                     } else {
-                        unreachable!();
+                        error!("Failed to find entry");
                     }
                 }
             }
@@ -511,10 +511,12 @@ where
                     },
                 }
             } else {
-                unreachable!();
+                error!("Parent has no children");
+                None
             }
         } else {
-            unreachable!();
+            error!("Failed to find entry");
+            None
         };
 
         if let Some(action) = action {
@@ -594,7 +596,8 @@ where
                 }
             }
         } else {
-            unreachable!();
+            warn!("No insert action available");
+            None
         }
     }
 
@@ -620,7 +623,7 @@ where
 
             info!("watching {:?}", path);
         } else {
-            todo!()
+            error!("Failed to find entry");
         };
     }
 
@@ -664,7 +667,7 @@ where
 
             info!("unwatching {:?}", path);
         } else {
-            todo!();
+            error!("Failed to find entry");
         };
     }
 
@@ -684,7 +687,8 @@ where
                 .unwrap() // parents are always dirs
                 .remove(&component)
         } else {
-            unreachable!();
+            error!("Failed to find entry");
+            None
         };
         if let Some(entry) = to_drop {
             self.drop_entry(entry, events, _entries);
@@ -725,7 +729,7 @@ where
                 }
             };
         } else {
-            unreachable!();
+            error!("Failed to find entry");
         };
         for child in _children {
             self.drop_entry(child, events, _entries);
@@ -781,7 +785,7 @@ where
                         })
                         .unwrap();
                 } else {
-                    unreachable!();
+                    error!("Failed to find entry");
                 }
 
                 Some(entry_ptr)
@@ -920,7 +924,7 @@ where
                 };
                 m_entry = new_entry;
             } else {
-                unreachable!();
+                error!("Failed to find entry");
             }
         }
         m_entry
@@ -954,7 +958,8 @@ where
                         .get(&component)
                         .and_then(|entry| self.follow_links(*entry, _entries))
                 } else {
-                    unreachable!();
+                    error!("Failed to find entry");
+                    None
                 }
             })?;
         }
@@ -967,7 +972,8 @@ where
                 .get(&last_component)
                 .copied()
         } else {
-            unreachable!();
+            error!("Failed to find entry");
+            None
         }
     }
 
@@ -1010,7 +1016,7 @@ where
                         }
                     }
                 } else {
-                    unreachable!();
+                    error!("Failed to find entry");
                 };
             }
         }
