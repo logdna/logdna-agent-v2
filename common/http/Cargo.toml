@@ -11,7 +11,7 @@ metrics = { package = "metrics", path = "../metrics" }
 logdna-client = "0.1"
 #io
 
-tokio = "0.1"
+tokio = "0.1.22"
 #utils
 log = "0.4"
 crossbeam = "0.7"
