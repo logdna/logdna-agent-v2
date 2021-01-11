@@ -76,7 +76,7 @@ TEST_RULES=
 define TEST_RULE
 TEST_RULES=$(TEST_RULES)test-$(1): <> Run unit tests for $(1) crate\\n
 test-$(1):
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo test -p $(1)"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=1" "cargo test -p $(1)"
 endef
 
 CRATES=$(shell sed -e '/members/,/]/!d' Cargo.toml | tail -n +2 | $(_TAC) | tail -n +2 | $(_TAC) | sed 's/,//' | xargs -n1 -I{} sh -c 'grep -E "^name *=" {}/Cargo.toml | tail -n1' | sed 's/name *= *"\([A-Za-z0-9_\-]*\)"/\1/' | awk '!/journald/{print $0}')
