@@ -1,17 +1,13 @@
-use crate::cache::entry::EntryPtr;
-
+use crate::cache::EntryKey;
 /// Represents a filesystem event
 #[derive(Debug, Clone)]
-pub enum Event<T>
-where
-    T: Clone,
-{
+pub enum Event {
     /// A file was created initialized
-    Initialize(EntryPtr<T>),
+    Initialize(EntryKey),
     /// A new file was created
-    New(EntryPtr<T>),
+    New(EntryKey),
     /// A file was written too
-    Write(EntryPtr<T>),
+    Write(EntryKey),
     /// A file was deleted
-    Delete(EntryPtr<T>),
+    Delete(EntryKey),
 }

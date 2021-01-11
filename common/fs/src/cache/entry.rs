@@ -1,31 +1,30 @@
-use crate::cache::Children;
-use crate::rule::Rules;
-use inotify::WatchDescriptor;
 use std::ffi::OsString;
 use std::fs::File;
 use std::path::PathBuf;
-use std::ptr::NonNull;
 
-pub type EntryPtr<T> = NonNull<Entry<T>>;
+use inotify::WatchDescriptor;
+
+use crate::cache::{Children, EntryKey};
+use crate::rule::Rules;
 
 #[derive(Debug)]
 pub enum Entry<T> {
     File {
         name: OsString,
-        parent: EntryPtr<T>,
+        parent: EntryKey,
         wd: WatchDescriptor,
         data: T,
         file_handle: File,
     },
     Dir {
         name: OsString,
-        parent: Option<EntryPtr<T>>,
-        children: Children<T>,
+        parent: Option<EntryKey>,
+        children: Children,
         wd: WatchDescriptor,
     },
     Symlink {
         name: OsString,
-        parent: EntryPtr<T>,
+        parent: EntryKey,
         link: PathBuf,
         wd: WatchDescriptor,
         rules: Rules,
@@ -41,14 +40,14 @@ impl<T> Entry<T> {
         }
     }
 
-    pub fn parent(&self) -> Option<EntryPtr<T>> {
+    pub fn parent(&self) -> Option<EntryKey> {
         match self {
             Entry::File { parent, .. } | Entry::Symlink { parent, .. } => Some(*parent),
             Entry::Dir { parent, .. } => *parent,
         }
     }
 
-    pub fn set_parent(&mut self, new_parent: EntryPtr<T>) {
+    pub fn set_parent(&mut self, new_parent: EntryKey) {
         match self {
             Entry::File { parent, .. } | Entry::Symlink { parent, .. } => *parent = new_parent,
             Entry::Dir { parent, .. } => *parent = Some(new_parent),
@@ -70,7 +69,14 @@ impl<T> Entry<T> {
         }
     }
 
-    pub fn children_mut(&mut self) -> Option<&mut Children<T>> {
+    pub fn children(&self) -> Option<&Children> {
+        match self {
+            Entry::Dir { children, .. } => Some(children),
+            _ => None,
+        }
+    }
+
+    pub fn children_mut(&mut self) -> Option<&mut Children> {
         match self {
             Entry::Dir { children, .. } => Some(children),
             _ => None,
@@ -80,13 +86,6 @@ impl<T> Entry<T> {
     pub fn watch_descriptor(&self) -> &WatchDescriptor {
         match self {
             Entry::Dir { wd, .. } | Entry::Symlink { wd, .. } | Entry::File { wd, .. } => wd,
-        }
-    }
-
-    pub fn data_mut(&mut self) -> Option<&mut T> {
-        match self {
-            Entry::Dir { .. } | Entry::Symlink { .. } => None,
-            Entry::File { data, .. } => Some(data),
         }
     }
 

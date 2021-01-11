@@ -11,12 +11,16 @@ metrics = { package = "metrics", path = "../metrics" }
 
 #io
 inotify = "0.8"
+
 #error
 thiserror = "1.0"
+
 #utils
 pcre2 = "0.2"
 globber = "0.1"
 hashbrown = "0.8"
+slotmap = "1.0"
+
 #logging
 log = "0.4"
 env_logger = "0.7"

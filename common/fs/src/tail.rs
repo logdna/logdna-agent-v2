@@ -7,6 +7,7 @@ use http::types::body::LineBuilder;
 use metrics::Metrics;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
+use std::ops::{Deref, DerefMut};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
@@ -86,106 +87,113 @@ impl Tailer {
             move |event| {
                 let mut final_lines = Vec::new();
 
-                let mut fs = fs.lock().expect("Couldn't lock fs");
+                let fs = fs.lock().expect("Couldn't lock fs");
                 match event {
-                    Event::Initialize(mut entry_ptr) => {
+                    Event::Initialize(entry_ptr) => {
                         // will initiate a file to it's current length
-                        let entry = unsafe { entry_ptr.as_mut() };
-                        let path = fs.resolve_direct_path(entry);
-                        debug!("Initialise Event");
+                        if let Some(entry) = fs.entries.borrow().get(entry_ptr){
+                            let path = fs.resolve_direct_path(&entry.borrow(), &fs.entries.borrow());
+                            debug!("Initialise Event");
 
-                        if let Entry::File { ref mut data, .. } = entry {
-                            *data = match lookback_config {
-                                Lookback::Start => {
-                                    info!("initialized {:?} with offset {}", path, 0);
-                                    0
-                                },
-                                Lookback::SmallFiles => {
-                                    let mut len = path.metadata().map(|m| m.len()).unwrap_or(0);
-                                    if len < 8192 {
-                                        info!("initialized {:?} with len {} offset {}", path, len, 0);
-                                        len = 0;
-                                    } else{
+                            if let Entry::File { ref mut data, .. } = entry.borrow_mut().deref_mut() {
+                                *data = match lookback_config {
+                                    Lookback::Start => {
+                                        info!("initialized {:?} with offset {}", path, 0);
+                                        0
+                                    },
+                                    Lookback::SmallFiles => {
+                                        let mut len = path.metadata().map(|m| m.len()).unwrap_or(0);
+                                        if len < 8192 {
+                                            info!("initialized {:?} with len {} offset {}", path, len, 0);
+                                            len = 0;
+                                        } else{
+                                            info!("initialized {:?} with offset {}", path, len);
+                                        }
+                                        len
+                                    },
+                                    Lookback::None => {
+                                        let len = path.metadata().map(|m| m.len()).unwrap_or(0);
                                         info!("initialized {:?} with offset {}", path, len);
+                                        len
                                     }
-                                    len
-                                },
-                                Lookback::None => {
-                                    let len = path.metadata().map(|m| m.len()).unwrap_or(0);
-                                    info!("initialized {:?} with offset {}", path, len);
-                                    len
                                 }
                             }
-                        }
+                        };
                     }
-                    Event::New(mut entry_ptr) => {
+                    Event::New(entry_ptr) => {
                         Metrics::fs().increment_creates();
                         // similar to initiate but sets the offset to 0
-                        let entry = unsafe { entry_ptr.as_mut() };
-                        let paths = fs.resolve_valid_paths(entry);
-                        debug!("New Event");
-                        if !paths.is_empty() {
-                            if let Entry::File {
-                                ref mut data,
-                                file_handle,
-                                ..
-                            } = entry
-                            {
-                                info!("added {:?}", paths[0]);
-                                *data = 0;
-                                if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
-                                    final_lines.append(&mut lines);
+                        if let Some(entry) = fs.entries.borrow().get(entry_ptr){
+                            let paths = fs.resolve_valid_paths(&entry.borrow(), &fs.entries.borrow());
+                            debug!("New Event");
+                            if !paths.is_empty() {
+                                if let Entry::File {
+                                    ref mut data,
+                                    file_handle,
+                                    ..
+                                } = entry.borrow_mut().deref_mut()
+                                {
+                                    info!("added {:?}", paths[0]);
+                                    *data = 0;
+                                    if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
+                                        final_lines.append(&mut lines);
+                                    }
                                 }
                             }
                         }
 
 
                     }
-                    Event::Write(mut entry_ptr) => {
+                    Event::Write(entry_ptr) => {
                         Metrics::fs().increment_writes();
-                        let entry = unsafe { entry_ptr.as_mut() };
-                        let paths = fs.resolve_valid_paths(entry);
-                        debug!("Write Event");
-                        if !paths.is_empty() {
+                        if let Some(entry) = fs.entries.borrow().get(entry_ptr){
+                            let paths = fs.resolve_valid_paths(&entry.borrow(), &fs.entries.borrow());
+                            debug!("Write Event");
+                            if !paths.is_empty() {
 
-                            if let Entry::File {
-                                ref mut data,
-                                file_handle,
-                                ..
-                            } = entry
-                            {
-                                if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
-                                    final_lines.append(&mut lines);
+                                if let  Entry::File {
+                                    ref mut data,
+                                    file_handle,
+                                    ..
+                                } = entry.borrow_mut().deref_mut()
+                                {
+                                    if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
+                                        final_lines.append(&mut lines);
+                                    }
                                 }
-                            }
 
+                            }
                         }
                     }
-                    Event::Delete(mut entry_ptr) => {
+                    Event::Delete(entry_ptr) => {
                         Metrics::fs().increment_deletes();
-                        let mut entry = unsafe { entry_ptr.as_mut() };
-                        let paths = fs.resolve_valid_paths(entry);
-                        debug!("Delete Event");
-                        if !paths.is_empty() {
-                            if let Entry::Symlink { link, .. } = entry {
-                                if let Some(real_entry) = fs.lookup(link) {
-                                    entry = unsafe { &mut *real_entry.as_ptr() };
-                                } else {
-                                    error!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths[0]);
+                        let entries = fs.entries.borrow();
+                        if let Some(mut entry) = entries.get(entry_ptr){
+                            let paths = fs.resolve_valid_paths(&entry.borrow(), &entries);
+                            debug!("Delete Event");
+                            if !paths.is_empty() {
+                                if let Entry::Symlink { link, .. } = entry.borrow().deref() {
+                                    if let Some(real_entry) = fs.lookup(link, &entries) {
+                                        if let Some(r_entry) = entries.get(real_entry){
+                                            entry = r_entry
+                                        }
+                                    } else {
+                                        error!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths[0]);
+                                    }
                                 }
-                            }
 
-                            if let Entry::File {
-                                ref mut data,
-                                file_handle,
-                                ..
-                            } = entry
-                            {
-                                if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
-                                    final_lines.append(&mut lines);
+                                if let Entry::File {
+                                    ref mut data,
+                                    file_handle,
+                                    ..
+                                } = entry.borrow_mut().deref_mut()
+                                {
+                                    if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
+                                        final_lines.append(&mut lines);
+                                    }
                                 }
-                            }
 
+                            }
                         }
                     }
                 };
