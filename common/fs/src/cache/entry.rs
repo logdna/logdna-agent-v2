@@ -4,29 +4,28 @@ use std::fs::File;
 use std::path::PathBuf;
 
 use inotify::WatchDescriptor;
-use slotmap::DefaultKey;
 
-use crate::cache::Children;
+use crate::cache::{Children,EntryKey};
 use crate::rule::Rules;
 
 #[derive(Debug)]
 pub enum Entry<T> {
     File {
         name: OsString,
-        parent: DefaultKey,
+        parent: EntryKey,
         wd: WatchDescriptor,
         data: RefCell<T>,
         file_handle: File,
     },
     Dir {
         name: OsString,
-        parent: Option<DefaultKey>,
+        parent: Option<EntryKey>,
         children: Children,
         wd: WatchDescriptor,
     },
     Symlink {
         name: OsString,
-        parent: DefaultKey,
+        parent: EntryKey,
         link: PathBuf,
         wd: WatchDescriptor,
         rules: Rules,
@@ -42,14 +41,14 @@ impl<T> Entry<T> {
         }
     }
 
-    pub fn parent(&self) -> Option<DefaultKey> {
+    pub fn parent(&self) -> Option<EntryKey> {
         match self {
             Entry::File { parent, .. } | Entry::Symlink { parent, .. } => Some(*parent),
             Entry::Dir { parent, .. } => *parent,
         }
     }
 
-    pub fn set_parent(&mut self, new_parent: DefaultKey) {
+    pub fn set_parent(&mut self, new_parent: EntryKey) {
         match self {
             Entry::File { parent, .. } | Entry::Symlink { parent, .. } => *parent = new_parent,
             Entry::Dir { parent, .. } => *parent = Some(new_parent),

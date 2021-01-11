@@ -1,13 +1,13 @@
-use slotmap::DefaultKey;
+use crate::cache::EntryKey;
 /// Represents a filesystem event
 #[derive(Debug, Clone)]
 pub enum Event {
     /// A file was created initialized
-    Initialize(DefaultKey),
+    Initialize(EntryKey),
     /// A new file was created
-    New(DefaultKey),
+    New(EntryKey),
     /// A file was written too
-    Write(DefaultKey),
+    Write(EntryKey),
     /// A file was deleted
-    Delete(DefaultKey),
+    Delete(EntryKey),
 }
