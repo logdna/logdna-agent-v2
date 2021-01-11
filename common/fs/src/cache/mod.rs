@@ -28,17 +28,21 @@ pub use dir_path::{DirPathBuf, DirPathBufError};
 
 mod watch;
 
-type Children = HashMap<OsString, DefaultKey>;
-type Symlinks = HashMap<PathBuf, Vec<DefaultKey>>;
-type WatchDescriptors = HashMap<WatchDescriptor, Vec<DefaultKey>>;
+type Children = HashMap<OsString, EntryKey>;
+type Symlinks = HashMap<PathBuf, Vec<EntryKey>>;
+type WatchDescriptors = HashMap<WatchDescriptor, Vec<EntryKey>>;
+
+pub type EntryKey = DefaultKey;
+
+type EntryMap<T> = SlotMap<EntryKey, RefCell<entry::Entry<T>>>;
 
 pub struct FileSystem<T>
 where
     T: Clone + std::fmt::Debug,
 {
     watcher: Watcher,
-    pub entries: Rc<RefCell<SlotMap<DefaultKey, RefCell<Entry<T>>>>>,
-    root: DefaultKey,
+    pub entries: Rc<RefCell<EntryMap<T>>>,
+    root: EntryKey,
 
     symlinks: Symlinks,
     watch_descriptors: WatchDescriptors,
@@ -262,7 +266,7 @@ where
         watch_descriptor: &WatchDescriptor,
         name: OsString,
         events: &mut Vec<Event>,
-        _entries: &mut SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
+        _entries: &mut EntryMap<T>,
     ) {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
@@ -319,7 +323,7 @@ where
         watch_descriptor: &WatchDescriptor,
         name: OsString,
         events: &mut Vec<Event>,
-        _entries: &mut SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
+        _entries: &mut EntryMap<T>,
     ) {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
@@ -350,7 +354,7 @@ where
         to_watch_descriptor: &WatchDescriptor,
         to_name: OsString,
         events: &mut Vec<Event>,
-        _entries: &mut SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
+        _entries: &mut EntryMap<T>,
     ) {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
@@ -387,15 +391,11 @@ where
         self.rename(&from_path, &to_path, events, _entries).unwrap();
     }
 
-    pub fn resolve_direct_path(
-        &self,
-        entry: &Entry<T>,
-        _entries: &SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
-    ) -> PathBuf {
+    pub fn resolve_direct_path(&self, entry: &Entry<T>, _entries: &EntryMap<T>) -> PathBuf {
         let mut components = Vec::new();
 
         let mut name: Option<OsString> = Some(entry.name().clone());
-        let mut entry_ptr: Option<DefaultKey> = entry.parent();
+        let mut entry_ptr: Option<EntryKey> = entry.parent();
 
         while let Some(parent_ptr) = entry_ptr {
             if let Some(name) = name.take() {
@@ -416,11 +416,7 @@ where
         components.into_iter().collect()
     }
 
-    pub fn resolve_valid_paths(
-        &self,
-        entry: &Entry<T>,
-        _entries: &SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
-    ) -> Vec<PathBuf> {
+    pub fn resolve_valid_paths(&self, entry: &Entry<T>, _entries: &EntryMap<T>) -> Vec<PathBuf> {
         let mut paths = Vec::new();
         self.resolve_valid_paths_helper(entry, &mut paths, Vec::new(), _entries);
         paths
@@ -431,7 +427,7 @@ where
         entry: &Entry<T>,
         paths: &mut Vec<PathBuf>,
         mut components: Vec<OsString>,
-        _entries: &SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
+        _entries: &EntryMap<T>,
     ) {
         let mut base_components: Vec<OsString> =
             into_components(&self.resolve_direct_path(entry, _entries));
@@ -471,8 +467,8 @@ where
         &mut self,
         path: &PathBuf,
         events: &mut Vec<Event>,
-        _entries: &mut SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
-    ) -> Option<DefaultKey> {
+        _entries: &mut EntryMap<T>,
+    ) -> Option<EntryKey> {
         if !self.passes(path, _entries) {
             info!("ignoring {:?}", path);
             return None;
@@ -495,7 +491,7 @@ where
         }
 
         enum Action {
-            Return(DefaultKey),
+            Return(EntryKey),
             CreateSymlink(PathBuf),
             CreateFile,
         }
@@ -600,11 +596,7 @@ where
         }
     }
 
-    fn register(
-        &mut self,
-        entry_ptr: DefaultKey,
-        _entries: &mut SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
-    ) {
+    fn register(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<T>) {
         if let Some(entry) = _entries.get(entry_ptr) {
             let path = self.resolve_direct_path(&entry.borrow(), _entries);
 
@@ -626,11 +618,7 @@ where
         };
     }
 
-    fn unregister(
-        &mut self,
-        entry_ptr: DefaultKey,
-        _entries: &mut SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
-    ) {
+    fn unregister(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<T>) {
         if let Some(entry) = _entries.get(entry_ptr) {
             let path = self.resolve_direct_path(&entry.borrow(), _entries);
 
@@ -674,7 +662,7 @@ where
         &mut self,
         path: &PathBuf,
         events: &mut Vec<Event>,
-        _entries: &mut SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
+        _entries: &mut EntryMap<T>,
     ) -> Option<()> {
         let parent = self.lookup(&path.parent()?.into(), _entries)?;
         let component = into_components(path).pop()?;
@@ -699,9 +687,9 @@ where
 
     fn drop_entry(
         &mut self,
-        entry_ptr: DefaultKey,
+        entry_ptr: EntryKey,
         events: &mut Vec<Event>,
-        _entries: &mut SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
+        _entries: &mut EntryMap<T>,
     ) {
         self.unregister(entry_ptr, _entries);
         let mut _children = vec![];
@@ -746,8 +734,8 @@ where
         from: &PathBuf,
         to: &PathBuf,
         events: &mut Vec<Event>,
-        _entries: &mut SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
-    ) -> Option<DefaultKey> {
+        _entries: &mut EntryMap<T>,
+    ) -> Option<EntryKey> {
         let new_parent = self
             .create_dir(&to.parent().unwrap().into(), _entries)
             .unwrap();
@@ -796,11 +784,7 @@ where
     // Creates all entries for a directory.
     // If one of the entries already exists, it is skipped over.
     // The returns a linked list of all entries.
-    fn create_dir(
-        &mut self,
-        path: &PathBuf,
-        _entries: &mut SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
-    ) -> Option<DefaultKey> {
+    fn create_dir(&mut self, path: &PathBuf, _entries: &mut EntryMap<T>) -> Option<EntryKey> {
         let mut m_entry = Some(self.root);
 
         let components = into_components(path);
@@ -812,7 +796,7 @@ where
         }
 
         enum Action {
-            Return(DefaultKey),
+            Return(EntryKey),
             Lookup(PathBuf),
             CreateSymlink(PathBuf),
             CreateDir,
@@ -931,11 +915,7 @@ where
 
     // Returns the entry that represents the supplied path.
     // If the path is not represented and therefor has no entry then None is return.
-    pub fn lookup(
-        &self,
-        path: &PathBuf,
-        _entries: &SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
-    ) -> Option<DefaultKey> {
+    pub fn lookup(&self, path: &PathBuf, _entries: &EntryMap<T>) -> Option<EntryKey> {
         let mut parent = self.root;
         let mut components = into_components(path);
         // remove the first component because it will always be the root
@@ -976,11 +956,7 @@ where
         }
     }
 
-    fn follow_links(
-        &self,
-        mut entry: DefaultKey,
-        _entries: &SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
-    ) -> Option<DefaultKey> {
+    fn follow_links(&self, mut entry: EntryKey, _entries: &EntryMap<T>) -> Option<EntryKey> {
         while let Some(e) = _entries.get(entry) {
             if let Some(link) = e.borrow().link() {
                 entry = self.lookup(link, _entries)?;
@@ -991,11 +967,7 @@ where
         Some(entry)
     }
 
-    fn is_symlink_target(
-        &self,
-        path: &PathBuf,
-        _entries: &SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
-    ) -> bool {
+    fn is_symlink_target(&self, path: &PathBuf, _entries: &EntryMap<T>) -> bool {
         for (_, symlink_ptrs) in self.symlinks.iter() {
             for symlink_ptr in symlink_ptrs.iter() {
                 if let Some(symlink) = _entries.get(*symlink_ptr) {
@@ -1032,11 +1004,7 @@ where
     }
 
     // a helper for checking if a path passes exclusion/inclusion rules
-    fn passes(
-        &self,
-        path: &PathBuf,
-        _entries: &SlotMap<DefaultKey, RefCell<entry::Entry<T>>>,
-    ) -> bool {
+    fn passes(&self, path: &PathBuf, _entries: &EntryMap<T>) -> bool {
         self.is_initial_dir_target(path) || self.is_symlink_target(path, _entries)
     }
 }
