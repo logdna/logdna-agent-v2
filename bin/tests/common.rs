@@ -87,7 +87,22 @@ pub fn truncate_file(file_path: &PathBuf) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-pub fn spawn_agent(dir_path: &str) -> Child {
+#[derive(Default)]
+pub struct AgentSettings<'a> {
+    pub log_dirs: &'a str,
+    pub exclusion_regex: &'a str,
+}
+
+impl<'a> AgentSettings<'a> {
+    pub fn new(log_dirs: &'a str) -> Self {
+        AgentSettings {
+            log_dirs,
+            ..Default::default()
+        }
+    }
+}
+
+pub fn spawn_agent(settings: AgentSettings) -> Child {
     let mut cmd = Command::cargo_bin("logdna-agent").unwrap();
 
     let ingestion_key =
@@ -98,7 +113,7 @@ pub fn spawn_agent(dir_path: &str) -> Child {
         .env_clear()
         .env("RUST_LOG", "debug")
         .env("RUST_BACKTRACE", "full")
-        .env("LOGDNA_LOG_DIRS", &dir_path)
+        .env("LOGDNA_LOG_DIRS", settings.log_dirs)
         .env(
             "LOGDNA_HOST",
             std::env::var("LOGDNA_HOST").expect("LOGDNA_HOST env var not set"),
@@ -107,17 +122,28 @@ pub fn spawn_agent(dir_path: &str) -> Child {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
+    if !settings.exclusion_regex.is_empty() {
+        agent.env("LOGDNA_EXCLUSION_REGEX_RULES", settings.exclusion_regex);
+    }
+
     agent.spawn().expect("Failed to start agent")
 }
 
 /// Blocks until a certain event is logged by the agent
-pub fn wait_for_file_event(event: &str, file_path: &PathBuf, stderr_reader: &mut dyn BufRead) {
+pub fn wait_for_file_event(
+    event: &str,
+    file_path: &PathBuf,
+    stderr_reader: &mut dyn BufRead,
+) -> String {
     let mut line = String::new();
+    let mut lines_buffer = String::new();
     let file_name = &file_path.file_name().unwrap().to_str().unwrap();
-    for _safeguard in 0..500_000 {
+    for _safeguard in 0..100_000 {
         stderr_reader.read_line(&mut line).unwrap();
+        lines_buffer.push_str(&line);
+        lines_buffer.push('\n');
         if line.contains(event) && line.contains(file_name) {
-            return;
+            return lines_buffer;
         }
         line.clear();
     }

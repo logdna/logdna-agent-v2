@@ -1330,6 +1330,7 @@ dependencies = [
  "middleware",
  "pin-utils",
  "predicates",
+ "regex",
  "serde_yaml",
  "tempfile",
  "tokio 0.2.24",
