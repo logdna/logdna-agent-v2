@@ -40,7 +40,7 @@ oc adm policy add-scc-to-user privileged system:serviceaccount:logdna-agent:logd
 ```
 3. Create the remaining resources:
 ```console
-oc apply -f k8s/agent-resources-openshift.yaml
+oc apply -f https://raw.githubusercontent.com/jondkelley/logdna-agent-v2/3.0/k8s/agent-resources-openshift.yaml
 ```
 4. Monitor the pods for startup success:
 ```console
