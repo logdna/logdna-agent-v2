@@ -1,7 +1,6 @@
 use crate::common::AgentSettings;
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
-use regex::Regex;
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
@@ -225,20 +224,21 @@ fn test_exclusion_rules() {
 
     let mut agent_handle = common::spawn_agent(AgentSettings {
         log_dirs: &dir.to_str().unwrap(),
-        exclusion_regex: r"\w+ile2\.\w{3}",
+        exclusion_regex: Some(r"\w+ile2\.\w{3}"),
     });
 
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
     let lines = common::wait_for_file_event("initialized", &included_file, &mut stderr_reader);
-    let re = Regex::new(r"initialized [^\n]*file2\.log").unwrap();
-    assert!(!re.is_match(&lines), "file2.log should have been excluded");
+
+    let matches_excluded_file = predicate::str::is_match(r"initialized [^\n]*file2\.log").unwrap();
+    assert!(!matches_excluded_file.eval(&lines), "file2.log should have been excluded");
 
     // Continue appending
     common::append_to_file(&included_file, 100, 5).expect("Could not append");
     let lines =
         common::wait_for_file_event("tailer sendings lines", &included_file, &mut stderr_reader);
-    assert!(!re.is_match(&lines), "file2.log should have been excluded");
+    assert!(!matches_excluded_file.eval(&lines), "file2.log should have been excluded");
 
     common::assert_agent_running(&mut agent_handle);
 

@@ -45,4 +45,3 @@ journald_tests = ["journald/journald_tests"]
 assert_cmd = "1"
 predicates = "1"
 tempfile = "3"
-regex = "1"

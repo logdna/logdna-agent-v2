@@ -90,7 +90,7 @@ pub fn truncate_file(file_path: &PathBuf) -> Result<(), std::io::Error> {
 #[derive(Default)]
 pub struct AgentSettings<'a> {
     pub log_dirs: &'a str,
-    pub exclusion_regex: &'a str,
+    pub exclusion_regex: Option<&'a str>,
 }
 
 impl<'a> AgentSettings<'a> {
@@ -122,8 +122,8 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    if !settings.exclusion_regex.is_empty() {
-        agent.env("LOGDNA_EXCLUSION_REGEX_RULES", settings.exclusion_regex);
+    if let Some(rules) = settings.exclusion_regex {
+        agent.env("LOGDNA_EXCLUSION_REGEX_RULES", rules);
     }
 
     agent.spawn().expect("Failed to start agent")
