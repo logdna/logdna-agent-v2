@@ -232,13 +232,19 @@ fn test_exclusion_rules() {
     let lines = common::wait_for_file_event("initialized", &included_file, &mut stderr_reader);
 
     let matches_excluded_file = predicate::str::is_match(r"initialized [^\n]*file2\.log").unwrap();
-    assert!(!matches_excluded_file.eval(&lines), "file2.log should have been excluded");
+    assert!(
+        !matches_excluded_file.eval(&lines),
+        "file2.log should have been excluded"
+    );
 
     // Continue appending
     common::append_to_file(&included_file, 100, 5).expect("Could not append");
     let lines =
         common::wait_for_file_event("tailer sendings lines", &included_file, &mut stderr_reader);
-    assert!(!matches_excluded_file.eval(&lines), "file2.log should have been excluded");
+    assert!(
+        !matches_excluded_file.eval(&lines),
+        "file2.log should have been excluded"
+    );
 
     common::assert_agent_running(&mut agent_handle);
 
