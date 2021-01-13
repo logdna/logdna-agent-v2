@@ -30,12 +30,14 @@ RUST_COMMAND := $(DOCKER_DISPATCH) $(RUST_IMAGE)
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
+INTEGRATION_TEST_THREADS ?= 8
+
 VCS_REF := $(shell git rev-parse --short HEAD)
 VCS_URL := https://github.com/logdna/$(REPO)
 BUILD_DATE := $(shell date -u +'%Y%m%d')
 BUILD_TIMESTAMP := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUILD_VERSION := $(shell sed -nE "s/^version = \"(.+)\"\$$/\1/p" bin/Cargo.toml)
-BUILD_TAG := $(VCS_REF)
+BUILD_TAG ?= $(VCS_REF)
 
 MAJOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f1)
 MINOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f2)
@@ -74,7 +76,7 @@ TEST_RULES=
 define TEST_RULE
 TEST_RULES=$(TEST_RULES)test-$(1): <> Run unit tests for $(1) crate\\n
 test-$(1):
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo test -p $(1)"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=1" "cargo test -p $(1)"
 endef
 
 CRATES=$(shell sed -e '/members/,/]/!d' Cargo.toml | tail -n +2 | $(_TAC) | tail -n +2 | $(_TAC) | sed 's/,//' | xargs -n1 -I{} sh -c 'grep -E "^name *=" {}/Cargo.toml | tail -n1' | sed 's/name *= *"\([A-Za-z0-9_\-]*\)"/\1/' | awk '!/journald/{print $0}')
@@ -98,7 +100,7 @@ test: test-journald ## Run unit tests
 
 .PHONY:integration-test
 integration-test: ## Run integration tests
-	$(RUST_COMMAND) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full" "cargo test --manifest-path bin/Cargo.toml --features integration_tests -- --nocapture"
+	$(RUST_COMMAND) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full" "cargo test --manifest-path bin/Cargo.toml --features integration_tests -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
@@ -239,7 +241,7 @@ build-image: ## Build a docker image as specified in the Dockerfile
 
 .PHONY:publish-image
 publish-image: ## Publish SemVer compliant releases to our registroies
-	$(eval TARGET_VERSIONS := $(BUILD_VERSION) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(shell docker images -q $(REPO):$(BUILD_TAG)) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION) latest"; fi))
+	$(eval TARGET_VERSIONS := $(BUILD_VERSION) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(shell docker images -q $(REPO):$(BUILD_TAG)) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION) stable v2-stable"; fi))
 	@for image in $(DOCKER_PRIVATE_IMAGE) $(DOCKER_PUBLIC_IMAGE) $(DOCKER_IBM_IMAGE); do \
 		for version in $(TARGET_VERSIONS); do \
 			$(DOCKER) tag $(REPO):$(BUILD_TAG) $${image}:$${version}; \
