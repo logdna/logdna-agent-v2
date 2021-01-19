@@ -8,6 +8,7 @@ use std::ffi::OsString;
 use std::fmt;
 use std::fs::read_dir;
 use std::fs::OpenOptions;
+use std::io::{self, Error, ErrorKind};
 use std::iter::FromIterator;
 use std::ops::Deref;
 use std::path::{Component, PathBuf};
@@ -141,7 +142,7 @@ where
             }
         };
 
-        let initial_events = {
+        let initial_events: Vec<Event> = {
             let mut fs = fs.try_lock().expect("could not lock filesystem cache");
 
             let mut acc = Vec::new();
@@ -156,7 +157,7 @@ where
         let events = events_stream.into_stream().map(move |event| {
             let fs = fs.clone();
             {
-                let mut acc = Vec::new();
+                let mut acc: Vec<Event> = Vec::new();
 
                 match event {
                     Ok(event) => {
@@ -165,7 +166,7 @@ where
                             .process(event, &mut acc);
                         futures::stream::iter(acc)
                     }
-                    _ => panic!("Inotify error"),
+                    Err(_) => panic!("Inotify error"),
                 }
             }
         });
@@ -181,15 +182,17 @@ where
 
         debug!("handling inotify event {:#?}", watch_event);
 
+        let mut result = Ok(());
+
         match watch_event {
             WatchEvent::Create { wd, name } | WatchEvent::MovedTo { wd, name, .. } => {
-                self.process_create(&wd, name, events, &mut _entries);
+                result = self.process_create(&wd, name, events, &mut _entries);
             }
             WatchEvent::Modify { wd } => {
                 self.process_modify(&wd, events);
             }
             WatchEvent::Delete { wd, name } | WatchEvent::MovedFrom { wd, name, .. } => {
-                self.process_delete(&wd, name, events, &mut _entries);
+                result = self.process_delete(&wd, name, events, &mut _entries);
             }
             WatchEvent::Move {
                 from_wd,
@@ -252,13 +255,21 @@ where
                 if is_to_path_ok && is_from_path_ok {
                     self.process_move(&from_wd, from_name, &to_wd, to_name, events, &mut _entries);
                 } else if is_to_path_ok {
-                    self.process_create(&to_wd, to_name, events, &mut _entries);
+                    result = self.process_create(&to_wd, to_name, events, &mut _entries);
                 } else if is_from_path_ok {
-                    self.process_delete(&from_wd, from_name, events, &mut _entries);
+                    result = self.process_delete(&from_wd, from_name, events, &mut _entries);
                 }
             }
-            WatchEvent::Overflow => panic!("overflowed kernel queue!"),
+            WatchEvent::Overflow => error!(
+                // Files are being updated too often for inotify to catch up
+                // Log the error and continue
+                "The inotify event queue has overflowed and events have presumably been lost"
+            ),
         };
+
+        if let Err(e) = result {
+            warn!("inotify event processing resulted in error: {}", e);
+        }
     }
 
     fn process_create(
@@ -267,17 +278,19 @@ where
         name: OsString,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) {
+    ) -> Result<(), io::Error> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
         let entry_ptr = match self.watch_descriptors.get(watch_descriptor) {
             Some(entries) => entries[0],
             None => {
-                error!(
-                    "got create event for untracked watch descriptor: {:?}",
-                    watch_descriptor
-                );
-                return;
+                return Err(Error::new(
+                    ErrorKind::NotFound,
+                    format!(
+                        "got create event for untracked watch descriptor: {:?}",
+                        watch_descriptor
+                    ),
+                ));
             }
         };
 
@@ -292,9 +305,11 @@ where
                     }
                 };
             }
+
+            Ok(())
         } else {
-            error!("Failed to find entry");
-        };
+            not_found_err("Failed to find entry".into())
+        }
     }
 
     fn process_modify(&mut self, watch_descriptor: &WatchDescriptor, events: &mut Vec<Event>) {
@@ -321,17 +336,16 @@ where
         name: OsString,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) {
+    ) -> Result<(), io::Error> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
         let entry_ptr = match self.watch_descriptors.get(watch_descriptor) {
             Some(entries) => entries[0],
             None => {
-                error!(
+                return not_found_err(format!(
                     "got delete event for untracked watch descriptor: {:?}",
                     watch_descriptor
-                );
-                return;
+                ));
             }
         };
 
@@ -339,9 +353,10 @@ where
             let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
             path.push(name);
             self.remove(&path, events, _entries);
+            Ok(())
         } else {
-            error!("Failed to find entry");
-        };
+            not_found_err("Failed to find entry".into())
+        }
     }
 
     fn process_move(
@@ -1092,6 +1107,10 @@ fn append_rules(rules: &mut Rules, mut path: PathBuf) {
             break;
         }
     }
+}
+
+fn not_found_err(message: String) -> Result<(), io::Error> {
+    Err(Error::new(ErrorKind::NotFound, message))
 }
 
 #[cfg(test)]
