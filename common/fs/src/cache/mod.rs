@@ -855,25 +855,14 @@ where
                                 }
                             };
 
-                            let dir = _entries.insert(RefCell::new(Entry::Dir {
+                            let new_entry = Entry::Dir {
                                 name: component.clone(),
                                 parent: Some(entry),
                                 children: HashMap::new(),
                                 wd,
-                            }));
+                            };
 
-                            self.register(dir, _entries);
-                            _entries.get(entry).and_then(|entry| {
-                                match entry
-                                    .borrow_mut()
-                                    .children_mut()
-                                    .expect("expected entry to be a directory")
-                                    .entry(component.clone())
-                                {
-                                    HashMapEntry::Vacant(v) => Some(*v.insert(dir)),
-                                    _ => panic!("should be vacant"),
-                                }
-                            })
+                            self.insert_and_set_as_child(entry, new_entry, _entries)
                         }
                         Action::CreateSymlink(real) => {
                             let wd = match self.watcher.watch(&current_path) {
@@ -884,27 +873,15 @@ where
                                 }
                             };
 
-                            let symlink = _entries.insert(RefCell::new(Entry::Symlink {
+                            let new_entry = Entry::Symlink {
                                 name: component.clone(),
                                 parent: entry,
                                 link: real.clone(),
                                 wd,
                                 rules: into_rules(real.clone()),
-                            }));
+                            };
 
-                            self.register(symlink, _entries);
-
-                            _entries.get(entry).and_then(|entry| {
-                                match entry
-                                    .borrow_mut()
-                                    .children_mut()
-                                    .expect("expected entry to be a directory")
-                                    .entry(component.clone())
-                                {
-                                    HashMapEntry::Vacant(v) => Some(*v.insert(symlink)),
-                                    _ => panic!("should be vacant"),
-                                }
-                            });
+                            self.insert_and_set_as_child(entry, new_entry, _entries);
 
                             match self.create_dir(&real, _entries) {
                                 Some(v) => Some(v),
@@ -924,6 +901,29 @@ where
             }
         }
         m_entry
+    }
+
+    fn insert_and_set_as_child(
+        &mut self,
+        parent: EntryKey,
+        new_entry: Entry<T>,
+        entries: &mut EntryMap<T>
+    ) -> Option<EntryKey> {
+        let component = new_entry.name().clone();
+        let new_key = entries.insert(RefCell::new(new_entry));
+        self.register(new_key, entries);
+
+        entries.get(parent).and_then(|entry| {
+            match entry
+                .borrow_mut()
+                .children_mut()
+                .expect("expected entry to be a directory")
+                .entry(component)
+            {
+                HashMapEntry::Vacant(v) => Some(*v.insert(new_key)),
+                _ => panic!("should be vacant"),
+            }
+        })
     }
 
     // Returns the entry that represents the supplied path.
