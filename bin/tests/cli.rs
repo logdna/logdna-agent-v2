@@ -333,7 +333,7 @@ fn test_directory_symlinks_delete() {
     common::append_to_file(&file2_path, 100, 50).expect("Could not append");
     common::append_to_file(&file3_path, 100, 50).expect("Could not append");
 
-    let mut agent_handle = common::spawn_agent(&log_dir.to_str().unwrap());
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&log_dir.to_str().unwrap()));
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
     std::os::unix::fs::symlink(&dir_1_path, &symlink_path).unwrap();
