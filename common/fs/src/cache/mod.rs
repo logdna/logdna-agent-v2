@@ -103,14 +103,16 @@ where
                 if !path_cpy.exists() {
                     path_cpy.pop();
                 } else {
-                    fs.insert(&path_cpy, &mut Vec::new(), &mut entries);
+                    fs.insert(&path_cpy, &mut Vec::new(), &mut entries)
+                        .expect("Insert initial dirs failed");
                     break;
                 }
             }
 
             for path in recursive_scan(&dir) {
                 let mut events = Vec::new();
-                fs.insert(&path, &mut events, &mut entries);
+                fs.insert(&path, &mut events, &mut entries)
+                    .expect("Insert initial dirs recursive failed");
                 for event in events {
                     match event {
                         Event::New(entry) => fs.initial_events.push(Event::Initialize(entry)),
@@ -302,10 +304,10 @@ where
             let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
             path.push(name);
 
-            if let Some(new_entry) = self.insert(&path, events, _entries) {
+            if let Some(new_entry) = self.insert(&path, events, _entries)? {
                 if matches!(_entries.get(new_entry).map(|n_e| n_e.borrow()), Some(_)) {
                     for new_path in recursive_scan(&path) {
-                        self.insert(&new_path, events, _entries);
+                        self.insert(&new_path, events, _entries)?;
                     }
                 };
             }
@@ -482,33 +484,42 @@ where
         }
     }
 
+    /// Inserts a new entry when the path validates the inclusion/exclusion rules.
+    ///
+    /// When the path doesn't pass the rules or the path is invalid, it returns `Ok(None)`.
     fn insert(
         &mut self,
         path: &PathBuf,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) -> Option<EntryKey> {
+    ) -> FsResult<Option<EntryKey>> {
         if !self.passes(path, _entries) {
             info!("ignoring {:?}", path);
-            return None;
+            return Ok(None);
         }
 
         if !(path.exists() || path.read_link().is_ok()) {
-            warn!("attempted to insert non existant path {:?}", path);
-            return None;
+            warn!("attempted to insert non existent path {:?}", path);
+            return Ok(None);
         }
 
-        let parent_ref = self
-            .create_dir(&path.parent().unwrap().into(), _entries)
-            .unwrap();
-        let parent_ref = self.follow_links(parent_ref, _entries)?;
+        let parent_ref = self.create_dir(&path.parent().unwrap().into(), _entries)?;
+        let parent_ref = self.follow_links(parent_ref, _entries);
+
+        if parent_ref.is_none() {
+            return Ok(None);
+        }
+
+        let parent_ref = parent_ref.unwrap();
 
         // We only need the last component, the parents are already inserted.
-        let component = into_components(path).pop()?;
+        let component = into_components(path)
+            .pop()
+            .ok_or("Unexpected path without components")?;
 
         // If the path is a dir, we can use create_dir to do the insert
         if path.is_dir() {
-            return Some(self.create_dir(path, _entries).unwrap());
+            return self.create_dir(path, _entries).map(|e| Some(e));
         }
 
         enum Action {
@@ -517,103 +528,66 @@ where
             CreateFile,
         }
 
-        let action = if let Some(parent) = _entries.get(parent_ref) {
-            if let Some(children) = parent.borrow_mut().children_mut() {
-                match children.entry(component.clone()) {
-                    HashMapEntry::Occupied(v) => Some(Action::Return(*v.get())),
-                    HashMapEntry::Vacant(_) => match path.read_link() {
-                        Ok(real) => Some(Action::CreateSymlink(real)),
-                        Err(_) => Some(Action::CreateFile),
-                    },
-                }
-            } else {
-                error!("Parent has no children");
-                None
-            }
-        } else {
-            error!("Failed to find entry");
-            None
+        let parent = _entries.get(parent_ref).ok_or("Failed to find entry")?;
+        let action = match parent
+            .borrow_mut()
+            .children_mut()
+            .ok_or("Parent has no children")?
+            .entry(component.clone())
+        {
+            HashMapEntry::Occupied(v) => Action::Return(*v.get()),
+            HashMapEntry::Vacant(_) => match path.read_link() {
+                Ok(real) => Action::CreateSymlink(real),
+                Err(_) => Action::CreateFile,
+            },
         };
 
-        if let Some(action) = action {
-            match action {
-                Action::Return(entry_ptr) => Some(entry_ptr),
-                Action::CreateFile => {
-                    let wd = match self.watcher.watch(path) {
-                        Ok(wd) => wd,
-                        Err(e) => {
-                            error!("error watching {:?}: {:?}", path, e);
-                            return None;
-                        }
-                    };
+        match action {
+            Action::Return(key) => Ok(Some(key)),
+            Action::CreateFile => {
+                let wd = self
+                    .watcher
+                    .watch(path)
+                    .map_err(|e| format!("error watching {:?}: {:?}", path, e))?;
 
-                    let file = _entries.insert(RefCell::new(Entry::File {
-                        name: component.clone(),
-                        parent: parent_ref,
-                        wd,
-                        data: T::default(),
-                        file_handle: OpenOptions::new().read(true).open(path).unwrap(),
-                    }));
+                let new_entry = Entry::File {
+                    name: component.clone(),
+                    parent: parent_ref,
+                    wd,
+                    data: T::default(),
+                    file_handle: OpenOptions::new().read(true).open(path).unwrap(),
+                };
 
-                    self.register(file, _entries);
-
-                    events.push(Event::New(file));
-                    _entries.get(parent_ref).and_then(|entry| {
-                        match entry
-                            .borrow_mut()
-                            .children_mut()
-                            .expect("expected entry to be a directory")
-                            .entry(component.clone())
-                        {
-                            HashMapEntry::Vacant(v) => Some(*v.insert(file)),
-                            _ => panic!("should be vacant"),
-                        }
-                    })
-                }
-                Action::CreateSymlink(real) => {
-                    let wd = match self.watcher.watch(path) {
-                        Ok(wd) => wd,
-                        Err(e) => {
-                            error!("error watching {:?}: {:?}", path, e);
-                            return None;
-                        }
-                    };
-
-                    let symlink = _entries.insert(RefCell::new(Entry::Symlink {
-                        name: component.clone(),
-                        parent: parent_ref,
-                        link: real.clone(),
-                        wd,
-                        rules: into_rules(real.clone()),
-                    }));
-
-                    self.register(symlink, _entries);
-
-                    if self.insert(&real, events, _entries).is_none() {
-                        debug!(
-                            "inserting symlink {:?} which points to invalid path {:?}",
-                            path, real
-                        );
-                    }
-
-                    events.push(Event::New(symlink));
-
-                    _entries.get(parent_ref).and_then(|entry| {
-                        match entry
-                            .borrow_mut()
-                            .children_mut()
-                            .expect("expected entry to be a directory")
-                            .entry(component.clone())
-                        {
-                            HashMapEntry::Vacant(v) => Some(*v.insert(symlink)),
-                            _ => panic!("should be vacant"),
-                        }
-                    })
-                }
+                let new_key = self.register_as_child(parent_ref, new_entry, _entries)?;
+                events.push(Event::New(new_key));
+                Ok(Some(new_key))
             }
-        } else {
-            warn!("No insert action available");
-            None
+            Action::CreateSymlink(real) => {
+                let wd = self
+                    .watcher
+                    .watch(path)
+                    .map_err(|e| format!("error watching {:?}: {:?}", path, e))?;
+
+                let new_entry = Entry::Symlink {
+                    name: component.clone(),
+                    parent: parent_ref,
+                    link: real.clone(),
+                    wd,
+                    rules: into_rules(real.clone()),
+                };
+
+                let new_key = self.register_as_child(parent_ref, new_entry, _entries)?;
+
+                if self.insert(&real, events, _entries)?.is_none() {
+                    debug!(
+                        "inserting symlink {:?} which points to invalid path {:?}",
+                        path, real
+                    );
+                }
+
+                events.push(Event::New(new_key));
+                Ok(Some(new_key))
+            }
         }
     }
 
@@ -795,7 +769,7 @@ where
 
                 Ok(Some(entry_key))
             }
-            None => Ok(self.insert(to, events, _entries)),
+            None => self.insert(to, events, _entries),
         }
     }
 
@@ -912,7 +886,7 @@ where
             .entry(component)
         {
             HashMapEntry::Vacant(v) => Ok(*v.insert(new_key)),
-            _ => Err("Unexpected child entry".into()),
+            _ => Err("Unexpected existing child entry".into()),
         }
     }
 
@@ -1005,7 +979,7 @@ where
         false
     }
 
-    // a helper for checking if a path passes exclusion/inclusion rules
+    /// Helper method for checking if a path passes exclusion/inclusion rules
     fn passes(&self, path: &PathBuf, _entries: &EntryMap<T>) -> bool {
         self.is_initial_dir_target(path) || self.is_symlink_target(path, _entries)
     }
