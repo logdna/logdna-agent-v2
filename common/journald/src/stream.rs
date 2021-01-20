@@ -296,7 +296,7 @@ mod tests {
         sleep(Duration::from_millis(50));
         journal::print(1, "Reader got the correct line 2!");
 
-        let first_batch = match timeout(Duration::from_millis(50), stream.next()).await {
+        let first_batch = match timeout(Duration::from_millis(500), stream.next()).await {
             Err(e) => {
                 panic!("unable to grab first batch of lines from stream: {:?}", e);
             }
@@ -313,7 +313,7 @@ mod tests {
             assert_eq!(line_str, "Reader got the correct line 1!");
         }
 
-        let second_batch = match timeout(Duration::from_millis(50), stream.next()).await {
+        let second_batch = match timeout(Duration::from_millis(500), stream.next()).await {
             Err(e) => {
                 panic!("unable to grab second batch of lines from stream: {:?}", e);
             }
