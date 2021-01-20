@@ -312,7 +312,7 @@ where
 
             Ok(())
         } else {
-            not_found_err("Failed to find entry".into())
+            Err("Failed to find entry".into())
         }
     }
 
@@ -346,7 +346,7 @@ where
         let entry_ptr = match self.watch_descriptors.get(watch_descriptor) {
             Some(entries) => entries[0],
             None => {
-                return not_found_err(format!(
+                return Err(format!(
                     "got delete event for untracked watch descriptor: {:?}",
                     watch_descriptor
                 ));
@@ -359,7 +359,7 @@ where
             self.remove(&path, events, _entries);
             Ok(())
         } else {
-            not_found_err("Failed to find entry".into())
+            Err("Failed to find entry".into())
         }
     }
 
@@ -500,7 +500,7 @@ where
 
         let parent_ref = self
             .create_dir(&path.parent().unwrap().into(), _entries)
-            .expect("not to fail")?;
+            .unwrap();
         let parent_ref = self.follow_links(parent_ref, _entries)?;
 
         // We only need the last component, the parents are already inserted.
@@ -508,7 +508,7 @@ where
 
         // If the path is a dir, we can use create_dir to do the insert
         if path.is_dir() {
-            return self.create_dir(path, _entries).expect("create not to fail");
+            return Some(self.create_dir(path, _entries).unwrap());
         }
 
         enum Action {
@@ -758,9 +758,7 @@ where
         _entries: &mut EntryMap<T>,
     ) -> FsResult<Option<EntryKey>> {
         let parent_path = to.parent().ok_or_else(|| "Unexpected empty parent")?;
-        let new_parent = self
-            .create_dir(&parent_path.into(), _entries)?
-            .ok_or_else(|| "Parent not found")?;
+        let new_parent = self.create_dir(&parent_path.into(), _entries)?;
 
         match self.lookup(from, _entries) {
             Some(entry_key) => {
@@ -792,7 +790,7 @@ where
                         .ok_or("Expected entry to be a directory")?
                         .insert(new_name, entry_key);
                 } else {
-                    return not_found_err("Path was found but failed to find entry".into());
+                    return Err("Path was found but failed to find entry".into());
                 }
 
                 Ok(Some(entry_key))
@@ -804,12 +802,8 @@ where
     // Creates all entries for a directory.
     // If one of the entries already exists, it is skipped over.
     // The returns a linked list of all entries.
-    fn create_dir(
-        &mut self,
-        path: &PathBuf,
-        _entries: &mut EntryMap<T>,
-    ) -> FsResult<Option<EntryKey>> {
-        let mut m_entry = Some(self.root);
+    fn create_dir(&mut self, path: &PathBuf, _entries: &mut EntryMap<T>) -> FsResult<EntryKey> {
+        let mut m_entry = self.root;
 
         let components = into_components(path);
 
@@ -827,77 +821,73 @@ where
         }
 
         for (i, component) in components.iter().enumerate().skip(1) {
-            if let Some(entry) = m_entry {
-                let current_path = PathBuf::from_iter(&components[0..=i]);
+            let current_path = PathBuf::from_iter(&components[0..=i]);
 
-                let action = if let Some(entry) = _entries.get(entry) {
-                    if let Some(children) = entry.borrow_mut().children_mut() {
-                        match children.entry(component.clone()) {
-                            HashMapEntry::Occupied(v) => {
-                                let entry_ptr = *v.get();
-                                _entries.get(entry_ptr).map(|entry_ref| {
-                                    match entry_ref.borrow().deref() {
-                                        Entry::Symlink { link, .. } => Action::Lookup(link.clone()),
-                                        _ => Action::Return(entry_ptr),
-                                    }
-                                })
-                            }
-                            HashMapEntry::Vacant(_) => match current_path.read_link() {
-                                Ok(real) => Some(Action::CreateSymlink(real)),
-                                Err(_) => Some(Action::CreateDir),
-                            },
-                        }
-                    } else {
-                        None
+            let action = match _entries
+                .get(m_entry)
+                .ok_or("Parent entry not found")?
+                .borrow_mut()
+                .children_mut()
+                .ok_or("Unexpected parent without children")?
+                .entry(component.clone())
+            {
+                HashMapEntry::Occupied(v) => {
+                    let entry_key = *v.get();
+                    let existing_entry = _entries
+                        .get(entry_key)
+                        .ok_or("Unexpected entry not found")?;
+
+                    match existing_entry.borrow().deref() {
+                        Entry::Symlink { link, .. } => Action::Lookup(link.clone()),
+                        _ => Action::Return(entry_key),
                     }
-                } else {
-                    None
-                };
+                }
+                HashMapEntry::Vacant(_) => match current_path.read_link() {
+                    Ok(real) => Action::CreateSymlink(real),
+                    Err(_) => Action::CreateDir,
+                },
+            };
 
-                let new_entry = if let Some(action) = action {
-                    match action {
-                        Action::Return(entry_ptr) => Ok(Some(entry_ptr)),
-                        Action::Lookup(ref link) => Ok(self.lookup(link, _entries)),
-                        Action::CreateDir => {
-                            let wd = self
-                                .watcher
-                                .watch(&current_path)
-                                .map_err(|e| format!("Could not watch file {}", e))?;
+            let new_entry = match action {
+                Action::Return(key) => key,
+                Action::Lookup(ref link) => self
+                    .lookup(link, _entries)
+                    .ok_or("Path lookup for new entry not found")?,
+                Action::CreateDir => {
+                    let wd = self
+                        .watcher
+                        .watch(&current_path)
+                        .map_err(|e| format!("Could not watch file {}", e))?;
 
-                            let new_entry = Entry::Dir {
-                                name: component.clone(),
-                                parent: Some(entry),
-                                children: HashMap::new(),
-                                wd,
-                            };
+                    let new_entry = Entry::Dir {
+                        name: component.clone(),
+                        parent: Some(m_entry),
+                        children: HashMap::new(),
+                        wd,
+                    };
 
-                            self.register_as_child(entry, new_entry, _entries)
-                        }
-                        Action::CreateSymlink(real) => {
-                            let wd = self
-                                .watcher
-                                .watch(&current_path)
-                                .map_err(|e| format!("Could not watch file {}", e))?;
+                    self.register_as_child(m_entry, new_entry, _entries)?
+                }
+                Action::CreateSymlink(real) => {
+                    let wd = self
+                        .watcher
+                        .watch(&current_path)
+                        .map_err(|e| format!("Could not watch file {}", e))?;
 
-                            let new_entry = Entry::Symlink {
-                                name: component.clone(),
-                                parent: entry,
-                                link: real.clone(),
-                                wd,
-                                rules: into_rules(real.clone()),
-                            };
+                    let new_entry = Entry::Symlink {
+                        name: component.clone(),
+                        parent: m_entry,
+                        link: real.clone(),
+                        wd,
+                        rules: into_rules(real.clone()),
+                    };
 
-                            self.register_as_child(entry, new_entry, _entries)?;
-                            self.create_dir(&real, _entries)
-                        }
-                    }
-                } else {
-                    Ok(None)
-                };
-                m_entry = new_entry?;
-            } else {
-                error!("Failed to find parent component");
-            }
+                    self.register_as_child(m_entry, new_entry, _entries)?;
+                    self.create_dir(&real, _entries)?
+                }
+            };
+
+            m_entry = new_entry;
         }
         Ok(m_entry)
     }
@@ -908,23 +898,21 @@ where
         parent_key: EntryKey,
         new_entry: Entry<T>,
         entries: &mut EntryMap<T>,
-    ) -> FsResult<Option<EntryKey>> {
+    ) -> FsResult<EntryKey> {
         let component = new_entry.name().clone();
         let new_key = entries.insert(RefCell::new(new_entry));
         self.register(new_key, entries);
 
-        if let Some(parent) = entries.get(parent_key) {
-            match parent
-                .borrow_mut()
-                .children_mut()
-                .ok_or("Parent file expected to be a directory")?
-                .entry(component)
-            {
-                HashMapEntry::Vacant(v) => Ok(Some(*v.insert(new_key))),
-                _ => not_found_err("should be vacant".into()),
-            }
-        } else {
-            not_found_err("Parent directory not found when inserting child".into())
+        match entries
+            .get(parent_key)
+            .ok_or("Parent directory not found when inserting child")?
+            .borrow_mut()
+            .children_mut()
+            .ok_or("Parent file expected to be a directory")?
+            .entry(component)
+        {
+            HashMapEntry::Vacant(v) => Ok(*v.insert(new_key)),
+            _ => Err("Unexpected child entry".into()),
         }
     }
 
@@ -1108,10 +1096,6 @@ fn append_rules(rules: &mut Rules, mut path: PathBuf) {
             break;
         }
     }
-}
-
-fn not_found_err<T>(message: String) -> FsResult<T> {
-    Err(message)
 }
 
 #[cfg(test)]
