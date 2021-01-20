@@ -8,7 +8,6 @@ use std::ffi::OsString;
 use std::fmt;
 use std::fs::read_dir;
 use std::fs::OpenOptions;
-use std::io::{self, Error, ErrorKind};
 use std::iter::FromIterator;
 use std::ops::Deref;
 use std::path::{Component, PathBuf};
@@ -36,6 +35,7 @@ type WatchDescriptors = HashMap<WatchDescriptor, Vec<EntryKey>>;
 pub type EntryKey = DefaultKey;
 
 type EntryMap<T> = SlotMap<EntryKey, RefCell<entry::Entry<T>>>;
+type FsResult<T> = Result<T, String>;
 
 pub struct FileSystem<T>
 where
@@ -275,7 +275,7 @@ where
         };
 
         if let Err(e) = result {
-            warn!("inotify event processing resulted in error: {}", e);
+            warn!("Processing inotify event resulted in error: {}", e);
         }
     }
 
@@ -285,18 +285,15 @@ where
         name: OsString,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) -> io::Result<()> {
+    ) -> FsResult<()> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
         let entry_ptr = match self.watch_descriptors.get(watch_descriptor) {
             Some(entries) => entries[0],
             None => {
-                return Err(Error::new(
-                    ErrorKind::NotFound,
-                    format!(
-                        "got create event for untracked watch descriptor: {:?}",
-                        watch_descriptor
-                    ),
+                return Err(format!(
+                    "got create event for untracked watch descriptor: {:?}",
+                    watch_descriptor
                 ));
             }
         };
@@ -343,7 +340,7 @@ where
         name: OsString,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) -> Result<(), io::Error> {
+    ) -> FsResult<()> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
         let entry_ptr = match self.watch_descriptors.get(watch_descriptor) {
@@ -374,33 +371,33 @@ where
         to_name: OsString,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) -> io::Result<()> {
+    ) -> FsResult<()> {
         let from_entry_key = self
             .watch_descriptors
             .get(from_watch_descriptor)
             .ok_or_else(|| {
-                get_err(format!(
+                format!(
                     "Got move event for untracked watch descriptor: {:?}",
                     from_watch_descriptor
-                ))
+                )
             })?[0];
 
         let to_entry_key = self
             .watch_descriptors
             .get(to_watch_descriptor)
             .ok_or_else(|| {
-                get_err(format!(
+                format!(
                     "Got move event for untracked watch descriptor: {:?}",
                     from_watch_descriptor
-                ))
+                )
             })?[0];
 
         let from_entry = _entries
             .get(from_entry_key)
-            .ok_or_else(|| get_err("From entry not found".into()))?;
+            .ok_or_else(|| "From entry not found")?;
         let to_entry = _entries
             .get(to_entry_key)
-            .ok_or_else(|| get_err("From entry not found".into()))?;
+            .ok_or_else(|| "From entry not found")?;
 
         let mut from_path = self.resolve_direct_path(&from_entry.borrow(), _entries);
         from_path.push(from_name);
@@ -759,34 +756,27 @@ where
         to: &PathBuf,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) -> io::Result<Option<EntryKey>> {
-        let parent_path = to.parent().ok_or(Error::new(
-            ErrorKind::InvalidData,
-            "Unexpected empty parent",
-        ))?;
+    ) -> FsResult<Option<EntryKey>> {
+        let parent_path = to.parent().ok_or_else(|| "Unexpected empty parent")?;
         let new_parent = self
             .create_dir(&parent_path.into(), _entries)?
-            .ok_or(Error::new(ErrorKind::NotFound, "Parent not found"))?;
+            .ok_or_else(|| "Parent not found")?;
 
         match self.lookup(from, _entries) {
             Some(entry_key) => {
                 if let Some(entry) = _entries.get(entry_key) {
-                    let new_name = into_components(to).pop().ok_or(Error::new(
-                        ErrorKind::InvalidData,
-                        "Unexpected empty components",
-                    ))?;
+                    let new_name = into_components(to)
+                        .pop()
+                        .ok_or("Unexpected empty components")?;
                     let old_name = entry.borrow().name().clone();
 
                     if let Some(parent) = entry.borrow().parent() {
                         _entries
                             .get(parent)
-                            .ok_or(Error::new(ErrorKind::NotFound, "Previous parent not found"))?
+                            .ok_or("Previous parent not found")?
                             .borrow_mut()
                             .children_mut()
-                            .ok_or(Error::new(
-                                ErrorKind::InvalidData,
-                                "Expected entry to be a directory",
-                            ))?
+                            .ok_or("Expected entry to be a directory")?
                             .remove(&old_name);
                     }
 
@@ -796,13 +786,10 @@ where
 
                     _entries
                         .get(new_parent)
-                        .ok_or(Error::new(ErrorKind::NotFound, "New parent not found"))?
+                        .ok_or("New parent not found")?
                         .borrow_mut()
                         .children_mut()
-                        .ok_or(Error::new(
-                            ErrorKind::InvalidData,
-                            "Expected entry to be a directory",
-                        ))?
+                        .ok_or("Expected entry to be a directory")?
                         .insert(new_name, entry_key);
                 } else {
                     return not_found_err("Path was found but failed to find entry".into());
@@ -821,7 +808,7 @@ where
         &mut self,
         path: &PathBuf,
         _entries: &mut EntryMap<T>,
-    ) -> io::Result<Option<EntryKey>> {
+    ) -> FsResult<Option<EntryKey>> {
         let mut m_entry = Some(self.root);
 
         let components = into_components(path);
@@ -867,12 +854,15 @@ where
                     None
                 };
 
-                let new_entry: io::Result<Option<EntryKey>> = if let Some(action) = action {
+                let new_entry = if let Some(action) = action {
                     match action {
                         Action::Return(entry_ptr) => Ok(Some(entry_ptr)),
                         Action::Lookup(ref link) => Ok(self.lookup(link, _entries)),
                         Action::CreateDir => {
-                            let wd = self.watcher.watch(&current_path)?;
+                            let wd = self
+                                .watcher
+                                .watch(&current_path)
+                                .map_err(|e| format!("Could not watch file {}", e))?;
 
                             let new_entry = Entry::Dir {
                                 name: component.clone(),
@@ -884,7 +874,10 @@ where
                             self.register_as_child(entry, new_entry, _entries)
                         }
                         Action::CreateSymlink(real) => {
-                            let wd = self.watcher.watch(&current_path)?;
+                            let wd = self
+                                .watcher
+                                .watch(&current_path)
+                                .map_err(|e| format!("Could not watch file {}", e))?;
 
                             let new_entry = Entry::Symlink {
                                 name: component.clone(),
@@ -895,14 +888,7 @@ where
                             };
 
                             self.register_as_child(entry, new_entry, _entries)?;
-
-                            match self.create_dir(&real, _entries)? {
-                                Some(v) => Ok(Some(v)),
-                                None => not_found_err(format!(
-                                    "unable to create symlink directory for entry {:?}",
-                                    &real
-                                )),
-                            }
+                            self.create_dir(&real, _entries)
                         }
                     }
                 } else {
@@ -922,7 +908,7 @@ where
         parent_key: EntryKey,
         new_entry: Entry<T>,
         entries: &mut EntryMap<T>,
-    ) -> io::Result<Option<EntryKey>> {
+    ) -> FsResult<Option<EntryKey>> {
         let component = new_entry.name().clone();
         let new_key = entries.insert(RefCell::new(new_entry));
         self.register(new_key, entries);
@@ -931,10 +917,7 @@ where
             match parent
                 .borrow_mut()
                 .children_mut()
-                .ok_or(Error::new(
-                    ErrorKind::NotFound,
-                    "Parent file expected to be a directory",
-                ))?
+                .ok_or("Parent file expected to be a directory")?
                 .entry(component)
             {
                 HashMapEntry::Vacant(v) => Ok(Some(*v.insert(new_key))),
@@ -1127,12 +1110,8 @@ fn append_rules(rules: &mut Rules, mut path: PathBuf) {
     }
 }
 
-fn not_found_err<T>(message: String) -> io::Result<T> {
-    Err(Error::new(ErrorKind::NotFound, message))
-}
-
-fn get_err(message: String) -> io::Error {
-    Error::new(ErrorKind::NotFound, message)
+fn not_found_err<T>(message: String) -> FsResult<T> {
+    Err(message)
 }
 
 #[cfg(test)]
