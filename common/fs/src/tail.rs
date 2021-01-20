@@ -178,7 +178,7 @@ impl Tailer {
                                             entry = r_entry
                                         }
                                     } else {
-                                        error!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths[0]);
+                                        info!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths[0]);
                                     }
                                 }
 

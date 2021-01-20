@@ -253,7 +253,14 @@ where
                 let is_from_path_ok = self.passes(&from_path, &_entries);
 
                 if is_to_path_ok && is_from_path_ok {
-                    self.process_move(&from_wd, from_name, &to_wd, to_name, events, &mut _entries);
+                    result = self.process_move(
+                        &from_wd,
+                        from_name,
+                        &to_wd,
+                        to_name,
+                        events,
+                        &mut _entries,
+                    );
                 } else if is_to_path_ok {
                     result = self.process_create(&to_wd, to_name, events, &mut _entries);
                 } else if is_from_path_ok {
@@ -278,7 +285,7 @@ where
         name: OsString,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) -> Result<(), io::Error> {
+    ) -> io::Result<()> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
         let entry_ptr = match self.watch_descriptors.get(watch_descriptor) {
@@ -367,32 +374,33 @@ where
         to_name: OsString,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) {
-        // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
-        // entry
-        let from_entry_ptr = match self.watch_descriptors.get(from_watch_descriptor) {
-            Some(entries) => entries[0],
-            None => {
-                error!(
-                    "got move event for untracked watch descriptor: {:?}",
+    ) -> io::Result<()> {
+        let from_entry_key = self
+            .watch_descriptors
+            .get(from_watch_descriptor)
+            .ok_or_else(|| {
+                get_err(format!(
+                    "Got move event for untracked watch descriptor: {:?}",
                     from_watch_descriptor
-                );
-                return;
-            }
-        };
-        let to_entry_ptr = match self.watch_descriptors.get(to_watch_descriptor) {
-            Some(entries) => entries[0],
-            None => {
-                error!(
-                    "got move event for untracked watch descriptor: {:?}",
-                    to_watch_descriptor
-                );
-                return;
-            }
-        };
+                ))
+            })?[0];
 
-        let from_entry = _entries.get(from_entry_ptr).unwrap();
-        let to_entry = _entries.get(to_entry_ptr).unwrap();
+        let to_entry_key = self
+            .watch_descriptors
+            .get(to_watch_descriptor)
+            .ok_or_else(|| {
+                get_err(format!(
+                    "Got move event for untracked watch descriptor: {:?}",
+                    from_watch_descriptor
+                ))
+            })?[0];
+
+        let from_entry = _entries
+            .get(from_entry_key)
+            .ok_or_else(|| get_err("From entry not found".into()))?;
+        let to_entry = _entries
+            .get(to_entry_key)
+            .ok_or_else(|| get_err("From entry not found".into()))?;
 
         let mut from_path = self.resolve_direct_path(&from_entry.borrow(), _entries);
         from_path.push(from_name);
@@ -400,7 +408,8 @@ where
         to_path.push(to_name);
 
         // the entry is expected to exist
-        self.rename(&from_path, &to_path, events, _entries).unwrap();
+        self.rename(&from_path, &to_path, events, _entries)
+            .map(|_| ())
     }
 
     pub fn resolve_direct_path(&self, entry: &Entry<T>, _entries: &EntryMap<T>) -> PathBuf {
@@ -492,7 +501,9 @@ where
             return None;
         }
 
-        let parent_ref = self.create_dir(&path.parent().unwrap().into(), _entries)?;
+        let parent_ref = self
+            .create_dir(&path.parent().unwrap().into(), _entries)
+            .expect("not to fail")?;
         let parent_ref = self.follow_links(parent_ref, _entries)?;
 
         // We only need the last component, the parents are already inserted.
@@ -500,7 +511,7 @@ where
 
         // If the path is a dir, we can use create_dir to do the insert
         if path.is_dir() {
-            return self.create_dir(path, _entries);
+            return self.create_dir(path, _entries).expect("create not to fail");
         }
 
         enum Action {
@@ -748,56 +759,69 @@ where
         to: &PathBuf,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) -> Option<EntryKey> {
+    ) -> io::Result<Option<EntryKey>> {
+        let parent_path = to.parent().ok_or(Error::new(
+            ErrorKind::InvalidData,
+            "Unexpected empty parent",
+        ))?;
         let new_parent = self
-            .create_dir(&to.parent().unwrap().into(), _entries)
-            .unwrap();
+            .create_dir(&parent_path.into(), _entries)?
+            .ok_or(Error::new(ErrorKind::NotFound, "Parent not found"))?;
+
         match self.lookup(from, _entries) {
-            Some(entry_ptr) => {
-                if let Some(entry) = _entries.get(entry_ptr) {
-                    let new_name = into_components(to).pop()?;
+            Some(entry_key) => {
+                if let Some(entry) = _entries.get(entry_key) {
+                    let new_name = into_components(to).pop().ok_or(Error::new(
+                        ErrorKind::InvalidData,
+                        "Unexpected empty components",
+                    ))?;
                     let old_name = entry.borrow().name().clone();
 
                     if let Some(parent) = entry.borrow().parent() {
                         _entries
                             .get(parent)
-                            .and_then(|parent| {
-                                parent
-                                    .borrow_mut()
-                                    .children_mut()
-                                    .expect("expected entry to be a drectory")
-                                    .remove(&old_name)
-                            })
-                            .unwrap();
-                    };
+                            .ok_or(Error::new(ErrorKind::NotFound, "Previous parent not found"))?
+                            .borrow_mut()
+                            .children_mut()
+                            .ok_or(Error::new(
+                                ErrorKind::InvalidData,
+                                "Expected entry to be a directory",
+                            ))?
+                            .remove(&old_name);
+                    }
+
                     let mut entry = entry.borrow_mut();
                     entry.set_parent(new_parent);
                     entry.set_name(new_name.clone());
 
                     _entries
                         .get(new_parent)
-                        .map(|new_parent| {
-                            new_parent
-                                .borrow_mut()
-                                .children_mut()
-                                .expect("expected entry to be a directory")
-                                .insert(new_name, entry_ptr)
-                        })
-                        .unwrap();
+                        .ok_or(Error::new(ErrorKind::NotFound, "New parent not found"))?
+                        .borrow_mut()
+                        .children_mut()
+                        .ok_or(Error::new(
+                            ErrorKind::InvalidData,
+                            "Expected entry to be a directory",
+                        ))?
+                        .insert(new_name, entry_key);
                 } else {
-                    error!("Failed to find entry");
+                    return not_found_err("Path was found but failed to find entry".into());
                 }
 
-                Some(entry_ptr)
+                Ok(Some(entry_key))
             }
-            None => self.insert(to, events, _entries),
+            None => Ok(self.insert(to, events, _entries)),
         }
     }
 
     // Creates all entries for a directory.
     // If one of the entries already exists, it is skipped over.
     // The returns a linked list of all entries.
-    fn create_dir(&mut self, path: &PathBuf, _entries: &mut EntryMap<T>) -> Option<EntryKey> {
+    fn create_dir(
+        &mut self,
+        path: &PathBuf,
+        _entries: &mut EntryMap<T>,
+    ) -> io::Result<Option<EntryKey>> {
         let mut m_entry = Some(self.root);
 
         let components = into_components(path);
@@ -805,7 +829,7 @@ where
         // If the path has no parents return root as the parent.
         // This commonly occurs with paths in the filesystem root, e.g /some.file or /somedir
         if components.is_empty() {
-            return m_entry;
+            return Ok(m_entry);
         }
 
         enum Action {
@@ -842,18 +866,13 @@ where
                 } else {
                     None
                 };
-                let new_entry = if let Some(action) = action {
+
+                let new_entry: io::Result<Option<EntryKey>> = if let Some(action) = action {
                     match action {
-                        Action::Return(entry_ptr) => Some(entry_ptr),
-                        Action::Lookup(ref link) => self.lookup(link, _entries),
+                        Action::Return(entry_ptr) => Ok(Some(entry_ptr)),
+                        Action::Lookup(ref link) => Ok(self.lookup(link, _entries)),
                         Action::CreateDir => {
-                            let wd = match self.watcher.watch(&current_path) {
-                                Ok(wd) => wd,
-                                Err(e) => {
-                                    error!("error watching {:?}: {:?}", current_path, e);
-                                    return None;
-                                }
-                            };
+                            let wd = self.watcher.watch(&current_path)?;
 
                             let new_entry = Entry::Dir {
                                 name: component.clone(),
@@ -862,16 +881,10 @@ where
                                 wd,
                             };
 
-                            self.insert_and_set_as_child(entry, new_entry, _entries)
+                            self.register_as_child(entry, new_entry, _entries)
                         }
                         Action::CreateSymlink(real) => {
-                            let wd = match self.watcher.watch(&current_path) {
-                                Ok(wd) => wd,
-                                Err(e) => {
-                                    error!("error watching {:?}: {:?}", current_path, e);
-                                    return None;
-                                }
-                            };
+                            let wd = self.watcher.watch(&current_path)?;
 
                             let new_entry = Entry::Symlink {
                                 name: component.clone(),
@@ -881,53 +894,58 @@ where
                                 rules: into_rules(real.clone()),
                             };
 
-                            self.insert_and_set_as_child(entry, new_entry, _entries);
+                            self.register_as_child(entry, new_entry, _entries)?;
 
-                            match self.create_dir(&real, _entries) {
-                                Some(v) => Some(v),
-                                None => panic!(
+                            match self.create_dir(&real, _entries)? {
+                                Some(v) => Ok(Some(v)),
+                                None => not_found_err(format!(
                                     "unable to create symlink directory for entry {:?}",
                                     &real
-                                ),
+                                )),
                             }
                         }
                     }
                 } else {
-                    None
+                    Ok(None)
                 };
-                m_entry = new_entry;
+                m_entry = new_entry?;
             } else {
-                error!("Failed to find entry");
+                error!("Failed to find parent component");
             }
         }
-        m_entry
+        Ok(m_entry)
     }
 
-    fn insert_and_set_as_child(
+    /// Inserts the entry, registers it, looks up for the parent and set itself as a children.
+    fn register_as_child(
         &mut self,
-        parent: EntryKey,
+        parent_key: EntryKey,
         new_entry: Entry<T>,
-        entries: &mut EntryMap<T>
-    ) -> Option<EntryKey> {
+        entries: &mut EntryMap<T>,
+    ) -> io::Result<Option<EntryKey>> {
         let component = new_entry.name().clone();
         let new_key = entries.insert(RefCell::new(new_entry));
         self.register(new_key, entries);
 
-        entries.get(parent).and_then(|entry| {
-            match entry
+        if let Some(parent) = entries.get(parent_key) {
+            match parent
                 .borrow_mut()
                 .children_mut()
-                .expect("expected entry to be a directory")
+                .ok_or(Error::new(
+                    ErrorKind::NotFound,
+                    "Parent file expected to be a directory",
+                ))?
                 .entry(component)
             {
-                HashMapEntry::Vacant(v) => Some(*v.insert(new_key)),
-                _ => panic!("should be vacant"),
+                HashMapEntry::Vacant(v) => Ok(Some(*v.insert(new_key))),
+                _ => not_found_err("should be vacant".into()),
             }
-        })
+        } else {
+            not_found_err("Parent directory not found when inserting child".into())
+        }
     }
 
-    // Returns the entry that represents the supplied path.
-    // If the path is not represented and therefor has no entry then None is return.
+    /// Returns the entry that represents the supplied path or `None`.
     pub fn lookup(&self, path: &PathBuf, _entries: &EntryMap<T>) -> Option<EntryKey> {
         let mut parent = self.root;
         let mut components = into_components(path);
@@ -1109,8 +1127,12 @@ fn append_rules(rules: &mut Rules, mut path: PathBuf) {
     }
 }
 
-fn not_found_err(message: String) -> Result<(), io::Error> {
+fn not_found_err<T>(message: String) -> io::Result<T> {
     Err(Error::new(ErrorKind::NotFound, message))
+}
+
+fn get_err(message: String) -> io::Error {
+    Error::new(ErrorKind::NotFound, message)
 }
 
 #[cfg(test)]
