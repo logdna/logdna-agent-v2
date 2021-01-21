@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::time::Duration;
+use sysinfo::{RefreshKind, System, SystemExt};
 
 use flate2::Compression;
 
@@ -144,14 +145,16 @@ impl TryFrom<RawConfig> for Config {
                 .ok_or(ConfigError::MissingField("http.params"))?,
         );
 
-        let mut info = "unknown".to_string();
-        if let Ok(sys_info) = sys_info::linux_os_release() {
-            info = format!(
+        let sys = System::new_with_specifics(RefreshKind::new());
+        let info = str::replace(
+            &format!(
                 "{}/{}",
-                sys_info.name.unwrap_or_else(|| "unknown".to_string()),
-                sys_info.version.unwrap_or_else(|| "unknown".to_string()),
-            )
-        }
+                sys.get_name().unwrap_or_else(|| "unknown".into()),
+                sys.get_version().unwrap_or_else(|| "unknown".into()),
+            ),
+            |c| !matches!(c, '\x20'..='\x7e'),
+            "",
+        );
 
         // Read the PKG_NAME and PKG_VERSION defined in the main.rs or test module.
         // Safety: unsafe is required to read from extern statics. This is safe as we control
@@ -302,6 +305,15 @@ mod tests {
         let mut raw = RawConfig::default();
         raw.http.ingestion_key = Some("emptyingestionkey".to_string());
         assert!(Config::try_from(raw).is_ok());
+    }
+
+    #[test]
+    fn test_user_agent() {
+        let mut raw = RawConfig::default();
+        raw.http.ingestion_key = Some("anyingestionkey".to_string());
+        let result = Config::try_from(raw).unwrap();
+        let user_agent = result.http.template.user_agent.to_str().unwrap();
+        assert!(user_agent.contains('(') && user_agent.contains(')'));
     }
 
     #[test]
