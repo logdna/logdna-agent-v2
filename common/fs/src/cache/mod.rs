@@ -310,8 +310,7 @@ where
         let entry = _entries.get(entry_key).ok_or("Failed to find entry")?;
         let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
         path.push(name);
-        self.remove(&path, events, _entries);
-        Ok(())
+        self.remove(&path, events, _entries)
     }
 
     fn process_move(
@@ -589,67 +588,66 @@ where
         path: &PathBuf,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) -> Option<()> {
-        let parent = self.lookup(&path.parent()?.into(), _entries)?;
-        let component = into_components(path).pop()?;
+    ) -> FsResult<()> {
+        let path_buf = path.parent().ok_or("Can not remove root directory")?.into();
+        let parent = self.lookup(&path_buf, _entries).ok_or("Parent not found")?;
+        let component = into_components(path)
+            .pop()
+            .ok_or("Unexpected empty components in path")?;
 
-        let to_drop = if let Some(parent) = _entries.get(parent) {
-            parent
-                .borrow_mut()
-                .children_mut()
-                .unwrap() // parents are always dirs
-                .remove(&component)
-        } else {
-            error!("Failed to find entry");
-            None
-        };
+        let to_drop = _entries
+            .get(parent)
+            .ok_or("Failed to find parent entry")?
+            .borrow_mut()
+            .children_mut()
+            .ok_or("Parent should be a directory")?
+            .remove(&component);
+
         if let Some(entry) = to_drop {
-            self.drop_entry(entry, events, _entries);
-            Some(())
-        } else {
-            None
+            self.drop_entry(entry, events, _entries)?;
         }
+
+        Ok(())
     }
 
     fn drop_entry(
         &mut self,
-        entry_ptr: EntryKey,
+        entry_key: EntryKey,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) {
-        self.unregister(entry_ptr, _entries);
+    ) -> FsResult<()> {
+        self.unregister(entry_key, _entries);
         let mut _children = vec![];
         let mut _links = vec![];
-        if let Some(entry) = _entries.get(entry_ptr) {
-            match entry.borrow().deref() {
-                Entry::Dir { children, .. } => {
-                    for (_, child) in children {
-                        _children.push(*child);
-                        //self.drop_entry(*child, events, _entries);
-                    }
+        let entry = _entries.get(entry_key).ok_or("Entry not found")?;
+        match entry.borrow().deref() {
+            Entry::Dir { children, .. } => {
+                for (_, child) in children {
+                    _children.push(*child);
+                    //self.drop_entry(*child, events, _entries);
                 }
-                Entry::Symlink { ref link, .. } => {
-                    // This is a hacky way to check if there are any remaining
-                    // symlinks pointing to `link`
-                    if !self.passes(link, _entries) {
-                        _links.push(link.clone())
-                    }
+            }
+            Entry::Symlink { ref link, .. } => {
+                // This is a hacky way to check if there are any remaining
+                // symlinks pointing to `link`
+                if !self.passes(link, _entries) {
+                    _links.push(link.clone())
+                }
 
-                    events.push(Event::Delete(entry_ptr));
-                }
-                Entry::File { .. } => {
-                    events.push(Event::Delete(entry_ptr));
-                }
-            };
-        } else {
-            error!("Failed to find entry");
-        };
+                events.push(Event::Delete(entry_key));
+            }
+            Entry::File { .. } => {
+                events.push(Event::Delete(entry_key));
+            }
+        }
+
         for child in _children {
-            self.drop_entry(child, events, _entries);
+            self.drop_entry(child, events, _entries)?;
         }
         for link in _links {
-            self.remove(&link, events, _entries);
+            self.remove(&link, events, _entries)?;
         }
+        Ok(())
     }
 
     // `from` is the path from where the file or dir used to live
