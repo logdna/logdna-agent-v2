@@ -149,14 +149,10 @@ impl TryFrom<RawConfig> for Config {
         let info = str::replace(
             &format!(
                 "{}/{}",
-                sys.get_name().unwrap_or("unknown".into()),
-                sys.get_version().unwrap_or("unknown".into()),
+                sys.get_name().unwrap_or_else(|| "unknown".into()),
+                sys.get_version().unwrap_or_else(|| "unknown".into()),
             ),
-            |c| match c {
-                // Only printable ascii chars
-                '\x20'..='\x7e' => false,
-                _ => true,
-            },
+            |c| !matches!(c, '\x20'..='\x7e'),
             "",
         );
 
@@ -317,7 +313,7 @@ mod tests {
         raw.http.ingestion_key = Some("anyingestionkey".to_string());
         let result = Config::try_from(raw).unwrap();
         let user_agent = result.http.template.user_agent.to_str().unwrap();
-        assert!(user_agent.contains("(") && user_agent.contains(")"));
+        assert!(user_agent.contains('(') && user_agent.contains(')'));
     }
 
     #[test]
