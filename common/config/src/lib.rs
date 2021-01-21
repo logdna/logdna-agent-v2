@@ -146,21 +146,19 @@ impl TryFrom<RawConfig> for Config {
         );
 
         let sys = System::new_with_specifics(RefreshKind::new());
-        let info = format!(
-            "{}/{}",
-            sys.get_name().unwrap_or("unknown".into()),
-            sys.get_version().unwrap_or("unknown".into()),
-        )
-            .replace(
-                |c: char| {
-                    match c {
-                        // Only printable ascii chars
-                        '\x20'..='\x7e' => false,
-                        _ => true,
-                    }
-                },
-                "",
-            );
+        let info = str::replace(
+            &format!(
+                "{}/{}",
+                sys.get_name().unwrap_or("unknown".into()),
+                sys.get_version().unwrap_or("unknown".into()),
+            ),
+            |c| match c {
+                // Only printable ascii chars
+                '\x20'..='\x7e' => false,
+                _ => true,
+            },
+            "",
+        );
 
         // Read the PKG_NAME and PKG_VERSION defined in the main.rs or test module.
         // Safety: unsafe is required to read from extern statics. This is safe as we control
@@ -317,9 +315,8 @@ mod tests {
     fn test_user_agent() {
         let mut raw = RawConfig::default();
         raw.http.ingestion_key = Some("anyingestionkey".to_string());
-        let result = Config::try_from(raw);
-        assert!(result.is_ok());
-        let user_agent = result.unwrap().http.template.user_agent.to_str().unwrap();
+        let result = Config::try_from(raw).unwrap();
+        let user_agent = result.http.template.user_agent.to_str().unwrap();
         assert!(user_agent.contains("(") && user_agent.contains(")"));
     }
 
