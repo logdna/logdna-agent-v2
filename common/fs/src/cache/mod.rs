@@ -92,7 +92,8 @@ where
 
         let entries = fs.entries.clone();
         let mut entries = entries.borrow_mut();
-        fs.register(fs.root, &mut entries);
+        fs.register(fs.root, &mut entries)
+            .expect("Unable to register root");
 
         for dir in initial_dirs
             .into_iter()
@@ -176,7 +177,7 @@ where
         Ok(futures::stream::iter(initial_events).chain(events.flatten()))
     }
 
-    // handles inotify events and may produce Event(s) that are return upstream through sender
+    /// Handles inotify events and may produce Event(s) that are returned upstream through sender
     fn process(&mut self, watch_event: WatchEvent, events: &mut Vec<Event>) {
         let _entries = self.entries.clone();
         let mut _entries = _entries.borrow_mut();
@@ -184,17 +185,13 @@ where
 
         debug!("handling inotify event {:#?}", watch_event);
 
-        let mut result = Ok(());
-
-        match watch_event {
+        let result = match watch_event {
             WatchEvent::Create { wd, name } | WatchEvent::MovedTo { wd, name, .. } => {
-                result = self.process_create(&wd, name, events, &mut _entries);
+                self.process_create(&wd, name, events, &mut _entries)
             }
-            WatchEvent::Modify { wd } => {
-                self.process_modify(&wd, events);
-            }
+            WatchEvent::Modify { wd } => self.process_modify(&wd, events),
             WatchEvent::Delete { wd, name } | WatchEvent::MovedFrom { wd, name, .. } => {
-                result = self.process_delete(&wd, name, events, &mut _entries);
+                self.process_delete(&wd, name, events, &mut _entries)
             }
             WatchEvent::Move {
                 from_wd,
@@ -204,75 +201,43 @@ where
             } => {
                 // directories can't have hard links so we can expect just one entry for these watch
                 // descriptors
-                let from_path = match self.watch_descriptors.get(&from_wd) {
-                    Some(entries) => {
-                        if entries.is_empty() {
-                            error!("got move event where from watch descriptors maps to no entries: {:?}", from_wd);
-                            return;
-                        }
-
-                        let mut path = self.resolve_direct_path(
-                            &_entries.get(entries[0]).unwrap().borrow(),
-                            &_entries,
-                        );
+                let from_path = self
+                    .get_first_entry(&from_wd)
+                    .map(|entry| {
+                        let mut path = self
+                            .resolve_direct_path(&_entries.get(entry).unwrap().borrow(), &_entries);
                         path.push(from_name.clone());
                         path
-                    }
-                    None => {
-                        error!(
-                            "got move event where from is an untracked watch descriptor: {:?}",
-                            from_wd
-                        );
-                        return;
-                    }
-                };
+                    })
+                    .map(|path| self.passes(&path, &_entries));
 
-                let to_path = match self.watch_descriptors.get(&to_wd) {
-                    Some(entries) => {
-                        if entries.is_empty() {
-                            error!("got move event where to watch descriptors maps to no entries: {:?}", to_wd);
-                            return;
-                        }
-
-                        let mut path = self.resolve_direct_path(
-                            &_entries.get(entries[0]).unwrap().borrow(),
-                            &_entries,
-                        );
+                let to_path = self
+                    .get_first_entry(&to_wd)
+                    .map(|entry| {
+                        let mut path = self
+                            .resolve_direct_path(&_entries.get(entry).unwrap().borrow(), &_entries);
                         path.push(to_name.clone());
                         path
-                    }
-                    None => {
-                        error!(
-                            "got move event where to is an untracked watch descriptor: {:?}",
-                            to_wd
-                        );
-                        return;
-                    }
-                };
+                    })
+                    .map(|path| self.passes(&path, &_entries));
 
-                let is_to_path_ok = self.passes(&to_path, &_entries);
-
-                let is_from_path_ok = self.passes(&from_path, &_entries);
+                let is_to_path_ok = to_path.unwrap_or(false);
+                let is_from_path_ok = from_path.unwrap_or(false);
 
                 if is_to_path_ok && is_from_path_ok {
-                    result = self.process_move(
-                        &from_wd,
-                        from_name,
-                        &to_wd,
-                        to_name,
-                        events,
-                        &mut _entries,
-                    );
+                    self.process_move(&from_wd, from_name, &to_wd, to_name, events, &mut _entries)
                 } else if is_to_path_ok {
-                    result = self.process_create(&to_wd, to_name, events, &mut _entries);
+                    self.process_create(&to_wd, to_name, events, &mut _entries)
                 } else if is_from_path_ok {
-                    result = self.process_delete(&from_wd, from_name, events, &mut _entries);
+                    self.process_delete(&from_wd, from_name, events, &mut _entries)
+                } else {
+                    Err("Moving paths are invalid".into())
                 }
             }
-            WatchEvent::Overflow => error!(
+            WatchEvent::Overflow => Err(
                 // Files are being updated too often for inotify to catch up
-                // Log the error and continue
                 "The inotify event queue has overflowed and events have presumably been lost"
+                    .into(),
             ),
         };
 
@@ -290,17 +255,8 @@ where
     ) -> FsResult<()> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
-        let entry_ptr = match self.watch_descriptors.get(watch_descriptor) {
-            Some(entries) => entries[0],
-            None => {
-                return Err(format!(
-                    "got create event for untracked watch descriptor: {:?}",
-                    watch_descriptor
-                ));
-            }
-        };
-
-        if let Some(entry) = _entries.get(entry_ptr) {
+        let entry_key = self.get_first_entry(watch_descriptor)?;
+        if let Some(entry) = _entries.get(entry_key) {
             let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
             path.push(name);
 
@@ -318,7 +274,11 @@ where
         }
     }
 
-    fn process_modify(&mut self, watch_descriptor: &WatchDescriptor, events: &mut Vec<Event>) {
+    fn process_modify(
+        &mut self,
+        watch_descriptor: &WatchDescriptor,
+        events: &mut Vec<Event>,
+    ) -> FsResult<()> {
         let mut entry_ptrs_opt = None;
         if let Some(entries) = self.watch_descriptors.get_mut(watch_descriptor) {
             entry_ptrs_opt = Some(entries.clone())
@@ -328,11 +288,12 @@ where
             for entry_ptr in entry_ptrs.iter_mut() {
                 events.push(Event::Write(*entry_ptr));
             }
+            Ok(())
         } else {
-            error!(
-                "got modify event for untracked watch descriptor: {:?}",
+            Err(format!(
+                "Got modify event for untracked watch descriptor: {:?}",
                 watch_descriptor
-            );
+            ))
         }
     }
 
@@ -345,24 +306,12 @@ where
     ) -> FsResult<()> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
-        let entry_ptr = match self.watch_descriptors.get(watch_descriptor) {
-            Some(entries) => entries[0],
-            None => {
-                return Err(format!(
-                    "got delete event for untracked watch descriptor: {:?}",
-                    watch_descriptor
-                ));
-            }
-        };
-
-        if let Some(entry) = _entries.get(entry_ptr) {
-            let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
-            path.push(name);
-            self.remove(&path, events, _entries);
-            Ok(())
-        } else {
-            Err("Failed to find entry".into())
-        }
+        let entry_key = self.get_first_entry(watch_descriptor)?;
+        let entry = _entries.get(entry_key).ok_or("Failed to find entry")?;
+        let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
+        path.push(name);
+        self.remove(&path, events, _entries);
+        Ok(())
     }
 
     fn process_move(
@@ -374,32 +323,13 @@ where
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
     ) -> FsResult<()> {
-        let from_entry_key = self
-            .watch_descriptors
-            .get(from_watch_descriptor)
-            .ok_or_else(|| {
-                format!(
-                    "Got move event for untracked watch descriptor: {:?}",
-                    from_watch_descriptor
-                )
-            })?[0];
-
-        let to_entry_key = self
-            .watch_descriptors
-            .get(to_watch_descriptor)
-            .ok_or_else(|| {
-                format!(
-                    "Got move event for untracked watch descriptor: {:?}",
-                    from_watch_descriptor
-                )
-            })?[0];
+        let from_entry_key = self.get_first_entry(from_watch_descriptor)?;
+        let to_entry_key = self.get_first_entry(to_watch_descriptor)?;
 
         let from_entry = _entries
             .get(from_entry_key)
-            .ok_or_else(|| "From entry not found")?;
-        let to_entry = _entries
-            .get(to_entry_key)
-            .ok_or_else(|| "From entry not found")?;
+            .ok_or("Entry source not found")?;
+        let to_entry = _entries.get(to_entry_key).ok_or("Entry target not found")?;
 
         let mut from_path = self.resolve_direct_path(&from_entry.borrow(), _entries);
         from_path.push(from_name);
@@ -591,7 +521,7 @@ where
         }
     }
 
-    fn register(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<T>) {
+    fn register(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<T>) -> FsResult<()> {
         if let Some(entry) = _entries.get(entry_ptr) {
             let path = self.resolve_direct_path(&entry.borrow(), _entries);
 
@@ -608,9 +538,10 @@ where
             }
 
             info!("watching {:?}", path);
+            Ok(())
         } else {
-            error!("Failed to find entry");
-        };
+            Err("Failed to find entry".into())
+        }
     }
 
     fn unregister(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<T>) {
@@ -731,7 +662,7 @@ where
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
     ) -> FsResult<Option<EntryKey>> {
-        let parent_path = to.parent().ok_or_else(|| "Unexpected empty parent")?;
+        let parent_path = to.parent().ok_or("Unexpected empty parent")?;
         let new_parent = self.create_dir(&parent_path.into(), _entries)?;
 
         match self.lookup(from, _entries) {
@@ -875,7 +806,7 @@ where
     ) -> FsResult<EntryKey> {
         let component = new_entry.name().clone();
         let new_key = entries.insert(RefCell::new(new_entry));
-        self.register(new_key, entries);
+        self.register(new_key, entries)?;
 
         match entries
             .get(parent_key)
@@ -982,6 +913,23 @@ where
     /// Helper method for checking if a path passes exclusion/inclusion rules
     fn passes(&self, path: &PathBuf, _entries: &EntryMap<T>) -> bool {
         self.is_initial_dir_target(path) || self.is_symlink_target(path, _entries)
+    }
+
+    /// Returns the first entry based on the `WatchDescriptor`, returning an `Err` when not found.
+    fn get_first_entry(&self, wd: &WatchDescriptor) -> FsResult<EntryKey> {
+        let entries = self
+            .watch_descriptors
+            .get(wd)
+            .ok_or_else(|| format!("Got event for untracked watch descriptor: {:?}", wd))?;
+
+        if !entries.is_empty() {
+            Ok(entries[0])
+        } else {
+            Err(format!(
+                "Got event where to watch descriptors maps to no entries: {:?}",
+                wd
+            ))
+        }
     }
 }
 
