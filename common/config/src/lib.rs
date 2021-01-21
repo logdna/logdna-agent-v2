@@ -2,7 +2,6 @@
 extern crate log;
 
 use std::convert::{TryFrom, TryInto};
-use std::ffi::CString;
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
@@ -268,12 +267,7 @@ pub fn get_hostname() -> Option<String> {
         }
     }
 
-    let name = CString::new(Vec::with_capacity(512)).ok()?.into_raw();
-    if unsafe { libc::gethostname(name, 512) } == 0 {
-        return unsafe { CString::from_raw(name) }.into_string().ok();
-    }
-
-    None
+    System::new_with_specifics(RefreshKind::new()).get_host_name()
 }
 
 #[cfg(test)]
