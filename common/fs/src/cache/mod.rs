@@ -433,7 +433,7 @@ where
         }
 
         let parent_ref = self.create_dir(&path.parent().unwrap().into(), _entries)?;
-        let parent_ref = self.follow_links(parent_ref, _entries);
+        let parent_ref = self.follow_links(parent_ref, _entries)?;
 
         if parent_ref.is_none() {
             return Ok(None);
@@ -448,7 +448,7 @@ where
 
         // If the path is a dir, we can use create_dir to do the insert
         if path.is_dir() {
-            return self.create_dir(path, _entries).map(|e| Some(e));
+            return self.create_dir(path, _entries).map(Some);
         }
 
         enum Action {
@@ -480,7 +480,7 @@ where
                     .map_err(|e| format!("error watching {:?}: {:?}", path, e))?;
 
                 let new_entry = Entry::File {
-                    name: component.clone(),
+                    name: component,
                     parent: parent_ref,
                     wd,
                     data: T::default(),
@@ -498,7 +498,7 @@ where
                     .map_err(|e| format!("error watching {:?}: {:?}", path, e))?;
 
                 let new_entry = Entry::Symlink {
-                    name: component.clone(),
+                    name: component,
                     parent: parent_ref,
                     link: real.clone(),
                     wd,
@@ -590,7 +590,9 @@ where
         _entries: &mut EntryMap<T>,
     ) -> FsResult<()> {
         let path_buf = path.parent().ok_or("Can not remove root directory")?.into();
-        let parent = self.lookup(&path_buf, _entries).ok_or("Parent not found")?;
+        let parent = self
+            .lookup(&path_buf, _entries)?
+            .ok_or("Parent not found")?;
         let component = into_components(path)
             .pop()
             .ok_or("Unexpected empty components in path")?;
@@ -663,7 +665,7 @@ where
         let parent_path = to.parent().ok_or("Unexpected empty parent")?;
         let new_parent = self.create_dir(&parent_path.into(), _entries)?;
 
-        match self.lookup(from, _entries) {
+        match self.lookup(from, _entries)? {
             Some(entry_key) => {
                 if let Some(entry) = _entries.get(entry_key) {
                     let new_name = into_components(to)
@@ -754,7 +756,7 @@ where
             let new_entry = match action {
                 Action::Return(key) => key,
                 Action::Lookup(ref link) => self
-                    .lookup(link, _entries)
+                    .lookup(link, _entries)?
                     .ok_or("Path lookup for new entry not found")?,
                 Action::CreateDir => {
                     let wd = self
@@ -819,8 +821,8 @@ where
         }
     }
 
-    /// Returns the entry that represents the supplied path or `None`.
-    pub fn lookup(&self, path: &PathBuf, _entries: &EntryMap<T>) -> Option<EntryKey> {
+    /// Returns the entry that represents the supplied path or `Ok(None)`.
+    pub fn lookup(&self, path: &PathBuf, _entries: &EntryMap<T>) -> FsResult<Option<EntryKey>> {
         let mut parent = self.root;
         let mut components = into_components(path);
         // remove the first component because it will always be the root
@@ -828,48 +830,56 @@ where
 
         // If the path has no components there is nothing to look up.
         if components.is_empty() {
-            return None;
+            return Ok(None);
         }
 
-        let last_component = components.pop()?;
+        let last_component = components.pop().unwrap();
 
         for component in components {
-            parent = self.follow_links(parent, _entries).and_then(|e| {
-                if let Some(e) = _entries.get(e) {
-                    e.borrow()
-                        .children()
-                        .expect("expected directory entry")
-                        .get(&component)
-                        .and_then(|entry| self.follow_links(*entry, _entries))
-                } else {
-                    error!("Failed to find entry");
-                    None
+            if let Some(entry) = self.follow_links(parent, _entries)? {
+                if let Some(parent_ref) = _entries
+                    .get(entry)
+                    .ok_or("Failed to find entry")?
+                    .borrow()
+                    .children()
+                    .ok_or("Expected directory entry")?
+                    .get(&component)
+                {
+                    if let Some(parent_ref) = self.follow_links(*parent_ref, _entries)? {
+                        parent = parent_ref;
+                        continue;
+                    }
                 }
-            })?;
+            }
+
+            // When components are not found `Ok(None)` is returned
+            return Ok(None);
         }
 
-        if let Some(parent) = _entries.get(parent) {
-            parent
-                .borrow()
-                .children()
-                .expect("expected directory entry")
-                .get(&last_component)
-                .copied()
-        } else {
-            error!("Failed to find entry");
-            None
-        }
+        Ok(_entries
+            .get(parent)
+            .ok_or("Failed to find entry")?
+            .borrow()
+            .children()
+            .ok_or("Expected directory entry")?
+            .get(&last_component)
+            .copied())
     }
 
-    fn follow_links(&self, mut entry: EntryKey, _entries: &EntryMap<T>) -> Option<EntryKey> {
+    fn follow_links(&self, entry: EntryKey, _entries: &EntryMap<T>) -> FsResult<Option<EntryKey>> {
+        let mut result = entry;
         while let Some(e) = _entries.get(entry) {
             if let Some(link) = e.borrow().link() {
-                entry = self.lookup(link, _entries)?;
+                if let Some(e) = self.lookup(link, _entries)? {
+                    result = e;
+                } else {
+                    return Ok(None);
+                }
             } else {
                 break;
             }
         }
-        Some(entry)
+        Ok(Some(result))
     }
 
     fn is_symlink_target(&self, path: &PathBuf, _entries: &EntryMap<T>) -> bool {
@@ -1051,7 +1061,7 @@ mod tests {
             let fs = $x.lock().expect("failed to lock fs");
             let entries = fs.entries.clone();
             let entries = entries.borrow();
-            fs.lookup(&$y, &entries)
+            fs.lookup(&$y, &entries).unwrap()
         }};
     }
 
