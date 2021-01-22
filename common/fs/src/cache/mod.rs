@@ -236,7 +236,7 @@ where
             }
             WatchEvent::Overflow => Err(
                 // Files are being updated too often for inotify to catch up
-                "The inotify event queue has overflowed and events have presumably been lost"
+                "the inotify event queue has overflowed and events have presumably been lost"
                     .into(),
             ),
         };
@@ -270,7 +270,7 @@ where
 
             Ok(())
         } else {
-            Err("Failed to find entry".into())
+            Err("failed to find entry".into())
         }
     }
 
@@ -291,7 +291,7 @@ where
             Ok(())
         } else {
             Err(format!(
-                "Got modify event for untracked watch descriptor: {:?}",
+                "got modify event for untracked watch descriptor: {:?}",
                 watch_descriptor
             ))
         }
@@ -307,7 +307,7 @@ where
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
         let entry_key = self.get_first_entry(watch_descriptor)?;
-        let entry = _entries.get(entry_key).ok_or("Failed to find entry")?;
+        let entry = _entries.get(entry_key).ok_or("failed to find entry")?;
         let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
         path.push(name);
         self.remove(&path, events, _entries)
@@ -327,8 +327,8 @@ where
 
         let from_entry = _entries
             .get(from_entry_key)
-            .ok_or("Entry source not found")?;
-        let to_entry = _entries.get(to_entry_key).ok_or("Entry target not found")?;
+            .ok_or("entry source not found")?;
+        let to_entry = _entries.get(to_entry_key).ok_or("entry target not found")?;
 
         let mut from_path = self.resolve_direct_path(&from_entry.borrow(), _entries);
         from_path.push(from_name);
@@ -406,7 +406,7 @@ where
                             _entries,
                         );
                     } else {
-                        error!("Failed to find entry");
+                        error!("failed to find entry");
                     }
                 }
             }
@@ -457,11 +457,11 @@ where
             CreateFile,
         }
 
-        let parent = _entries.get(parent_ref).ok_or("Failed to find entry")?;
+        let parent = _entries.get(parent_ref).ok_or("failed to find entry")?;
         let action = match parent
             .borrow_mut()
             .children_mut()
-            .ok_or("Parent has no children")?
+            .ok_or("parent has no children")?
             .entry(component.clone())
         {
             HashMapEntry::Occupied(v) => Action::Return(*v.get()),
@@ -539,7 +539,7 @@ where
             info!("watching {:?}", path);
             Ok(())
         } else {
-            Err("Failed to find entry".into())
+            Err("failed to find entry".into())
         }
     }
 
@@ -559,7 +559,13 @@ where
             entries.retain(|other| *other != entry_ptr);
             if entries.is_empty() {
                 self.watch_descriptors.remove(&wd);
-                let _ = self.watcher.unwatch(wd); // TODO: Handle this error case
+                if let Err(e) = self.watcher.unwatch(wd) {
+                    // Log and continue
+                    debug!(
+                        "unwatching {:?} resulted in an error, likely due to a dangling symlink {}",
+                        path, e
+                    );
+                }
             }
 
             if let Entry::Symlink { link, .. } = entry.borrow().deref() {
@@ -579,7 +585,7 @@ where
 
             info!("unwatching {:?}", path);
         } else {
-            error!("Failed to find entry");
+            error!("failed to find entry");
         };
     }
 
@@ -589,20 +595,20 @@ where
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
     ) -> FsResult<()> {
-        let path_buf = path.parent().ok_or("Can not remove root directory")?.into();
+        let path_buf = path.parent().ok_or("can not remove root directory")?.into();
         let parent = self
             .lookup(&path_buf, _entries)?
-            .ok_or("Parent not found")?;
+            .ok_or("parent not found")?;
         let component = into_components(path)
             .pop()
-            .ok_or("Unexpected empty components in path")?;
+            .ok_or("unexpected empty components in path")?;
 
         let to_drop = _entries
             .get(parent)
-            .ok_or("Failed to find parent entry")?
+            .ok_or("failed to find parent entry")?
             .borrow_mut()
             .children_mut()
-            .ok_or("Parent should be a directory")?
+            .ok_or("parent should be a directory")?
             .remove(&component);
 
         if let Some(entry) = to_drop {
@@ -621,7 +627,7 @@ where
         self.unregister(entry_key, _entries);
         let mut _children = vec![];
         let mut _links = vec![];
-        let entry = _entries.get(entry_key).ok_or("Entry not found")?;
+        let entry = _entries.get(entry_key).ok_or("entry not found")?;
         match entry.borrow().deref() {
             Entry::Dir { children, .. } => {
                 for (_, child) in children {
@@ -662,7 +668,7 @@ where
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
     ) -> FsResult<Option<EntryKey>> {
-        let parent_path = to.parent().ok_or("Unexpected empty parent")?;
+        let parent_path = to.parent().ok_or("unexpected empty parent")?;
         let new_parent = self.create_dir(&parent_path.into(), _entries)?;
 
         match self.lookup(from, _entries)? {
@@ -670,16 +676,16 @@ where
                 if let Some(entry) = _entries.get(entry_key) {
                     let new_name = into_components(to)
                         .pop()
-                        .ok_or("Unexpected empty components")?;
+                        .ok_or("unexpected empty components")?;
                     let old_name = entry.borrow().name().clone();
 
                     if let Some(parent) = entry.borrow().parent() {
                         _entries
                             .get(parent)
-                            .ok_or("Previous parent not found")?
+                            .ok_or("previous parent not found")?
                             .borrow_mut()
                             .children_mut()
-                            .ok_or("Expected entry to be a directory")?
+                            .ok_or("expected entry to be a directory")?
                             .remove(&old_name);
                     }
 
@@ -689,13 +695,13 @@ where
 
                     _entries
                         .get(new_parent)
-                        .ok_or("New parent not found")?
+                        .ok_or("new parent not found")?
                         .borrow_mut()
                         .children_mut()
-                        .ok_or("Expected entry to be a directory")?
+                        .ok_or("expected entry to be a directory")?
                         .insert(new_name, entry_key);
                 } else {
-                    return Err("Path was found but failed to find entry".into());
+                    return Err("path was found but failed to find entry".into());
                 }
 
                 Ok(Some(entry_key))
@@ -730,17 +736,17 @@ where
 
             let action = match _entries
                 .get(m_entry)
-                .ok_or("Parent entry not found")?
+                .ok_or("parent entry not found")?
                 .borrow_mut()
                 .children_mut()
-                .ok_or("Unexpected parent without children")?
+                .ok_or("unexpected parent without children")?
                 .entry(component.clone())
             {
                 HashMapEntry::Occupied(v) => {
                     let entry_key = *v.get();
                     let existing_entry = _entries
                         .get(entry_key)
-                        .ok_or("Unexpected entry not found")?;
+                        .ok_or("unexpected entry not found")?;
 
                     match existing_entry.borrow().deref() {
                         Entry::Symlink { link, .. } => Action::Lookup(link.clone()),
@@ -757,12 +763,12 @@ where
                 Action::Return(key) => key,
                 Action::Lookup(ref link) => self
                     .lookup(link, _entries)?
-                    .ok_or("Path lookup for new entry not found")?,
+                    .ok_or("path lookup for new entry not found")?,
                 Action::CreateDir => {
                     let wd = self
                         .watcher
                         .watch(&current_path)
-                        .map_err(|e| format!("Could not watch file {}", e))?;
+                        .map_err(|e| format!("could not watch file {}", e))?;
 
                     let new_entry = Entry::Dir {
                         name: component.clone(),
@@ -777,7 +783,7 @@ where
                     let wd = self
                         .watcher
                         .watch(&current_path)
-                        .map_err(|e| format!("Could not watch file {}", e))?;
+                        .map_err(|e| format!("could not watch file {}", e))?;
 
                     let new_entry = Entry::Symlink {
                         name: component.clone(),
@@ -810,10 +816,10 @@ where
 
         match entries
             .get(parent_key)
-            .ok_or("Parent directory not found when inserting child")?
+            .ok_or("parent directory not found when inserting child")?
             .borrow_mut()
             .children_mut()
-            .ok_or("Parent file expected to be a directory")?
+            .ok_or("parent file expected to be a directory")?
             .entry(component)
         {
             HashMapEntry::Vacant(v) => Ok(*v.insert(new_key)),
@@ -839,10 +845,10 @@ where
             if let Some(entry) = self.follow_links(parent, _entries)? {
                 if let Some(parent_ref) = _entries
                     .get(entry)
-                    .ok_or("Failed to find entry")?
+                    .ok_or("failed to find entry")?
                     .borrow()
                     .children()
-                    .ok_or("Expected directory entry")?
+                    .ok_or("expected directory entry")?
                     .get(&component)
                 {
                     if let Some(parent_ref) = self.follow_links(*parent_ref, _entries)? {
@@ -858,10 +864,10 @@ where
 
         Ok(_entries
             .get(parent)
-            .ok_or("Failed to find entry")?
+            .ok_or("failed to find entry")?
             .borrow()
             .children()
-            .ok_or("Expected directory entry")?
+            .ok_or("expected directory entry")?
             .get(&last_component)
             .copied())
     }
@@ -902,7 +908,7 @@ where
                         }
                     }
                 } else {
-                    error!("Failed to find entry");
+                    error!("failed to find entry");
                 };
             }
         }
@@ -928,13 +934,13 @@ where
         let entries = self
             .watch_descriptors
             .get(wd)
-            .ok_or_else(|| format!("Got event for untracked watch descriptor: {:?}", wd))?;
+            .ok_or_else(|| format!("got event for untracked watch descriptor: {:?}", wd))?;
 
         if !entries.is_empty() {
             Ok(entries[0])
         } else {
             Err(format!(
-                "Got event where to watch descriptors maps to no entries: {:?}",
+                "got event where to watch descriptors maps to no entries: {:?}",
                 wd
             ))
         }
@@ -1832,7 +1838,7 @@ mod tests {
             let fs = Arc::new(Mutex::new(new_fs::<()>(path, None)));
             let entry = lookup_entry!(fs, file_path).unwrap();
 
-            let _fs = fs.lock().expect("Failed to lock fs");
+            let _fs = fs.lock().expect("failed to lock fs");
             let entries = _fs.entries.borrow();
             let resolved_paths = _fs.resolve_valid_paths(
                 _fs.entries.borrow().get(entry).unwrap().borrow().deref(),
