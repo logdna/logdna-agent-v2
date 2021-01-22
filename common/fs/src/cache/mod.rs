@@ -104,21 +104,34 @@ where
                 if !path_cpy.exists() {
                     path_cpy.pop();
                 } else {
-                    fs.insert(&path_cpy, &mut Vec::new(), &mut entries)
-                        .expect("Insert initial dirs failed");
+                    if let Err(e) = fs.insert(&path_cpy, &mut Vec::new(), &mut entries) {
+                        // It can failed due to permissions or some other restriction
+                        debug!(
+                            "Initial insertion of {} failed: {}",
+                            path_cpy.to_str().unwrap(),
+                            e
+                        );
+                    }
                     break;
                 }
             }
 
             for path in recursive_scan(&dir) {
                 let mut events = Vec::new();
-                fs.insert(&path, &mut events, &mut entries)
-                    .expect("Insert initial dirs recursive failed");
-                for event in events {
-                    match event {
-                        Event::New(entry) => fs.initial_events.push(Event::Initialize(entry)),
-                        _ => panic!("unexpected event in initialization"),
-                    };
+                if let Err(e) = fs.insert(&path, &mut events, &mut entries) {
+                    // It can failed due to file restrictions
+                    debug!(
+                        "Initial recursive scan insertion of {} failed: {}",
+                        path.to_str().unwrap(),
+                        e
+                    );
+                } else {
+                    for event in events {
+                        match event {
+                            Event::New(entry) => fs.initial_events.push(Event::Initialize(entry)),
+                            _ => panic!("unexpected event in initialization"),
+                        };
+                    }
                 }
             }
         }
@@ -271,7 +284,7 @@ where
                 };
             }
 
-            if errors.len() > 0 {
+            if !errors.is_empty() {
                 return Err(format!(
                     "encountered errors when inserting recursively: {}",
                     errors.join(";")
