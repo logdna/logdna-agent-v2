@@ -438,7 +438,11 @@ where
 
     /// Inserts a new entry when the path validates the inclusion/exclusion rules.
     ///
+    /// Returns `Ok(Some(entry))` pointing to the newly created entry.
+    ///
     /// When the path doesn't pass the rules or the path is invalid, it returns `Ok(None)`.
+    /// When the file watcher can't be added or the parent dir can not be created, it
+    /// returns an `Err`.
     fn insert(
         &mut self,
         path: &PathBuf,
@@ -530,7 +534,11 @@ where
 
                 let new_key = self.register_as_child(parent_ref, new_entry, _entries)?;
 
-                if self.insert(&real, events, _entries)?.is_none() {
+                if self
+                    .insert(&real, events, _entries)
+                    .unwrap_or(None)
+                    .is_none()
+                {
                     debug!(
                         "inserting symlink {:?} which points to invalid path {:?}",
                         path, real
@@ -635,7 +643,7 @@ where
             .remove(&component);
 
         if let Some(entry) = to_drop {
-            self.drop_entry(entry, events, _entries)?;
+            self.drop_entry(entry, events, _entries);
         }
 
         Ok(())
@@ -646,39 +654,41 @@ where
         entry_key: EntryKey,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) -> FsResult<()> {
+    ) {
         self.unregister(entry_key, _entries);
-        let mut _children = vec![];
-        let mut _links = vec![];
-        let entry = _entries.get(entry_key).ok_or("entry not found")?;
-        match entry.borrow().deref() {
-            Entry::Dir { children, .. } => {
-                for (_, child) in children {
-                    _children.push(*child);
-                    //self.drop_entry(*child, events, _entries);
+        if let Some(entry) = _entries.get(entry_key) {
+            let mut _children = vec![];
+            let mut _links = vec![];
+            match entry.borrow().deref() {
+                Entry::Dir { children, .. } => {
+                    for (_, child) in children {
+                        _children.push(*child);
+                        //self.drop_entry(*child, events, _entries);
+                    }
+                }
+                Entry::Symlink { ref link, .. } => {
+                    // This is a hacky way to check if there are any remaining
+                    // symlinks pointing to `link`
+                    if !self.passes(link, _entries) {
+                        _links.push(link.clone())
+                    }
+
+                    events.push(Event::Delete(entry_key));
+                }
+                Entry::File { .. } => {
+                    events.push(Event::Delete(entry_key));
                 }
             }
-            Entry::Symlink { ref link, .. } => {
-                // This is a hacky way to check if there are any remaining
-                // symlinks pointing to `link`
-                if !self.passes(link, _entries) {
-                    _links.push(link.clone())
-                }
 
-                events.push(Event::Delete(entry_key));
+            for child in _children {
+                self.drop_entry(child, events, _entries);
             }
-            Entry::File { .. } => {
-                events.push(Event::Delete(entry_key));
+
+            for link in _links {
+                // Ignore error
+                self.remove(&link, events, _entries).unwrap_or_default();
             }
         }
-
-        for child in _children {
-            self.drop_entry(child, events, _entries)?;
-        }
-        for link in _links {
-            self.remove(&link, events, _entries)?;
-        }
-        Ok(())
     }
 
     // `from` is the path from where the file or dir used to live
@@ -791,7 +801,7 @@ where
                     let wd = self
                         .watcher
                         .watch(&current_path)
-                        .map_err(|e| format!("could not watch file {}", e))?;
+                        .map_err(|e| format!("error watching {:?}: {:?}", current_path, e))?;
 
                     let new_entry = Entry::Dir {
                         name: component.clone(),
@@ -806,7 +816,7 @@ where
                     let wd = self
                         .watcher
                         .watch(&current_path)
-                        .map_err(|e| format!("could not watch file {}", e))?;
+                        .map_err(|e| format!("error watching {:?}: {:?}", current_path, e))?;
 
                     let new_entry = Entry::Symlink {
                         name: component.clone(),
