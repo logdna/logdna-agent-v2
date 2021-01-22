@@ -26,6 +26,8 @@ use std::rc::Rc;
 
 use tokio::runtime::Runtime;
 
+mod dep_audit;
+
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
@@ -41,6 +43,10 @@ pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 fn main() {
     env_logger::from_env(Env::default().default_filter_or("info")).init();
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
+
+    // Actually use the data to work around a bug in rustc:
+    // https://github.com/rust-lang/rust/issues/47384
+    trace!("{:?}", dep_audit::get_auditable_dependency_list());
 
     let config = match Config::new() {
         Ok(v) => v,

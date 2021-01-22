@@ -35,6 +35,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "anyhow"
+version = "1.0.38"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "afddf7f520a80dbf76e6f50a35bca42a2331ef227a28b3b6dc5c2e2338d114b1"
+
+[[package]]
 name = "array_tool"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -75,6 +81,36 @@ dependencies = [
  "hermit-abi",
  "libc",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "auditable"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a5688d93433d0c5d82a0214b490358112f359b69efe8093b45e80b48262e891"
+
+[[package]]
+name = "auditable-build"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b75a4eac8b65ab1e9d03394cd522eace98a452554651f3dda58a609873a1bd2"
+dependencies = [
+ "auditable-serde",
+ "cargo_metadata",
+ "miniz_oxide",
+ "serde_json",
+]
+
+[[package]]
+name = "auditable-serde"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7b6cab96878190de929001e8d9c15bcafbd21d1c259b010e2b1ee8ed1f5786ae"
+dependencies = [
+ "cargo_metadata",
+ "semver 0.10.0",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -156,6 +192,17 @@ name = "bytes"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ad1f8e949d755f9d79112b5bb46938e0ef9d3804a0b16dfab13aafcaa5f0fa72"
+
+[[package]]
+name = "cargo_metadata"
+version = "0.11.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3a567c24b86754d629addc2db89e340ac9398d07b5875efcff837e3878e17ec"
+dependencies = [
+ "semver 0.10.0",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "cc"
@@ -1362,7 +1409,10 @@ dependencies = [
 name = "logdna-agent"
 version = "3.0.0-beta.1"
 dependencies = [
+ "anyhow",
  "assert_cmd",
+ "auditable",
+ "auditable-build",
  "config",
  "env_logger",
  "fs",
@@ -1374,6 +1424,7 @@ dependencies = [
  "log",
  "metrics",
  "middleware",
+ "miniz_oxide",
  "pin-utils",
  "predicates",
  "serde_yaml",
@@ -2092,7 +2143,7 @@ version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "138e3e0acb6c9fb258b19b67cb8abd63c00679d2851805ea151465464fe9030a"
 dependencies = [
- "semver",
+ "semver 0.9.0",
 ]
 
 [[package]]
@@ -2171,6 +2222,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1d7eb9ef2c18661902cc47e535f9bc51b78acd254da71d375c2f6720d9a40403"
 dependencies = [
  "semver-parser",
+]
+
+[[package]]
+name = "semver"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "394cec28fa623e00903caf7ba4fa6fb9a0e260280bb8cdbbba029611108a0190"
+dependencies = [
+ "semver-parser",
+ "serde",
 ]
 
 [[package]]
