@@ -260,12 +260,22 @@ where
             let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
             path.push(name);
 
+            let mut errors = vec![];
             if let Some(new_entry) = self.insert(&path, events, _entries)? {
                 if matches!(_entries.get(new_entry).map(|n_e| n_e.borrow()), Some(_)) {
                     for new_path in recursive_scan(&path) {
-                        self.insert(&new_path, events, _entries)?;
+                        if let Err(e) = self.insert(&new_path, events, _entries) {
+                            errors.push(e);
+                        }
                     }
                 };
+            }
+
+            if errors.len() > 0 {
+                return Err(format!(
+                    "encountered errors when inserting recursively: {}",
+                    errors.join(";")
+                ));
             }
 
             Ok(())
