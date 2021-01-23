@@ -6,7 +6,7 @@ use chrono::prelude::Utc;
 use crossbeam::queue::SegQueue;
 use uuid::Uuid;
 
-use crate::types::body::IngestBody;
+use crate::types::body::{IngestBody, IngestBodyBuffer};
 use metrics::Metrics;
 use std::path::PathBuf;
 
@@ -41,14 +41,16 @@ impl Retry {
         }
     }
 
-    pub fn retry(&self, body: IngestBody) -> Result<(), Error> {
+    pub fn retry(&self, body: &IngestBodyBuffer) -> Result<(), Error> {
         Metrics::http().increment_retries();
-        let file = OpenOptions::new().create(true).write(true).open(format!(
+        let mut file = OpenOptions::new().create(true).write(true).open(format!(
             "/tmp/logdna/{}_{}.retry",
             Utc::now().timestamp(),
             Uuid::new_v4().to_string()
         ))?;
-        Ok(serde_json::to_writer(file, &body)?)
+        let mut reader = body.reader();
+        let _bytes_written = std::io::copy(&mut reader, &mut file)?;
+        Ok(())
     }
 
     pub fn poll(&self) -> Result<Option<IngestBody>, Error> {

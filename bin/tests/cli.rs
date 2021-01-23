@@ -397,6 +397,7 @@ fn test_directory_symlinks_delete() {
 
     common::assert_agent_running(&mut agent_handle);
     agent_handle.kill().expect("Could not kill process");
+}
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]

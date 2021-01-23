@@ -24,12 +24,12 @@ use tokio_rustls::TlsAcceptor;
 
 const ROOT: &str = "/logs/agent";
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct IngestBody {
     lines: Vec<Line>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 struct Line {
     line: Option<String>,
     file: Option<String>,

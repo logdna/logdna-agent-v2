@@ -106,13 +106,13 @@ impl Client {
                     Ok(Response::Failed(_, s, r)) => warn!("bad response {}: {}", s, r),
                     Err(HttpError::Send(body, e)) => {
                         warn!("failed sending http request, retrying: {}", e);
-                        if let Err(e) = retry.retry(body) {
+                        if let Err(e) = retry.retry(&body) {
                             error!("failed to retry request: {}", e)
                         }
                     }
                     Err(HttpError::Timeout(body)) => {
                         warn!("failed sending http request, retrying: request timed out!");
-                        if let Err(e) = retry.retry(body) {
+                        if let Err(e) = retry.retry(&body) {
                             error!("failed to retry request: {}", e)
                         };
                     }
