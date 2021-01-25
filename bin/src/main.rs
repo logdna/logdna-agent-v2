@@ -46,7 +46,8 @@ fn main() {
 
     // Actually use the data to work around a bug in rustc:
     // https://github.com/rust-lang/rust/issues/47384
-    trace!("{:?}", dep_audit::get_auditable_dependency_list());
+    dep_audit::get_auditable_dependency_list()
+        .map_or_else(|e| trace!("{}", e), |d| trace!("{}", d));
 
     let config = match Config::new() {
         Ok(v) => v,
