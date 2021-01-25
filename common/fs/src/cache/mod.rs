@@ -173,7 +173,7 @@ where
         let events = events_stream.into_stream().map(move |event| {
             let fs = fs.clone();
             {
-                let mut acc: Vec<Event> = Vec::new();
+                let mut acc = Vec::new();
 
                 match event {
                     Ok(event) => {
@@ -182,7 +182,7 @@ where
                             .process(event, &mut acc);
                         futures::stream::iter(acc)
                     }
-                    Err(_) => panic!("Inotify error"),
+                    _ => panic!("Inotify error"),
                 }
             }
         });
