@@ -269,20 +269,19 @@ where
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
         let entry_key = self.get_first_entry(watch_descriptor)?;
-        if let Some(entry) = _entries.get(entry_key) {
-            let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
-            path.push(name);
+        let entry = _entries.get(entry_key).ok_or("failed to find entry")?;
+        let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
+        path.push(name);
 
+        if let Some(new_entry) = self.insert(&path, events, _entries)? {
             let mut errors = vec![];
-            if let Some(new_entry) = self.insert(&path, events, _entries)? {
-                if matches!(_entries.get(new_entry).map(|n_e| n_e.borrow()), Some(_)) {
-                    for new_path in recursive_scan(&path) {
-                        if let Err(e) = self.insert(&new_path, events, _entries) {
-                            errors.push(e);
-                        }
+            if matches!(_entries.get(new_entry).map(|n_e| n_e.borrow()), Some(_)) {
+                for new_path in recursive_scan(&path) {
+                    if let Err(e) = self.insert(&new_path, events, _entries) {
+                        errors.push(e);
                     }
-                };
-            }
+                }
+            };
 
             if !errors.is_empty() {
                 return Err(format!(
@@ -290,11 +289,9 @@ where
                     errors.join(";")
                 ));
             }
-
-            Ok(())
-        } else {
-            Err("failed to find entry".into())
         }
+
+        Ok(())
     }
 
     fn process_modify(
@@ -552,26 +549,23 @@ where
     }
 
     fn register(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<T>) -> FsResult<()> {
-        if let Some(entry) = _entries.get(entry_ptr) {
-            let path = self.resolve_direct_path(&entry.borrow(), _entries);
+        let entry = _entries.get(entry_ptr).ok_or("failed to find entry to register")?;
+        let path = self.resolve_direct_path(&entry.borrow(), _entries);
 
-            self.watch_descriptors
-                .entry(entry.borrow().watch_descriptor().clone())
+        self.watch_descriptors
+            .entry(entry.borrow().watch_descriptor().clone())
+            .or_insert(Vec::new())
+            .push(entry_ptr);
+
+        if let Entry::Symlink { link, .. } = entry.borrow().deref() {
+            self.symlinks
+                .entry(link.clone())
                 .or_insert(Vec::new())
                 .push(entry_ptr);
-
-            if let Entry::Symlink { link, .. } = entry.borrow().deref() {
-                self.symlinks
-                    .entry(link.clone())
-                    .or_insert(Vec::new())
-                    .push(entry_ptr);
-            }
-
-            info!("watching {:?}", path);
-            Ok(())
-        } else {
-            Err("failed to find entry".into())
         }
+
+        info!("watching {:?}", path);
+        Ok(())
     }
 
     fn unregister(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<T>) {
@@ -616,7 +610,7 @@ where
 
             info!("unwatching {:?}", path);
         } else {
-            error!("failed to find entry");
+            error!("failed to find entry to unregister");
         };
     }
 
@@ -706,38 +700,34 @@ where
 
         match self.lookup(from, _entries)? {
             Some(entry_key) => {
-                if let Some(entry) = _entries.get(entry_key) {
-                    let new_name = into_components(to)
-                        .pop()
-                        .ok_or("unexpected empty components")?;
-                    let old_name = entry.borrow().name().clone();
+                let entry = _entries.get(entry_key)
+                    .ok_or("path was found but failed to find entry")?;
+                let new_name = into_components(to)
+                    .pop()
+                    .ok_or("unexpected empty components")?;
+                let old_name = entry.borrow().name().clone();
 
-                    if let Some(parent) = entry.borrow().parent() {
-                        _entries
-                            .get(parent)
-                            .ok_or("previous parent not found")?
-                            .borrow_mut()
-                            .children_mut()
-                            .ok_or("expected entry to be a directory")?
-                            .remove(&old_name);
-                    }
-
-                    let mut entry = entry.borrow_mut();
-                    entry.set_parent(new_parent);
-                    entry.set_name(new_name.clone());
-
+                if let Some(parent) = entry.borrow().parent() {
                     _entries
-                        .get(new_parent)
-                        .ok_or("new parent not found")?
+                        .get(parent)
+                        .ok_or("previous parent not found")?
                         .borrow_mut()
                         .children_mut()
                         .ok_or("expected entry to be a directory")?
-                        .insert(new_name, entry_key);
-                } else {
-                    return Err("path was found but failed to find entry".into());
+                        .remove(&old_name);
                 }
 
-                Ok(Some(entry_key))
+                let mut entry = entry.borrow_mut();
+                entry.set_parent(new_parent);
+                entry.set_name(new_name.clone());
+
+                Ok(_entries
+                    .get(new_parent)
+                    .ok_or("new parent not found")?
+                    .borrow_mut()
+                    .children_mut()
+                    .ok_or("expected entry to be a directory")?
+                    .insert(new_name, entry_key))
             }
             None => self.insert(to, events, _entries),
         }
