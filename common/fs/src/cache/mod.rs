@@ -549,7 +549,9 @@ where
     }
 
     fn register(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<T>) -> FsResult<()> {
-        let entry = _entries.get(entry_ptr).ok_or("failed to find entry to register")?;
+        let entry = _entries
+            .get(entry_ptr)
+            .ok_or("failed to find entry to register")?;
         let path = self.resolve_direct_path(&entry.borrow(), _entries);
 
         self.watch_descriptors
@@ -700,7 +702,8 @@ where
 
         match self.lookup(from, _entries)? {
             Some(entry_key) => {
-                let entry = _entries.get(entry_key)
+                let entry = _entries
+                    .get(entry_key)
                     .ok_or("path was found but failed to find entry")?;
                 let new_name = into_components(to)
                     .pop()
@@ -1065,7 +1068,7 @@ mod tests {
     use std::convert::TryInto;
     use std::fs::{copy, create_dir, hard_link, remove_dir_all, remove_file, rename, File};
     use std::os::unix::fs::symlink;
-    use std::panic;
+    use std::{io, panic};
     use tempfile::TempDir;
 
     macro_rules! take_events {
@@ -1428,6 +1431,30 @@ mod tests {
             assert!(lookup_entry!(fs, a).is_some());
             assert!(lookup_entry!(fs, b).is_none());
         });
+    }
+
+    /// Deletes a symlink that points to a not tracked directory
+    #[test]
+    fn filesystem_delete_symlink_to_untracked_dir() -> io::Result<()> {
+        let tempdir = TempDir::new()?;
+        let tempdir2 = TempDir::new()?.into_path();
+        let path = tempdir.path().to_path_buf();
+
+        let real_dir_path = tempdir2.join("real_dir_sample");
+        let symlink_path = path.join("symlink_sample");
+        create_dir(&real_dir_path)?;
+        symlink(&real_dir_path, &symlink_path)?;
+
+        let fs = Arc::new(Mutex::new(new_fs::<()>(path, None)));
+        assert!(lookup_entry!(fs, symlink_path).is_some());
+        assert!(lookup_entry!(fs, real_dir_path).is_some());
+
+        remove_dir_all(&symlink_path)?;
+        take_events!(fs, 1);
+
+        assert!(lookup_entry!(fs, symlink_path).is_none());
+        assert!(lookup_entry!(fs, real_dir_path).is_none());
+        Ok(())
     }
 
     // Deletes the pointee of a symlink
