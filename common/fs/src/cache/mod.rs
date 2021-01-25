@@ -158,7 +158,7 @@ where
             }
         };
 
-        let initial_events: Vec<Event> = {
+        let initial_events = {
             let mut fs = fs.try_lock().expect("could not lock filesystem cache");
 
             let mut acc = Vec::new();
