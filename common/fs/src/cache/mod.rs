@@ -214,28 +214,15 @@ where
             } => {
                 // directories can't have hard links so we can expect just one entry for these watch
                 // descriptors
-                let from_path = self
+                let is_from_path_ok = self
                     .get_first_entry(&from_wd)
-                    .map(|entry| {
-                        let mut path = self
-                            .resolve_direct_path(&_entries.get(entry).unwrap().borrow(), &_entries);
-                        path.push(from_name.clone());
-                        path
-                    })
-                    .map(|path| self.passes(&path, &_entries));
+                    .map(|entry| self.entry_path_passes(entry, from_name.clone(), &_entries))
+                    .unwrap_or(false);
 
-                let to_path = self
+                let is_to_path_ok = self
                     .get_first_entry(&to_wd)
-                    .map(|entry| {
-                        let mut path = self
-                            .resolve_direct_path(&_entries.get(entry).unwrap().borrow(), &_entries);
-                        path.push(to_name.clone());
-                        path
-                    })
-                    .map(|path| self.passes(&path, &_entries));
-
-                let is_to_path_ok = to_path.unwrap_or(false);
-                let is_from_path_ok = from_path.unwrap_or(false);
+                    .map(|entry| self.entry_path_passes(entry, to_name.clone(), &_entries))
+                    .unwrap_or(false);
 
                 if is_to_path_ok && is_from_path_ok {
                     self.process_move(&from_wd, from_name, &to_wd, to_name, events, &mut _entries)
@@ -953,6 +940,16 @@ where
     /// Helper method for checking if a path passes exclusion/inclusion rules
     fn passes(&self, path: &PathBuf, _entries: &EntryMap<T>) -> bool {
         self.is_initial_dir_target(path) || self.is_symlink_target(path, _entries)
+    }
+
+    fn entry_path_passes(&self, entry: EntryKey, name: OsString, _entries: &EntryMap<T>) -> bool {
+        if let Some(entry_ref) = _entries.get(entry) {
+            let mut path = self.resolve_direct_path(&entry_ref.borrow(), &_entries);
+            path.push(name);
+            self.passes(&path, &_entries)
+        } else {
+            false
+        }
     }
 
     /// Returns the first entry based on the `WatchDescriptor`, returning an `Err` when not found.
