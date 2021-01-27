@@ -1,6 +1,7 @@
 use crate::errors::K8sError;
 use crate::middleware::parse_container_path;
 use futures::stream::TryStreamExt;
+use futures::StreamExt;
 use http::types::body::{KeyValueMap, LineBuilder};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{api::ListParams, config::Config, Api, Client};
@@ -161,14 +162,21 @@ impl Middleware for K8sMetadata {
         runtime.block_on(async move {
             let watcher = watcher(self.api.clone(), ListParams::default());
             watcher
-                .try_for_each(|p| async move {
-                    self.handle_pod(p)
-                        .unwrap_or_else(|e| log::warn!("Unable to process pod event: {}", e));
-                    Ok(())
+                .into_stream()
+                .filter_map(|r| async {
+                    match r {
+                        Ok(event) => Some(event),
+                        Err(e) => {
+                            log::warn!("k8s watch stream error: {}", e);
+                            None
+                        }
+                    }
                 })
-                .await
-                .map_err(|e| log::warn!("Watch Stream Error: {}", e))
-                .unwrap();
+                .for_each(|p| async {
+                    self.handle_pod(p)
+                        .unwrap_or_else(|e| log::warn!("unable to process pod event: {}", e));
+                })
+                .await;
         });
     }
 
