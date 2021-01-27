@@ -2,6 +2,28 @@
 
 The agent is compatible with Kubernetes<sup>:registered:</sup> versions 1.9 and greater; however, we always recommend running the most recent stable version.
 
+__NOTE__: The Kubernetes manifest YAML files in this repository (and referenced in this
+documentation) describe the version of the LogDNA Agent in the current commit
+tree and no other version of the LogDNA agent. If you apply the Kubernetes manifest
+found in the current tree then your cluster _will_ be running the version described
+by the current commit which may not be ready for general use.
+
+You MUST ensure that the current tree is checked out to the branch/tag is the
+version you intend to install, if you install a pre-release version of the
+agent your logs may not be collected.
+
+To install a specific version you should ensure that you check out the exact tag for that
+version before applying any YAML files from the current tree.
+
+For example, to install a specific version, say a particular build of a beta, you would run the following command (with the 
+specific tag's version number) in the repo's root directory before following the install instructions relevant for your cluster.
+
+```bash
+git checkout major.minor.patch-beta.n
+```
+
+To view a list of all available release versions, navigate in your terminal to your local working directory (where you cloned the agent source repository) and then run the command `git tag -l`.
+
 ## Table of Contents
 
 * [Installing](#installing)
@@ -51,7 +73,7 @@ logdna-agent-hcvhn   1/1     Running   0          10s
 
 There are two components, the configuration and the image, that can be upgraded independently of each other. While not strictly required, we always recommend upgrading both components together.
 
-### Upgrading your Configuration
+### Upgrading the Configuration
 
 Not every version update of the agent makes a change to our supplied configuration YAML files. If there are changes, they will be outlined in the [release page](https://github.com/logdna/logdna-agent-v2/releases).
 
@@ -98,7 +120,7 @@ Older versions of our configurations do not provide these labels. In that case, 
 
 > :warning: Exporting Kubernetes objects with "kubectl get \<resource\> -o yaml" includes extra information about the object's state. This data does not need to be copied over to the new YAML file.
 
-### Upgrading your Image
+### Upgrading the Image
 
 The image contains the actual agent code that is run on the Pods created by the DaemonSet. New versions of the agent always strive for backwards compatibility with old configuration versions. Any breaking changes will be outlined in the [release page](https://github.com/logdna/logdna-agent-v2/releases). We always recommend upgrading to the latest configuration to guarantee access to new features.
 
