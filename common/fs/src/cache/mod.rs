@@ -20,6 +20,7 @@ use hashbrown::HashMap;
 use inotify::WatchDescriptor;
 use metrics::Metrics;
 use slotmap::{DefaultKey, SlotMap};
+use thiserror::Error;
 
 pub mod dir_path;
 pub mod entry;
@@ -37,43 +38,26 @@ pub type EntryKey = DefaultKey;
 type EntryMap<T> = SlotMap<EntryKey, RefCell<entry::Entry<T>>>;
 type FsResult<T> = Result<T, Error>;
 
-#[derive(std::fmt::Debug)]
+#[derive(Debug, Error)]
 pub enum Error {
+    #[error("error watching: {0:?} {1:?}")]
     Watch(PathBuf, io::Error),
+    #[error("got event for untracked watch descriptor: {0:?}")]
     WatchEvent(WatchDescriptor),
+    #[error("the inotify event queue has overflowed and events have presumably been lost")]
     WatchOverflow,
+    #[error("unexpected existing entry")]
     Existing,
+    #[error("failed to find entry")]
     Lookup,
+    #[error("failed to find parent entry")]
     ParentLookup,
+    #[error("parent should be a directory")]
     ParentNotValid,
+    #[error("path is not valid")]
     PathNotValid,
+    #[error("encountered errors when inserting recursively: {0:?}")]
     InsertRecursively(Vec<Error>),
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let message = match self {
-            Error::Watch(path, e) => format!("error watching: {:?} {:?}", path, e),
-            Error::WatchEvent(wd) => {
-                format!("got event for untracked watch descriptor: {:?}", wd)
-            }
-            Error::WatchOverflow => {
-                "the inotify event queue has overflowed and events have presumably been lost".into()
-            }
-            Error::Existing => "unexpected existing entry".into(),
-            Error::Lookup => "failed to find entry".into(),
-            Error::ParentLookup => "failed to find parent entry".into(),
-            Error::ParentNotValid => "parent should be a directory".into(),
-            Error::PathNotValid => "path is not valid".into(),
-            Error::InsertRecursively(errors) => {
-                format!(
-                    "encountered errors when inserting recursively: {:?}",
-                    errors
-                )
-            }
-        };
-        write!(f, "{}", message)
-    }
 }
 
 pub struct FileSystem<T>
@@ -281,6 +265,7 @@ where
             match e {
                 Error::WatchOverflow => {
                     error!("{}", e);
+                    panic!("overflowed kernel queue");
                 }
                 _ => {
                     warn!("Processing inotify event resulted in error: {}", e);
