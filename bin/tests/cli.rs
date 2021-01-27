@@ -64,11 +64,15 @@ fn api_key_present() {
     stderr_ref.read_to_string(&mut output).unwrap();
 
     // Check that the agent logs that it has sent lines from each file
-    assert!(predicate::str::contains(&format!(
-        "watching \"{}\"",
-        before_file_path.to_str().unwrap()
-    ))
-    .eval(&output));
+    assert!(
+        predicate::str::contains(&format!(
+            "watching \"{}\"",
+            before_file_path.to_str().unwrap()
+        ))
+        .eval(&output),
+        "'watching' not found in output: {}",
+        output
+    );
     assert!(predicate::str::contains(&format!(
         "tailer sendings lines for [\"{}\"]",
         before_file_path.to_str().unwrap()
