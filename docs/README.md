@@ -43,16 +43,17 @@ You MUST ensure that the current tree is checked out to the branch/tag is the
 version you intend to install, if you install a pre-release version of the
 agent your logs may not be collected.
 
-To install a specific version you should ensure you checkout the tag for that
+To install a specific version you should ensure that you check out the exact tag for that
 version before applying any YAML files from the current tree.
 
-For example to install a particular 2.2 beta you would run the following command
-in the repo's root directory before following the install instructions relevant
-for your cluster.
+For example, to install a specific version, say a particular build of a beta, you would run the following command (with the
+specific tag's version number) in the repo's root directory before following the install instructions relevant for your cluster.
 
 ```bash
-git checkout 2.2.0-beta.10
+git checkout major.minor.patch-beta.n
 ```
+
+To view a list of all available release versions, navigate in your terminal to your local working directory (where you cloned the agent source repository) and then run the command `git tag -l`.
 
 * [Installing on Kubernetes](KUBERNETES.md#installing)
 * [Installing on OpenShift](OPENSHIFT.md#installing)

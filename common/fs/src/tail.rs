@@ -173,12 +173,12 @@ impl Tailer {
                             debug!("Delete Event");
                             if !paths.is_empty() {
                                 if let Entry::Symlink { link, .. } = entry.borrow().deref() {
-                                    if let Some(real_entry) = fs.lookup(link, &entries) {
-                                        if let Some(r_entry) = entries.get(real_entry){
+                                    if let Ok(Some(real_entry)) = fs.lookup(link, &entries) {
+                                        if let Some(r_entry) = entries.get(real_entry) {
                                             entry = r_entry
                                         }
                                     } else {
-                                        error!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths[0]);
+                                        info!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths[0]);
                                     }
                                 }
 
