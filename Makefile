@@ -1,4 +1,5 @@
 REPO := logdna-agent-v2
+SHELL=/bin/bash
 
 # The image repo and tag can be modified e.g.
 # `make build RUST_IMAGE=docker.io/rust:latest
@@ -79,8 +80,33 @@ test-$(1):
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=1" "cargo test -p $(1)"
 endef
 
-CRATES=$(shell sed -e '/members/,/]/!d' Cargo.toml | tail -n +2 | $(_TAC) | tail -n +2 | $(_TAC) | sed 's/,//' | xargs -n1 -I{} sh -c 'grep -E "^name *=" {}/Cargo.toml | tail -n1' | sed 's/name *= *"\([A-Za-z0-9_\-]*\)"/\1/' | awk '!/journald/{print $0}')
+ALL_CRATES=$(shell sed -e '/members/,/]/!d' Cargo.toml | tail -n +2 | $(_TAC) | tail -n +2 | $(_TAC) | sed 's/,//' | xargs -n1 -I{} sh -c 'grep -E "^name *=" {}/Cargo.toml | tail -n1' | sed 's/name *= *"\([A-Za-z0-9_\-]*\)"/\1/' )
+
+CRATES=$(shell echo $(ALL_CRATES) | awk '!/journald/{print $0}')
+
+CRATE_PATHS=$(shell sed -e '/members/,/]/!d' Cargo.toml | tail -n +2 | $(_TAC) | tail -n +2 | $(_TAC) | sed -e 's/,//' -e 's/"//g' -e 's/^\s*//' | tr -s ' ' )
+
+$(info $(ALL_CRATES))
+$(info $(CRATE_PATHS))
+
 $(foreach _crate, $(CRATES), $(eval $(call TEST_RULE,$(strip $(_crate)))))
+
+.PHONY:coverage
+coverage:
+	mkdir -p ./target/debug/coverage/; \
+	export CARGO_INCREMENTAL=0
+	export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"; \
+	export RUSTDOCFLAGS="-Cpanic=abort"; \
+	all_crates="$(ALL_CRATES)"; \
+	crate_arr=($$all_crates); \
+	all_crate_paths="$(CRATE_PATHS)"; \
+	crate_path_arr=($$all_crate_paths); \
+	for index in "$${!crate_arr[@]}"; do \
+	  crate="$${crate_arr[index]}"; \
+	  path="$${crate_path_arr[index]}"; \
+	  cargo test --tests --manifest-path $${path}/Cargo.toml; \
+	  grcov $${path} -s $${path} --binary-path ./target/debug/ -t html --branch --ignore-not-existing -o ./target/debug/coverage/$${crate}/; \
+	done
 
 .PHONY:build
 build: ## Build the agent
