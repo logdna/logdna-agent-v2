@@ -4,8 +4,7 @@ use crate::cache::watch::{WatchEvent, Watcher};
 use crate::rule::{GlobRule, Rules, Status};
 
 use std::cell::RefCell;
-use std::ffi::OsString;
-use std::fmt;
+use std::ffi::{OsStr, OsString};
 use std::fs::read_dir;
 use std::fs::OpenOptions;
 use std::iter::FromIterator;
@@ -13,6 +12,7 @@ use std::ops::Deref;
 use std::path::{Component, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+use std::{fmt, io};
 
 use futures::{Stream, StreamExt};
 use hashbrown::hash_map::Entry as HashMapEntry;
@@ -20,6 +20,7 @@ use hashbrown::HashMap;
 use inotify::WatchDescriptor;
 use metrics::Metrics;
 use slotmap::{DefaultKey, SlotMap};
+use thiserror::Error;
 
 pub mod dir_path;
 pub mod entry;
@@ -35,6 +36,29 @@ type WatchDescriptors = HashMap<WatchDescriptor, Vec<EntryKey>>;
 pub type EntryKey = DefaultKey;
 
 type EntryMap<T> = SlotMap<EntryKey, RefCell<entry::Entry<T>>>;
+type FsResult<T> = Result<T, Error>;
+
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("error watching: {0:?} {1:?}")]
+    Watch(PathBuf, io::Error),
+    #[error("got event for untracked watch descriptor: {0:?}")]
+    WatchEvent(WatchDescriptor),
+    #[error("the inotify event queue has overflowed and events have presumably been lost")]
+    WatchOverflow,
+    #[error("unexpected existing entry")]
+    Existing,
+    #[error("failed to find entry")]
+    Lookup,
+    #[error("failed to find parent entry")]
+    ParentLookup,
+    #[error("parent should be a directory")]
+    ParentNotValid,
+    #[error("path is not valid")]
+    PathNotValid,
+    #[error("encountered errors when inserting recursively: {0:?}")]
+    InsertRecursively(Vec<Error>),
+}
 
 pub struct FileSystem<T>
 where
@@ -91,7 +115,8 @@ where
 
         let entries = fs.entries.clone();
         let mut entries = entries.borrow_mut();
-        fs.register(fs.root, &mut entries);
+        fs.register(fs.root, &mut entries)
+            .expect("Unable to register root");
 
         for dir in initial_dirs
             .into_iter()
@@ -102,19 +127,34 @@ where
                 if !path_cpy.exists() {
                     path_cpy.pop();
                 } else {
-                    fs.insert(&path_cpy, &mut Vec::new(), &mut entries);
+                    if let Err(e) = fs.insert(&path_cpy, &mut Vec::new(), &mut entries) {
+                        // It can failed due to permissions or some other restriction
+                        debug!(
+                            "Initial insertion of {} failed: {}",
+                            path_cpy.to_str().unwrap(),
+                            e
+                        );
+                    }
                     break;
                 }
             }
 
             for path in recursive_scan(&dir) {
                 let mut events = Vec::new();
-                fs.insert(&path, &mut events, &mut entries);
-                for event in events {
-                    match event {
-                        Event::New(entry) => fs.initial_events.push(Event::Initialize(entry)),
-                        _ => panic!("unexpected event in initialization"),
-                    };
+                if let Err(e) = fs.insert(&path, &mut events, &mut entries) {
+                    // It can failed due to file restrictions
+                    debug!(
+                        "Initial recursive scan insertion of {} failed: {}",
+                        path.to_str().unwrap(),
+                        e
+                    );
+                } else {
+                    for event in events {
+                        match event {
+                            Event::New(entry) => fs.initial_events.push(Event::Initialize(entry)),
+                            _ => panic!("unexpected event in initialization"),
+                        };
+                    }
                 }
             }
         }
@@ -173,7 +213,7 @@ where
         Ok(futures::stream::iter(initial_events).chain(events.flatten()))
     }
 
-    // handles inotify events and may produce Event(s) that are return upstream through sender
+    /// Handles inotify events and may produce Event(s) that are returned upstream through sender
     fn process(&mut self, watch_event: WatchEvent, events: &mut Vec<Event>) {
         let _entries = self.entries.clone();
         let mut _entries = _entries.borrow_mut();
@@ -181,15 +221,13 @@ where
 
         debug!("handling inotify event {:#?}", watch_event);
 
-        match watch_event {
+        let result = match watch_event {
             WatchEvent::Create { wd, name } | WatchEvent::MovedTo { wd, name, .. } => {
-                self.process_create(&wd, name, events, &mut _entries);
+                self.process_create(&wd, name, events, &mut _entries)
             }
-            WatchEvent::Modify { wd } => {
-                self.process_modify(&wd, events);
-            }
+            WatchEvent::Modify { wd } => self.process_modify(&wd, events),
             WatchEvent::Delete { wd, name } | WatchEvent::MovedFrom { wd, name, .. } => {
-                self.process_delete(&wd, name, events, &mut _entries);
+                self.process_delete(&wd, name, events, &mut _entries)
             }
             WatchEvent::Move {
                 from_wd,
@@ -199,66 +237,41 @@ where
             } => {
                 // directories can't have hard links so we can expect just one entry for these watch
                 // descriptors
-                let from_path = match self.watch_descriptors.get(&from_wd) {
-                    Some(entries) => {
-                        if entries.is_empty() {
-                            error!("got move event where from watch descriptors maps to no entries: {:?}", from_wd);
-                            return;
-                        }
+                let is_from_path_ok = self
+                    .get_first_entry(&from_wd)
+                    .map(|entry| self.entry_path_passes(entry, &from_name, &_entries))
+                    .unwrap_or(false);
 
-                        let mut path = self.resolve_direct_path(
-                            &_entries.get(entries[0]).unwrap().borrow(),
-                            &_entries,
-                        );
-                        path.push(from_name.clone());
-                        path
-                    }
-                    None => {
-                        error!(
-                            "got move event where from is an untracked watch descriptor: {:?}",
-                            from_wd
-                        );
-                        return;
-                    }
-                };
-
-                let to_path = match self.watch_descriptors.get(&to_wd) {
-                    Some(entries) => {
-                        if entries.is_empty() {
-                            error!("got move event where to watch descriptors maps to no entries: {:?}", to_wd);
-                            return;
-                        }
-
-                        let mut path = self.resolve_direct_path(
-                            &_entries.get(entries[0]).unwrap().borrow(),
-                            &_entries,
-                        );
-                        path.push(to_name.clone());
-                        path
-                    }
-                    None => {
-                        error!(
-                            "got move event where to is an untracked watch descriptor: {:?}",
-                            to_wd
-                        );
-                        return;
-                    }
-                };
-
-                let is_to_path_ok = self.passes(&to_path, &_entries);
-
-                let is_from_path_ok = self.passes(&from_path, &_entries);
+                let is_to_path_ok = self
+                    .get_first_entry(&to_wd)
+                    .map(|entry| self.entry_path_passes(entry, &to_name, &_entries))
+                    .unwrap_or(false);
 
                 if is_to_path_ok && is_from_path_ok {
-                    self.process_move(&from_wd, from_name, &to_wd, to_name, events, &mut _entries);
+                    self.process_move(&from_wd, from_name, &to_wd, to_name, events, &mut _entries)
                 } else if is_to_path_ok {
-                    self.process_create(&to_wd, to_name, events, &mut _entries);
+                    self.process_create(&to_wd, to_name, events, &mut _entries)
                 } else if is_from_path_ok {
-                    self.process_delete(&from_wd, from_name, events, &mut _entries);
+                    self.process_delete(&from_wd, from_name, events, &mut _entries)
+                } else {
+                    Err(Error::PathNotValid)
                 }
             }
-            WatchEvent::Overflow => panic!("overflowed kernel queue!"),
+            // Files are being updated too often for inotify to catch up
+            WatchEvent::Overflow => Err(Error::WatchOverflow),
         };
+
+        if let Err(e) = result {
+            match e {
+                Error::WatchOverflow => {
+                    error!("{}", e);
+                    panic!("overflowed kernel queue");
+                }
+                _ => {
+                    warn!("Processing inotify event resulted in error: {}", e);
+                }
+            }
+        }
     }
 
     fn process_create(
@@ -267,37 +280,37 @@ where
         name: OsString,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) {
+    ) -> FsResult<()> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
-        let entry_ptr = match self.watch_descriptors.get(watch_descriptor) {
-            Some(entries) => entries[0],
-            None => {
-                error!(
-                    "got create event for untracked watch descriptor: {:?}",
-                    watch_descriptor
-                );
-                return;
-            }
-        };
+        let entry_key = self.get_first_entry(watch_descriptor)?;
+        let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
+        let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
+        path.push(name);
 
-        if let Some(entry) = _entries.get(entry_ptr) {
-            let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
-            path.push(name);
-
-            if let Some(new_entry) = self.insert(&path, events, _entries) {
-                if matches!(_entries.get(new_entry).map(|n_e| n_e.borrow()), Some(_)) {
-                    for new_path in recursive_scan(&path) {
-                        self.insert(&new_path, events, _entries);
+        if let Some(new_entry) = self.insert(&path, events, _entries)? {
+            let mut errors = vec![];
+            if matches!(_entries.get(new_entry).map(|n_e| n_e.borrow()), Some(_)) {
+                for new_path in recursive_scan(&path) {
+                    if let Err(e) = self.insert(&new_path, events, _entries) {
+                        errors.push(e);
                     }
-                };
+                }
+            };
+
+            if !errors.is_empty() {
+                return Err(Error::InsertRecursively(errors));
             }
-        } else {
-            error!("Failed to find entry");
-        };
+        }
+
+        Ok(())
     }
 
-    fn process_modify(&mut self, watch_descriptor: &WatchDescriptor, events: &mut Vec<Event>) {
+    fn process_modify(
+        &mut self,
+        watch_descriptor: &WatchDescriptor,
+        events: &mut Vec<Event>,
+    ) -> FsResult<()> {
         let mut entry_ptrs_opt = None;
         if let Some(entries) = self.watch_descriptors.get_mut(watch_descriptor) {
             entry_ptrs_opt = Some(entries.clone())
@@ -307,11 +320,9 @@ where
             for entry_ptr in entry_ptrs.iter_mut() {
                 events.push(Event::Write(*entry_ptr));
             }
+            Ok(())
         } else {
-            error!(
-                "got modify event for untracked watch descriptor: {:?}",
-                watch_descriptor
-            );
+            Err(Error::WatchEvent(watch_descriptor.to_owned()))
         }
     }
 
@@ -321,27 +332,14 @@ where
         name: OsString,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) {
+    ) -> FsResult<()> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
-        let entry_ptr = match self.watch_descriptors.get(watch_descriptor) {
-            Some(entries) => entries[0],
-            None => {
-                error!(
-                    "got delete event for untracked watch descriptor: {:?}",
-                    watch_descriptor
-                );
-                return;
-            }
-        };
-
-        if let Some(entry) = _entries.get(entry_ptr) {
-            let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
-            path.push(name);
-            self.remove(&path, events, _entries);
-        } else {
-            error!("Failed to find entry");
-        };
+        let entry_key = self.get_first_entry(watch_descriptor)?;
+        let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
+        let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
+        path.push(name);
+        self.remove(&path, events, _entries)
     }
 
     fn process_move(
@@ -352,32 +350,12 @@ where
         to_name: OsString,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) {
-        // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
-        // entry
-        let from_entry_ptr = match self.watch_descriptors.get(from_watch_descriptor) {
-            Some(entries) => entries[0],
-            None => {
-                error!(
-                    "got move event for untracked watch descriptor: {:?}",
-                    from_watch_descriptor
-                );
-                return;
-            }
-        };
-        let to_entry_ptr = match self.watch_descriptors.get(to_watch_descriptor) {
-            Some(entries) => entries[0],
-            None => {
-                error!(
-                    "got move event for untracked watch descriptor: {:?}",
-                    to_watch_descriptor
-                );
-                return;
-            }
-        };
+    ) -> FsResult<()> {
+        let from_entry_key = self.get_first_entry(from_watch_descriptor)?;
+        let to_entry_key = self.get_first_entry(to_watch_descriptor)?;
 
-        let from_entry = _entries.get(from_entry_ptr).unwrap();
-        let to_entry = _entries.get(to_entry_ptr).unwrap();
+        let from_entry = _entries.get(from_entry_key).ok_or(Error::Lookup)?;
+        let to_entry = _entries.get(to_entry_key).ok_or(Error::Lookup)?;
 
         let mut from_path = self.resolve_direct_path(&from_entry.borrow(), _entries);
         from_path.push(from_name);
@@ -385,7 +363,8 @@ where
         to_path.push(to_name);
 
         // the entry is expected to exist
-        self.rename(&from_path, &to_path, events, _entries).unwrap();
+        self.rename(&from_path, &to_path, events, _entries)
+            .map(|_| ())
     }
 
     pub fn resolve_direct_path(&self, entry: &Entry<T>, _entries: &EntryMap<T>) -> PathBuf {
@@ -454,38 +433,51 @@ where
                             _entries,
                         );
                     } else {
-                        error!("Failed to find entry");
+                        error!("failed to find entry");
                     }
                 }
             }
         }
     }
 
+    /// Inserts a new entry when the path validates the inclusion/exclusion rules.
+    ///
+    /// Returns `Ok(Some(entry))` pointing to the newly created entry.
+    ///
+    /// When the path doesn't pass the rules or the path is invalid, it returns `Ok(None)`.
+    /// When the file watcher can't be added or the parent dir can not be created, it
+    /// returns an `Err`.
     fn insert(
         &mut self,
         path: &PathBuf,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) -> Option<EntryKey> {
+    ) -> FsResult<Option<EntryKey>> {
         if !self.passes(path, _entries) {
             info!("ignoring {:?}", path);
-            return None;
+            return Ok(None);
         }
 
         if !(path.exists() || path.read_link().is_ok()) {
-            warn!("attempted to insert non existant path {:?}", path);
-            return None;
+            warn!("attempted to insert non existent path {:?}", path);
+            return Ok(None);
         }
 
         let parent_ref = self.create_dir(&path.parent().unwrap().into(), _entries)?;
         let parent_ref = self.follow_links(parent_ref, _entries)?;
 
+        if parent_ref.is_none() {
+            return Ok(None);
+        }
+
+        let parent_ref = parent_ref.unwrap();
+
         // We only need the last component, the parents are already inserted.
-        let component = into_components(path).pop()?;
+        let component = into_components(path).pop().ok_or(Error::PathNotValid)?;
 
         // If the path is a dir, we can use create_dir to do the insert
         if path.is_dir() {
-            return self.create_dir(path, _entries);
+            return self.create_dir(path, _entries).map(Some);
         }
 
         enum Action {
@@ -493,127 +485,91 @@ where
             CreateSymlink(PathBuf),
             CreateFile,
         }
-
-        let action = if let Some(parent) = _entries.get(parent_ref) {
-            if let Some(children) = parent.borrow_mut().children_mut() {
-                match children.entry(component.clone()) {
-                    HashMapEntry::Occupied(v) => Some(Action::Return(*v.get())),
-                    HashMapEntry::Vacant(_) => match path.read_link() {
-                        Ok(real) => Some(Action::CreateSymlink(real)),
-                        Err(_) => Some(Action::CreateFile),
-                    },
-                }
-            } else {
-                error!("Parent has no children");
-                None
-            }
-        } else {
-            error!("Failed to find entry");
-            None
+        let parent = _entries.get(parent_ref).ok_or(Error::Lookup)?;
+        let action = match parent
+            .borrow_mut()
+            .children_mut()
+            .ok_or(Error::ParentNotValid)?
+            .entry(component.clone())
+        {
+            HashMapEntry::Occupied(v) => Action::Return(*v.get()),
+            HashMapEntry::Vacant(_) => match path.read_link() {
+                Ok(real) => Action::CreateSymlink(real),
+                Err(_) => Action::CreateFile,
+            },
         };
 
-        if let Some(action) = action {
-            match action {
-                Action::Return(entry_ptr) => Some(entry_ptr),
-                Action::CreateFile => {
-                    let wd = match self.watcher.watch(path) {
-                        Ok(wd) => wd,
-                        Err(e) => {
-                            error!("error watching {:?}: {:?}", path, e);
-                            return None;
-                        }
-                    };
+        match action {
+            Action::Return(key) => Ok(Some(key)),
+            Action::CreateFile => {
+                let wd = self
+                    .watcher
+                    .watch(path)
+                    .map_err(|e| Error::Watch(path.to_owned(), e))?;
 
-                    let file = _entries.insert(RefCell::new(Entry::File {
-                        name: component.clone(),
-                        parent: parent_ref,
-                        wd,
-                        data: T::default(),
-                        file_handle: OpenOptions::new().read(true).open(path).unwrap(),
-                    }));
+                let new_entry = Entry::File {
+                    name: component,
+                    parent: parent_ref,
+                    wd,
+                    data: T::default(),
+                    file_handle: OpenOptions::new().read(true).open(path).unwrap(),
+                };
 
-                    self.register(file, _entries);
-
-                    events.push(Event::New(file));
-                    _entries.get(parent_ref).and_then(|entry| {
-                        match entry
-                            .borrow_mut()
-                            .children_mut()
-                            .expect("expected entry to be a directory")
-                            .entry(component.clone())
-                        {
-                            HashMapEntry::Vacant(v) => Some(*v.insert(file)),
-                            _ => panic!("should be vacant"),
-                        }
-                    })
-                }
-                Action::CreateSymlink(real) => {
-                    let wd = match self.watcher.watch(path) {
-                        Ok(wd) => wd,
-                        Err(e) => {
-                            error!("error watching {:?}: {:?}", path, e);
-                            return None;
-                        }
-                    };
-
-                    let symlink = _entries.insert(RefCell::new(Entry::Symlink {
-                        name: component.clone(),
-                        parent: parent_ref,
-                        link: real.clone(),
-                        wd,
-                        rules: into_rules(real.clone()),
-                    }));
-
-                    self.register(symlink, _entries);
-
-                    if self.insert(&real, events, _entries).is_none() {
-                        debug!(
-                            "inserting symlink {:?} which points to invalid path {:?}",
-                            path, real
-                        );
-                    }
-
-                    events.push(Event::New(symlink));
-
-                    _entries.get(parent_ref).and_then(|entry| {
-                        match entry
-                            .borrow_mut()
-                            .children_mut()
-                            .expect("expected entry to be a directory")
-                            .entry(component.clone())
-                        {
-                            HashMapEntry::Vacant(v) => Some(*v.insert(symlink)),
-                            _ => panic!("should be vacant"),
-                        }
-                    })
-                }
+                let new_key = self.register_as_child(parent_ref, new_entry, _entries)?;
+                events.push(Event::New(new_key));
+                Ok(Some(new_key))
             }
-        } else {
-            warn!("No insert action available");
-            None
+            Action::CreateSymlink(real) => {
+                let wd = self
+                    .watcher
+                    .watch(path)
+                    .map_err(|e| Error::Watch(path.to_owned(), e))?;
+
+                let new_entry = Entry::Symlink {
+                    name: component,
+                    parent: parent_ref,
+                    link: real.clone(),
+                    wd,
+                    rules: into_rules(real.clone()),
+                };
+
+                let new_key = self.register_as_child(parent_ref, new_entry, _entries)?;
+
+                if self
+                    .insert(&real, events, _entries)
+                    .unwrap_or(None)
+                    .is_none()
+                {
+                    debug!(
+                        "inserting symlink {:?} which points to invalid path {:?}",
+                        path, real
+                    );
+                }
+
+                events.push(Event::New(new_key));
+                Ok(Some(new_key))
+            }
         }
     }
 
-    fn register(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<T>) {
-        if let Some(entry) = _entries.get(entry_ptr) {
-            let path = self.resolve_direct_path(&entry.borrow(), _entries);
+    fn register(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<T>) -> FsResult<()> {
+        let entry = _entries.get(entry_ptr).ok_or(Error::Lookup)?;
+        let path = self.resolve_direct_path(&entry.borrow(), _entries);
 
-            self.watch_descriptors
-                .entry(entry.borrow().watch_descriptor().clone())
+        self.watch_descriptors
+            .entry(entry.borrow().watch_descriptor().clone())
+            .or_insert(Vec::new())
+            .push(entry_ptr);
+
+        if let Entry::Symlink { link, .. } = entry.borrow().deref() {
+            self.symlinks
+                .entry(link.clone())
                 .or_insert(Vec::new())
                 .push(entry_ptr);
+        }
 
-            if let Entry::Symlink { link, .. } = entry.borrow().deref() {
-                self.symlinks
-                    .entry(link.clone())
-                    .or_insert(Vec::new())
-                    .push(entry_ptr);
-            }
-
-            info!("watching {:?}", path);
-        } else {
-            error!("Failed to find entry");
-        };
+        info!("watching {:?}", path);
+        Ok(())
     }
 
     fn unregister(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<T>) {
@@ -632,7 +588,13 @@ where
             entries.retain(|other| *other != entry_ptr);
             if entries.is_empty() {
                 self.watch_descriptors.remove(&wd);
-                let _ = self.watcher.unwatch(wd); // TODO: Handle this error case
+                if let Err(e) = self.watcher.unwatch(wd) {
+                    // Log and continue
+                    debug!(
+                        "unwatching {:?} resulted in an error, likely due to a dangling symlink {}",
+                        path, e
+                    );
+                }
             }
 
             if let Entry::Symlink { link, .. } = entry.borrow().deref() {
@@ -643,7 +605,6 @@ where
                         return;
                     }
                 };
-
                 entries.retain(|other| *other != entry_ptr);
                 if entries.is_empty() {
                     self.symlinks.remove(link);
@@ -652,7 +613,7 @@ where
 
             info!("unwatching {:?}", path);
         } else {
-            error!("Failed to find entry");
+            error!("failed to find entry to unregister");
         };
     }
 
@@ -661,38 +622,38 @@ where
         path: &PathBuf,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) -> Option<()> {
-        let parent = self.lookup(&path.parent()?.into(), _entries)?;
-        let component = into_components(path).pop()?;
+    ) -> FsResult<()> {
+        let path_buf = path.parent().ok_or(Error::PathNotValid)?.into();
+        let parent = self
+            .lookup(&path_buf, _entries)?
+            .ok_or(Error::ParentLookup)?;
+        let component = into_components(path).pop().ok_or(Error::PathNotValid)?;
 
-        let to_drop = if let Some(parent) = _entries.get(parent) {
-            parent
-                .borrow_mut()
-                .children_mut()
-                .unwrap() // parents are always dirs
-                .remove(&component)
-        } else {
-            error!("Failed to find entry");
-            None
-        };
+        let to_drop = _entries
+            .get(parent)
+            .ok_or(Error::ParentLookup)?
+            .borrow_mut()
+            .children_mut()
+            .ok_or(Error::ParentNotValid)?
+            .remove(&component);
+
         if let Some(entry) = to_drop {
             self.drop_entry(entry, events, _entries);
-            Some(())
-        } else {
-            None
         }
+
+        Ok(())
     }
 
     fn drop_entry(
         &mut self,
-        entry_ptr: EntryKey,
+        entry_key: EntryKey,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
     ) {
-        self.unregister(entry_ptr, _entries);
-        let mut _children = vec![];
-        let mut _links = vec![];
-        if let Some(entry) = _entries.get(entry_ptr) {
+        self.unregister(entry_key, _entries);
+        if let Some(entry) = _entries.get(entry_key) {
+            let mut _children = vec![];
+            let mut _links = vec![];
             match entry.borrow().deref() {
                 Entry::Dir { children, .. } => {
                     for (_, child) in children {
@@ -707,20 +668,21 @@ where
                         _links.push(link.clone())
                     }
 
-                    events.push(Event::Delete(entry_ptr));
+                    events.push(Event::Delete(entry_key));
                 }
                 Entry::File { .. } => {
-                    events.push(Event::Delete(entry_ptr));
+                    events.push(Event::Delete(entry_key));
                 }
-            };
-        } else {
-            error!("Failed to find entry");
-        };
-        for child in _children {
-            self.drop_entry(child, events, _entries);
-        }
-        for link in _links {
-            self.remove(&link, events, _entries);
+            }
+
+            for child in _children {
+                self.drop_entry(child, events, _entries);
+            }
+
+            for link in _links {
+                // Ignore error
+                self.remove(&link, events, _entries).unwrap_or_default();
+            }
         }
     }
 
@@ -733,47 +695,37 @@ where
         to: &PathBuf,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap<T>,
-    ) -> Option<EntryKey> {
-        let new_parent = self
-            .create_dir(&to.parent().unwrap().into(), _entries)
-            .unwrap();
-        match self.lookup(from, _entries) {
-            Some(entry_ptr) => {
-                if let Some(entry) = _entries.get(entry_ptr) {
-                    let new_name = into_components(to).pop()?;
-                    let old_name = entry.borrow().name().clone();
+    ) -> FsResult<Option<EntryKey>> {
+        let parent_path = to.parent().ok_or(Error::ParentNotValid)?;
+        let new_parent = self.create_dir(&parent_path.into(), _entries)?;
 
-                    if let Some(parent) = entry.borrow().parent() {
-                        _entries
-                            .get(parent)
-                            .and_then(|parent| {
-                                parent
-                                    .borrow_mut()
-                                    .children_mut()
-                                    .expect("expected entry to be a drectory")
-                                    .remove(&old_name)
-                            })
-                            .unwrap();
-                    };
-                    let mut entry = entry.borrow_mut();
-                    entry.set_parent(new_parent);
-                    entry.set_name(new_name.clone());
+        match self.lookup(from, _entries)? {
+            Some(entry_key) => {
+                let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
+                let new_name = into_components(to).pop().ok_or(Error::PathNotValid)?;
+                let old_name = entry.borrow().name().clone();
 
+                if let Some(parent) = entry.borrow().parent() {
                     _entries
-                        .get(new_parent)
-                        .map(|new_parent| {
-                            new_parent
-                                .borrow_mut()
-                                .children_mut()
-                                .expect("expected entry to be a directory")
-                                .insert(new_name, entry_ptr)
-                        })
-                        .unwrap();
-                } else {
-                    error!("Failed to find entry");
+                        .get(parent)
+                        .ok_or(Error::ParentLookup)?
+                        .borrow_mut()
+                        .children_mut()
+                        .ok_or(Error::ParentNotValid)?
+                        .remove(&old_name);
                 }
 
-                Some(entry_ptr)
+                let mut entry = entry.borrow_mut();
+                entry.set_parent(new_parent);
+                entry.set_name(new_name.clone());
+
+                Ok(_entries
+                    .get(new_parent)
+                    .ok_or(Error::ParentLookup)?
+                    .borrow_mut()
+                    .children_mut()
+                    .ok_or(Error::ParentNotValid)?
+                    .insert(new_name, entry_key))
             }
             None => self.insert(to, events, _entries),
         }
@@ -782,15 +734,15 @@ where
     // Creates all entries for a directory.
     // If one of the entries already exists, it is skipped over.
     // The returns a linked list of all entries.
-    fn create_dir(&mut self, path: &PathBuf, _entries: &mut EntryMap<T>) -> Option<EntryKey> {
-        let mut m_entry = Some(self.root);
+    fn create_dir(&mut self, path: &PathBuf, _entries: &mut EntryMap<T>) -> FsResult<EntryKey> {
+        let mut m_entry = self.root;
 
         let components = into_components(path);
 
         // If the path has no parents return root as the parent.
         // This commonly occurs with paths in the filesystem root, e.g /some.file or /somedir
         if components.is_empty() {
-            return m_entry;
+            return Ok(m_entry);
         }
 
         enum Action {
@@ -801,119 +753,99 @@ where
         }
 
         for (i, component) in components.iter().enumerate().skip(1) {
-            if let Some(entry) = m_entry {
-                let current_path = PathBuf::from_iter(&components[0..=i]);
+            let current_path = PathBuf::from_iter(&components[0..=i]);
 
-                let action = if let Some(entry) = _entries.get(entry) {
-                    if let Some(children) = entry.borrow_mut().children_mut() {
-                        match children.entry(component.clone()) {
-                            HashMapEntry::Occupied(v) => {
-                                let entry_ptr = *v.get();
-                                _entries.get(entry_ptr).map(|entry_ref| {
-                                    match entry_ref.borrow().deref() {
-                                        Entry::Symlink { link, .. } => Action::Lookup(link.clone()),
-                                        _ => Action::Return(entry_ptr),
-                                    }
-                                })
-                            }
-                            HashMapEntry::Vacant(_) => match current_path.read_link() {
-                                Ok(real) => Some(Action::CreateSymlink(real)),
-                                Err(_) => Some(Action::CreateDir),
-                            },
-                        }
-                    } else {
-                        None
+            let action = match _entries
+                .get(m_entry)
+                .ok_or(Error::ParentLookup)?
+                .borrow_mut()
+                .children_mut()
+                .ok_or(Error::ParentNotValid)?
+                .entry(component.clone())
+            {
+                HashMapEntry::Occupied(v) => {
+                    let entry_key = *v.get();
+                    let existing_entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
+
+                    match existing_entry.borrow().deref() {
+                        Entry::Symlink { link, .. } => Action::Lookup(link.clone()),
+                        _ => Action::Return(entry_key),
                     }
-                } else {
-                    None
-                };
-                let new_entry = if let Some(action) = action {
-                    match action {
-                        Action::Return(entry_ptr) => Some(entry_ptr),
-                        Action::Lookup(ref link) => self.lookup(link, _entries),
-                        Action::CreateDir => {
-                            let wd = match self.watcher.watch(&current_path) {
-                                Ok(wd) => wd,
-                                Err(e) => {
-                                    error!("error watching {:?}: {:?}", current_path, e);
-                                    return None;
-                                }
-                            };
+                }
+                HashMapEntry::Vacant(_) => match current_path.read_link() {
+                    Ok(real) => Action::CreateSymlink(real),
+                    Err(_) => Action::CreateDir,
+                },
+            };
 
-                            let dir = _entries.insert(RefCell::new(Entry::Dir {
-                                name: component.clone(),
-                                parent: Some(entry),
-                                children: HashMap::new(),
-                                wd,
-                            }));
+            let new_entry = match action {
+                Action::Return(key) => key,
+                Action::Lookup(ref link) => self.lookup(link, _entries)?.ok_or(Error::Lookup)?,
+                Action::CreateDir => {
+                    let wd = self
+                        .watcher
+                        .watch(&current_path)
+                        .map_err(|e| Error::Watch(current_path.to_owned(), e))?;
 
-                            self.register(dir, _entries);
-                            _entries.get(entry).and_then(|entry| {
-                                match entry
-                                    .borrow_mut()
-                                    .children_mut()
-                                    .expect("expected entry to be a directory")
-                                    .entry(component.clone())
-                                {
-                                    HashMapEntry::Vacant(v) => Some(*v.insert(dir)),
-                                    _ => panic!("should be vacant"),
-                                }
-                            })
-                        }
-                        Action::CreateSymlink(real) => {
-                            let wd = match self.watcher.watch(&current_path) {
-                                Ok(wd) => wd,
-                                Err(e) => {
-                                    error!("error watching {:?}: {:?}", current_path, e);
-                                    return None;
-                                }
-                            };
+                    let new_entry = Entry::Dir {
+                        name: component.clone(),
+                        parent: Some(m_entry),
+                        children: HashMap::new(),
+                        wd,
+                    };
 
-                            let symlink = _entries.insert(RefCell::new(Entry::Symlink {
-                                name: component.clone(),
-                                parent: entry,
-                                link: real.clone(),
-                                wd,
-                                rules: into_rules(real.clone()),
-                            }));
+                    self.register_as_child(m_entry, new_entry, _entries)?
+                }
+                Action::CreateSymlink(real) => {
+                    let wd = self
+                        .watcher
+                        .watch(&current_path)
+                        .map_err(|e| Error::Watch(current_path.to_owned(), e))?;
 
-                            self.register(symlink, _entries);
+                    let new_entry = Entry::Symlink {
+                        name: component.clone(),
+                        parent: m_entry,
+                        link: real.clone(),
+                        wd,
+                        rules: into_rules(real.clone()),
+                    };
 
-                            _entries.get(entry).and_then(|entry| {
-                                match entry
-                                    .borrow_mut()
-                                    .children_mut()
-                                    .expect("expected entry to be a directory")
-                                    .entry(component.clone())
-                                {
-                                    HashMapEntry::Vacant(v) => Some(*v.insert(symlink)),
-                                    _ => panic!("should be vacant"),
-                                }
-                            });
+                    self.register_as_child(m_entry, new_entry, _entries)?;
+                    self.create_dir(&real, _entries)?
+                }
+            };
 
-                            match self.create_dir(&real, _entries) {
-                                Some(v) => Some(v),
-                                None => panic!(
-                                    "unable to create symlink directory for entry {:?}",
-                                    &real
-                                ),
-                            }
-                        }
-                    }
-                } else {
-                    None
-                };
-                m_entry = new_entry;
-            } else {
-                error!("Failed to find entry");
-            }
+            m_entry = new_entry;
         }
-        m_entry
+        Ok(m_entry)
     }
 
-    // Returns the entry that represents the supplied path.
-    // If the path is not represented and therefor has no entry then None is return.
-    pub fn lookup(&self, path: &PathBuf, _entries: &EntryMap<T>) -> Option<EntryKey> {
+    /// Inserts the entry, registers it, looks up for the parent and set itself as a children.
+    fn register_as_child(
+        &mut self,
+        parent_key: EntryKey,
+        new_entry: Entry<T>,
+        entries: &mut EntryMap<T>,
+    ) -> FsResult<EntryKey> {
+        let component = new_entry.name().clone();
+        let new_key = entries.insert(RefCell::new(new_entry));
+        self.register(new_key, entries)?;
+
+        match entries
+            .get(parent_key)
+            .ok_or(Error::ParentLookup)?
+            .borrow_mut()
+            .children_mut()
+            .ok_or(Error::ParentNotValid)?
+            .entry(component)
+        {
+            HashMapEntry::Vacant(v) => Ok(*v.insert(new_key)),
+            _ => Err(Error::Existing),
+        }
+    }
+
+    /// Returns the entry that represents the supplied path or `Ok(None)`.
+    pub fn lookup(&self, path: &PathBuf, _entries: &EntryMap<T>) -> FsResult<Option<EntryKey>> {
         let mut parent = self.root;
         let mut components = into_components(path);
         // remove the first component because it will always be the root
@@ -921,48 +853,56 @@ where
 
         // If the path has no components there is nothing to look up.
         if components.is_empty() {
-            return None;
+            return Ok(None);
         }
 
-        let last_component = components.pop()?;
+        let last_component = components.pop().unwrap();
 
         for component in components {
-            parent = self.follow_links(parent, _entries).and_then(|e| {
-                if let Some(e) = _entries.get(e) {
-                    e.borrow()
-                        .children()
-                        .expect("expected directory entry")
-                        .get(&component)
-                        .and_then(|entry| self.follow_links(*entry, _entries))
-                } else {
-                    error!("Failed to find entry");
-                    None
+            if let Some(entry) = self.follow_links(parent, _entries)? {
+                if let Some(parent_ref) = _entries
+                    .get(entry)
+                    .ok_or(Error::ParentLookup)?
+                    .borrow()
+                    .children()
+                    .ok_or(Error::ParentNotValid)?
+                    .get(&component)
+                {
+                    if let Some(parent_ref) = self.follow_links(*parent_ref, _entries)? {
+                        parent = parent_ref;
+                        continue;
+                    }
                 }
-            })?;
+            }
+
+            // When components are not found `Ok(None)` is returned
+            return Ok(None);
         }
 
-        if let Some(parent) = _entries.get(parent) {
-            parent
-                .borrow()
-                .children()
-                .expect("expected directory entry")
-                .get(&last_component)
-                .copied()
-        } else {
-            error!("Failed to find entry");
-            None
-        }
+        Ok(_entries
+            .get(parent)
+            .ok_or(Error::ParentLookup)?
+            .borrow()
+            .children()
+            .ok_or(Error::ParentNotValid)?
+            .get(&last_component)
+            .copied())
     }
 
-    fn follow_links(&self, mut entry: EntryKey, _entries: &EntryMap<T>) -> Option<EntryKey> {
+    fn follow_links(&self, entry: EntryKey, _entries: &EntryMap<T>) -> FsResult<Option<EntryKey>> {
+        let mut result = entry;
         while let Some(e) = _entries.get(entry) {
             if let Some(link) = e.borrow().link() {
-                entry = self.lookup(link, _entries)?;
+                if let Some(e) = self.lookup(link, _entries)? {
+                    result = e;
+                } else {
+                    return Ok(None);
+                }
             } else {
                 break;
             }
         }
-        Some(entry)
+        Ok(Some(result))
     }
 
     fn is_symlink_target(&self, path: &PathBuf, _entries: &EntryMap<T>) -> bool {
@@ -985,7 +925,7 @@ where
                         }
                     }
                 } else {
-                    error!("Failed to find entry");
+                    error!("failed to find entry");
                 };
             }
         }
@@ -1001,9 +941,33 @@ where
         false
     }
 
-    // a helper for checking if a path passes exclusion/inclusion rules
+    /// Helper method for checking if a path passes exclusion/inclusion rules
     fn passes(&self, path: &PathBuf, _entries: &EntryMap<T>) -> bool {
         self.is_initial_dir_target(path) || self.is_symlink_target(path, _entries)
+    }
+
+    fn entry_path_passes(&self, entry: EntryKey, name: &OsStr, _entries: &EntryMap<T>) -> bool {
+        if let Some(entry_ref) = _entries.get(entry) {
+            let mut path = self.resolve_direct_path(&entry_ref.borrow(), &_entries);
+            path.push(name);
+            self.passes(&path, &_entries)
+        } else {
+            false
+        }
+    }
+
+    /// Returns the first entry based on the `WatchDescriptor`, returning an `Err` when not found.
+    fn get_first_entry(&self, wd: &WatchDescriptor) -> FsResult<EntryKey> {
+        let entries = self
+            .watch_descriptors
+            .get(wd)
+            .ok_or_else(|| Error::WatchEvent(wd.to_owned()))?;
+
+        if !entries.is_empty() {
+            Ok(entries[0])
+        } else {
+            Err(Error::WatchEvent(wd.to_owned()))
+        }
     }
 }
 
@@ -1102,7 +1066,7 @@ mod tests {
     use std::convert::TryInto;
     use std::fs::{copy, create_dir, hard_link, remove_dir_all, remove_file, rename, File};
     use std::os::unix::fs::symlink;
-    use std::panic;
+    use std::{io, panic};
     use tempfile::TempDir;
 
     macro_rules! take_events {
@@ -1127,7 +1091,7 @@ mod tests {
             let fs = $x.lock().expect("failed to lock fs");
             let entries = fs.entries.clone();
             let entries = entries.borrow();
-            fs.lookup(&$y, &entries)
+            fs.lookup(&$y, &entries).unwrap()
         }};
     }
 
@@ -1465,6 +1429,30 @@ mod tests {
             assert!(lookup_entry!(fs, a).is_some());
             assert!(lookup_entry!(fs, b).is_none());
         });
+    }
+
+    /// Deletes a symlink that points to a not tracked directory
+    #[test]
+    fn filesystem_delete_symlink_to_untracked_dir() -> io::Result<()> {
+        let tempdir = TempDir::new()?;
+        let tempdir2 = TempDir::new()?.into_path();
+        let path = tempdir.path().to_path_buf();
+
+        let real_dir_path = tempdir2.join("real_dir_sample");
+        let symlink_path = path.join("symlink_sample");
+        create_dir(&real_dir_path)?;
+        symlink(&real_dir_path, &symlink_path)?;
+
+        let fs = Arc::new(Mutex::new(new_fs::<()>(path, None)));
+        assert!(lookup_entry!(fs, symlink_path).is_some());
+        assert!(lookup_entry!(fs, real_dir_path).is_some());
+
+        remove_dir_all(&symlink_path)?;
+        take_events!(fs, 1);
+
+        assert!(lookup_entry!(fs, symlink_path).is_none());
+        assert!(lookup_entry!(fs, real_dir_path).is_none());
+        Ok(())
     }
 
     // Deletes the pointee of a symlink
@@ -1898,7 +1886,7 @@ mod tests {
             let fs = Arc::new(Mutex::new(new_fs::<()>(path, None)));
             let entry = lookup_entry!(fs, file_path).unwrap();
 
-            let _fs = fs.lock().expect("Failed to lock fs");
+            let _fs = fs.lock().expect("failed to lock fs");
             let entries = _fs.entries.borrow();
             let resolved_paths = _fs.resolve_valid_paths(
                 _fs.entries.borrow().get(entry).unwrap().borrow().deref(),

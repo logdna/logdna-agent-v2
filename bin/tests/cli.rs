@@ -1,13 +1,13 @@
+use crate::common::AgentSettings;
 use assert_cmd::prelude::*;
 use predicates::prelude::*;
-
-use tempfile::tempdir;
 
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::Command;
 use std::thread;
+use tempfile::tempdir;
 
 mod common;
 
@@ -33,7 +33,7 @@ fn api_key_present() {
     let before_file_path = dir.path().join("before.log");
     let mut file = File::create(&before_file_path).expect("Couldn't create temp log file...");
 
-    let mut handle = common::spawn_agent(&dir_path);
+    let mut handle = common::spawn_agent(AgentSettings::new(&dir_path));
     // Dump the agent's stdout
     // TODO: assert that it's successfully uploaded
 
@@ -66,11 +66,15 @@ fn api_key_present() {
     stderr_ref.read_to_string(&mut output).unwrap();
 
     // Check that the agent logs that it has sent lines from each file
-    assert!(predicate::str::contains(&format!(
-        "watching \"{}\"",
-        before_file_path.to_str().unwrap()
-    ))
-    .eval(&output));
+    assert!(
+        predicate::str::contains(&format!(
+            "watching \"{}\"",
+            before_file_path.to_str().unwrap()
+        ))
+        .eval(&output),
+        "'watching' not found in output: {}",
+        output
+    );
     assert!(predicate::str::contains(&format!(
         "tailer sendings lines for [\"{}\"]",
         before_file_path.to_str().unwrap()
@@ -106,7 +110,7 @@ fn api_key_present() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_read_file_appended_in_the_background() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
-    let mut agent_handle = common::spawn_agent(&dir.to_str().unwrap());
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
 
     let context = common::start_append_to_file(&dir, 5);
 
@@ -140,7 +144,7 @@ fn test_append_and_delete() {
     let file_path = dir.join("file1.log");
     File::create(&file_path).expect("Could not create file");
 
-    let mut agent_handle = common::spawn_agent(&dir.to_str().unwrap());
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
 
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
@@ -161,13 +165,49 @@ fn test_append_and_delete() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_delete_does_not_leave_file_descriptor() {
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let file_path = dir.join("file1.log");
+    File::create(&file_path).expect("Could not create file");
+
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
+    let process_id = agent_handle.id();
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+    common::append_to_file(&file_path, 100, 50).expect("Could not append");
+
+    // Verify that the file is shown in the open files of the process
+    assert!(common::open_files_include(process_id, &file_path).is_some());
+
+    // Remove it
+    fs::remove_file(&file_path).expect("Could not remove file");
+    common::wait_for_file_event("unwatching", &file_path, &mut stderr_reader);
+
+    common::assert_agent_running(&mut agent_handle);
+
+    // Wait for the file descriptor to be released
+    thread::sleep(std::time::Duration::from_millis(200));
+
+    // Verify that it doesn't appear any more, otherwise include it in the assert panic message
+    assert_eq!(
+        common::open_files_include(process_id, &file_path),
+        None,
+        "the file should not appear in the output"
+    );
+
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_append_and_move() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file1_path = dir.join("file1.log");
     let file2_path = dir.join("file2.log");
     File::create(&file1_path).expect("Could not create file");
 
-    let mut agent_handle = common::spawn_agent(&dir.to_str().unwrap());
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
     common::wait_for_file_event("initialized", &file1_path, &mut stderr_reader);
@@ -194,7 +234,7 @@ fn test_truncate_file() {
     let file_path = dir.join("file1.log");
     common::append_to_file(&file_path, 100, 50).expect("Could not append");
 
-    let mut agent_handle = common::spawn_agent(&dir.to_str().unwrap());
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
 
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
@@ -217,6 +257,44 @@ fn test_truncate_file() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_exclusion_rules() {
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let included_file = dir.join("file1.log");
+    let excluded_file = dir.join("file2.log");
+    common::append_to_file(&included_file, 100, 50).expect("Could not append");
+    common::append_to_file(&excluded_file, 100, 50).expect("Could not append");
+
+    let mut agent_handle = common::spawn_agent(AgentSettings {
+        log_dirs: &dir.to_str().unwrap(),
+        exclusion_regex: Some(r"\w+ile2\.\w{3}"),
+    });
+
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    let lines = common::wait_for_file_event("initialized", &included_file, &mut stderr_reader);
+
+    let matches_excluded_file = predicate::str::is_match(r"initialized [^\n]*file2\.log").unwrap();
+    assert!(
+        !matches_excluded_file.eval(&lines),
+        "file2.log should have been excluded"
+    );
+
+    // Continue appending
+    common::append_to_file(&included_file, 100, 5).expect("Could not append");
+    let lines =
+        common::wait_for_file_event("tailer sendings lines", &included_file, &mut stderr_reader);
+    assert!(
+        !matches_excluded_file.eval(&lines),
+        "file2.log should have been excluded"
+    );
+
+    common::assert_agent_running(&mut agent_handle);
+
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg_attr(not(target_os = "linux"), ignore)]
 fn test_dangling_symlinks() {
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
@@ -225,7 +303,7 @@ fn test_dangling_symlinks() {
     let symlink_path = log_dir.join("file1.log");
     common::append_to_file(&file_path, 100, 50).expect("Could not append");
 
-    let mut agent_handle = common::spawn_agent(&log_dir.to_str().unwrap());
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&log_dir.to_str().unwrap()));
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
     std::os::unix::fs::symlink(&file_path, &symlink_path).unwrap();
@@ -255,7 +333,7 @@ fn test_append_after_symlinks_delete() {
     let symlink_path = log_dir.join("file1.log");
     common::append_to_file(&file_path, 100, 50).expect("Could not append");
 
-    let mut agent_handle = common::spawn_agent(&log_dir.to_str().unwrap());
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&log_dir.to_str().unwrap()));
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
     std::os::unix::fs::symlink(&file_path, &symlink_path).unwrap();
@@ -297,7 +375,7 @@ fn test_directory_symlinks_delete() {
     common::append_to_file(&file2_path, 100, 50).expect("Could not append");
     common::append_to_file(&file3_path, 100, 50).expect("Could not append");
 
-    let mut agent_handle = common::spawn_agent(&log_dir.to_str().unwrap());
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&log_dir.to_str().unwrap()));
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
     std::os::unix::fs::symlink(&dir_1_path, &symlink_path).unwrap();
