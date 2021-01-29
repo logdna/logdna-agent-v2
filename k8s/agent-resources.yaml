@@ -7,7 +7,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.0.1
+    app.kubernetes.io/version: 3.0.2
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -17,7 +17,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.0.1
+    app.kubernetes.io/version: 3.0.2
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
@@ -31,7 +31,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.0.1
+    app.kubernetes.io/version: 3.0.2
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -48,7 +48,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.0.1
+    app.kubernetes.io/version: 3.0.2
 rules:
   - apiGroups: [""]
     resources: ["events"]
@@ -64,7 +64,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.0.1
+    app.kubernetes.io/version: 3.0.2
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -82,7 +82,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.0.1
+    app.kubernetes.io/version: 3.0.2
 spec:
   updateStrategy:
     type: RollingUpdate
@@ -97,12 +97,12 @@ spec:
         app: logdna-agent
         app.kubernetes.io/name: logdna-agent
         app.kubernetes.io/instance: logdna-agent
-        app.kubernetes.io/version: 3.0.1
+        app.kubernetes.io/version: 3.0.2
     spec:
       serviceAccountName: logdna-agent
       containers:
         - name: logdna-agent
-          image: logdna/logdna-agent:3.0.1
+          image: logdna/logdna-agent:3.0.2
           imagePullPolicy: Always
           securityContext:
             capabilities:
