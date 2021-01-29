@@ -163,6 +163,42 @@ fn test_append_and_delete() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_delete_does_not_leave_file_descriptor() {
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let file_path = dir.join("file1.log");
+    File::create(&file_path).expect("Could not create file");
+
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
+    let process_id = agent_handle.id();
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+    common::append_to_file(&file_path, 100, 50).expect("Could not append");
+
+    // Verify that the file is shown in the open files of the process
+    assert!(common::open_files_include(process_id, &file_path).is_some());
+
+    // Remove it
+    fs::remove_file(&file_path).expect("Could not remove file");
+    common::wait_for_file_event("unwatching", &file_path, &mut stderr_reader);
+
+    common::assert_agent_running(&mut agent_handle);
+
+    // Wait for the file descriptor to be released
+    thread::sleep(std::time::Duration::from_millis(200));
+
+    // Verify that it doesn't appear any more, otherwise include it in the assert panic message
+    assert_eq!(
+        common::open_files_include(process_id, &file_path),
+        None,
+        "the file should not appear in the output"
+    );
+
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_append_and_move() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file1_path = dir.join("file1.log");

@@ -169,3 +169,22 @@ pub fn create_dirs<P: AsRef<Path>>(dirs: &[P]) {
         fs::create_dir(dir).expect("Unable to create dir");
     }
 }
+
+pub fn open_files_include(id: u32, file: &PathBuf) -> Option<String> {
+    let child = Command::new("lsof")
+        .args(&["-p", &id.to_string()])
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("failed to execute child");
+
+    let output = child.wait_with_output().expect("failed to wait on child");
+
+    assert!(output.status.success());
+
+    let output_str = std::str::from_utf8(&output.stdout).unwrap();
+    if output_str.contains(file.to_str().unwrap()) {
+        Some(output_str.to_string())
+    } else {
+        None
+    }
+}
