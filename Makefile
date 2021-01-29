@@ -37,7 +37,7 @@ VCS_URL := https://github.com/logdna/$(REPO)
 BUILD_DATE := $(shell date -u +'%Y%m%d')
 BUILD_TIMESTAMP := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUILD_VERSION := $(shell sed -nE "s/^version = \"(.+)\"\$$/\1/p" bin/Cargo.toml)
-BUILD_TAG := $(VCS_REF)
+BUILD_TAG ?= $(VCS_REF)
 
 MAJOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f1)
 MINOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f2)
@@ -247,6 +247,7 @@ build-image: ## Build a docker image as specified in the Dockerfile
 publish-image: ## Publish SemVer compliant releases to our registroies
 	$(eval TARGET_VERSIONS := $(BUILD_VERSION) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(shell docker images -q $(REPO):$(BUILD_TAG)) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
 	@for image in $(DOCKER_PRIVATE_IMAGE) $(DOCKER_PUBLIC_IMAGE) $(DOCKER_IBM_IMAGE); do \
+		set -e; \
 		for version in $(TARGET_VERSIONS); do \
 			$(DOCKER) tag $(REPO):$(BUILD_TAG) $${image}:$${version}; \
 			$(DOCKER) push $${image}:$${version}; \
