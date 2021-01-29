@@ -167,32 +167,46 @@ impl Tailer {
                     }
                     Event::Delete(entry_ptr) => {
                         Metrics::fs().increment_deletes();
-                        let entries = fs.entries.borrow();
-                        if let Some(mut entry) = entries.get(entry_ptr){
-                            let paths = fs.resolve_valid_paths(&entry.borrow(), &entries);
-                            debug!("Delete Event");
-                            if !paths.is_empty() {
-                                if let Entry::Symlink { link, .. } = entry.borrow().deref() {
-                                    if let Ok(Some(real_entry)) = fs.lookup(link, &entries) {
-                                        if let Some(r_entry) = entries.get(real_entry) {
-                                            entry = r_entry
+                        {
+                            let entries = fs.entries.borrow();
+                            if let Some(mut entry) = entries.get(entry_ptr){
+                                let paths = fs.resolve_valid_paths(&entry.borrow(), &entries);
+                                debug!("Delete Event");
+                                if !paths.is_empty() {
+                                    if let Entry::Symlink { link, .. } = entry.borrow().deref() {
+                                        if let Ok(Some(real_entry)) = fs.lookup(link, &entries) {
+                                            if let Some(r_entry) = entries.get(real_entry) {
+                                                entry = r_entry
+                                            }
+                                        } else {
+                                            info!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths[0]);
                                         }
-                                    } else {
-                                        info!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths[0]);
+                                    }
+
+                                    if let Entry::File {
+                                        ref mut data,
+                                        file_handle,
+                                        ..
+                                    } = entry.borrow_mut().deref_mut()
+                                    {
+                                        if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
+                                            final_lines.append(&mut lines);
+                                        }
                                     }
                                 }
-
-                                if let Entry::File {
-                                    ref mut data,
-                                    file_handle,
-                                    ..
-                                } = entry.borrow_mut().deref_mut()
-                                {
-                                    if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
-                                        final_lines.append(&mut lines);
-                                    }
-                                }
-
+                            }
+                        }
+                        {
+                            // At this point, the entry should not longer be used
+                            // and removed from the map to allow the file handle to be dropped.
+                            // In case following events contain this entry key, it
+                            // should be ignored by the Tailer (all branches MUST contain
+                            // if Some(..) = entries.get(key) clauses)
+                            let mut entries = fs.entries.borrow_mut();
+                            if entries.remove(entry_ptr).is_some() {
+                                debug!(
+                                    "Entry was removed from the map, new length: {}",
+                                    entries.len());
                             }
                         }
                     }

@@ -99,8 +99,8 @@ test: test-journald ## Run unit tests
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo test --no-run && cargo test"
 
 .PHONY:integration-test
-integration-test: ## Run integration tests
-	$(RUST_COMMAND) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full" "cargo test --manifest-path bin/Cargo.toml --features integration_tests -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
+integration-test: ## Run integration tests using image with additional tools
+	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full" "cargo test --manifest-path bin/Cargo.toml --features integration_tests -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
