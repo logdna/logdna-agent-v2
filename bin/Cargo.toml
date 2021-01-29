@@ -13,6 +13,7 @@ name = "logdna-agent"
 version = "2.2.1"
 authors = ["CJP10 <connor.peticca@logdna.com>"]
 edition = "2018"
+build = "build.rs"
 
 [[bin]]
 name = "logdna-agent"
@@ -30,11 +31,15 @@ journald = { package = "journald", path = "../common/journald" }
 
 log = "0.4"
 env_logger = "0.7"
+anyhow = "1.0"
 serde_yaml = "0.8"
 jemallocator = "0.3"
 futures = "0.3"
 tokio = { version = "0.2", features = ["rt-threaded"] }
 pin-utils = "0.1"
+
+auditable = "0.1"
+miniz_oxide = "0.4"
 
 [features]
 default = []
@@ -45,3 +50,6 @@ journald_tests = ["journald/journald_tests"]
 assert_cmd = "1"
 predicates = "1"
 tempfile = "3"
+
+[build-dependencies]
+auditable-build = "0.1"
