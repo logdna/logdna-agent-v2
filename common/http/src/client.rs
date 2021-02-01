@@ -98,6 +98,7 @@ impl Client {
     }
 
     async fn make_request(&mut self, body: IngestBody) {
+        debug!("sending http request");
         let retry = self.retry.clone();
         self.inner
             .send(self.limiter.get_slot(body).as_ref())

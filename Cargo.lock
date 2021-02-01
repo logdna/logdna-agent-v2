@@ -1393,6 +1393,7 @@ dependencies = [
  "rcgen",
  "rustls",
  "serde_yaml",
+ "systemd",
  "tempfile",
  "tokio",
  "tokio-test",

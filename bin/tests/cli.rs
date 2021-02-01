@@ -5,9 +5,13 @@ use predicates::prelude::*;
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
+use std::path::PathBuf;
 use std::process::Command;
-use std::thread;
+use std::thread::{self, sleep};
+use std::time::Duration;
+use systemd::journal;
 use tempfile::tempdir;
+
 mod common;
 
 #[test]
@@ -459,6 +463,41 @@ fn test_directory_symlinks_delete() {
     fs::remove_file(&symlink_path).expect("Could not remove symlink");
 
     common::wait_for_file_event("unwatching", &file3_path, &mut stderr_reader);
+
+    common::assert_agent_running(&mut agent_handle);
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg_attr(not(target_os = "linux"), ignore)]
+fn test_journald_support() {
+    assert_eq!(journal::print(6, "Sample info"), 0);
+    sleep(Duration::from_millis(1000));
+    let dir = "/var/log/journal";
+    let mut agent_handle = common::spawn_agent(AgentSettings {
+        log_dirs: "/var/log/",
+        journald_dirs: Some(dir),
+        ..Default::default()
+    });
+
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    common::wait_for_file_event(
+        "monitoring journald path",
+        &PathBuf::from(dir),
+        &mut stderr_reader,
+    );
+
+    for i in 0..10 {
+        journal::print(1, format!("Sample alert {}", i).as_str());
+        journal::print(6, format!("Sample info {}", i).as_str());
+    }
+
+    sleep(Duration::from_millis(500));
+
+    common::wait_for_event("sending journald line", &mut stderr_reader);
+    common::wait_for_event("sending http request", &mut stderr_reader);
 
     common::assert_agent_running(&mut agent_handle);
     agent_handle.kill().expect("Could not kill process");
