@@ -24,6 +24,8 @@ use tokio_rustls::TlsAcceptor;
 
 const ROOT: &str = "/logs/agent";
 
+type FileLineCounter = Arc<Mutex<HashMap<String, (AtomicUsize, File)>>>;
+
 #[derive(Serialize, Deserialize, Debug)]
 struct IngestBody {
     lines: Vec<Line>,
@@ -109,7 +111,7 @@ impl Service<Request<Body>> for Svc {
 
                     let mut files = files.lock().await;
                     let (ref line_count, ref mut file) =
-                        files.entry(orig_file_name.into()).or_insert_with(|| {
+                        files.entry(orig_file_name).or_insert_with(|| {
                             info!("creating {}", file_name);
                             (
                                 AtomicUsize::new(0),
@@ -179,8 +181,8 @@ pub fn https_ingester(
     private_key: rustls::PrivateKey,
 ) -> (
     impl Future<Output = std::result::Result<(), hyper::Error>>,
-    Arc<Mutex<HashMap<String, (AtomicUsize, File)>>>,
-    impl FnOnce() -> (),
+    FileLineCounter,
+    impl FnOnce(),
 ) {
     info!("creating https_ingester");
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
