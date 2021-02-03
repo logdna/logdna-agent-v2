@@ -1,5 +1,7 @@
 use assert_cmd::cargo::CommandCargoExt;
 use core::time;
+
+use rand::seq::IteratorRandom;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::{BufRead, Write};
@@ -213,7 +215,13 @@ pub fn open_files_include(id: u32, file: &PathBuf) -> Option<String> {
 }
 
 fn get_available_port() -> Option<u16> {
-    (1025..65535).find(|port| TcpListener::bind(("127.0.0.1", *port)).is_ok())
+    let mut rng = rand::thread_rng();
+    loop {
+        let port = (30025..65535).choose(&mut rng).unwrap();
+        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
+            break Some(port);
+        }
+    }
 }
 
 pub fn self_signed_https_ingester() -> (
