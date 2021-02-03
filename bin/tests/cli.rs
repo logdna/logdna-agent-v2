@@ -1,5 +1,6 @@
 use crate::common::AgentSettings;
 use assert_cmd::prelude::*;
+use log::debug;
 use predicates::prelude::*;
 use std::fs;
 use std::fs::File;
@@ -64,6 +65,8 @@ fn api_key_present() {
 
     let stderr_ref = handle.stderr.as_mut().unwrap();
     stderr_ref.read_to_string(&mut output).unwrap();
+
+    debug!("{}", output);
 
     // Check that the agent logs that it has sent lines from each file
     assert!(
@@ -440,6 +443,8 @@ fn lookback_start_lines_are_delivered() {
                 let stderr_ref = handle.stderr.as_mut().unwrap();
 
                 stderr_ref.read_to_string(&mut output).unwrap();
+
+                debug!("{}", output);
                 let line_count = received
                     .lock()
                     .await
@@ -513,6 +518,8 @@ fn lookback_none_lines_are_delivered() {
                 let stderr_ref = handle.stderr.as_mut().unwrap();
 
                 stderr_ref.read_to_string(&mut output).unwrap();
+
+                debug!("{}", output);
                 handle.wait().unwrap();
                 let line_count = received
                     .lock()
