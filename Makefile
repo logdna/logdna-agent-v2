@@ -30,7 +30,7 @@ RUST_COMMAND := $(DOCKER_DISPATCH) $(RUST_IMAGE)
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
-INTEGRATION_TEST_THREADS ?= 8
+INTEGRATION_TEST_THREADS ?= 1
 
 VCS_REF := $(shell git rev-parse --short HEAD)
 VCS_URL := https://github.com/logdna/$(REPO)
@@ -70,6 +70,10 @@ REMOTE_BRANCH := $(shell git branch -vv | awk '/^\*/{split(substr($$4, 2, length
 
 AWS_SHARED_CREDENTIALS_FILE=$(HOME)/.aws/credentials
 
+LOGDNA_HOST?=localhost:1337
+
+RUST_LOG=debug
+
 _TAC= awk '{line[NR]=$$0} END {for (i=NR; i>=1; i--) print line[i]}'
 TEST_RULES=
 # Dynamically generate test targets for each workspace
@@ -100,11 +104,11 @@ test: test-journald ## Run unit tests
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
-	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full" "cargo test --manifest-path bin/Cargo.toml --features integration_tests -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
+	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --manifest-path bin/Cargo.toml --features integration_tests -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
-	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full" "cargo test --manifest-path bin/Cargo.toml -p journald --features journald_tests -- --nocapture"
+	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --manifest-path bin/Cargo.toml -p journald --features journald_tests -- --nocapture"
 
 .PHONY:clean
 clean: ## Clean all artifacts from the build process

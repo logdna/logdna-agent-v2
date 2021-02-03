@@ -1,0 +1,12 @@
+; DO NOT EDIT (unless you know what you are doing)
+;
+; This subdirectory is a git "subrepo", and this file is maintained by the
+; git-subrepo command. See https://github.com/git-commands/git-subrepo#readme
+;
+[subrepo]
+	remote = ssh://git@github.com:/answerbook/mock-ingester.git
+	branch = librarify
+	commit = 44f7c80be3259f7588260ca2cc6b774b0a894f45
+	parent = ce4f20cb69c4f8dae2d2561debb4ab611ffe2e8b
+	method = merge
+	cmdver = 0.4.3

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use sysinfo::{RefreshKind, System, SystemExt};
 
-use flate2::Compression;
+use async_compression::Level;
 
 use fs::rule::{GlobRule, RegexRule, Rules};
 use fs::tail::{DirPathBuf, Lookback};
@@ -125,7 +125,7 @@ impl TryFrom<RawConfig> for Config {
         })?;
 
         if use_compression {
-            template_builder.encoding(Encoding::GzipJson(Compression::new(gzip_level)));
+            template_builder.encoding(Encoding::GzipJson(Level::Precise(gzip_level)));
         } else {
             template_builder.encoding(Encoding::Json);
         }
@@ -163,7 +163,7 @@ impl TryFrom<RawConfig> for Config {
         // so as long as the symbols we create are &'static str's then this is completely safe.
         let (pkg_name, pkg_version) = unsafe { (PKG_NAME, PKG_VERSION) };
 
-        template_builder.user_agent(format!("{}/{} ({})", pkg_name, pkg_version, info));
+        template_builder.user_agent(format!("{}/{} ({})", pkg_name, pkg_version, info).as_str());
 
         let http = HttpConfig {
             template: template_builder.build()?,
