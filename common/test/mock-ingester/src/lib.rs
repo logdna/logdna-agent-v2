@@ -167,8 +167,39 @@ impl<T> Service<T> for MakeSvc {
     }
 }
 
-pub async fn http_ingester(addr: SocketAddr) -> std::result::Result<(), hyper::Error> {
-    hyper::Server::bind(&addr).serve(MakeSvc::new()).await
+pub fn http_ingester(
+    addr: SocketAddr,
+) -> (
+    impl Future<Output = std::result::Result<(), hyper::Error>>,
+    FileLineCounter,
+    impl FnOnce(),
+) {
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let mk_svc = MakeSvc::new();
+    let received = mk_svc.files.clone();
+    (
+        async move {
+            // Create a TCP listener via tokio.
+            let mut tcp = TcpListener::bind(&addr)
+                .await
+                .unwrap_or_else(|_| panic!("Couldn't bind to {:?}", addr));
+            // Prepare a long-running future stream to accept and serve cients.
+            let incoming_stream = tcp
+                .incoming()
+                .map_err(|e| error(format!("Incoming failed: {:?}", e)))
+                .boxed();
+            hyper::Server::builder(HyperAcceptor {
+                acceptor: incoming_stream,
+            })
+            .serve(mk_svc)
+            .with_graceful_shutdown(async {
+                rx.await.ok();
+            })
+            .await
+        },
+        received,
+        move || tx.send(()).expect("Couldn't terminate server"),
+    )
 }
 
 fn error(err: String) -> io::Error {
@@ -221,7 +252,7 @@ pub fn https_ingester(
                     })
                 })
                 .boxed();
-            hyper::Server::builder(HyperAcceptor {
+            hyper::Server::builder(HyperTlsAcceptor {
                 acceptor: incoming_tls_stream,
             })
             .serve(mk_svc)
@@ -235,12 +266,28 @@ pub fn https_ingester(
     )
 }
 
-struct HyperAcceptor<'a> {
+struct HyperTlsAcceptor<'a> {
     acceptor: Pin<Box<dyn Stream<Item = Result<TlsStream<TcpStream>, io::Error>> + 'a>>,
 }
 
-impl hyper::server::accept::Accept for HyperAcceptor<'_> {
+impl hyper::server::accept::Accept for HyperTlsAcceptor<'_> {
     type Conn = TlsStream<TcpStream>;
+    type Error = io::Error;
+
+    fn poll_accept(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context,
+    ) -> Poll<Option<Result<Self::Conn, Self::Error>>> {
+        Pin::new(&mut self.acceptor).poll_next(cx)
+    }
+}
+
+struct HyperAcceptor<'a> {
+    acceptor: Pin<Box<dyn Stream<Item = Result<TcpStream, io::Error>> + 'a>>,
+}
+
+impl hyper::server::accept::Accept for HyperAcceptor<'_> {
+    type Conn = TcpStream;
     type Error = io::Error;
 
     fn poll_accept(
