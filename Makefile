@@ -94,9 +94,8 @@ $(foreach _crate, $(CRATES), $(eval $(call TEST_RULE,$(strip $(_crate)))))
 .PHONY:coverage
 coverage:
 	mkdir -p ./target/debug/coverage/; \
-	export CARGO_INCREMENTAL=0
-	export RUSTFLAGS="-Zprofile -Ccodegen-units=1 -Copt-level=0 -Clink-dead-code -Coverflow-checks=off -Zpanic_abort_tests -Cpanic=abort"; \
-	export RUSTDOCFLAGS="-Cpanic=abort"; \
+	export RUSTC_BOOTSTRAP=1; \
+	export RUSTFLAGS="-Zinstrument-coverage"; \
 	all_crates="$(ALL_CRATES)"; \
 	crate_arr=($$all_crates); \
 	all_crate_paths="$(CRATE_PATHS)"; \
