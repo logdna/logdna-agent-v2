@@ -47,9 +47,15 @@ integration_tests = []
 journald_tests = ["journald/journald_tests"]
 
 [dev-dependencies]
+lazy_static = "*"
 assert_cmd = "1"
 predicates = "1"
 tempfile = "3"
+rustls = "0.18"
+rcgen = "0.8"
+logdna_mock_ingester = { package = "logdna-mock-ingester", path = "../common/test/mock-ingester" }
+tokio-test = "0.2"
+rand = "0.8"
 
 [build-dependencies]
 auditable-build = "0.1"

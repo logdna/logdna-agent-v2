@@ -1,5 +1,6 @@
 use crate::common::AgentSettings;
 use assert_cmd::prelude::*;
+use log::debug;
 use predicates::prelude::*;
 use std::fs;
 use std::fs::File;
@@ -10,6 +11,7 @@ use tempfile::tempdir;
 mod common;
 
 #[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn api_key_missing() {
     let mut cmd = Command::cargo_bin("logdna-agent").unwrap();
     cmd.env_clear()
@@ -24,6 +26,7 @@ fn api_key_missing() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn api_key_present() {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Couldn't create temp dir...");
 
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
@@ -62,6 +65,8 @@ fn api_key_present() {
 
     let stderr_ref = handle.stderr.as_mut().unwrap();
     stderr_ref.read_to_string(&mut output).unwrap();
+
+    debug!("{}", output);
 
     // Check that the agent logs that it has sent lines from each file
     assert!(
@@ -265,6 +270,9 @@ fn test_exclusion_rules() {
     let mut agent_handle = common::spawn_agent(AgentSettings {
         log_dirs: &dir.to_str().unwrap(),
         exclusion_regex: Some(r"\w+ile2\.\w{3}"),
+        ssl_cert_file: None,
+        lookback: None,
+        host: None,
     });
 
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
@@ -390,4 +398,153 @@ fn test_directory_symlinks_delete() {
 
     common::assert_agent_running(&mut agent_handle);
     agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn lookback_start_lines_are_delivered() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+    let dir = tempdir().expect("Couldn't create temp dir...");
+
+    let dir_path = format!("{}/", dir.path().to_str().unwrap());
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
+    let log_lines = "This is a test log line";
+
+    let file_path = dir.path().join("test.log");
+    let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
+
+    // Enough bytes to get past the lookback threshold
+    let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
+
+    (0..line_write_count)
+        .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
+    file.sync_all().expect("Failed to sync file");
+
+    let mut handle = common::spawn_agent(AgentSettings {
+        log_dirs: &dir_path,
+        exclusion_regex: None,
+        ssl_cert_file: Some(cert_file.path()),
+        lookback: Some("start"),
+        host: Some(&addr),
+    });
+
+    // Dump the agent's stdout
+    // TODO: assert that it's successfully uploaded
+
+    thread::sleep(std::time::Duration::from_secs(1));
+
+    tokio_test::block_on(async {
+        let (line_count, _, server) = tokio::join!(
+            async {
+                tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
+                let mut output = String::new();
+
+                handle.kill().unwrap();
+                let stderr_ref = handle.stderr.as_mut().unwrap();
+
+                stderr_ref.read_to_string(&mut output).unwrap();
+
+                debug!("{}", output);
+                let line_count = received
+                    .lock()
+                    .await
+                    .get(file_path.to_str().unwrap())
+                    .unwrap()
+                    .0
+                    .load(std::sync::atomic::Ordering::Relaxed);
+                shutdown_handle();
+
+                handle.wait().unwrap();
+                line_count
+            },
+            async move {
+                tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                (0..5).for_each(|_| {
+                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                    file.sync_all().expect("Failed to sync file");
+                });
+                tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                // Hack to drive stream forward
+                writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                file.sync_all().expect("Failed to sync file");
+            },
+            server
+        );
+        server.unwrap();
+        assert_eq!(line_count, line_write_count + 5);
+    });
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn lookback_none_lines_are_delivered() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+
+    let dir = tempdir().expect("Couldn't create temp dir...");
+    let dir_path = format!("{}/", dir.path().to_str().unwrap());
+
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
+    let log_lines = "This is a test log line";
+
+    let file_path = dir.path().join("test.log");
+    let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
+
+    // Enough bytes to get past the lookback threshold
+    let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
+    (0..line_write_count)
+        .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
+    file.sync_all().expect("Failed to sync file");
+
+    let mut handle = common::spawn_agent(AgentSettings {
+        log_dirs: &dir_path,
+        exclusion_regex: None,
+        ssl_cert_file: Some(cert_file.path()),
+        lookback: None,
+        host: Some(&addr),
+    });
+
+    // Dump the agent's stdout
+    // TODO: assert that it's successfully uploaded
+
+    thread::sleep(std::time::Duration::from_secs(1));
+    tokio_test::block_on(async {
+        let (line_count, _, server) = tokio::join!(
+            async {
+                tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
+
+                let mut output = String::new();
+
+                handle.kill().unwrap();
+                let stderr_ref = handle.stderr.as_mut().unwrap();
+
+                stderr_ref.read_to_string(&mut output).unwrap();
+
+                debug!("{}", output);
+                handle.wait().unwrap();
+                let line_count = received
+                    .lock()
+                    .await
+                    .get(file_path.to_str().unwrap())
+                    .unwrap()
+                    .0
+                    .load(std::sync::atomic::Ordering::Relaxed);
+                shutdown_handle();
+                line_count
+            },
+            async move {
+                tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                (0..5).for_each(|_| {
+                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                    file.sync_all().expect("Failed to sync file");
+                });
+                tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                // Hack to drive stream forward
+                writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                file.sync_all().expect("Failed to sync file");
+            },
+            server
+        );
+        server.unwrap();
+        assert_eq!(line_count, 5);
+    });
 }
