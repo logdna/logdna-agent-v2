@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate log;
 
+use bytes::Bytes;
 use futures::{future, Stream, StreamExt, TryFutureExt, TryStreamExt};
 use hyper::service::Service;
 use hyper::{Body, Request, Response};
@@ -8,8 +9,6 @@ use rustls::internal::pemfile;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::From;
-use std::fs::{File, OpenOptions};
-use std::io::Write;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -24,7 +23,7 @@ use tokio_rustls::TlsAcceptor;
 
 const ROOT: &str = "/logs/agent";
 
-type FileLineCounter = Arc<Mutex<HashMap<String, (AtomicUsize, File)>>>;
+type FileLineCounter = Arc<Mutex<HashMap<String, (AtomicUsize, Vec<Bytes>)>>>;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct IngestBody {
@@ -39,7 +38,7 @@ struct Line {
 
 #[derive(Debug)]
 pub struct Svc {
-    files: Arc<Mutex<HashMap<String, (AtomicUsize, File)>>>,
+    files: Arc<Mutex<HashMap<String, (AtomicUsize, Vec<Bytes>)>>>,
 }
 
 impl Unpin for Svc {}
@@ -107,24 +106,16 @@ impl Service<Request<Body>> for Svc {
                     let orig_file_name = line.file.unwrap_or_else(|| " unknown".into());
 
                     let file_name = orig_file_name.replace("/", "-").clone();
-                    let file_name = &file_name[1..];
 
                     let mut files = files.lock().await;
                     let (ref line_count, ref mut file) =
                         files.entry(orig_file_name).or_insert_with(|| {
                             info!("creating {}", file_name);
-                            (
-                                AtomicUsize::new(0),
-                                OpenOptions::new()
-                                    .create(true)
-                                    .append(true)
-                                    .open(&file_name)
-                                    .unwrap(),
-                            )
+                            (AtomicUsize::new(0), Vec::new())
                         });
 
                     line_count.fetch_add(1, Ordering::Relaxed);
-                    file.write_all(raw_line.as_bytes()).unwrap();
+                    file.push(Bytes::copy_from_slice(raw_line.as_bytes()));
                 }
             }
 
@@ -134,7 +125,7 @@ impl Service<Request<Body>> for Svc {
 }
 
 pub struct MakeSvc {
-    files: Arc<Mutex<HashMap<String, (AtomicUsize, File)>>>,
+    files: Arc<Mutex<HashMap<String, (AtomicUsize, Vec<Bytes>)>>>,
 }
 
 impl MakeSvc {

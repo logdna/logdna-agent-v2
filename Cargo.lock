@@ -1429,6 +1429,7 @@ name = "logdna-mock-ingester"
 version = "0.1.0"
 dependencies = [
  "async-compression",
+ "bytes 0.5.6",
  "env_logger",
  "futures",
  "hyper",
