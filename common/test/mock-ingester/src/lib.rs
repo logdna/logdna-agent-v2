@@ -40,7 +40,7 @@ struct Line {
 
 #[derive(Debug)]
 pub struct Svc {
-    files: Arc<Mutex<HashMap<String, (AtomicUsize, Vec<Bytes>)>>>,
+    files: FileLineCounter,
 }
 
 impl Unpin for Svc {}
@@ -127,7 +127,7 @@ impl Service<Request<Body>> for Svc {
 }
 
 pub struct MakeSvc {
-    files: Arc<Mutex<HashMap<String, (AtomicUsize, Vec<Bytes>)>>>,
+    files: FileLineCounter,
 }
 
 impl MakeSvc {

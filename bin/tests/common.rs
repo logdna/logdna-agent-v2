@@ -9,6 +9,8 @@ use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
 use std::thread;
 
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
+
 use futures::Future;
 use logdna_mock_ingester::{https_ingester, FileLineCounter, HyperError};
 
@@ -100,6 +102,7 @@ pub struct AgentSettings<'a> {
     pub exclusion_regex: Option<&'a str>,
     pub ssl_cert_file: Option<&'a std::path::Path>,
     pub lookback: Option<&'a str>,
+    pub host: Option<&'a str>,
 }
 
 impl<'a> AgentSettings<'a> {
@@ -123,16 +126,21 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
         .env("RUST_LOG", "debug")
         .env("RUST_BACKTRACE", "full")
         .env("LOGDNA_LOG_DIRS", settings.log_dirs)
-        .env(
-            "LOGDNA_HOST",
-            std::env::var("LOGDNA_HOST").expect("LOGDNA_HOST env var not set"),
-        )
         .env("LOGDNA_INGESTION_KEY", ingestion_key)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
     if let Some(cert_file_path) = settings.ssl_cert_file {
         agent.env("SSL_CERT_FILE", cert_file_path);
+    }
+
+    if let Some(host) = settings.host {
+        agent.env("LOGDNA_HOST", host);
+    } else {
+        agent.env(
+            "LOGDNA_HOST",
+            std::env::var("LOGDNA_HOST").expect("LOGDNA_HOST env var not set"),
+        );
     }
 
     if let Some(lookback) = settings.lookback {
@@ -142,7 +150,6 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
     if let Some(rules) = settings.exclusion_regex {
         agent.env("LOGDNA_EXCLUSION_REGEX_RULES", rules);
     }
-
     agent.spawn().expect("Failed to start agent")
 }
 
@@ -205,11 +212,16 @@ pub fn open_files_include(id: u32, file: &PathBuf) -> Option<String> {
     }
 }
 
+fn get_available_port() -> Option<u16> {
+    (1025..65535).find(|port| TcpListener::bind(("127.0.0.1", *port)).is_ok())
+}
+
 pub fn self_signed_https_ingester() -> (
     impl Future<Output = std::result::Result<(), HyperError>>,
     FileLineCounter,
     impl FnOnce(),
     tempfile::NamedTempFile,
+    String,
 ) {
     let subject_alt_names = vec!["logdna.com".to_string(), "localhost".to_string()];
 
@@ -219,7 +231,10 @@ pub fn self_signed_https_ingester() -> (
         pemfile::certs(&mut cert.serialize_pem().unwrap().as_bytes()).expect("couldn't load certs");
     let key = pemfile::pkcs8_private_keys(&mut cert.serialize_private_key_pem().as_bytes())
         .expect("couldn't load rsa_private_key");
-    let addr = "0.0.0.0:1337".parse().unwrap();
+
+    let port = get_available_port().expect("No ports free");
+
+    let addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
 
     let mut cert_file = tempfile::NamedTempFile::new().expect("Couldn't create cert file");
     cert_file
@@ -227,5 +242,11 @@ pub fn self_signed_https_ingester() -> (
         .expect("Couldn't write cert file");
 
     let (server, received, shutdown_handle) = https_ingester(addr, certs, key[0].clone());
-    (server, received, shutdown_handle, cert_file)
+    (
+        server,
+        received,
+        shutdown_handle,
+        cert_file,
+        format!("localhost:{}", port),
+    )
 }

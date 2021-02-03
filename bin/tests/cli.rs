@@ -269,6 +269,7 @@ fn test_exclusion_rules() {
         exclusion_regex: Some(r"\w+ile2\.\w{3}"),
         ssl_cert_file: None,
         lookback: None,
+        host: None,
     });
 
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
@@ -403,7 +404,7 @@ fn lookback_start_lines_are_delivered() {
     let dir = tempdir().expect("Couldn't create temp dir...");
 
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
-    let (server, received, shutdown_handle, cert_file) = common::self_signed_https_ingester();
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
     let log_lines = "This is a test log line";
 
     let file_path = dir.path().join("test.log");
@@ -421,6 +422,7 @@ fn lookback_start_lines_are_delivered() {
         exclusion_regex: None,
         ssl_cert_file: Some(cert_file.path()),
         lookback: Some("start"),
+        host: Some(&addr),
     });
 
     // Dump the agent's stdout
@@ -476,7 +478,7 @@ fn lookback_none_lines_are_delivered() {
     let dir = tempdir().expect("Couldn't create temp dir...");
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
 
-    let (server, received, shutdown_handle, cert_file) = common::self_signed_https_ingester();
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
     let log_lines = "This is a test log line";
 
     let file_path = dir.path().join("test.log");
@@ -493,6 +495,7 @@ fn lookback_none_lines_are_delivered() {
         exclusion_regex: None,
         ssl_cert_file: Some(cert_file.path()),
         lookback: None,
+        host: Some(&addr),
     });
 
     // Dump the agent's stdout
