@@ -9,11 +9,6 @@ use std::thread;
 use tempfile::tempdir;
 mod common;
 
-use logdna_mock_ingester::https_ingester;
-
-use rcgen::generate_simple_self_signed;
-use rustls::internal::pemfile;
-
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn api_key_missing() {
@@ -272,6 +267,8 @@ fn test_exclusion_rules() {
     let mut agent_handle = common::spawn_agent(AgentSettings {
         log_dirs: &dir.to_str().unwrap(),
         exclusion_regex: Some(r"\w+ile2\.\w{3}"),
+        ssl_cert_file: None,
+        lookback: None,
     });
 
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
@@ -403,41 +400,10 @@ fn test_directory_symlinks_delete() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn lookback_start_lines_are_delivered() {
     let _ = env_logger::Builder::from_default_env().try_init();
-    let subject_alt_names = vec!["logdna.com".to_string(), "localhost".to_string()];
-
-    let cert = generate_simple_self_signed(subject_alt_names).unwrap();
-    // The certificate is now valid for localhost and the domain "hello.world.example"
-    let certs =
-        pemfile::certs(&mut cert.serialize_pem().unwrap().as_bytes()).expect("couldn't load certs");
-    let key = pemfile::pkcs8_private_keys(&mut cert.serialize_private_key_pem().as_bytes())
-        .expect("couldn't load rsa_private_key");
-    let addr = "0.0.0.0:1337".parse().unwrap();
-
-    let mut cert_file = tempfile::NamedTempFile::new().expect("Couldn't create cert file");
-    cert_file
-        .write_all(cert.serialize_pem().unwrap().as_bytes())
-        .expect("Couldn't write cert file");
-
-    let (server, received, shutdown_handle) = https_ingester(addr, certs, key[0].clone());
-
     let dir = tempdir().expect("Couldn't create temp dir...");
 
-    let mut cmd = Command::cargo_bin("logdna-agent").unwrap();
-
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
-
-    let agent = cmd
-        .env_clear()
-        .env("RUST_LOG", "debug")
-        .env("RUST_BACKTRACE", "full")
-        .env("SSL_CERT_FILE", cert_file.path().to_str().unwrap())
-        .env("LOGDNA_LOG_DIRS", &dir_path)
-        .env("LOGDNA_HOST", "localhost:1337")
-        .env("LOGDNA_LOOKBACK", "start")
-        .env("LOGDNA_INGESTION_KEY", "1234")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-
+    let (server, received, shutdown_handle, cert_file) = common::self_signed_https_ingester();
     let log_lines = "This is a test log line";
 
     let file_path = dir.path().join("test.log");
@@ -450,7 +416,13 @@ fn lookback_start_lines_are_delivered() {
         .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
     file.sync_all().expect("Failed to sync file");
 
-    let mut handle = agent.spawn().expect("Failed to start agent");
+    let mut handle = common::spawn_agent(AgentSettings {
+        log_dirs: &dir_path,
+        exclusion_regex: None,
+        ssl_cert_file: Some(cert_file.path()),
+        lookback: Some("start"),
+    });
+
     // Dump the agent's stdout
     // TODO: assert that it's successfully uploaded
 
@@ -460,6 +432,12 @@ fn lookback_start_lines_are_delivered() {
         let (line_count, _, server) = tokio::join!(
             async {
                 tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
+                let mut output = String::new();
+
+                handle.kill().unwrap();
+                let stderr_ref = handle.stderr.as_mut().unwrap();
+
+                stderr_ref.read_to_string(&mut output).unwrap();
                 let line_count = received
                     .lock()
                     .await
@@ -468,12 +446,7 @@ fn lookback_start_lines_are_delivered() {
                     .0
                     .load(std::sync::atomic::Ordering::Relaxed);
                 shutdown_handle();
-                let mut output = String::new();
 
-                handle.kill().unwrap();
-                let stderr_ref = handle.stderr.as_mut().unwrap();
-
-                stderr_ref.read_to_string(&mut output).unwrap();
                 handle.wait().unwrap();
                 line_count
             },
@@ -500,41 +473,10 @@ fn lookback_start_lines_are_delivered() {
 fn lookback_none_lines_are_delivered() {
     let _ = env_logger::Builder::from_default_env().try_init();
 
-    let subject_alt_names = vec!["logdna.com".to_string(), "localhost".to_string()];
-
-    let cert = generate_simple_self_signed(subject_alt_names).unwrap();
-    // The certificate is now valid for localhost and the domain "hello.world.example"
-    let certs =
-        pemfile::certs(&mut cert.serialize_pem().unwrap().as_bytes()).expect("couldn't load certs");
-    let key = pemfile::pkcs8_private_keys(&mut cert.serialize_private_key_pem().as_bytes())
-        .expect("couldn't load rsa_private_key");
-    let addr = "0.0.0.0:1338".parse().unwrap();
-
-    let mut cert_file = tempfile::NamedTempFile::new().expect("Couldn't create cert file");
-    cert_file
-        .write_all(cert.serialize_pem().unwrap().as_bytes())
-        .expect("Couldn't write cert file");
-
-    let (server, received, shutdown_handle) = https_ingester(addr, certs, key[0].clone());
-
     let dir = tempdir().expect("Couldn't create temp dir...");
-
-    let mut cmd = Command::cargo_bin("logdna-agent").unwrap();
-
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
 
-    let agent = cmd
-        .env_clear()
-        .env("RUST_LOG", "debug")
-        .env("RUST_BACKTRACE", "full")
-        .env("SSL_CERT_FILE", cert_file.path().to_str().unwrap())
-        .env("LOGDNA_LOG_DIRS", &dir_path)
-        .env("LOGDNA_HOST", "localhost:1338")
-        .env("LOGDNA_LOOKBACK", "none")
-        .env("LOGDNA_INGESTION_KEY", "1234")
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-
+    let (server, received, shutdown_handle, cert_file) = common::self_signed_https_ingester();
     let log_lines = "This is a test log line";
 
     let file_path = dir.path().join("test.log");
@@ -546,7 +488,13 @@ fn lookback_none_lines_are_delivered() {
         .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
     file.sync_all().expect("Failed to sync file");
 
-    let mut handle = agent.spawn().expect("Failed to start agent");
+    let mut handle = common::spawn_agent(AgentSettings {
+        log_dirs: &dir_path,
+        exclusion_regex: None,
+        ssl_cert_file: Some(cert_file.path()),
+        lookback: None,
+    });
+
     // Dump the agent's stdout
     // TODO: assert that it's successfully uploaded
 
@@ -555,6 +503,14 @@ fn lookback_none_lines_are_delivered() {
         let (line_count, _, server) = tokio::join!(
             async {
                 tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
+
+                let mut output = String::new();
+
+                handle.kill().unwrap();
+                let stderr_ref = handle.stderr.as_mut().unwrap();
+
+                stderr_ref.read_to_string(&mut output).unwrap();
+                handle.wait().unwrap();
                 let line_count = received
                     .lock()
                     .await
@@ -563,13 +519,6 @@ fn lookback_none_lines_are_delivered() {
                     .0
                     .load(std::sync::atomic::Ordering::Relaxed);
                 shutdown_handle();
-                let mut output = String::new();
-
-                handle.kill().unwrap();
-                let stderr_ref = handle.stderr.as_mut().unwrap();
-
-                stderr_ref.read_to_string(&mut output).unwrap();
-                handle.wait().unwrap();
                 line_count
             },
             async move {

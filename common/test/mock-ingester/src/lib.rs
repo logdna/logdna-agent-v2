@@ -23,7 +23,9 @@ use tokio_rustls::TlsAcceptor;
 
 const ROOT: &str = "/logs/agent";
 
-type FileLineCounter = Arc<Mutex<HashMap<String, (AtomicUsize, Vec<Bytes>)>>>;
+pub type FileLineCounter = Arc<Mutex<HashMap<String, (AtomicUsize, Vec<Bytes>)>>>;
+
+pub type HyperError = hyper::Error;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct IngestBody {
@@ -45,7 +47,7 @@ impl Unpin for Svc {}
 
 impl Service<Request<Body>> for Svc {
     type Response = Response<Body>;
-    type Error = hyper::Error;
+    type Error = HyperError;
     #[allow(clippy::type_complexity)]
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
@@ -161,7 +163,7 @@ impl<T> Service<T> for MakeSvc {
 pub fn http_ingester(
     addr: SocketAddr,
 ) -> (
-    impl Future<Output = std::result::Result<(), hyper::Error>>,
+    impl Future<Output = std::result::Result<(), HyperError>>,
     FileLineCounter,
     impl FnOnce(),
 ) {
@@ -202,7 +204,7 @@ pub fn https_ingester(
     server_cert: Vec<rustls::Certificate>,
     private_key: rustls::PrivateKey,
 ) -> (
-    impl Future<Output = std::result::Result<(), hyper::Error>>,
+    impl Future<Output = std::result::Result<(), HyperError>>,
     FileLineCounter,
     impl FnOnce(),
 ) {

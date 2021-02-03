@@ -70,6 +70,9 @@ REMOTE_BRANCH := $(shell git branch -vv | awk '/^\*/{split(substr($$4, 2, length
 
 AWS_SHARED_CREDENTIALS_FILE=$(HOME)/.aws/credentials
 
+
+LOGDNA_HOST?=localhost:1337
+
 _TAC= awk '{line[NR]=$$0} END {for (i=NR; i>=1; i--) print line[i]}'
 TEST_RULES=
 # Dynamically generate test targets for each workspace
