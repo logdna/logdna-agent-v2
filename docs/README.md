@@ -14,12 +14,13 @@ The LogDNA agent is a fast, resource-efficient log collection client that forwar
 ## Table of Contents
 
 * [Managing Deployments](#managing-deployments)
-  * [Installing](#installing)
-  * [Upgrading](#upgrading)
-  * [Uninstalling](#uninstalling)
+  * [Installing on Kubernetes](#installing-on-kubernetes)
+    * [Using manifest files](#using-manifest-files)
+    * [Using Helm](#using-helm)
+  * [Installing on OpenShift](#installing-on-openshift)
   * [Running as Non-Root](#running-as-non-root)
   * [Additional Installation Options](#additional-installation-options)
-* [Building](#building)
+* [Building](#building-the-logdna-agent)
   * [Building Docker image](#building-docker-image)
 * [Configuration](#configuration)
   * [Options](#options)
@@ -32,7 +33,12 @@ The LogDNA agent is a fast, resource-efficient log collection client that forwar
 
 The agent is supported for Kubernetes 1.9+ and Red Hat OpenShift 4.5+ environments.
 
-### Installing
+### Installing on Kubernetes
+
+You can use the manifest YAML files in this repository or use Helm package manager to deploy the agent in your
+Kubernetes cluster.
+
+#### Using manifest files
 
 __NOTE__: The Kubernetes manifest YAML files in this repository (and referenced in this
 documentation) describe the version of the LogDNA Agent in the current commit
@@ -40,34 +46,16 @@ tree and no other version of the LogDNA agent. If you apply the Kubernetes manif
 found in the current tree then your cluster _will_ be running the version described
 by the current commit which may not be ready for general use.
 
-You MUST ensure that the current tree is checked out to the branch/tag is the
-version you intend to install, if you install a pre-release version of the
-agent your logs may not be collected.
+Follow the full instructions in the documentation to [deploy on Kubernetes using resource
+files](KUBERNETES.md).
 
-To install a specific version you should ensure that you check out the exact tag for that
-version before applying any YAML files from the current tree.
+#### Using Helm
 
-For example, to install a specific version, say a particular build of a beta, you would run the following command (with the 
-specific tag's version number) in the repo's root directory before following the install instructions relevant for your cluster.
+Visit the documentation to [install the agent on Kubernetes using Helm](HELM.md).
 
-```bash
-git checkout major.minor.patch-beta.n
-```
+### Installing on OpenShift
 
-To view a list of all available release versions, navigate in your terminal to your local working directory (where you cloned the agent source repository) and then run the command `git tag -l`.
-
-* [Installing on Kubernetes](KUBERNETES.md#installing)
-* [Installing on OpenShift](OPENSHIFT.md#installing)
-
-### Upgrading
-
-* [Upgrading on Kubernetes](KUBERNETES.md#upgrading)
-* [Upgrading on OpenShift](OPENSHIFT.md#upgrading)
-
-### Uninstalling
-
-* [Uninstalling on Kubernetes](KUBERNETES.md#uninstalling)
-* [Uninstalling on OpenShift](OPENSHIFT.md#uninstalling)
+Follow the instructions for [deploying the agent on Red Hat®️ OpenShift®️](OPENSHIFT.md).
 
 ### Running as Non-Root
 
@@ -83,7 +71,7 @@ More information about managing your deployments is documented for [Kubernetes](
 * Version specific upgrade paths
 * Collecting system logs through Journald
 
-## Building Agent v2
+## Building the LogDNA Agent
 
 Obtain the source code to build the agent from our [GitHub repository](https://github.com/logdna/logdna-agent-v2). You can either download the source files as a .zip file, or clone the repository.
 
