@@ -5,8 +5,7 @@ use crate::rule::{GlobRule, Rules, Status};
 
 use std::cell::RefCell;
 use std::ffi::{OsStr, OsString};
-use std::fs::read_dir;
-use std::fs::OpenOptions;
+use std::fs::{read_dir, OpenOptions};
 use std::iter::FromIterator;
 use std::ops::Deref;
 use std::path::{Component, PathBuf};
@@ -72,6 +71,7 @@ where
     watch_descriptors: WatchDescriptors,
 
     master_rules: Rules,
+    initial_dirs: Vec<DirPathBuf>,
     initial_dir_rules: Rules,
 
     initial_events: Vec<Event>,
@@ -108,6 +108,7 @@ where
             symlinks: Symlinks::new(),
             watch_descriptors: WatchDescriptors::new(),
             master_rules: rules,
+            initial_dirs: initial_dirs.clone(),
             initial_dir_rules,
             watcher,
             initial_events: Vec::new(),
@@ -339,7 +340,11 @@ where
         let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
         let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
         path.push(name);
-        self.remove(&path, events, _entries)
+        if !self.initial_dirs.iter().any(|dir| dir.as_ref() == path) {
+            self.remove(&path, events, _entries)
+        } else {
+            Ok(())
+        }
     }
 
     fn process_move(
@@ -1383,6 +1388,42 @@ mod tests {
             tempdir.close().unwrap();
             take_events!(fs, 7);
 
+            // It's a root dir, make sure it's still there
+            assert!(lookup_entry!(fs, path).is_some());
+            assert!(lookup_entry!(fs, file_path).is_none());
+            assert!(lookup_entry!(fs, sym_path).is_none());
+            assert!(lookup_entry!(fs, hard_path).is_none());
+        });
+    }
+
+    // Deletes a directory
+    #[test]
+    fn filesystem_delete_nested_filled_dir() {
+        run_test(|| {
+            // Now make a nested dir
+            let rootdir = TempDir::new().unwrap();
+            let rootpath = rootdir.path().to_path_buf();
+
+            let tempdir = TempDir::new_in(rootpath.clone()).unwrap();
+            let path = tempdir.path().to_path_buf();
+
+            let file_path = path.join("file.log");
+            let sym_path = path.join("sym.log");
+            let hard_path = path.join("hard.log");
+            File::create(file_path.clone()).unwrap();
+            symlink(&file_path, &sym_path).unwrap();
+            hard_link(&file_path, &hard_path).unwrap();
+
+            let fs = Arc::new(Mutex::new(new_fs::<()>(rootpath.clone(), None)));
+
+            assert!(lookup_entry!(fs, path).is_some());
+            assert!(lookup_entry!(fs, file_path).is_some());
+            assert!(lookup_entry!(fs, sym_path).is_some());
+            assert!(lookup_entry!(fs, hard_path).is_some());
+
+            tempdir.close().unwrap();
+
+            take_events!(fs, 7);
             assert!(lookup_entry!(fs, path).is_none());
             assert!(lookup_entry!(fs, file_path).is_none());
             assert!(lookup_entry!(fs, sym_path).is_none());
