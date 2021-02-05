@@ -727,6 +727,7 @@ dependencies = [
  "metrics",
  "pcre2",
  "slotmap",
+ "smallvec",
  "tempfile",
  "thiserror",
  "tokio",
