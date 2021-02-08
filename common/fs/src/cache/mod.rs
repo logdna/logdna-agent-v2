@@ -1414,7 +1414,7 @@ mod tests {
             symlink(&file_path, &sym_path).unwrap();
             hard_link(&file_path, &hard_path).unwrap();
 
-            let fs = Arc::new(Mutex::new(new_fs::<()>(rootpath.clone(), None)));
+            let fs = Arc::new(Mutex::new(new_fs::<()>(rootpath, None)));
 
             assert!(lookup_entry!(fs, path).is_some());
             assert!(lookup_entry!(fs, file_path).is_some());
