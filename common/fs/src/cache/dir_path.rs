@@ -12,7 +12,7 @@ pub enum DirPathBufError {
 
 // Strongly typed wrapper around PathBuf, cannot be constructed unless
 // the directory it's referring to exists
-#[derive(std::fmt::Debug)]
+#[derive(std::fmt::Debug, Clone)]
 pub struct DirPathBuf {
     inner: PathBuf,
 }

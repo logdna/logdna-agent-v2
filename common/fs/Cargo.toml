@@ -20,6 +20,7 @@ pcre2 = "0.2"
 globber = "0.1"
 hashbrown = "0.8"
 slotmap = "1.0"
+smallvec = "1.6"
 
 #logging
 log = "0.4"
