@@ -37,7 +37,7 @@ VCS_URL := https://github.com/logdna/$(REPO)
 BUILD_DATE := $(shell date -u +'%Y%m%d')
 BUILD_TIMESTAMP := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUILD_VERSION := $(shell sed -nE "s/^version = \"(.+)\"\$$/\1/p" bin/Cargo.toml)
-BUILD_TAG := $(VCS_REF)
+BUILD_TAG ?= $(VCS_REF)
 
 MAJOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f1)
 MINOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f2)
@@ -129,7 +129,7 @@ lint-clippy: ## Checks for code errors
 
 .PHONY:lint-audit
 lint-audit: ## Audits packages for issues
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo audit"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo audit --ignore RUSTSEC-2021-0020"
 
 .PHONY:lint-docker
 lint-docker: ## Lint the Dockerfile for issues
