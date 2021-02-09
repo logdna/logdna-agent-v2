@@ -1,4 +1,5 @@
 use inotify::{EventMask, Inotify, WatchDescriptor, WatchMask};
+use std::collections::HashMap;
 use std::ffi::OsString;
 use std::io;
 use std::path::Path;
@@ -6,6 +7,7 @@ use std::sync::Arc;
 
 use futures::future::Either;
 use futures::{Stream, StreamExt};
+use smallvec::SmallVec;
 use tokio::time::Instant;
 
 use tokio::sync::Mutex;
@@ -93,6 +95,10 @@ impl<'a> WatchEventStream<'a> {
             Arc::new(Mutex::new(Vec::new()));
         let unmatched_move_from: Arc<Mutex<Vec<(Instant, WatchEvent)>>> =
             Arc::new(Mutex::new(Vec::new()));
+        let buffered_events: Arc<Mutex<HashMap<OsString, SmallVec<[WatchEvent; 2]>>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let buffered_modify_events: Arc<Mutex<Vec<(Instant, WatchEvent)>>> =
+            Arc::new(Mutex::new(Vec::new()));
         // Interleave inotify events with a heartbeat every 1 second
         // heartbeat is used to ensure unpaired MOVED_TO and MOVED_FROM
         // correctly generate events.
@@ -112,6 +118,8 @@ impl<'a> WatchEventStream<'a> {
                         EventOrInterval::Event(raw_event) => Either::Left(futures::stream::once({
                             let unmatched_move_to = unmatched_move_to.clone();
                             let unmatched_move_from = unmatched_move_from.clone();
+                            let buffered_events = buffered_events.clone();
+                            let buffered_modify_events = buffered_modify_events.clone();
                             async move {
                                 match raw_event {
                                     Ok(raw_event) => {
@@ -200,19 +208,81 @@ impl<'a> WatchEventStream<'a> {
                                                 None
                                             }
                                         } else if raw_event.mask.contains(EventMask::CREATE) {
-                                            Some(WatchEvent::Create {
-                                                wd: raw_event.wd.clone(),
-                                                name: raw_event.name.unwrap(),
-                                            })
+                                            let raw_event_name = raw_event.name.unwrap();
+                                            let unmatched_move_from =
+                                                unmatched_move_from.lock().await;
+                                            let has_relevant_unmatched_move_from =
+                                                unmatched_move_from.iter().any(|e| {
+                                                    if let (_, WatchEvent::MovedFrom { name, .. }) =
+                                                        e
+                                                    {
+                                                        return name == &raw_event_name;
+                                                    };
+                                                    false
+                                                });
+                                            if has_relevant_unmatched_move_from {
+                                                buffered_events
+                                                    .lock()
+                                                    .await
+                                                    .entry(raw_event_name.clone())
+                                                    .or_insert_with(SmallVec::new)
+                                                    .push(WatchEvent::Create {
+                                                        wd: raw_event.wd.clone(),
+                                                        name: raw_event_name,
+                                                    });
+                                                None
+                                            } else {
+                                                Some(WatchEvent::Create {
+                                                    wd: raw_event.wd.clone(),
+                                                    name: raw_event_name,
+                                                })
+                                            }
                                         } else if raw_event.mask.contains(EventMask::DELETE) {
-                                            Some(WatchEvent::Delete {
-                                                wd: raw_event.wd.clone(),
-                                                name: raw_event.name.unwrap(),
-                                            })
+                                            let raw_event_name = raw_event.name.unwrap();
+                                            let unmatched_move_from =
+                                                unmatched_move_from.lock().await;
+                                            let has_relevant_unmatched_move_from =
+                                                unmatched_move_from.iter().any(|e| {
+                                                    if let (_, WatchEvent::MovedFrom { name, .. }) =
+                                                        e
+                                                    {
+                                                        return name == &raw_event_name;
+                                                    };
+                                                    false
+                                                });
+                                            if has_relevant_unmatched_move_from {
+                                                buffered_events
+                                                    .lock()
+                                                    .await
+                                                    .entry(raw_event_name.clone())
+                                                    .or_insert_with(SmallVec::new)
+                                                    .push(WatchEvent::Delete {
+                                                        wd: raw_event.wd.clone(),
+                                                        name: raw_event_name,
+                                                    });
+                                                None
+                                            } else {
+                                                Some(WatchEvent::Delete {
+                                                    wd: raw_event.wd.clone(),
+                                                    name: raw_event_name,
+                                                })
+                                            }
                                         } else if raw_event.mask.contains(EventMask::MODIFY) {
-                                            Some(WatchEvent::Modify {
-                                                wd: raw_event.wd.clone(),
-                                            })
+                                            let unmatched_move_from =
+                                                unmatched_move_from.lock().await;
+                                            if !unmatched_move_from.is_empty() {
+                                                buffered_modify_events.lock().await.push((
+                                                    Instant::now(),
+                                                    WatchEvent::Modify {
+                                                        wd: raw_event.wd.clone(),
+                                                    },
+                                                ));
+                                                None
+                                            } else {
+                                                Some(WatchEvent::Modify {
+                                                    wd: raw_event.wd.clone(),
+                                                })
+                                            }
                                         } else if raw_event.mask.contains(EventMask::Q_OVERFLOW) {
                                             Some(WatchEvent::Overflow)
                                         } else {
@@ -227,9 +297,11 @@ impl<'a> WatchEventStream<'a> {
                             Either::Right({
                                 let unmatched_move_to = unmatched_move_to.clone();
                                 let unmatched_move_from = unmatched_move_from.clone();
+                                let buffered_events = buffered_events.clone();
                                 {
-                                    // TODO: hoist this buffer out into an argument
-                                    let mut events = vec![];
+                                    let mut events: SmallVec<
+                                        [Result<Option<WatchEvent>, std::io::Error>; 4],
+                                    > = SmallVec::new();
                                     {
                                         let mut unmatched_move_to = unmatched_move_to
                                             .try_lock()
@@ -249,7 +321,7 @@ impl<'a> WatchEventStream<'a> {
                                     {
                                         let mut unmatched_move_from = unmatched_move_from
                                             .try_lock()
-                                            .expect("Couldn't lock unmatched_move_to");
+                                            .expect("Couldn't lock unmatched_move_from");
                                         while let Some(idx) =
                                             unmatched_move_from.iter().position(|(instant, _)| {
                                                 now - tokio::time::Duration::from_millis(
@@ -262,7 +334,55 @@ impl<'a> WatchEventStream<'a> {
                                             )));
                                         }
                                     }
-                                    // unmatched_move_to.position
+                                    // check for buffered events which are no longer blocked.
+                                    {
+                                        let mut buffered_events = buffered_events
+                                            .try_lock()
+                                            .expect("Couldn't lock buffered_events");
+
+                                        let event_from_names = events
+                                            .iter()
+                                            .filter_map(|event| {
+                                                if let Ok(Some(WatchEvent::MovedFrom {
+                                                    name,
+                                                    ..
+                                                })) = event
+                                                {
+                                                    Some(name.clone())
+                                                } else {
+                                                    None
+                                                }
+                                            })
+                                            .collect::<SmallVec<[OsString; 4]>>();
+                                        for event_from_name in event_from_names {
+                                            if let Some(es) =
+                                                buffered_events.remove(&event_from_name)
+                                            {
+                                                events.extend(
+                                                    es.into_iter().map(move |e| Ok(Some(e))),
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    {
+                                        let mut buffered_modify_events = buffered_modify_events
+                                            .try_lock()
+                                            .expect("Couldn't lock buffered_modify_events");
+                                        while let Some(idx) = buffered_modify_events
+                                            .iter()
+                                            .position(|(instant, _)| {
+                                                now - tokio::time::Duration::from_millis(
+                                                    INOTIFY_EVENT_GRACE_PERIOD_MS,
+                                                ) > *instant
+                                            })
+                                        {
+                                            events.push(Ok(Some(
+                                                buffered_modify_events.swap_remove(idx).1,
+                                            )));
+                                        }
+                                    }
+
                                     futures::stream::iter(events)
                                 }
                             })
