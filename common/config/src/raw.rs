@@ -100,7 +100,7 @@ impl Default for LogConfig {
         LogConfig {
             dirs: vec!["/var/log/".into()],
             include: Some(Rules {
-                glob: vec!["*.log".parse().unwrap(), "!(*.*)".parse().unwrap()],
+                glob: vec!["*.log".parse().unwrap()],
                 regex: Vec::new(),
             }),
             exclude: Some(Rules {

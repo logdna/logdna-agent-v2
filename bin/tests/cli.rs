@@ -168,6 +168,27 @@ fn test_append_and_delete() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_file_added_after_initialization() {
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
+    let mut reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    thread::sleep(std::time::Duration::from_millis(2000));
+
+    let file_path = dir.join("file1.log");
+    File::create(&file_path).expect("Could not create file");
+    common::wait_for_file_event("added", &file_path, &mut reader);
+    common::append_to_file(&file_path, 1000, 50).expect("Could not append");
+    common::wait_for_file_event("tailer sendings lines for", &file_path, &mut reader);
+
+    common::assert_agent_running(&mut agent_handle);
+
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_delete_does_not_leave_file_descriptor() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file_path = dir.join("file1.log");
