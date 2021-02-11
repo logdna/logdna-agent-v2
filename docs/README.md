@@ -1,12 +1,13 @@
 # LogDNA Agent
 
-[![Rustc Version 1.42+]][rustc] [Join us on LogDNA's Public Slack]
+[![Rustc Version 1.46+]][rustc]]
+[Join us at the LogDNA community forum]: https://community.logdna.com
 
 The LogDNA agent is a fast, resource-efficient log collection client that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
 
 [Rustc Version 1.42+]: https://img.shields.io/badge/rustc-1.42+-lightgray.svg
 [rustc]: https://blog.rust-lang.org/2020/03/12/Rust-1.42.html
-[Join us on LogDNA's Public Slack]: http://chat.logdna.com/
+[Join us at the LogDNA community forum]: https://community.logdna.com
 [LogDNA]: https://logdna.com
 [Rust]: https://www.rust-lang.org/
 [Kubernetes]: https://kubernetes.io/
