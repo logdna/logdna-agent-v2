@@ -174,7 +174,7 @@ impl Tailer {
                                 debug!("Delete Event");
                                 if !paths.is_empty() {
                                     if let Entry::Symlink { link, .. } = entry.borrow().deref() {
-                                        if let Ok(Some(real_entry)) = fs.lookup(link, &entries) {
+                                        if let Some(real_entry) = fs.lookup(link, &entries) {
                                             if let Some(r_entry) = entries.get(real_entry) {
                                                 entry = r_entry
                                             }
@@ -204,7 +204,7 @@ impl Tailer {
                             // if Some(..) = entries.get(key) clauses)
                             let mut entries = fs.entries.borrow_mut();
                             if entries.remove(entry_ptr).is_some() {
-                                debug!(
+                                info!(
                                     "Entry was removed from the map, new length: {}",
                                     entries.len());
                             }
