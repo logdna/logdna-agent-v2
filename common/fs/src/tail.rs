@@ -205,7 +205,7 @@ impl Tailer {
                             let mut entries = fs.entries.borrow_mut();
                             if entries.remove(entry_ptr).is_some() {
                                 info!(
-                                    "Entry was removed from the map, new length: {}",
+                                    "Removed file information, currently tracking {} files",
                                     entries.len());
                             }
                         }

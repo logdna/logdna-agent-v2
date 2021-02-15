@@ -872,7 +872,7 @@ where
                         .get(&component)
                         .and_then(|entry| self.follow_links(*entry, _entries))
                 } else {
-                    error!("Failed to find entry");
+                    info!("Failed to find entry on lookup");
                     None
                 }
             })?;
