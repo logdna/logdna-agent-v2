@@ -322,6 +322,51 @@ fn test_exclusion_rules() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_files_other_than_dot_log_should_be_not_included_by_default() {
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let included_file = dir.join("file1.log");
+    let not_included_files = vec![
+        "file2.tar.gz",
+        "file3.tar",
+        "file4.0",
+        "file5.1",
+        ".file6",
+        "file7",
+    ];
+    common::append_to_file(&included_file, 100, 50).expect("Could not append");
+
+    for file_name in &not_included_files {
+        common::append_to_file(&dir.join(file_name), 100, 50).expect("Could not append");
+    }
+
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
+    let mut reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    let lines = common::wait_for_file_event("initialized", &included_file, &mut reader);
+
+    for file_name in &not_included_files {
+        let file_parts: Vec<&str> = file_name.split('.').collect();
+        let regex;
+        if file_parts.len() == 2 {
+            regex = format!(
+                "{}{}\\.{}",
+                r"initialized [^\n]*", file_parts[0], file_parts[1]
+            );
+        } else {
+            regex = format!("{}{}", r"initialized [^\n]*", file_name);
+        }
+        let matches_excluded_file = predicate::str::is_match(regex).unwrap();
+        assert!(
+            !matches_excluded_file.eval(&lines),
+            format!("{} should not been included", file_name)
+        );
+    }
+
+    common::assert_agent_running(&mut agent_handle);
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg_attr(not(target_os = "linux"), ignore)]
 fn test_dangling_symlinks() {
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
