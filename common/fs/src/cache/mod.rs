@@ -469,7 +469,7 @@ where
         }
 
         let parent_ref = self.create_dir(&path.parent().unwrap().into(), _entries)?;
-        let parent_ref = self.follow_links(parent_ref, _entries)?;
+        let parent_ref = self.follow_links(parent_ref, _entries);
 
         if parent_ref.is_none() {
             return Ok(None);
@@ -632,7 +632,7 @@ where
     ) -> FsResult<()> {
         let path_buf = path.parent().ok_or(Error::PathNotValid)?.into();
         let parent = self
-            .lookup(&path_buf, _entries)?
+            .lookup(&path_buf, _entries)
             .ok_or(Error::ParentLookup)?;
         let component = into_components(path).pop().ok_or(Error::PathNotValid)?;
 
@@ -706,7 +706,7 @@ where
         let parent_path = to.parent().ok_or(Error::ParentNotValid)?;
         let new_parent = self.create_dir(&parent_path.into(), _entries)?;
 
-        match self.lookup(from, _entries)? {
+        match self.lookup(from, _entries) {
             Some(entry_key) => {
                 let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
                 let new_name = into_components(to).pop().ok_or(Error::PathNotValid)?;
@@ -787,7 +787,7 @@ where
 
             let new_entry = match action {
                 Action::Return(key) => key,
-                Action::Lookup(ref link) => self.lookup(link, _entries)?.ok_or(Error::Lookup)?,
+                Action::Lookup(ref link) => self.lookup(link, _entries).ok_or(Error::Lookup)?,
                 Action::CreateDir => {
                     let wd = self
                         .watcher
@@ -851,8 +851,9 @@ where
         }
     }
 
-    /// Returns the entry that represents the supplied path or `Ok(None)`.
-    pub fn lookup(&self, path: &PathBuf, _entries: &EntryMap<T>) -> FsResult<Option<EntryKey>> {
+    /// Returns the entry that represents the supplied path.
+    /// When the path is not represented and therefore has no entry then `None` is return.
+    pub fn lookup(&self, path: &PathBuf, _entries: &EntryMap<T>) -> Option<EntryKey> {
         let mut parent = self.root;
         let mut components = into_components(path);
         // remove the first component because it will always be the root
@@ -860,56 +861,43 @@ where
 
         // If the path has no components there is nothing to look up.
         if components.is_empty() {
-            return Ok(None);
+            return None;
         }
 
-        let last_component = components.pop().unwrap();
+        let last_component = components.pop()?;
 
         for component in components {
-            if let Some(entry) = self.follow_links(parent, _entries)? {
-                if let Some(parent_ref) = _entries
-                    .get(entry)
-                    .ok_or(Error::ParentLookup)?
-                    .borrow()
-                    .children()
-                    .ok_or(Error::ParentNotValid)?
-                    .get(&component)
-                {
-                    if let Some(parent_ref) = self.follow_links(*parent_ref, _entries)? {
-                        parent = parent_ref;
-                        continue;
-                    }
+            parent = self.follow_links(parent, _entries).and_then(|e| {
+                if let Some(e) = _entries.get(e) {
+                    e.borrow()
+                        .children()?
+                        .get(&component)
+                        .and_then(|entry| self.follow_links(*entry, _entries))
+                } else {
+                    info!("Failed to find entry on lookup");
+                    None
                 }
-            }
-
-            // When components are not found `Ok(None)` is returned
-            return Ok(None);
+            })?;
         }
 
-        Ok(_entries
-            .get(parent)
-            .ok_or(Error::ParentLookup)?
+        _entries
+            .get(parent)?
             .borrow()
-            .children()
-            .ok_or(Error::ParentNotValid)?
+            .children()?
             .get(&last_component)
-            .copied())
+            .copied()
     }
 
-    fn follow_links(&self, entry: EntryKey, _entries: &EntryMap<T>) -> FsResult<Option<EntryKey>> {
+    fn follow_links(&self, entry: EntryKey, _entries: &EntryMap<T>) -> Option<EntryKey> {
         let mut result = entry;
-        while let Some(e) = _entries.get(entry) {
+        while let Some(e) = _entries.get(result) {
             if let Some(link) = e.borrow().link() {
-                if let Some(e) = self.lookup(link, _entries)? {
-                    result = e;
-                } else {
-                    return Ok(None);
-                }
+                result = self.lookup(link, _entries)?;
             } else {
                 break;
             }
         }
-        Ok(Some(result))
+        Some(result)
     }
 
     fn is_symlink_target(&self, path: &PathBuf, _entries: &EntryMap<T>) -> bool {
@@ -1098,7 +1086,7 @@ mod tests {
             let fs = $x.lock().expect("failed to lock fs");
             let entries = fs.entries.clone();
             let entries = entries.borrow();
-            fs.lookup(&$y, &entries).unwrap()
+            fs.lookup(&$y, &entries)
         }};
     }
 
