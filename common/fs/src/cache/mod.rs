@@ -927,13 +927,23 @@ where
         false
     }
 
+    /// Determines whether the path is within the initial dir
+    /// and either passes the master rules (e.g. "*.log") or it's a directory
     fn is_initial_dir_target(&self, path: &PathBuf) -> bool {
-        if let Status::Ok = self.initial_dir_rules.passes(path) {
-            if let Status::Ok = self.master_rules.passes(path) {
-                return true;
-            }
+        // Must be within the initial dir
+        if self.initial_dir_rules.passes(path) != Status::Ok {
+            return false;
         }
-        false
+
+        // The file should validate the file rules or be a directory
+        if self.master_rules.passes(path) != Status::Ok {
+            if let Ok(metadata) = std::fs::metadata(path) {
+                return metadata.is_dir();
+            }
+            return false;
+        }
+
+        true
     }
 
     /// Helper method for checking if a path passes exclusion/inclusion rules
@@ -1257,6 +1267,29 @@ mod tests {
             take_events!(fs, 1);
 
             assert!(lookup_entry!(fs, path).is_some());
+        });
+    }
+
+    /// Creates a dir w/ dots and a file after initialization
+    #[test]
+    fn filesystem_create_dir_after_init() {
+        run_test(|| {
+            let tempdir = TempDir::new().unwrap();
+            let path = tempdir.path().to_path_buf();
+
+            let file_system = Arc::new(Mutex::new(new_fs::<()>(path.clone(), None)));
+
+            take_events!(file_system, 1);
+
+            // Use a subdirectory with dots
+            let sub_dir = path.join("sub.dir");
+            create_dir(&sub_dir).unwrap();
+            let file_path = sub_dir.join("insert.log");
+            File::create(&file_path).unwrap();
+
+            take_events!(file_system, 2);
+
+            assert!(lookup_entry!(file_system, &file_path).is_some());
         });
     }
 

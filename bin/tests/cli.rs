@@ -168,6 +168,27 @@ fn test_append_and_delete() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_file_added_after_initialization() {
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
+    let mut reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    thread::sleep(std::time::Duration::from_millis(2000));
+
+    let file_path = dir.join("file1.log");
+    File::create(&file_path).expect("Could not create file");
+    common::wait_for_file_event("added", &file_path, &mut reader);
+    common::append_to_file(&file_path, 1000, 50).expect("Could not append");
+    common::wait_for_file_event("tailer sendings lines for", &file_path, &mut reader);
+
+    common::assert_agent_running(&mut agent_handle);
+
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_delete_does_not_leave_file_descriptor() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file_path = dir.join("file1.log");
@@ -296,6 +317,51 @@ fn test_exclusion_rules() {
 
     common::assert_agent_running(&mut agent_handle);
 
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_files_other_than_dot_log_should_be_not_included_by_default() {
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let included_file = dir.join("file1.log");
+    let not_included_files = vec![
+        "file2.tar.gz",
+        "file3.tar",
+        "file4.0",
+        "file5.1",
+        ".file6",
+        "file7",
+    ];
+    common::append_to_file(&included_file, 100, 50).expect("Could not append");
+
+    for file_name in &not_included_files {
+        common::append_to_file(&dir.join(file_name), 100, 50).expect("Could not append");
+    }
+
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
+    let mut reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    let lines = common::wait_for_file_event("initialized", &included_file, &mut reader);
+
+    for file_name in &not_included_files {
+        let file_parts: Vec<&str> = file_name.split('.').collect();
+        let regex;
+        if file_parts.len() == 2 {
+            regex = format!(
+                "{}{}\\.{}",
+                r"initialized [^\n]*", file_parts[0], file_parts[1]
+            );
+        } else {
+            regex = format!("{}{}", r"initialized [^\n]*", file_name);
+        }
+        let matches_excluded_file = predicate::str::is_match(regex).unwrap();
+        assert!(
+            !matches_excluded_file.eval(&lines),
+            format!("{} should not been included", file_name)
+        );
+    }
+
+    common::assert_agent_running(&mut agent_handle);
     agent_handle.kill().expect("Could not kill process");
 }
 
