@@ -291,9 +291,7 @@ fn test_exclusion_rules() {
     let mut agent_handle = common::spawn_agent(AgentSettings {
         log_dirs: &dir.to_str().unwrap(),
         exclusion_regex: Some(r"\w+ile2\.\w{3}"),
-        ssl_cert_file: None,
-        lookback: None,
-        host: None,
+        ..Default::default()
     });
 
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
@@ -488,10 +486,10 @@ fn lookback_start_lines_are_delivered() {
 
     let mut handle = common::spawn_agent(AgentSettings {
         log_dirs: &dir_path,
-        exclusion_regex: None,
         ssl_cert_file: Some(cert_file.path()),
         lookback: Some("start"),
         host: Some(&addr),
+        ..Default::default()
     });
 
     // Dump the agent's stdout
@@ -516,8 +514,7 @@ fn lookback_start_lines_are_delivered() {
                     .await
                     .get(file_path.to_str().unwrap())
                     .unwrap()
-                    .0
-                    .load(std::sync::atomic::Ordering::Relaxed);
+                    .lines;
                 shutdown_handle();
 
                 handle.wait().unwrap();
@@ -563,10 +560,9 @@ fn lookback_none_lines_are_delivered() {
 
     let mut handle = common::spawn_agent(AgentSettings {
         log_dirs: &dir_path,
-        exclusion_regex: None,
         ssl_cert_file: Some(cert_file.path()),
-        lookback: None,
         host: Some(&addr),
+        ..Default::default()
     });
 
     // Dump the agent's stdout
@@ -592,8 +588,7 @@ fn lookback_none_lines_are_delivered() {
                     .await
                     .get(file_path.to_str().unwrap())
                     .unwrap()
-                    .0
-                    .load(std::sync::atomic::Ordering::Relaxed);
+                    .lines;
                 shutdown_handle();
                 line_count
             },
@@ -613,4 +608,36 @@ fn lookback_none_lines_are_delivered() {
         server.unwrap();
         assert_eq!(line_count, 5);
     });
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_tags() {
+    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+    let file_path = dir.join("test.log");
+    let tag = "my-tag";
+    File::create(&file_path).expect("Couldn't create temp log file...");
+    let mut settings = AgentSettings::with_mock_ingester(&dir.to_str().unwrap(), &addr);
+    settings.tags = Some(tag);
+    let mut agent_handle = common::spawn_agent(settings);
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+
+    let (server_result, _) = tokio::join!(server, async {
+        common::append_to_file(&file_path, 10, 5).unwrap();
+        common::force_client_to_flush(&dir).await;
+
+        // Wait for the data to be received by the mock ingester
+        tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+
+        let map = received.lock().await;
+        let file_info = map.get(file_path.to_str().unwrap()).unwrap();
+        assert_eq!(file_info.lines, 10);
+        assert_eq!(file_info.tags, Some(tag.to_string()));
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
+    agent_handle.kill().expect("Could not kill process");
 }

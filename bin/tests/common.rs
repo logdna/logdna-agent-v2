@@ -14,7 +14,7 @@ use std::thread;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 
 use futures::Future;
-use logdna_mock_ingester::{https_ingester, FileLineCounter, HyperError};
+use logdna_mock_ingester::{http_ingester, https_ingester, FileLineCounter, HyperError};
 
 use rcgen::generate_simple_self_signed;
 use rustls::internal::pemfile;
@@ -89,6 +89,13 @@ pub fn append_to_file(file_path: &Path, lines: i32, sync_every: i32) -> Result<(
     Ok(())
 }
 
+pub async fn force_client_to_flush(dir_path: &Path) {
+    // Client flushing delay
+    tokio::time::delay_for(tokio::time::Duration::from_millis(300)).await;
+    // Append to a dummy file
+    append_to_file(&dir_path.join("force_flush.log"), 1, 1).unwrap();
+}
+
 pub fn truncate_file(file_path: &PathBuf) -> Result<(), std::io::Error> {
     OpenOptions::new()
         .read(true)
@@ -105,12 +112,26 @@ pub struct AgentSettings<'a> {
     pub ssl_cert_file: Option<&'a std::path::Path>,
     pub lookback: Option<&'a str>,
     pub host: Option<&'a str>,
+    pub use_ssl: bool,
+    pub ingester_key: Option<&'a str>,
+    pub tags: Option<&'a str>,
 }
 
 impl<'a> AgentSettings<'a> {
     pub fn new(log_dirs: &'a str) -> Self {
         AgentSettings {
             log_dirs,
+            use_ssl: true,
+            ..Default::default()
+        }
+    }
+
+    pub fn with_mock_ingester(log_dirs: &'a str, server_address: &'a str) -> Self {
+        AgentSettings {
+            log_dirs,
+            host: Some(server_address),
+            use_ssl: false,
+            ingester_key: Some("mock_key"),
             ..Default::default()
         }
     }
@@ -119,8 +140,15 @@ impl<'a> AgentSettings<'a> {
 pub fn spawn_agent(settings: AgentSettings) -> Child {
     let mut cmd = Command::cargo_bin("logdna-agent").unwrap();
 
-    let ingestion_key =
-        std::env::var("LOGDNA_INGESTION_KEY").expect("LOGDNA_INGESTION_KEY env var not set");
+    let ingestion_key: String;
+
+    if let Some(key) = settings.ingester_key {
+        ingestion_key = key.to_string();
+    } else {
+        ingestion_key = std::env::var("LOGDNA_INGESTION_KEY")
+            .expect("LOGDNA_INGESTION_KEY env var could not be obtained");
+    }
+
     assert_ne!(ingestion_key, "");
 
     let agent = cmd
@@ -134,6 +162,8 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
 
     if let Some(cert_file_path) = settings.ssl_cert_file {
         agent.env("SSL_CERT_FILE", cert_file_path);
+    } else {
+        agent.env("LOGDNA_USE_SSL", settings.use_ssl.to_string());
     }
 
     if let Some(host) = settings.host {
@@ -152,6 +182,11 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
     if let Some(rules) = settings.exclusion_regex {
         agent.env("LOGDNA_EXCLUSION_REGEX_RULES", rules);
     }
+
+    if let Some(tags) = settings.tags {
+        agent.env("LOGDNA_TAGS", tags);
+    }
+
     agent.spawn().expect("Failed to start agent")
 }
 
@@ -255,6 +290,24 @@ pub fn self_signed_https_ingester() -> (
         received,
         shutdown_handle,
         cert_file,
+        format!("localhost:{}", port),
+    )
+}
+
+pub fn start_http_ingester() -> (
+    impl Future<Output = std::result::Result<(), HyperError>>,
+    FileLineCounter,
+    impl FnOnce(),
+    String,
+) {
+    let port = get_available_port().expect("No ports free");
+    let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
+
+    let (server, received, shutdown_handle) = http_ingester(address);
+    (
+        server,
+        received,
+        shutdown_handle,
         format!("localhost:{}", port),
     )
 }
