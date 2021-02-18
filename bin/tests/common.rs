@@ -140,14 +140,11 @@ impl<'a> AgentSettings<'a> {
 pub fn spawn_agent(settings: AgentSettings) -> Child {
     let mut cmd = Command::cargo_bin("logdna-agent").unwrap();
 
-    let ingestion_key: String;
-
-    if let Some(key) = settings.ingester_key {
-        ingestion_key = key.to_string();
+    let ingestion_key = if let Some(key) = settings.ingester_key {
+        key.to_string()
     } else {
-        ingestion_key = std::env::var("LOGDNA_INGESTION_KEY")
-            .expect("LOGDNA_INGESTION_KEY env var could not be obtained");
-    }
+        ingestion_key = std::env::var("LOGDNA_INGESTION_KEY").unwrap()
+    };
 
     assert_ne!(ingestion_key, "");
 
