@@ -10,7 +10,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::From;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{fs, io};
@@ -23,7 +22,14 @@ use tokio_rustls::TlsAcceptor;
 
 const ROOT: &str = "/logs/agent";
 
-pub type FileLineCounter = Arc<Mutex<HashMap<String, (AtomicUsize, Vec<Bytes>)>>>;
+pub type FileLineCounter = Arc<Mutex<HashMap<String, FileInfo>>>;
+
+#[derive(Debug)]
+pub struct FileInfo {
+    pub tags: Option<String>,
+    pub value: Vec<Bytes>,
+    pub lines: usize,
+}
 
 pub type HyperError = hyper::Error;
 
@@ -35,6 +41,7 @@ struct IngestBody {
 #[derive(Serialize, Deserialize, Debug)]
 struct Line {
     line: Option<String>,
+    tags: Option<String>,
     file: Option<String>,
 }
 
@@ -74,6 +81,16 @@ impl Service<Request<Body>> for Svc {
             };
 
             let mut bytes = Vec::new();
+            let params: HashMap<String, String> = req
+                .uri()
+                .query()
+                .map(|v| {
+                    url::form_urlencoded::parse(v.as_bytes())
+                        .into_owned()
+                        .collect()
+                })
+                .unwrap_or_else(HashMap::new);
+
             let mut body = req.into_body();
             match encoding {
                 Some(encoding) if encoding == "gzip" => {
@@ -105,19 +122,24 @@ impl Service<Request<Body>> for Svc {
                         raw_line.push('\n')
                     }
 
+                    let tags = params.get("tags").map(String::from);
                     let orig_file_name = line.file.unwrap_or_else(|| " unknown".into());
-
                     let file_name = orig_file_name.replace("/", "-").clone();
 
                     let mut files = files.lock().await;
-                    let (ref line_count, ref mut file) =
-                        files.entry(orig_file_name).or_insert_with(|| {
-                            info!("creating {}", file_name);
-                            (AtomicUsize::new(0), Vec::new())
-                        });
+                    let file_info = files.entry(orig_file_name).or_insert_with(move || {
+                        info!("creating {}", file_name);
+                        FileInfo {
+                            tags,
+                            value: Vec::new(),
+                            lines: 0,
+                        }
+                    });
 
-                    line_count.fetch_add(1, Ordering::Relaxed);
-                    file.push(Bytes::copy_from_slice(raw_line.as_bytes()));
+                    file_info.lines += 1;
+                    file_info
+                        .value
+                        .push(Bytes::copy_from_slice(raw_line.as_bytes()));
                 }
             }
 

@@ -1443,6 +1443,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tokio-rustls",
+ "url 2.2.0",
 ]
 
 [[package]]
