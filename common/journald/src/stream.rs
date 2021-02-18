@@ -1,7 +1,7 @@
 use crate::error::JournalError;
 use futures::{channel::oneshot, stream::Stream as FutureStream};
 use http::types::body::LineBuilder;
-use log::{debug, info, warn};
+use log::{info, warn};
 use metrics::Metrics;
 use std::{
     mem::drop,
@@ -87,7 +87,6 @@ impl Stream {
             while let Ok(None) = stop_receiver.try_recv() {
                 match journal.process_next_record() {
                     Ok(Some(line)) => {
-                        debug!("sending journald line");
                         if let Err(e) = sender.send(line) {
                             warn!(
                                 "journald's worker thread unable to communicate with main thread: {}",
