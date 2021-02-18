@@ -143,7 +143,7 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
     let ingestion_key = if let Some(key) = settings.ingester_key {
         key.to_string()
     } else {
-        ingestion_key = std::env::var("LOGDNA_INGESTION_KEY").unwrap()
+        std::env::var("LOGDNA_INGESTION_KEY").unwrap()
     };
 
     assert_ne!(ingestion_key, "");
