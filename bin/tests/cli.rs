@@ -5,7 +5,6 @@ use predicates::prelude::*;
 use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::path::PathBuf;
 use std::process::Command;
 use std::thread::{self, sleep};
 use std::time::Duration;
@@ -468,37 +467,39 @@ fn test_directory_symlinks_delete() {
     agent_handle.kill().expect("Could not kill process");
 }
 
-#[test]
+#[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg_attr(not(target_os = "linux"), ignore)]
-fn test_journald_support() {
+async fn test_journald_support() {
     assert_eq!(journal::print(6, "Sample info"), 0);
     sleep(Duration::from_millis(1000));
     let dir = "/var/log/journal";
-    let mut agent_handle = common::spawn_agent(AgentSettings {
-        log_dirs: "/var/log/",
-        journald_dirs: Some(dir),
-        ..Default::default()
-    });
-
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+    let mut settings = AgentSettings::with_mock_ingester("/var/log/", &addr);
+    settings.journald_dirs = Some(dir);
+    let mut agent_handle = common::spawn_agent(settings);
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
-    common::wait_for_file_event(
-        "monitoring journald path",
-        &PathBuf::from(dir),
-        &mut stderr_reader,
-    );
+    common::wait_for_event("monitoring journald path", &mut stderr_reader);
 
-    for i in 0..10 {
-        journal::print(1, format!("Sample alert {}", i).as_str());
-        journal::print(6, format!("Sample info {}", i).as_str());
-    }
+    let (server_result, _) = tokio::join!(server, async {
+        for _ in 0..10 {
+            journal::print(1, "Sample alert");
+            journal::print(6, "Sample info");
+        }
 
-    sleep(Duration::from_millis(500));
+        // Wait for the data to be received by the mock ingester
+        tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
 
-    common::wait_for_event("sending journald line", &mut stderr_reader);
-    common::wait_for_event("sending http request", &mut stderr_reader);
+        let map = received.lock().await;
+        let file_info = map.values().next().unwrap();
+        assert!(predicate::str::contains("Sample alert").eval(file_info.value.as_str()));
+        assert!(predicate::str::contains("Sample info").eval(file_info.value.as_str()));
 
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
     common::assert_agent_running(&mut agent_handle);
     agent_handle.kill().expect("Could not kill process");
 }
