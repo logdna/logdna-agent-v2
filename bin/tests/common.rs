@@ -109,6 +109,7 @@ pub fn truncate_file(file_path: &PathBuf) -> Result<(), std::io::Error> {
 pub struct AgentSettings<'a> {
     pub log_dirs: &'a str,
     pub exclusion_regex: Option<&'a str>,
+    pub journald_dirs: Option<&'a str>,
     pub ssl_cert_file: Option<&'a std::path::Path>,
     pub lookback: Option<&'a str>,
     pub host: Option<&'a str>,
@@ -184,32 +185,43 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
         agent.env("LOGDNA_TAGS", tags);
     }
 
+    if let Some(journald_dirs) = settings.journald_dirs {
+        agent.env("LOGDNA_JOURNALD_PATHS", journald_dirs);
+    }
+
     agent.spawn().expect("Failed to start agent")
 }
 
+/// Blocks until a certain event referencing a file name is logged by the agent
+pub fn wait_for_file_event(event: &str, file_path: &Path, reader: &mut dyn BufRead) -> String {
+    let file_name = &file_path.file_name().unwrap().to_str().unwrap();
+    wait_for_line(reader, event, |line| {
+        line.contains(event) && line.contains(file_name)
+    })
+}
+
 /// Blocks until a certain event is logged by the agent
-pub fn wait_for_file_event(
-    event: &str,
-    file_path: &PathBuf,
-    stderr_reader: &mut dyn BufRead,
-) -> String {
+pub fn wait_for_event(event: &str, reader: &mut dyn BufRead) -> String {
+    wait_for_line(reader, event, |line| line.contains(event))
+}
+
+fn wait_for_line<F>(reader: &mut dyn BufRead, event_info: &str, condition: F) -> String
+where
+    F: Fn(&str) -> bool,
+{
     let mut line = String::new();
     let mut lines_buffer = String::new();
-    let file_name = &file_path.file_name().unwrap().to_str().unwrap();
     for _safeguard in 0..100_000 {
-        stderr_reader.read_line(&mut line).unwrap();
+        reader.read_line(&mut line).unwrap();
         lines_buffer.push_str(&line);
         lines_buffer.push('\n');
-        if line.contains(event) && line.contains(file_name) {
+        if condition(&line) {
             return lines_buffer;
         }
         line.clear();
     }
 
-    panic!(
-        "file {:?} event {:?} not found in agent output",
-        file_path, event
-    );
+    panic!("event not found in agent output: {}", event_info);
 }
 
 /// Verifies that the agent is still running
@@ -229,7 +241,7 @@ pub fn create_dirs<P: AsRef<Path>>(dirs: &[P]) {
 
 pub fn open_files_include(id: u32, file: &PathBuf) -> Option<String> {
     let child = Command::new("lsof")
-        .args(&["-p", &id.to_string()])
+        .args(&["-l", "-p", &id.to_string()])
         .stdout(Stdio::piped())
         .spawn()
         .expect("failed to execute child");

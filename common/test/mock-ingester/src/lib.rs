@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate log;
 
-use bytes::Bytes;
 use futures::{future, Stream, StreamExt, TryFutureExt, TryStreamExt};
 use hyper::service::Service;
 use hyper::{Body, Request, Response};
@@ -27,7 +26,7 @@ pub type FileLineCounter = Arc<Mutex<HashMap<String, FileInfo>>>;
 #[derive(Debug)]
 pub struct FileInfo {
     pub tags: Option<String>,
-    pub value: Vec<Bytes>,
+    pub value: String,
     pub lines: usize,
 }
 
@@ -131,15 +130,13 @@ impl Service<Request<Body>> for Svc {
                         info!("creating {}", file_name);
                         FileInfo {
                             tags,
-                            value: Vec::new(),
+                            value: String::new(),
                             lines: 0,
                         }
                     });
 
                     file_info.lines += 1;
-                    file_info
-                        .value
-                        .push(Bytes::copy_from_slice(raw_line.as_bytes()));
+                    file_info.value.push_str(raw_line.as_str());
                 }
             }
 

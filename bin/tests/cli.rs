@@ -6,8 +6,11 @@ use std::fs;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::Command;
-use std::thread;
+use std::thread::{self, sleep};
+use std::time::Duration;
+use systemd::journal;
 use tempfile::tempdir;
+
 mod common;
 
 #[test]
@@ -460,6 +463,43 @@ fn test_directory_symlinks_delete() {
 
     common::wait_for_file_event("unwatching", &file3_path, &mut stderr_reader);
 
+    common::assert_agent_running(&mut agent_handle);
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg_attr(not(target_os = "linux"), ignore)]
+async fn test_journald_support() {
+    assert_eq!(journal::print(6, "Sample info"), 0);
+    sleep(Duration::from_millis(1000));
+    let dir = "/var/log/journal";
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+    let mut settings = AgentSettings::with_mock_ingester("/var/log/", &addr);
+    settings.journald_dirs = Some(dir);
+    let mut agent_handle = common::spawn_agent(settings);
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    common::wait_for_event("monitoring journald path", &mut stderr_reader);
+
+    let (server_result, _) = tokio::join!(server, async {
+        for _ in 0..10 {
+            journal::print(1, "Sample alert");
+            journal::print(6, "Sample info");
+        }
+
+        // Wait for the data to be received by the mock ingester
+        tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+
+        let map = received.lock().await;
+        let file_info = map.values().next().unwrap();
+        assert!(predicate::str::contains("Sample alert").eval(file_info.value.as_str()));
+        assert!(predicate::str::contains("Sample info").eval(file_info.value.as_str()));
+
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
     common::assert_agent_running(&mut agent_handle);
     agent_handle.kill().expect("Could not kill process");
 }

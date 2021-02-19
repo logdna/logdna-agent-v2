@@ -257,6 +257,7 @@ impl Reader {
 }
 
 #[cfg(all(feature = "journald_tests", test))]
+#[cfg_attr(not(target_os = "linux"), ignore)]
 mod tests {
     use super::*;
     use futures::stream::StreamExt;
