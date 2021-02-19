@@ -193,7 +193,7 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
 }
 
 /// Blocks until a certain event referencing a file name is logged by the agent
-pub fn wait_for_file_event(event: &str, file_path: &PathBuf, reader: &mut dyn BufRead) -> String {
+pub fn wait_for_file_event(event: &str, file_path: &Path, reader: &mut dyn BufRead) -> String {
     let file_name = &file_path.file_name().unwrap().to_str().unwrap();
     wait_for_line(reader, event, |line| {
         line.contains(event) && line.contains(file_name)
