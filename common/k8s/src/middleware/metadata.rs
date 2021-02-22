@@ -9,12 +9,17 @@ use kube::{api::ListParams, config::Config, Api, Client};
 use kube_runtime::watcher;
 use kube_runtime::watcher::Event as WatcherEvent;
 
+use backoff::backoff::Backoff;
+use backoff::ExponentialBackoff;
 use metrics::Metrics;
 use middleware::{Middleware, Status};
 use parking_lot::Mutex;
+use pin_utils::core_reexport::option::Option::Some;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::env;
+use std::rc::Rc;
 use thiserror::Error;
 use tokio::runtime::{Builder, Runtime};
 
@@ -149,6 +154,16 @@ impl K8sMetadata {
         }
         Ok(())
     }
+
+    async fn add_delay(&self, backoff: &mut ExponentialBackoff) {
+        let mut interval = backoff.next_backoff();
+        if interval.is_none() {
+            interval = Some(backoff.max_interval);
+        }
+        if let Some(duration) = interval {
+            tokio::time::delay_for(duration).await;
+        }
+    }
 }
 
 impl Middleware for K8sMetadata {
@@ -160,14 +175,23 @@ impl Middleware for K8sMetadata {
             .expect("tokio runtime not initialized");
 
         runtime.block_on(async move {
+            let backoff = Rc::new(RefCell::new(ExponentialBackoff::default()));
             let watcher = watcher(self.api.clone(), ListParams::default());
+
             watcher
                 .into_stream()
                 .filter_map(|r| async {
+                    let mut backoff = backoff.borrow_mut();
                     match r {
-                        Ok(event) => Some(event),
+                        Ok(event) => {
+                            backoff.reset();
+                            Some(event)
+                        },
                         Err(e) => {
                             log::warn!("k8s watch stream error: {}", e);
+                            // When polled after a some errors, the watcher will try to recover.
+                            // We should avoid eagerly polling in those cases.
+                            self.add_delay(&mut backoff).await;
                             None
                         }
                     }

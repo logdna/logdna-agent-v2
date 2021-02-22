@@ -10,6 +10,7 @@ middleware = { package = "middleware", path = "../middleware" }
 http = { package = "http", path = "../http" }
 metrics = { package = "metrics", path = "../metrics" }
 
+backoff = "0.3.0"
 chrono = { version = "0.4", features = ["serde"] }
 chrono-humanize = "0.1"
 crossbeam = "0.7"
