@@ -26,6 +26,14 @@ $ helm install --set logdna.key=$LOGDNA_INGESTION_KEY my-release logdna/agent
 
 You should see logs in https://app.logdna.com in a few seconds.
 
+### Using a namespace
+
+If you want to scope your release to a namespace, you can use Helm's `-n` flag when installing:
+
+```bash
+helm install --set logdna.key=$LOGDNA_INGESTION_KEY -n my-namespace --create-namespace my-release logdna/agent
+```
+
 ### Tags support:
 
 Optionally, you can configure the LogDNA Agent to associate tags to all log records that it collects so that you can
@@ -79,6 +87,36 @@ $ helm uninstall my-release
 
 The command removes all the Kubernetes components associated with the chart and deletes the release.
 
+## Upgrading from the archived charts repository
+
+Charts for the LogDNA Agent were previously available on the [archived "stable" charts repository][helm-stable].
+If you deployed the agent using those helm charts, you can use `helm upgrade` to update your helm installation.
+
+First, locate the release name used to deploy:
+
+```bash
+helm list -A
+```
+
+Next, use the namespace and release name to run the upgrade command:
+
+```bash
+helm upgrade --set logdna.key=$LOGDNA_INGESTION_KEY --set nameOverride=logdna-agent -n my-namespace my-release logdna/agent
+```
+
+In case the upgrade fails due to invalid `spec.selector`, make sure to use the same label:
+
+```bash
+kubectl describe daemonsets -n my-namespace | grep Selector
+```
+
+Use the `app.kubernetes.io/name` value to set `nameOverride` value
+
+```bash
+helm upgrade --set logdna.key=$LOGDNA_INGESTION_KEY --set nameOverride=logdna-agent -n my-namespace my-release logdna/agent
+```
+
 [helm]: https://helm.sh/
 [helm-install]: https://helm.sh/docs/intro/install/
 [helm-concepts]: https://helm.sh/docs/intro/using_helm/#three-big-concepts
+[helm-stable]: https://github.com/helm/charts#%EF%B8%8F-deprecation-and-archive-notice
