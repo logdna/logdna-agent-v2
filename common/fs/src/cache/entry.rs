@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::ffi::OsString;
 use std::path::PathBuf;
 
@@ -13,7 +14,7 @@ pub enum Entry {
         name: OsString,
         parent: EntryKey,
         wd: WatchDescriptor,
-        data: TailedFile,
+        data: RefCell<TailedFile>,
     },
     Dir {
         name: OsString,

@@ -21,6 +21,7 @@ globber = "0.1"
 hashbrown = "0.8"
 slotmap = "1.0"
 smallvec = "1.6"
+memchr = "2"
 
 #logging
 log = "0.4"
@@ -28,10 +29,12 @@ env_logger = "0.7"
 lazy_static = "1.4"
 
 #async
-tokio = "0.2"
+tokio = {version= "0.2", features= ["fs"]}
+tokio-util = {version= "0.3", features= ["compat"]}
 futures = "0.3"
 futures-core = "0.3"
 futures-util = "0.3"
+pin-project-lite = "0.1"
 
 [dev-dependencies]
 tempfile = "3.1"
