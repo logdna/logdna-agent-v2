@@ -90,7 +90,7 @@ The command removes all the Kubernetes components associated with the chart and 
 ## Upgrading from the archived charts repository
 
 Charts for the LogDNA Agent were previously available on the [archived "stable" charts repository][helm-stable].
-If you deployed the agent using those helm charts, you can use `helm upgrade` to update your helm installation.
+If you deployed the LogDNA Agent using those helm charts, you can use `helm upgrade` to update your helm installation.
 
 First, locate the release name used to deploy:
 
@@ -110,7 +110,7 @@ In case the upgrade fails due to invalid `spec.selector`, make sure to use the s
 kubectl describe daemonsets -n my-namespace | grep Selector
 ```
 
-Use the `app.kubernetes.io/name` value to set `nameOverride` value
+Use the `app.kubernetes.io/name` value to set `nameOverride` value:
 
 ```bash
 helm upgrade --set logdna.key=$LOGDNA_INGESTION_KEY --set nameOverride=logdna-agent -n my-namespace my-release logdna/agent
