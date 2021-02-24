@@ -1399,6 +1399,7 @@ dependencies = [
  "serde_json",
  "thiserror",
  "tokio",
+ "url 2.2.0",
 ]
 
 [[package]]
