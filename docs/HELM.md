@@ -17,7 +17,8 @@ Follow directions from https://app.logdna.com/pages/add-source to obtain your Lo
 A [Helm Chart][helm-concepts], defined in a package containing a set of YAML files, acts a single point of authority
 and provides repeatable build and deploy tasks to define, install, and upgrade Kubernetes resources.
 
-Run the following commands to install the agent with the [release name][helm-concepts] `my-release` in your cluster:
+Run the following commands to install the LogDNA Agent with the [release name][helm-concepts] `my-release` in your
+cluster:
 
 ```bash
 $ helm repo add logdna https://assets.logdna.com/charts
@@ -37,7 +38,7 @@ helm install --set logdna.key=$LOGDNA_INGESTION_KEY -n my-namespace --create-nam
 ### Tags support:
 
 Optionally, you can configure the LogDNA Agent to associate tags to all log records that it collects so that you can
-identify the agent's data quicker in the LogDNA web UI.
+identify the data quicker in the LogDNA web UI.
 
 ```bash
 $ helm install --set logdna.key=$LOGDNA_INGESTION_KEY,logdna.tags=production my-release logdna/agent
