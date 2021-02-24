@@ -180,18 +180,16 @@ impl Middleware for K8sMetadata {
         });
     }
 
-    fn process(&self, mut lines: Vec<LineBuilder>) -> Status {
-        for line in lines.iter_mut() {
-            if let Some(ref file_name) = line.file {
-                if let Some(key) = parse_container_path(&file_name) {
-                    if let Some(pod_meta_data) = self.metadata.lock().get(&key) {
-                        line.annotations = pod_meta_data.annotations.clone().into();
-                        line.labels = pod_meta_data.labels.clone().into();
-                    }
+    fn process(&self, mut line: LineBuilder) -> Status {
+        if let Some(ref file_name) = line.file {
+            if let Some(key) = parse_container_path(&file_name) {
+                if let Some(pod_meta_data) = self.metadata.lock().get(&key) {
+                    line.annotations = pod_meta_data.annotations.clone().into();
+                    line.labels = pod_meta_data.labels.clone().into();
                 }
             }
         }
-        Status::Ok(lines)
+        Status::Ok(line)
     }
 }
 

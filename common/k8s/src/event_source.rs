@@ -261,7 +261,7 @@ impl K8sEventStream {
         Self::new(config, pod_name, namespace)
     }
 
-    pub async fn event_stream(self) -> Result<impl Stream<Item = Vec<LineBuilder>> + Send, String> {
+    pub async fn event_stream(self) -> Result<impl Stream<Item = LineBuilder> + Send, String> {
         let client = std::sync::Arc::new(self.client.clone());
 
         let latest_event_time: Arc<AtomicCell<Option<NonZeroI64>>> =
@@ -431,7 +431,7 @@ impl K8sEventStream {
 
                                 let ret = LineBuilder::try_from(EventLog::from(e)).map(|l| {
                                     Metrics::k8s().increment_lines();
-                                    vec![l]
+                                    l
                                 });
                                 if ret.is_ok() {
                                     latest_event_time.store(this_event_time)

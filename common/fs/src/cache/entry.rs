@@ -1,5 +1,4 @@
 use std::ffi::OsString;
-use std::fs::File;
 use std::path::PathBuf;
 
 use inotify::WatchDescriptor;
@@ -14,7 +13,6 @@ pub enum Entry<T> {
         parent: EntryKey,
         wd: WatchDescriptor,
         data: T,
-        file_handle: File,
     },
     Dir {
         name: OsString,
@@ -86,13 +84,6 @@ impl<T> Entry<T> {
     pub fn watch_descriptor(&self) -> &WatchDescriptor {
         match self {
             Entry::Dir { wd, .. } | Entry::Symlink { wd, .. } | Entry::File { wd, .. } => wd,
-        }
-    }
-
-    pub fn file_handle(&self) -> Option<&File> {
-        match self {
-            Entry::Dir { .. } | Entry::Symlink { .. } => None,
-            Entry::File { file_handle, .. } => Some(file_handle),
         }
     }
 }

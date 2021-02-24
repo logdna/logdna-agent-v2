@@ -142,7 +142,7 @@ impl Stream {
 }
 
 impl FutureStream for Stream {
-    type Item = Vec<LineBuilder>;
+    type Item = LineBuilder;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
         let mut self_ = self.as_mut();
@@ -151,7 +151,7 @@ impl FutureStream for Stream {
             match receiver.try_recv() {
                 // TODO: Find a way to reuse vectors or just generally make this more efficient
                 Ok(line) => {
-                    return Poll::Ready(Some(vec![line]));
+                    return Poll::Ready(Some(line));
                 }
                 Err(TryRecvError::Disconnected) => {
                     warn!("journald's main thread unable to read from worker thread, restarting worker thread...");
@@ -297,7 +297,7 @@ mod tests {
         sleep(Duration::from_millis(50));
         journal::print(1, "Reader got the correct line 2!");
 
-        let first_batch = match timeout(Duration::from_millis(500), stream.next()).await {
+        let first_line = match timeout(Duration::from_millis(500), stream.next()).await {
             Err(e) => {
                 panic!("unable to grab first batch of lines from stream: {:?}", e);
             }
@@ -307,14 +307,12 @@ mod tests {
             Ok(Some(batch)) => batch,
         };
 
-        assert_eq!(first_batch.len(), 1);
-        let first_line = &first_batch[0];
         assert!(first_line.line.is_some());
         if let Some(line_str) = &first_line.line {
             assert_eq!(line_str, "Reader got the correct line 1!");
         }
 
-        let second_batch = match timeout(Duration::from_millis(500), stream.next()).await {
+        let second_line = match timeout(Duration::from_millis(500), stream.next()).await {
             Err(e) => {
                 panic!("unable to grab second batch of lines from stream: {:?}", e);
             }
@@ -324,8 +322,6 @@ mod tests {
             Ok(Some(batch)) => batch,
         };
 
-        assert_eq!(second_batch.len(), 1);
-        let second_line = &second_batch[0];
         assert!(second_line.line.is_some());
         if let Some(line_str) = &second_line.line {
             assert_eq!(line_str, "Reader got the correct line 2!");
