@@ -38,7 +38,7 @@ helm install --set logdna.key=$LOGDNA_INGESTION_KEY -n my-namespace --create-nam
 ### Tags support:
 
 Optionally, you can configure the LogDNA Agent to associate tags to all log records that it collects so that you can
-identify the data quicker in the LogDNA web UI.
+identify the data more quickly in the LogDNA web UI.
 
 ```bash
 $ helm install --set logdna.key=$LOGDNA_INGESTION_KEY,logdna.tags=production my-release logdna/agent
