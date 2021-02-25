@@ -72,7 +72,7 @@ AWS_SHARED_CREDENTIALS_FILE=$(HOME)/.aws/credentials
 
 LOGDNA_HOST?=localhost:1337
 
-RUST_LOG=debug
+RUST_LOG?=info
 
 _TAC= awk '{line[NR]=$$0} END {for (i=NR; i>=1; i--) print line[i]}'
 TEST_RULES=
@@ -100,7 +100,7 @@ check: ## Run unit tests
 
 .PHONY:test
 test: test-journald ## Run unit tests
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo test --no-run && cargo test"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --no-run && cargo test"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
