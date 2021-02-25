@@ -152,7 +152,7 @@ fn test_append_and_delete() {
 
     let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
 
-    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
 
     common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
     common::append_to_file(&file_path, 10_000, 50).expect("Could not append");

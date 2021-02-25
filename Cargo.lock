@@ -1309,7 +1309,7 @@ version = "0.46.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "efbf94071a4f9f987b058bd71bf96deed5a1d438b1c7778b120e0a759640bf5d"
 dependencies = [
- "dashmap",
+ "dashmap 3.11.10",
  "derivative",
  "futures",
  "k8s-openapi",
@@ -1417,6 +1417,7 @@ dependencies = [
  "http 0.2.3",
  "hyper",
  "hyper-rustls",
+ "log",
  "pin-project 1.0.5",
  "quick-error",
  "rustls",
@@ -2183,6 +2184,12 @@ dependencies = [
  "web-sys",
  "winapi 0.3.9",
 ]
+
+[[package]]
+name = "rustc-hash"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustc_version"

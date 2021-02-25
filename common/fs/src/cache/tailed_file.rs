@@ -56,7 +56,6 @@ fn read_line_lossy<R: AsyncBufRead + ?Sized>(
 ) -> Poll<io::Result<(String, usize)>> {
     match ready!(read_until_internal(reader, cx, b'\n', bytes, read)) {
         Ok(count) => {
-            println!("count: {}", count);
             debug_assert_eq!(*read, 0);
             let ret = String::from_utf8_lossy(bytes).to_string();
             bytes.clear();
@@ -94,7 +93,6 @@ impl Stream for Lines {
         let this = self.project();
         let mut reader = this.reader.borrow_mut();
 
-        println!("reader.offset before: {}", reader.offset);
         let pinned_reader = Pin::new(&mut reader.reader);
         let (mut s, n) = ready!(read_line_lossy(pinned_reader, cx, this.bytes, this.read))?;
         if n == 0 && s.is_empty() {
@@ -111,7 +109,6 @@ impl Stream for Lines {
 
         reader.offset += n;
 
-        println!("reader.offset after: {}", reader.offset);
         Metrics::fs().add_bytes(n);
         Poll::Ready(Some(Ok(s)))
     }
