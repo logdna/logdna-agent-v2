@@ -13,7 +13,7 @@ use async_compression::Level;
 use fs::rule::{GlobRule, RegexRule, Rules};
 use fs::tail::{DirPathBuf, Lookback};
 use http::types::request::{Encoding, RequestTemplate, Schema};
-use k8s::K8sEventLogConf;
+use k8s::K8sTrackingConf;
 
 use crate::env::Config as EnvConfig;
 use crate::error::ConfigError;
@@ -49,7 +49,8 @@ pub struct LogConfig {
     pub db_path: Option<PathBuf>,
     pub rules: Rules,
     pub lookback: Lookback,
-    pub log_k8s_events: K8sEventLogConf,
+    pub use_k8s_api: K8sTrackingConf,
+    pub log_k8s_events: K8sTrackingConf,
 }
 
 #[derive(Debug)]
@@ -200,21 +201,28 @@ impl TryFrom<RawConfig> for Config {
                 .lookback
                 .map(|s| s.parse::<Lookback>())
                 .unwrap_or_else(|| Ok(Lookback::default()))?,
-            log_k8s_events: if let Some(s) = raw.log.log_k8s_events {
-                match s.parse::<K8sEventLogConf>() {
-                    Ok(s) => s,
-                    Err(e) => {
-                        warn!(
-                            "Failed to parse LOGDNA_LOG_K8S_EVENTS defaulting to never. error: {}",
-                            e
-                        );
-                        K8sEventLogConf::Never
-                    }
-                }
-            } else {
-                K8sEventLogConf::Never
-            },
+            use_k8s_api: parse_k8s_tracking_or_warn(
+                raw.log.use_k8s_api,
+                "LOGDNA_USE_K8S_API",
+                K8sTrackingConf::Always,
+            ),
+            log_k8s_events: parse_k8s_tracking_or_warn(
+                raw.log.log_k8s_events,
+                "LOGDNA_LOG_K8S_EVENTS",
+                K8sTrackingConf::Never,
+            ),
         };
+
+        if log.use_k8s_api == K8sTrackingConf::Never
+            || log.log_k8s_events == K8sTrackingConf::Always
+        {
+            // It's unlikely that a user will want to disable k8s metadata enrichment
+            // but log k8s resource events, warn the user and continue
+            warn!(
+                "k8s metadata enrichment is disabled while k8s resource event logging is enabled. \
+                 Please verify this setting values are intended."
+            );
+        }
 
         if let Some(rules) = raw.log.include {
             for glob in rules.glob {
@@ -272,6 +280,27 @@ pub fn get_hostname() -> Option<String> {
     System::new_with_specifics(RefreshKind::new()).get_host_name()
 }
 
+fn parse_k8s_tracking_or_warn(
+    value: Option<String>,
+    name: &str,
+    default: K8sTrackingConf,
+) -> K8sTrackingConf {
+    if let Some(s) = value {
+        match s.parse::<K8sTrackingConf>() {
+            Ok(s) => s,
+            Err(e) => {
+                warn!(
+                    "Failed to parse {} defaulting to {:?}. error: {}",
+                    name, default, e
+                );
+                default
+            }
+        }
+    } else {
+        default
+    }
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -305,11 +334,79 @@ mod tests {
 
     #[test]
     fn test_user_agent() {
-        let mut raw = RawConfig::default();
-        raw.http.ingestion_key = Some("anyingestionkey".to_string());
-        let result = Config::try_from(raw).unwrap();
+        let result = get_default_config();
         let user_agent = result.http.template.user_agent.to_str().unwrap();
         assert!(user_agent.contains('(') && user_agent.contains(')'));
+    }
+
+    #[test]
+    fn test_default_parsed() {
+        let config = get_default_config();
+        assert_eq!(config.log.use_k8s_api, K8sTrackingConf::Always);
+        assert_eq!(config.log.log_k8s_events, K8sTrackingConf::Never);
+        assert_eq!(config.log.lookback, Lookback::SmallFiles);
+        assert_eq!(
+            config
+                .log
+                .dirs
+                .iter()
+                .map(|p| p.to_str().unwrap())
+                .collect::<Vec<_>>(),
+            vec!["/var/log/"]
+        );
+    }
+
+    #[test]
+    fn test_default_rules() {
+        let config = get_default_config();
+
+        let should_pass = vec![
+            "/var/log/a.log",
+            "/var/log/containers/a.log",
+            "/var/log/custom/a.log",
+
+            // These are not excluded in the rules, it's not on the default log dirs
+            // so if a symlink points to it, it should pass
+            "/var/data/a.log",
+            "/tmp/app/a.log",
+            "/var/data/kubeletlogs/some-named-service-aabb67c8fc-9ncjd_52c36bc5-4a53-4827-9dc8-082926ac1bc9/some-named-service/1.log",
+        ];
+
+        for p in should_pass.iter().map(PathBuf::from) {
+            assert!(
+                config.log.rules.passes(&p).is_ok(),
+                "Rule should pass for: {:?}",
+                &p
+            );
+        }
+
+        let should_not_pass = vec![
+            "/var/log/a.gz",
+            "/var/log/a.tar.gz",
+            "/var/log/a.zip",
+            "/var/log/a.tar",
+            "/var/log/a.0",
+            "/var/log/btmp",
+            "/var/log/utmp",
+            "/var/log/wtmpx",
+            "/var/log/btmpx",
+            "/var/log/utmpx",
+            "/var/log/asl/a.log",
+            "/var/log/sa/a.log",
+            "/var/log/saradd.log",
+            "/var/log/tallylog",
+            "/var/log/fluentd-buffers/some/a.log",
+            "/var/log/pods/a.log",
+            "/var/log/pods/john/bonham.log",
+        ];
+
+        for p in should_not_pass.iter().map(PathBuf::from) {
+            assert!(
+                !config.log.rules.passes(&p).is_ok(),
+                "Rule passed but should not pass for: {:?}",
+                &p
+            );
+        }
     }
 
     #[test]
@@ -347,5 +444,13 @@ mod tests {
 
             remove_file("test.yaml").unwrap();
         });
+    }
+
+    /// Creates an instance in the same was as `Config::new()`, except it fills in a
+    /// fake ingestion key.
+    fn get_default_config() -> Config {
+        let mut raw = RawConfig::default();
+        raw.http.ingestion_key = Some("dummy-test-key".to_string());
+        Config::try_from(raw).unwrap()
     }
 }
