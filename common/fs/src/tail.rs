@@ -131,7 +131,6 @@ impl Tailer {
                                 } = entry.borrow_mut().deref_mut()
                                 {
                                     info!("added {:?}", paths[0]);
-                                    data.seek(0).unwrap_or_else(|e| error!("error seeking {:?}", e));
                                     data.tail(&paths)
                                 }
                                 else {

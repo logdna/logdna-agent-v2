@@ -36,7 +36,7 @@ type WatchDescriptors = HashMap<WatchDescriptor, Vec<EntryKey>>;
 
 pub type EntryKey = DefaultKey;
 
-type EntryMap<TailedFile> = SlotMap<EntryKey, RefCell<entry::Entry<TailedFile>>>;
+type EntryMap = SlotMap<EntryKey, RefCell<entry::Entry>>;
 type FsResult<T> = Result<T, Error>;
 
 #[derive(Debug, Error)]
@@ -63,7 +63,7 @@ pub enum Error {
 
 pub struct FileSystem {
     watcher: Watcher,
-    pub entries: Rc<RefCell<EntryMap<TailedFile>>>,
+    pub entries: Rc<RefCell<EntryMap>>,
     root: EntryKey,
 
     symlinks: Symlinks,
@@ -276,7 +276,7 @@ impl FileSystem {
         watch_descriptor: &WatchDescriptor,
         name: OsString,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<TailedFile>,
+        _entries: &mut EntryMap,
     ) -> FsResult<()> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
@@ -328,7 +328,7 @@ impl FileSystem {
         watch_descriptor: &WatchDescriptor,
         name: OsString,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<TailedFile>,
+        _entries: &mut EntryMap,
     ) -> FsResult<()> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
@@ -350,7 +350,7 @@ impl FileSystem {
         to_watch_descriptor: &WatchDescriptor,
         to_name: OsString,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<TailedFile>,
+        _entries: &mut EntryMap,
     ) -> FsResult<()> {
         let from_entry_key = self.get_first_entry(from_watch_descriptor)?;
         let to_entry_key = self.get_first_entry(to_watch_descriptor)?;
@@ -368,11 +368,7 @@ impl FileSystem {
             .map(|_| ())
     }
 
-    pub fn resolve_direct_path(
-        &self,
-        entry: &Entry<TailedFile>,
-        _entries: &EntryMap<TailedFile>,
-    ) -> PathBuf {
+    pub fn resolve_direct_path(&self, entry: &Entry, _entries: &EntryMap) -> PathBuf {
         let mut components = Vec::new();
 
         let mut name = entry.name().clone();
@@ -398,11 +394,7 @@ impl FileSystem {
         components.into_iter().collect()
     }
 
-    pub fn resolve_valid_paths(
-        &self,
-        entry: &Entry<TailedFile>,
-        _entries: &EntryMap<TailedFile>,
-    ) -> Vec<PathBuf> {
+    pub fn resolve_valid_paths(&self, entry: &Entry, _entries: &EntryMap) -> Vec<PathBuf> {
         let mut paths = Vec::new();
         self.resolve_valid_paths_helper(entry, &mut paths, Vec::new(), _entries);
         paths
@@ -410,10 +402,10 @@ impl FileSystem {
 
     fn resolve_valid_paths_helper(
         &self,
-        entry: &Entry<TailedFile>,
+        entry: &Entry,
         paths: &mut Vec<PathBuf>,
         mut components: Vec<OsString>,
-        _entries: &EntryMap<TailedFile>,
+        _entries: &EntryMap,
     ) {
         let mut base_components: Vec<OsString> =
             into_components(&self.resolve_direct_path(entry, _entries));
@@ -460,7 +452,7 @@ impl FileSystem {
         &mut self,
         path: &PathBuf,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<TailedFile>,
+        _entries: &mut EntryMap,
     ) -> FsResult<Option<EntryKey>> {
         if !self.passes(path, _entries) {
             info!("ignoring {:?}", path);
@@ -561,11 +553,7 @@ impl FileSystem {
         }
     }
 
-    fn register(
-        &mut self,
-        entry_ptr: EntryKey,
-        _entries: &mut EntryMap<TailedFile>,
-    ) -> FsResult<()> {
+    fn register(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap) -> FsResult<()> {
         let entry = _entries.get(entry_ptr).ok_or(Error::Lookup)?;
         let path = self.resolve_direct_path(&entry.borrow(), _entries);
 
@@ -585,7 +573,7 @@ impl FileSystem {
         Ok(())
     }
 
-    fn unregister(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<TailedFile>) {
+    fn unregister(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap) {
         if let Some(entry) = _entries.get(entry_ptr) {
             let path = self.resolve_direct_path(&entry.borrow(), _entries);
 
@@ -635,7 +623,7 @@ impl FileSystem {
         &mut self,
         path: &PathBuf,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<TailedFile>,
+        _entries: &mut EntryMap,
     ) -> FsResult<()> {
         let path_buf = path.parent().ok_or(Error::PathNotValid)?.into();
         let parent = self
@@ -662,7 +650,7 @@ impl FileSystem {
         &mut self,
         entry_key: EntryKey,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<TailedFile>,
+        _entries: &mut EntryMap,
     ) {
         self.unregister(entry_key, _entries);
         if let Some(entry) = _entries.get(entry_key) {
@@ -708,7 +696,7 @@ impl FileSystem {
         from: &PathBuf,
         to: &PathBuf,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<TailedFile>,
+        _entries: &mut EntryMap,
     ) -> FsResult<Option<EntryKey>> {
         let parent_path = to.parent().ok_or(Error::ParentNotValid)?;
         let new_parent = self.create_dir(&parent_path.into(), _entries)?;
@@ -748,11 +736,7 @@ impl FileSystem {
     // Creates all entries for a directory.
     // If one of the entries already exists, it is skipped over.
     // The returns a linked list of all entries.
-    fn create_dir(
-        &mut self,
-        path: &PathBuf,
-        _entries: &mut EntryMap<TailedFile>,
-    ) -> FsResult<EntryKey> {
+    fn create_dir(&mut self, path: &PathBuf, _entries: &mut EntryMap) -> FsResult<EntryKey> {
         let mut m_entry = self.root;
 
         let components = into_components(path);
@@ -842,8 +826,8 @@ impl FileSystem {
     fn register_as_child(
         &mut self,
         parent_key: EntryKey,
-        new_entry: Entry<TailedFile>,
-        entries: &mut EntryMap<TailedFile>,
+        new_entry: Entry,
+        entries: &mut EntryMap,
     ) -> FsResult<EntryKey> {
         let component = new_entry.name().clone();
         let new_key = entries.insert(RefCell::new(new_entry));
@@ -864,7 +848,7 @@ impl FileSystem {
 
     /// Returns the entry that represents the supplied path.
     /// When the path is not represented and therefore has no entry then `None` is return.
-    pub fn lookup(&self, path: &PathBuf, _entries: &EntryMap<TailedFile>) -> Option<EntryKey> {
+    pub fn lookup(&self, path: &PathBuf, _entries: &EntryMap) -> Option<EntryKey> {
         let mut parent = self.root;
         let mut components = into_components(path);
         // remove the first component because it will always be the root
@@ -899,7 +883,7 @@ impl FileSystem {
             .copied()
     }
 
-    fn follow_links(&self, entry: EntryKey, _entries: &EntryMap<TailedFile>) -> Option<EntryKey> {
+    fn follow_links(&self, entry: EntryKey, _entries: &EntryMap) -> Option<EntryKey> {
         let mut result = entry;
         while let Some(e) = _entries.get(result) {
             if let Some(link) = e.borrow().link() {
@@ -911,7 +895,7 @@ impl FileSystem {
         Some(result)
     }
 
-    fn is_symlink_target(&self, path: &PathBuf, _entries: &EntryMap<TailedFile>) -> bool {
+    fn is_symlink_target(&self, path: &PathBuf, _entries: &EntryMap) -> bool {
         for (_, symlink_ptrs) in self.symlinks.iter() {
             for symlink_ptr in symlink_ptrs.iter() {
                 if let Some(symlink) = _entries.get(*symlink_ptr) {
@@ -958,16 +942,11 @@ impl FileSystem {
     }
 
     /// Helper method for checking if a path passes exclusion/inclusion rules
-    fn passes(&self, path: &PathBuf, _entries: &EntryMap<TailedFile>) -> bool {
+    fn passes(&self, path: &PathBuf, _entries: &EntryMap) -> bool {
         self.is_initial_dir_target(path) || self.is_symlink_target(path, _entries)
     }
 
-    fn entry_path_passes(
-        &self,
-        entry: EntryKey,
-        name: &OsStr,
-        _entries: &EntryMap<TailedFile>,
-    ) -> bool {
+    fn entry_path_passes(&self, entry: EntryKey, name: &OsStr, _entries: &EntryMap) -> bool {
         if let Some(entry_ref) = _entries.get(entry) {
             let mut path = self.resolve_direct_path(&entry_ref.borrow(), &_entries);
             path.push(name);

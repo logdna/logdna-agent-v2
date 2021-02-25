@@ -3,16 +3,17 @@ use std::path::PathBuf;
 
 use inotify::WatchDescriptor;
 
+use crate::cache::TailedFile;
 use crate::cache::{Children, EntryKey};
 use crate::rule::Rules;
 
 #[derive(Debug)]
-pub enum Entry<T> {
+pub enum Entry {
     File {
         name: OsString,
         parent: EntryKey,
         wd: WatchDescriptor,
-        data: T,
+        data: TailedFile,
     },
     Dir {
         name: OsString,
@@ -29,7 +30,7 @@ pub enum Entry<T> {
     },
 }
 
-impl<T> Entry<T> {
+impl Entry {
     pub fn name(&self) -> &OsString {
         match self {
             Entry::File { name, .. } | Entry::Dir { name, .. } | Entry::Symlink { name, .. } => {
