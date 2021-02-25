@@ -369,6 +369,7 @@ impl FileSystem {
     }
 
     pub fn resolve_direct_path(&self, entry: &Entry, _entries: &EntryMap) -> PathBuf {
+        // TODO: extract these Vecs or replace with SmallVec
         let mut components = Vec::new();
 
         let mut name = entry.name().clone();
@@ -395,6 +396,7 @@ impl FileSystem {
     }
 
     pub fn resolve_valid_paths(&self, entry: &Entry, _entries: &EntryMap) -> Vec<PathBuf> {
+        // TODO: extract these Vecs or replace with SmallVec
         let mut paths = Vec::new();
         self.resolve_valid_paths_helper(entry, &mut paths, Vec::new(), _entries);
         paths
