@@ -714,6 +714,9 @@ dependencies = [
 name = "fs"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "bytes 0.5.6",
+ "chrono",
  "env_logger",
  "futures",
  "futures-core",
@@ -728,6 +731,7 @@ dependencies = [
  "metrics",
  "pcre2",
  "pin-project-lite 0.1.11",
+ "serde_json",
  "slotmap",
  "smallvec",
  "tempfile",
@@ -1405,7 +1409,7 @@ dependencies = [
 [[package]]
 name = "logdna-client"
 version = "0.3.0"
-source = "git+https://github.com/logdna/logdna-rust.git?branch=main#87c39ca006af642c84ddeaa1f00673db03a77a3e"
+source = "git+https://github.com/logdna/logdna-rust.git?branch=main#32ed455ad9ebb6307da8274d89654284f4264808"
 dependencies = [
  "async-buf-pool",
  "async-compression",

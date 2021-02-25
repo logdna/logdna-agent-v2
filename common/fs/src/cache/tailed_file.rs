@@ -1,21 +1,33 @@
 #![allow(clippy::await_holding_refcell_ref)]
-use http::types::body::LineBuilder;
+use http::types::body::{KeyValueMap, LineBuilder};
+use http::types::serialize::{
+    IngestLineSerialize, IngestLineSerializeError, SerializeI64, SerializeMap, SerializeStr,
+    SerializeUtf8, SerializeValue,
+};
+
+use chrono::Utc;
 use metrics::Metrics;
 
 use futures::io::AsyncBufRead;
+use futures::lock::Mutex;
 use futures::task::{Context, Poll};
 use futures::{ready, Stream, StreamExt};
 
+use async_trait::async_trait;
 use pin_project_lite::pin_project;
 
-use std::cell::RefCell;
+use serde_json::Value;
+
+use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs::OpenOptions;
 use std::io;
 use std::mem;
+use std::ops::DerefMut;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
-use std::rc::Rc;
+//use std::rc::Arc;
+use std::sync::Arc;
 use tokio::io::{BufReader, SeekFrom};
 use tokio_util::compat::{Compat, Tokio02AsyncReadCompatExt};
 
@@ -68,33 +80,33 @@ fn read_line_lossy<R: AsyncBufRead + ?Sized>(
 pin_project! {
     #[derive(Debug)]
     #[must_use = "streams do nothing unless polled"]
-    pub struct Lines {
+    pub struct LineBuilderLines {
         #[pin]
-        reader: Rc<RefCell<TailedFileInner>>,
-        bytes: Vec<u8>,
+        reader: Arc<Mutex<TailedFileInner>>,
         read: usize,
     }
 }
 
-impl Lines {
-    pub fn new(reader: Rc<RefCell<TailedFileInner>>) -> Self {
-        Self {
-            reader,
-            bytes: Vec::new(),
-            read: 0,
-        }
+impl LineBuilderLines {
+    pub fn new(reader: Arc<Mutex<TailedFileInner>>) -> Self {
+        Self { reader, read: 0 }
     }
 }
 
-impl Stream for Lines {
+impl Stream for LineBuilderLines {
     type Item = io::Result<String>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.project();
-        let mut reader = this.reader.borrow_mut();
+        let mut borrow = this.reader.try_lock().unwrap();
+        let TailedFileInner {
+            ref mut reader,
+            ref mut buf,
+            ref mut offset,
+        } = borrow.deref_mut();
 
-        let pinned_reader = Pin::new(&mut reader.reader);
-        let (mut s, n) = ready!(read_line_lossy(pinned_reader, cx, this.bytes, this.read))?;
+        let pinned_reader = Pin::new(reader);
+        let (mut s, n) = ready!(read_line_lossy(pinned_reader, cx, buf, this.read))?;
         if n == 0 && s.is_empty() {
             return Poll::Ready(None);
         }
@@ -107,39 +119,273 @@ impl Stream for Lines {
             }
         }
 
-        reader.offset += n;
+        *offset += n;
 
         Metrics::fs().add_bytes(n);
         Poll::Ready(Some(Ok(s)))
     }
 }
 
+pub struct LazyLines {
+    reader: Arc<Mutex<TailedFileInner>>,
+    current: Option<Arc<Mutex<TailedFileInner>>>,
+    read: usize,
+    path: usize,
+    paths: Vec<String>,
+}
+
+impl LazyLines {
+    pub fn new(reader: Arc<Mutex<TailedFileInner>>, paths: Vec<String>) -> Self {
+        Self {
+            reader,
+            current: None,
+            read: 0,
+            path: 0,
+            paths,
+        }
+    }
+}
+
+pub struct LazyLineSerializer {
+    annotations: Option<KeyValueMap>,
+    app: Option<String>,
+    env: Option<String>,
+    host: Option<String>,
+    labels: Option<KeyValueMap>,
+    level: Option<String>,
+    meta: Option<Value>,
+
+    path: String,
+
+    reader: Arc<Mutex<TailedFileInner>>,
+}
+
+#[async_trait]
+impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String, String>>
+    for LazyLineSerializer
+{
+    type Ok = ();
+
+    fn has_annotations(&self) -> bool {
+        self.annotations.is_some()
+    }
+    async fn annotations<'b, S>(
+        &mut self,
+        ser: &mut S,
+    ) -> Result<Self::Ok, IngestLineSerializeError>
+    where
+        S: SerializeMap<'b, HashMap<String, String>> + std::marker::Send,
+    {
+        if let Some(ref annotations) = self.annotations {
+            ser.serialize_map(&annotations).await?;
+        }
+        Ok(())
+    }
+    fn has_app(&self) -> bool {
+        self.app.is_some()
+    }
+    async fn app<S>(&mut self, writer: &mut S) -> Result<Self::Ok, IngestLineSerializeError>
+    where
+        S: SerializeStr<String> + std::marker::Send,
+    {
+        if let Some(app) = self.app.as_ref() {
+            writer.serialize_str(app).await?;
+        };
+        Ok(())
+    }
+    fn has_env(&self) -> bool {
+        self.env.is_some()
+    }
+    async fn env<S>(&mut self, writer: &mut S) -> Result<Self::Ok, IngestLineSerializeError>
+    where
+        S: SerializeStr<String> + std::marker::Send,
+    {
+        if let Some(env) = self.env.as_ref() {
+            writer.serialize_str(env).await?;
+        };
+        Ok(())
+    }
+    fn has_file(&self) -> bool {
+        true
+    }
+    async fn file<S>(&mut self, writer: &mut S) -> Result<Self::Ok, IngestLineSerializeError>
+    where
+        S: SerializeStr<String> + std::marker::Send,
+    {
+        writer.serialize_str(&self.path).await?;
+        Ok(())
+    }
+    fn has_host(&self) -> bool {
+        self.host.is_some()
+    }
+    async fn host<S>(&mut self, writer: &mut S) -> Result<Self::Ok, IngestLineSerializeError>
+    where
+        S: SerializeStr<String> + std::marker::Send,
+    {
+        if let Some(host) = self.host.as_ref() {
+            writer.serialize_str(host).await?;
+        };
+        Ok(())
+    }
+    fn has_labels(&self) -> bool {
+        self.labels.is_some()
+    }
+    async fn labels<'b, S>(&mut self, ser: &mut S) -> Result<Self::Ok, IngestLineSerializeError>
+    where
+        S: SerializeMap<'b, HashMap<String, String>> + std::marker::Send,
+    {
+        if let Some(ref labels) = self.labels {
+            ser.serialize_map(&labels).await?;
+        }
+        Ok(())
+    }
+    fn has_level(&self) -> bool {
+        self.level.is_some()
+    }
+    async fn level<S>(&mut self, writer: &mut S) -> Result<Self::Ok, IngestLineSerializeError>
+    where
+        S: SerializeStr<String> + std::marker::Send,
+    {
+        if let Some(level) = self.level.as_ref() {
+            writer.serialize_str(level).await?;
+        };
+        Ok(())
+    }
+    fn has_meta(&self) -> bool {
+        self.meta.is_some()
+    }
+    async fn meta<S>(&mut self, writer: &mut S) -> Result<Self::Ok, IngestLineSerializeError>
+    where
+        S: SerializeValue + std::marker::Send,
+    {
+        if let Some(meta) = self.meta.as_ref() {
+            writer.serialize(meta).await?;
+        };
+        Ok(())
+    }
+    async fn line<S>(&mut self, writer: &mut S) -> Result<Self::Ok, IngestLineSerializeError>
+    where
+        S: SerializeUtf8<bytes::Bytes> + std::marker::Send,
+    {
+        let bytes = {
+            let borrowed_reader = self.reader.lock().await;
+            bytes::Bytes::copy_from_slice(&borrowed_reader.buf)
+        };
+        writer.serialize_utf8(bytes).await?;
+
+        Ok(())
+    }
+    async fn timestamp<S>(&mut self, writer: &mut S) -> Result<Self::Ok, IngestLineSerializeError>
+    where
+        S: SerializeI64 + std::marker::Send,
+    {
+        writer.serialize_i64(&Utc::now().timestamp()).await?;
+
+        Ok(())
+    }
+    fn field_count(&self) -> usize {
+        3 + if Option::is_none(&self.annotations) {
+            0
+        } else {
+            1
+        } + if Option::is_none(&self.app) { 0 } else { 1 }
+            + if Option::is_none(&self.env) { 0 } else { 1 }
+            + if Option::is_none(&self.host) { 0 } else { 1 }
+            + if Option::is_none(&self.labels) { 0 } else { 1 }
+            + if Option::is_none(&self.level) { 0 } else { 1 }
+            + if Option::is_none(&self.meta) { 0 } else { 1 }
+    }
+}
+
+impl LazyLineSerializer {
+    pub fn new(reader: Arc<Mutex<TailedFileInner>>, path: String) -> Self {
+        // New line, make sure the buffer is cleared
+        reader.try_lock().unwrap().deref_mut().buf.clear();
+        Self {
+            reader,
+            path,
+            annotations: None,
+            app: None,
+            env: None,
+            host: None,
+            labels: None,
+            level: None,
+            meta: None,
+        }
+    }
+}
+
+impl Stream for LazyLines {
+    type Item = LazyLineSerializer;
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        // TODO: Work out how to signal file done, None line and Some(0) read?
+
+        let LazyLines {
+            reader,
+            ref mut read,
+            ref mut current,
+            ref mut path,
+            paths,
+            ..
+        } = self.get_mut();
+        let rc_reader = reader;
+        loop {
+            if current.is_some() && *path < paths.len() {
+                let ret = LazyLineSerializer::new(rc_reader.clone(), paths[*path].clone());
+                *path += 1;
+                break Poll::Ready(Some(ret));
+            }
+            // Get the next line
+            let mut borrow = rc_reader.try_lock().unwrap();
+            let TailedFileInner {
+                ref mut reader,
+                ref mut buf,
+                ref mut offset,
+            } = borrow.deref_mut();
+
+            let pinned_reader = Pin::new(reader);
+            if let Ok(read) = ready!(read_until_internal(pinned_reader, cx, b'\n', buf, read)) {
+                if read == 0 {
+                    break Poll::Ready(None);
+                } else {
+                    *path = 0;
+                    *offset += TryInto::<u64>::try_into(read).unwrap();
+                    *current = Some(rc_reader.clone())
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct TailedFileInner {
     reader: Compat<tokio::io::BufReader<tokio::fs::File>>,
+    buf: Vec<u8>,
     offset: u64,
 }
 
 #[derive(Debug, Clone)]
-pub struct TailedFile {
-    inner: Rc<RefCell<TailedFileInner>>,
+pub struct TailedFile<T> {
+    inner: Arc<Mutex<TailedFileInner>>,
+    _phantom: std::marker::PhantomData<T>,
 }
 
-impl TailedFile {
+impl<T> TailedFile<T> {
     pub(crate) fn new(path: &Path) -> Result<Self, std::io::Error> {
         Ok(Self {
-            inner: Rc::new(RefCell::new(TailedFileInner {
+            inner: Arc::new(Mutex::new(TailedFileInner {
                 reader: BufReader::new(tokio::fs::File::from_std(
                     OpenOptions::new().read(true).open(path)?,
                 ))
                 .compat(),
+                buf: Vec::new(),
                 offset: 0,
             })),
+            _phantom: std::marker::PhantomData::<T>,
         })
     }
-
     pub(crate) async fn seek(&mut self, offset: u64) -> Result<(), std::io::Error> {
-        let mut inner = self.inner.borrow_mut();
+        let mut inner = self.inner.lock().await;
         inner.offset = offset;
         inner
             .reader
@@ -149,7 +395,9 @@ impl TailedFile {
             .await?;
         Ok(())
     }
+}
 
+impl TailedFile<LineBuilder> {
     // tail a file for new line(s)
     pub(crate) async fn tail(
         &mut self,
@@ -157,7 +405,7 @@ impl TailedFile {
     ) -> Option<impl Stream<Item = LineBuilder>> {
         // get the file len
         {
-            let mut inner = self.inner.borrow_mut();
+            let mut inner = self.inner.lock().await;
             let len = match inner
                 .reader
                 .get_ref()
@@ -204,7 +452,7 @@ impl TailedFile {
         }
 
         Some(
-            Lines::new(self.inner.clone())
+            LineBuilderLines::new(self.inner.clone())
                 .filter_map({
                     let paths = paths.clone();
                     move |line_res| {
@@ -229,5 +477,21 @@ impl TailedFile {
                 })
                 .flatten(),
         )
+    }
+}
+
+impl TailedFile<LazyLineSerializer> {
+    // tail a file for new line(s)
+    pub(crate) async fn tail(
+        &mut self,
+        paths: Vec<PathBuf>,
+    ) -> Option<impl Stream<Item = LazyLineSerializer>> {
+        Some(LazyLines::new(
+            self.inner.clone(),
+            paths
+                .into_iter()
+                .map(|path| path.to_string_lossy().into())
+                .collect(),
+        ))
     }
 }
