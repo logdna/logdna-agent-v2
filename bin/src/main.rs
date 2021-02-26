@@ -118,7 +118,7 @@ fn main() {
 
         let mut k8s_event_source: Option<std::pin::Pin<&mut _>> = k8s_event_source.as_pin_mut();
 
-        let mut sources: futures::stream::SelectAll<&mut (dyn Stream<Item = Vec<_>> + Unpin)> =
+        let mut sources: futures::stream::SelectAll<&mut (dyn Stream<Item = _> + Unpin)> =
             futures::stream::SelectAll::new();
 
         info!("Enabling filesystem");
@@ -131,11 +131,9 @@ fn main() {
         };
 
         sources
-            .for_each(|lines| async {
-                if let Some(lines) = executor.process(lines) {
-                    for line in lines {
-                        client.borrow_mut().send(line).await
-                    }
+            .for_each(|line| async {
+                if let Some(line) = executor.process(line) {
+                    client.borrow_mut().send(line).await
                 }
             })
             .await

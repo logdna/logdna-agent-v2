@@ -5,10 +5,7 @@ use crate::cache::FileSystem;
 use crate::rule::Rules;
 use http::types::body::LineBuilder;
 use metrics::Metrics;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
 use std::ops::{Deref, DerefMut};
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use futures::{Stream, StreamExt};
@@ -55,7 +52,7 @@ impl Default for Lookback {
 /// Tails files on a filesystem by inheriting events from a Watcher
 pub struct Tailer {
     lookback_config: Lookback,
-    fs_cache: Arc<Mutex<FileSystem<u64>>>,
+    fs_cache: Arc<Mutex<FileSystem>>,
 }
 
 impl Tailer {
@@ -70,7 +67,7 @@ impl Tailer {
     pub fn process<'a>(
         &mut self,
         buf: &'a mut [u8],
-    ) -> Result<impl Stream<Item = Vec<LineBuilder>> + 'a, std::io::Error> {
+    ) -> Result<impl Stream<Item = LineBuilder> + 'a, std::io::Error> {
         let events = {
             match FileSystem::stream_events(self.fs_cache.clone(), buf) {
                 Ok(event) => event,
@@ -85,8 +82,6 @@ impl Tailer {
             let fs = self.fs_cache.clone();
             let lookback_config = self.lookback_config.clone();
             move |event| {
-                let mut final_lines = Vec::new();
-
                 let fs = fs.lock().expect("Couldn't lock fs");
                 match event {
                     Event::Initialize(entry_ptr) => {
@@ -96,10 +91,10 @@ impl Tailer {
                             debug!("Initialise Event");
 
                             if let Entry::File { ref mut data, .. } = entry.borrow_mut().deref_mut() {
-                                *data = match lookback_config {
+                                match lookback_config {
                                     Lookback::Start => {
                                         info!("initialized {:?} with offset {}", path, 0);
-                                        0
+                                        data.seek(0).unwrap_or_else(|e| error!("error seeking {:?}", e))
                                     },
                                     Lookback::SmallFiles => {
                                         let mut len = path.metadata().map(|m| m.len()).unwrap_or(0);
@@ -109,16 +104,19 @@ impl Tailer {
                                         } else{
                                             info!("initialized {:?} with offset {}", path, len);
                                         }
-                                        len
+
+                                        data.seek(len).unwrap_or_else(|e| error!("error seeking {:?}", e))
                                     },
                                     Lookback::None => {
                                         let len = path.metadata().map(|m| m.len()).unwrap_or(0);
                                         info!("initialized {:?} with offset {}", path, len);
-                                        len
+
+                                        data.seek(len).unwrap_or_else(|e| error!("error seeking {:?}", e))
                                     }
                                 }
                             }
                         };
+                        None
                     }
                     Event::New(entry_ptr) => {
                         Metrics::fs().increment_creates();
@@ -129,19 +127,22 @@ impl Tailer {
                             if !paths.is_empty() {
                                 if let Entry::File {
                                     ref mut data,
-                                    file_handle,
                                     ..
                                 } = entry.borrow_mut().deref_mut()
                                 {
                                     info!("added {:?}", paths[0]);
-                                    *data = 0;
-                                    if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
-                                        final_lines.append(&mut lines);
-                                    }
+                                    data.tail(&paths)
                                 }
-                            }
-                        }
+                                else {
+                                    None
+                                }
 
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
 
                     }
                     Event::Write(entry_ptr) => {
@@ -153,21 +154,25 @@ impl Tailer {
 
                                 if let  Entry::File {
                                     ref mut data,
-                                    file_handle,
                                     ..
                                 } = entry.borrow_mut().deref_mut()
                                 {
-                                    if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
-                                        final_lines.append(&mut lines);
-                                    }
+                                    data.tail(&paths)
+                                } else {
+                                    None
                                 }
 
+                            } else {
+                                None
                             }
+                        } else {
+                            None
                         }
+
                     }
                     Event::Delete(entry_ptr) => {
                         Metrics::fs().increment_deletes();
-                        {
+                        let ret = {
                             let entries = fs.entries.borrow();
                             if let Some(mut entry) = entries.get(entry_ptr){
                                 let paths = fs.resolve_valid_paths(&entry.borrow(), &entries);
@@ -185,17 +190,22 @@ impl Tailer {
 
                                     if let Entry::File {
                                         ref mut data,
-                                        file_handle,
                                         ..
                                     } = entry.borrow_mut().deref_mut()
                                     {
-                                        if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
-                                            final_lines.append(&mut lines);
-                                        }
+                                        data.tail(&paths)
+                                    } else {
+                                        None
                                     }
+                                }else {
+                                    None
                                 }
+
+                            }else {
+                                None
                             }
-                        }
+
+                        };
                         {
                             // At this point, the entry should not longer be used
                             // and removed from the map to allow the file handle to be dropped.
@@ -209,94 +219,10 @@ impl Tailer {
                                     entries.len());
                             }
                         }
+                        ret
                     }
-                };
-                futures::stream::iter(final_lines)
-            }}).flatten())
-    }
-
-    // tail a file for new line(s)
-    fn tail(
-        file_handle: &File,
-        paths: &[PathBuf],
-        offset: &mut u64,
-    ) -> Option<Vec<Vec<LineBuilder>>> {
-        // get the file len
-        let len = match file_handle.metadata().map(|m| m.len()) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("unable to stat {:?}: {:?}", &paths[0], e);
-                return None;
-            }
-        };
-
-        // if we are at the end of the file there's no work to do
-        if *offset == len {
-            return None;
-        }
-        // open the file, create a reader
-        let mut reader = BufReader::new(file_handle);
-        // if the offset is greater than the file's len
-        // it's very likely a truncation occurred
-        if *offset > len {
-            info!("{:?} was truncated from {} to {}", &paths[0], *offset, len);
-            *offset = if len < 8192 { 0 } else { len };
-            return None;
-        }
-        // seek to the offset, this creates the "tailing" effect
-        if let Err(e) = reader.seek(SeekFrom::Start(*offset)) {
-            error!("error seeking {:?}", e);
-            return None;
-        }
-
-        let mut line_groups = Vec::new();
-
-        loop {
-            let mut raw_line = Vec::new();
-            // read until a new line returning the line length
-            let line_len = match reader.read_until(b'\n', &mut raw_line) {
-                Ok(v) => v as u64,
-                Err(e) => {
-                    error!("error reading from file {:?}: {:?}", &paths[0], e);
-                    break;
                 }
-            };
-            // try to parse the raw data as utf8
-            // if that fails replace invalid chars with blank chars
-            // see String::from_utf8_lossy docs
-            let mut line = String::from_utf8(raw_line)
-                .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).to_string());
-            // if the line doesn't end with a new line we might have read in the middle of a write
-            // so we return in this case
-            if !line.ends_with('\n') {
-                Metrics::fs().increment_partial_reads();
-                break;
-            }
-            // remove the trailing new line
-            line.pop();
-            // increment the offset
-            *offset += line_len;
-            // send the line upstream, safe to unwrap
-            debug!("tailer sendings lines for {:?}", paths);
-            line_groups.push(
-                paths
-                    .iter()
-                    .map(|path| {
-                        Metrics::fs().increment_lines();
-                        Metrics::fs().add_bytes(line_len);
-                        LineBuilder::new()
-                            .line(line.clone())
-                            .file(path.to_str().unwrap_or("").to_string())
-                    })
-                    .collect(),
-            );
-        }
-
-        if line_groups.is_empty() {
-            None
-        } else {
-            Some(line_groups)
-        }
+            }}).filter_map(|x|async move {x}).flatten())
     }
 }
 
@@ -306,6 +232,7 @@ mod test {
     use crate::rule::{GlobRule, Rules};
     use crate::test::LOGGER;
     use std::convert::TryInto;
+    use std::fs::File;
     use std::io::Write;
     use std::panic;
     use tempfile::tempdir;

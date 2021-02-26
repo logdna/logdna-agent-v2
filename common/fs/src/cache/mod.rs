@@ -1,11 +1,12 @@
 use crate::cache::entry::Entry;
 use crate::cache::event::Event;
+use crate::cache::tailed_file::TailedFile;
 use crate::cache::watch::{WatchEvent, Watcher};
 use crate::rule::{GlobRule, Rules, Status};
 
 use std::cell::RefCell;
 use std::ffi::{OsStr, OsString};
-use std::fs::{read_dir, OpenOptions};
+use std::fs::read_dir;
 use std::iter::FromIterator;
 use std::ops::Deref;
 use std::path::{Component, PathBuf};
@@ -24,6 +25,7 @@ use thiserror::Error;
 pub mod dir_path;
 pub mod entry;
 pub mod event;
+pub mod tailed_file;
 pub use dir_path::{DirPathBuf, DirPathBufError};
 
 mod watch;
@@ -34,7 +36,7 @@ type WatchDescriptors = HashMap<WatchDescriptor, Vec<EntryKey>>;
 
 pub type EntryKey = DefaultKey;
 
-type EntryMap<T> = SlotMap<EntryKey, RefCell<entry::Entry<T>>>;
+type EntryMap = SlotMap<EntryKey, RefCell<entry::Entry>>;
 type FsResult<T> = Result<T, Error>;
 
 #[derive(Debug, Error)]
@@ -59,12 +61,9 @@ pub enum Error {
     InsertRecursively(Vec<Error>),
 }
 
-pub struct FileSystem<T>
-where
-    T: Clone + std::fmt::Debug,
-{
+pub struct FileSystem {
     watcher: Watcher,
-    pub entries: Rc<RefCell<EntryMap<T>>>,
+    pub entries: Rc<RefCell<EntryMap>>,
     root: EntryKey,
 
     symlinks: Symlinks,
@@ -77,10 +76,7 @@ where
     initial_events: Vec<Event>,
 }
 
-impl<'a, T: 'a + Default> FileSystem<T>
-where
-    T: Clone + std::fmt::Debug,
-{
+impl FileSystem {
     pub fn new(initial_dirs: Vec<DirPathBuf>, rules: Rules) -> Self {
         initial_dirs.iter().for_each(|path| {
             if !path.is_dir() {
@@ -164,9 +160,9 @@ where
     }
 
     pub fn stream_events(
-        fs: Arc<Mutex<FileSystem<T>>>,
-        buf: &'a mut [u8],
-    ) -> Result<impl Stream<Item = Event> + 'a, std::io::Error> {
+        fs: Arc<Mutex<FileSystem>>,
+        buf: &mut [u8],
+    ) -> Result<impl Stream<Item = Event> + '_, std::io::Error> {
         let events_stream = {
             match fs
                 .try_lock()
@@ -280,7 +276,7 @@ where
         watch_descriptor: &WatchDescriptor,
         name: OsString,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<T>,
+        _entries: &mut EntryMap,
     ) -> FsResult<()> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
@@ -332,7 +328,7 @@ where
         watch_descriptor: &WatchDescriptor,
         name: OsString,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<T>,
+        _entries: &mut EntryMap,
     ) -> FsResult<()> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
@@ -354,7 +350,7 @@ where
         to_watch_descriptor: &WatchDescriptor,
         to_name: OsString,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<T>,
+        _entries: &mut EntryMap,
     ) -> FsResult<()> {
         let from_entry_key = self.get_first_entry(from_watch_descriptor)?;
         let to_entry_key = self.get_first_entry(to_watch_descriptor)?;
@@ -372,7 +368,7 @@ where
             .map(|_| ())
     }
 
-    pub fn resolve_direct_path(&self, entry: &Entry<T>, _entries: &EntryMap<T>) -> PathBuf {
+    pub fn resolve_direct_path(&self, entry: &Entry, _entries: &EntryMap) -> PathBuf {
         let mut components = Vec::new();
 
         let mut name = entry.name().clone();
@@ -398,7 +394,7 @@ where
         components.into_iter().collect()
     }
 
-    pub fn resolve_valid_paths(&self, entry: &Entry<T>, _entries: &EntryMap<T>) -> Vec<PathBuf> {
+    pub fn resolve_valid_paths(&self, entry: &Entry, _entries: &EntryMap) -> Vec<PathBuf> {
         let mut paths = Vec::new();
         self.resolve_valid_paths_helper(entry, &mut paths, Vec::new(), _entries);
         paths
@@ -406,10 +402,10 @@ where
 
     fn resolve_valid_paths_helper(
         &self,
-        entry: &Entry<T>,
+        entry: &Entry,
         paths: &mut Vec<PathBuf>,
         mut components: Vec<OsString>,
-        _entries: &EntryMap<T>,
+        _entries: &EntryMap,
     ) {
         let mut base_components: Vec<OsString> =
             into_components(&self.resolve_direct_path(entry, _entries));
@@ -456,7 +452,7 @@ where
         &mut self,
         path: &PathBuf,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<T>,
+        _entries: &mut EntryMap,
     ) -> FsResult<Option<EntryKey>> {
         if !self.passes(path, _entries) {
             info!("ignoring {:?}", path);
@@ -517,8 +513,7 @@ where
                     name: component,
                     parent: parent_ref,
                     wd,
-                    data: T::default(),
-                    file_handle: OpenOptions::new().read(true).open(path).unwrap(),
+                    data: TailedFile::new(path).unwrap(),
                 };
 
                 let new_key = self.register_as_child(parent_ref, new_entry, _entries)?;
@@ -558,7 +553,7 @@ where
         }
     }
 
-    fn register(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<T>) -> FsResult<()> {
+    fn register(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap) -> FsResult<()> {
         let entry = _entries.get(entry_ptr).ok_or(Error::Lookup)?;
         let path = self.resolve_direct_path(&entry.borrow(), _entries);
 
@@ -578,7 +573,7 @@ where
         Ok(())
     }
 
-    fn unregister(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<T>) {
+    fn unregister(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap) {
         if let Some(entry) = _entries.get(entry_ptr) {
             let path = self.resolve_direct_path(&entry.borrow(), _entries);
 
@@ -628,7 +623,7 @@ where
         &mut self,
         path: &PathBuf,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<T>,
+        _entries: &mut EntryMap,
     ) -> FsResult<()> {
         let path_buf = path.parent().ok_or(Error::PathNotValid)?.into();
         let parent = self
@@ -655,7 +650,7 @@ where
         &mut self,
         entry_key: EntryKey,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<T>,
+        _entries: &mut EntryMap,
     ) {
         self.unregister(entry_key, _entries);
         if let Some(entry) = _entries.get(entry_key) {
@@ -701,7 +696,7 @@ where
         from: &PathBuf,
         to: &PathBuf,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<T>,
+        _entries: &mut EntryMap,
     ) -> FsResult<Option<EntryKey>> {
         let parent_path = to.parent().ok_or(Error::ParentNotValid)?;
         let new_parent = self.create_dir(&parent_path.into(), _entries)?;
@@ -741,7 +736,7 @@ where
     // Creates all entries for a directory.
     // If one of the entries already exists, it is skipped over.
     // The returns a linked list of all entries.
-    fn create_dir(&mut self, path: &PathBuf, _entries: &mut EntryMap<T>) -> FsResult<EntryKey> {
+    fn create_dir(&mut self, path: &PathBuf, _entries: &mut EntryMap) -> FsResult<EntryKey> {
         let mut m_entry = self.root;
 
         let components = into_components(path);
@@ -831,8 +826,8 @@ where
     fn register_as_child(
         &mut self,
         parent_key: EntryKey,
-        new_entry: Entry<T>,
-        entries: &mut EntryMap<T>,
+        new_entry: Entry,
+        entries: &mut EntryMap,
     ) -> FsResult<EntryKey> {
         let component = new_entry.name().clone();
         let new_key = entries.insert(RefCell::new(new_entry));
@@ -853,7 +848,7 @@ where
 
     /// Returns the entry that represents the supplied path.
     /// When the path is not represented and therefore has no entry then `None` is return.
-    pub fn lookup(&self, path: &PathBuf, _entries: &EntryMap<T>) -> Option<EntryKey> {
+    pub fn lookup(&self, path: &PathBuf, _entries: &EntryMap) -> Option<EntryKey> {
         let mut parent = self.root;
         let mut components = into_components(path);
         // remove the first component because it will always be the root
@@ -888,7 +883,7 @@ where
             .copied()
     }
 
-    fn follow_links(&self, entry: EntryKey, _entries: &EntryMap<T>) -> Option<EntryKey> {
+    fn follow_links(&self, entry: EntryKey, _entries: &EntryMap) -> Option<EntryKey> {
         let mut result = entry;
         while let Some(e) = _entries.get(result) {
             if let Some(link) = e.borrow().link() {
@@ -900,7 +895,7 @@ where
         Some(result)
     }
 
-    fn is_symlink_target(&self, path: &PathBuf, _entries: &EntryMap<T>) -> bool {
+    fn is_symlink_target(&self, path: &PathBuf, _entries: &EntryMap) -> bool {
         for (_, symlink_ptrs) in self.symlinks.iter() {
             for symlink_ptr in symlink_ptrs.iter() {
                 if let Some(symlink) = _entries.get(*symlink_ptr) {
@@ -947,11 +942,11 @@ where
     }
 
     /// Helper method for checking if a path passes exclusion/inclusion rules
-    fn passes(&self, path: &PathBuf, _entries: &EntryMap<T>) -> bool {
+    fn passes(&self, path: &PathBuf, _entries: &EntryMap) -> bool {
         self.is_initial_dir_target(path) || self.is_symlink_target(path, _entries)
     }
 
-    fn entry_path_passes(&self, entry: EntryKey, name: &OsStr, _entries: &EntryMap<T>) -> bool {
+    fn entry_path_passes(&self, entry: EntryKey, name: &OsStr, _entries: &EntryMap) -> bool {
         if let Some(entry_ref) = _entries.get(entry) {
             let mut path = self.resolve_direct_path(&entry_ref.borrow(), &_entries);
             path.push(name);
@@ -977,7 +972,7 @@ where
 }
 
 // conditionally implement std::fmt::Debug if the underlying type T implements it
-impl<T: fmt::Debug + Clone> fmt::Debug for FileSystem<T> {
+impl fmt::Debug for FileSystem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut builder = f.debug_struct("FileSystem");
         builder.field("root", &&self.root);
@@ -1103,7 +1098,7 @@ mod tests {
     fn new_fs<T: Default + Clone + std::fmt::Debug>(
         path: PathBuf,
         rules: Option<Rules>,
-    ) -> FileSystem<T> {
+    ) -> FileSystem {
         let rules = rules.unwrap_or_else(|| {
             let mut rules = Rules::new();
             rules.add_inclusion(GlobRule::new(r"**").unwrap());
