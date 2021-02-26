@@ -57,6 +57,8 @@ pub enum Error {
     PathNotValid,
     #[error("encountered errors when inserting recursively: {0:?}")]
     InsertRecursively(Vec<Error>),
+    #[error("error reading file: {0:?}")]
+    File(io::Error),
 }
 
 pub struct FileSystem<T>
@@ -517,7 +519,7 @@ where
                     parent: parent_ref,
                     wd,
                     data: T::default(),
-                    file_handle: OpenOptions::new().read(true).open(path).unwrap(),
+                    file_handle: OpenOptions::new().read(true).open(path).map_err(Error::File)?,
                 };
 
                 let new_key = self.register_as_child(parent_ref, new_entry, _entries)?;
