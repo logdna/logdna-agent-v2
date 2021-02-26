@@ -519,7 +519,10 @@ where
                     parent: parent_ref,
                     wd,
                     data: T::default(),
-                    file_handle: OpenOptions::new().read(true).open(path).map_err(Error::File)?,
+                    file_handle: OpenOptions::new()
+                        .read(true)
+                        .open(path)
+                        .map_err(Error::File)?,
                 };
 
                 let new_key = self.register_as_child(parent_ref, new_entry, _entries)?;
