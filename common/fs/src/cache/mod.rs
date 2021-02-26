@@ -59,6 +59,8 @@ pub enum Error {
     PathNotValid,
     #[error("encountered errors when inserting recursively: {0:?}")]
     InsertRecursively(Vec<Error>),
+    #[error("error reading file: {0:?}")]
+    File(io::Error),
 }
 
 pub struct FileSystem {
@@ -514,7 +516,7 @@ impl FileSystem {
                     name: component,
                     parent: parent_ref,
                     wd,
-                    data: RefCell::new(TailedFile::new(path).unwrap()),
+                    data: RefCell::new(TailedFile::new(path).map_err(Error::File)?),
                 };
 
                 let new_key = self.register_as_child(parent_ref, new_entry, _entries)?;
