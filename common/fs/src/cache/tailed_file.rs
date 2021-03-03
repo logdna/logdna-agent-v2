@@ -1,5 +1,6 @@
 #![allow(clippy::await_holding_refcell_ref)]
-use http::types::body::{KeyValueMap, LineBuilder};
+use http::types::body::{KeyValueMap, LineBuilder, LineMeta, LineMetaMut};
+use http::types::error::LineMetaError;
 use http::types::serialize::{
     IngestLineSerialize, IngestLineSerializeError, SerializeI64, SerializeMap, SerializeStr,
     SerializeUtf8, SerializeValue,
@@ -146,6 +147,7 @@ impl LazyLines {
     }
 }
 
+#[derive(Debug)]
 pub struct LazyLineSerializer {
     annotations: Option<KeyValueMap>,
     app: Option<String>,
@@ -315,6 +317,68 @@ impl LazyLineSerializer {
     }
 }
 
+impl LineMeta for LazyLineSerializer {
+    fn get_annotations(&self) -> Option<&KeyValueMap> {
+        self.annotations.as_ref()
+    }
+    fn get_app(&self) -> Option<&str> {
+        self.app.as_deref()
+    }
+    fn get_env(&self) -> Option<&str> {
+        self.env.as_deref()
+    }
+    fn get_file(&self) -> Option<&str> {
+        Some(self.path.as_str())
+    }
+    fn get_host(&self) -> Option<&str> {
+        self.host.as_deref()
+    }
+    fn get_labels(&self) -> Option<&KeyValueMap> {
+        self.labels.as_ref()
+    }
+    fn get_level(&self) -> Option<&str> {
+        self.level.as_deref()
+    }
+    fn get_meta(&self) -> Option<&Value> {
+        self.meta.as_ref()
+    }
+}
+
+impl LineMetaMut for LazyLineSerializer {
+    fn set_annotations(&mut self, annotations: KeyValueMap) -> Result<(), LineMetaError> {
+        self.annotations = Some(annotations);
+        Ok(())
+    }
+    fn set_app(&mut self, app: String) -> Result<(), LineMetaError> {
+        self.app = Some(app);
+        Ok(())
+    }
+    fn set_env(&mut self, env: String) -> Result<(), LineMetaError> {
+        self.env = Some(env);
+        Ok(())
+    }
+    fn set_file(&mut self, file: String) -> Result<(), LineMetaError> {
+        self.path = file;
+        Ok(())
+    }
+    fn set_host(&mut self, host: String) -> Result<(), LineMetaError> {
+        self.host = Some(host);
+        Ok(())
+    }
+    fn set_labels(&mut self, labels: KeyValueMap) -> Result<(), LineMetaError> {
+        self.labels = Some(labels);
+        Ok(())
+    }
+    fn set_level(&mut self, level: String) -> Result<(), LineMetaError> {
+        self.level = Some(level);
+        Ok(())
+    }
+    fn set_meta(&mut self, meta: Value) -> Result<(), LineMetaError> {
+        self.meta = Some(meta);
+        Ok(())
+    }
+}
+
 impl Stream for LazyLines {
     type Item = LazyLineSerializer;
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -343,11 +407,16 @@ impl Stream for LazyLines {
                 ref mut offset,
             } = borrow.deref_mut();
 
+            if *path >= paths.len() {
+                buf.clear();
+            }
+
             let pinned_reader = Pin::new(reader);
             if let Ok(read) = ready!(read_until_internal(pinned_reader, cx, b'\n', buf, read)) {
                 if read == 0 {
                     break Poll::Ready(None);
                 } else {
+                    debug!("tailer sendings lines for {:?}", &paths);
                     *path = 0;
                     *offset += TryInto::<u64>::try_into(read).unwrap();
                     *current = Some(rc_reader.clone())
@@ -399,10 +468,7 @@ impl<T> TailedFile<T> {
 
 impl TailedFile<LineBuilder> {
     // tail a file for new line(s)
-    pub(crate) async fn tail(
-        &mut self,
-        paths: Vec<PathBuf>,
-    ) -> Option<impl Stream<Item = LineBuilder>> {
+    pub async fn tail(&mut self, paths: Vec<PathBuf>) -> Option<impl Stream<Item = LineBuilder>> {
         // get the file len
         {
             let mut inner = self.inner.lock().await;
@@ -486,6 +552,52 @@ impl TailedFile<LazyLineSerializer> {
         &mut self,
         paths: Vec<PathBuf>,
     ) -> Option<impl Stream<Item = LazyLineSerializer>> {
+        let mut inner = self.inner.lock().await;
+        let len = match inner
+            .reader
+            .get_ref()
+            .get_ref()
+            .metadata()
+            .await
+            .map(|m| m.len())
+        {
+            Ok(v) => v,
+            Err(e) => {
+                error!("unable to stat {:?}: {:?}", &paths[0], e);
+                return None;
+            }
+        };
+
+        // if we are at the end of the file there's no work to do
+        if inner.offset == len {
+            return None;
+        }
+
+        // if the offset is greater than the file's len
+        // it's very likely a truncation occurred
+        if inner.offset > len {
+            info!(
+                "{:?} was truncated from {} to {}",
+                &paths[0], inner.offset, len
+            );
+            // Reset offset back to the start... ish?
+            // TODO: Work out the purpose of the 8192 something to do with lookback? That seems wrong.
+            inner.offset = if len < 8192 { 0 } else { len };
+            // seek to the offset, this creates the "tailing" effect
+            let offset = inner.offset;
+            if let Err(e) = inner
+                .reader
+                .get_mut()
+                .get_mut()
+                .seek(SeekFrom::Start(offset))
+                .await
+            {
+                error!("error seeking {:?}", e);
+                return None;
+            }
+        }
+
+        debug!("tailer sendings lines for {:?}", &paths);
         Some(LazyLines::new(
             self.inner.clone(),
             paths

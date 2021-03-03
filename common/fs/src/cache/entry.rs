@@ -7,7 +7,8 @@ use inotify::WatchDescriptor;
 use crate::cache::TailedFile;
 use crate::cache::{Children, EntryKey};
 use crate::rule::Rules;
-use http::types::body::LineBuilder;
+
+use crate::cache::tailed_file::LazyLineSerializer;
 
 #[derive(Debug)]
 pub enum Entry {
@@ -15,7 +16,7 @@ pub enum Entry {
         name: OsString,
         parent: EntryKey,
         wd: WatchDescriptor,
-        data: RefCell<TailedFile<LineBuilder>>,
+        data: RefCell<TailedFile<LazyLineSerializer>>,
     },
     Dir {
         name: OsString,

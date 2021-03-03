@@ -6,6 +6,7 @@ use std::thread::spawn;
 
 use futures::Stream;
 
+use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
 use config::Config;
 use env_logger::Env;
 use fs::tail::Tailer as FSSource;
@@ -27,6 +28,7 @@ use std::rc::Rc;
 use tokio::runtime::Runtime;
 
 mod dep_audit;
+mod stream_adapter;
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
@@ -99,15 +101,20 @@ fn main() {
     rt.block_on(async move {
         let fs_source = fs_source
             .process(&mut fs_tailer_buf)
-            .expect("except Failed to create FS Tailer");
+            .expect("except Failed to create FS Tailer")
+            .map(StrictOrLazyLineBuilder::Lazy);
 
-        let journald_source = journald_source;
+        let journald_source = journald_source.map(StrictOrLazyLineBuilder::Strict);
 
         let k8s_event_source: Option<_> = if let Some(fut) = k8s_event_stream
             .map(|e| e.ok().map(|e| e.event_stream()))
             .flatten()
         {
-            Some(fut.await.expect("Failed to create stream"))
+            Some(
+                fut.await
+                    .expect("Failed to create stream")
+                    .map(StrictOrLazyLineBuilder::Strict),
+            )
         } else {
             None
         };
@@ -132,8 +139,28 @@ fn main() {
 
         sources
             .for_each(|line| async {
-                if let Some(line) = executor.process(line) {
-                    client.borrow_mut().send(line).await
+                match line {
+                    StrictOrLazyLineBuilder::Strict(mut line) => {
+                        if executor.process(&mut line).is_some() {
+                            match line.build() {
+                                Ok(line) => {
+                                    client
+                                        .borrow_mut()
+                                        .send(StrictOrLazyLines::Strict(&line))
+                                        .await
+                                }
+                                Err(e) => error!("Couldn't build line from linebuilder {:?}", e),
+                            }
+                        }
+                    }
+                    StrictOrLazyLineBuilder::Lazy(mut line) => {
+                        if executor.process(&mut line).is_some() {
+                            client
+                                .borrow_mut()
+                                .send(StrictOrLazyLines::Lazy(line))
+                                .await
+                        }
+                    }
                 }
             })
             .await

@@ -6,7 +6,7 @@ use chrono::prelude::Utc;
 use crossbeam::queue::SegQueue;
 use uuid::Uuid;
 
-use crate::types::body::{IngestBody, IngestBodyBuffer};
+use crate::types::body::{IngestBody, IngestBodyBuffer, IntoIngestBodyBuffer};
 use metrics::Metrics;
 use std::path::PathBuf;
 
@@ -21,7 +21,7 @@ pub enum Error {
     #[error(transparent)]
     Recv(#[from] crossbeam::RecvError),
     #[error(transparent)]
-    Send(#[from] crossbeam::SendError<IngestBody>),
+    Send(#[from] crossbeam::SendError<Box<IngestBodyBuffer>>),
     #[error("{0:?} is not valid utf8")]
     NonUTF8(std::path::PathBuf),
     #[error("{0} is not a valid file name")]
@@ -53,13 +53,15 @@ impl Retry {
         Ok(())
     }
 
-    pub fn poll(&self) -> Result<Option<IngestBody>, Error> {
+    pub async fn poll(&self) -> Result<Option<IngestBodyBuffer>, Error> {
         if self.waiting.is_empty() {
             self.fill_waiting()?
         }
 
         if let Ok(path) = self.waiting.pop() {
-            return Ok(Some(Self::read_from_disk(&path)?));
+            return Ok(Some(
+                IntoIngestBodyBuffer::into(Self::read_from_disk(&path)?).await?,
+            ));
         }
 
         Ok(None)
