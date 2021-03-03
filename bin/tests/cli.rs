@@ -37,7 +37,12 @@ fn api_key_present() {
     let before_file_path = dir.path().join("before.log");
     let mut file = File::create(&before_file_path).expect("Couldn't create temp log file...");
 
-    let mut handle = common::spawn_agent(AgentSettings::new(&dir_path));
+    let mut handle = common::spawn_agent(AgentSettings {
+        exclusion_regex: Some(r"/var\w*"),
+        log_dirs: &dir_path,
+        lookback: Some("start"),
+        ..Default::default()
+    });
     // Dump the agent's stdout
     // TODO: assert that it's successfully uploaded
 
@@ -475,8 +480,9 @@ async fn test_journald_support() {
     sleep(Duration::from_millis(1000));
     let dir = "/var/log/journal";
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
-    let mut settings = AgentSettings::with_mock_ingester("/var/log/", &addr);
+    let mut settings = AgentSettings::with_mock_ingester("/var/log/journal", &addr);
     settings.journald_dirs = Some(dir);
+    settings.exclusion_regex = Some(r"^(?!/var/log/journal).*$");
     let mut agent_handle = common::spawn_agent(settings);
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
@@ -526,6 +532,7 @@ fn lookback_start_lines_are_delivered() {
 
     let mut handle = common::spawn_agent(AgentSettings {
         log_dirs: &dir_path,
+        exclusion_regex: Some(r"/var\w*"),
         ssl_cert_file: Some(cert_file.path()),
         lookback: Some("start"),
         host: Some(&addr),

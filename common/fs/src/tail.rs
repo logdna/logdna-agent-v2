@@ -108,19 +108,22 @@ impl Tailer {
                                             } else{
                                                 info!("initialized {:?} with offset {}", path, len);
                                             }
-
                                             data.borrow_mut().deref_mut().seek(len).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
                                         },
                                         Lookback::None => {
                                             let len = path.metadata().map(|m| m.len()).unwrap_or(0);
                                             info!("initialized {:?} with offset {}", path, len);
-
                                             data.borrow_mut().deref_mut().seek(len).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
                                         }
                                     }
+                                    data.borrow_mut().tail(vec![path]).await
+                                } else {
+                                    None
                                 }
-                            };
-                            None
+                            } else {
+                                None
+                            }
+
                         }
                         Event::New(entry_ptr) => {
                             Metrics::fs().increment_creates();
