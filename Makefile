@@ -104,7 +104,7 @@ test: test-journald ## Run unit tests
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
-	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --manifest-path bin/Cargo.toml --features integration_tests -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
+	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=debug" "cargo test --manifest-path bin/Cargo.toml --features integration_tests -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
