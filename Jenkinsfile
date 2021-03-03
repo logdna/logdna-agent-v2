@@ -37,35 +37,75 @@ pipeline {
                 sh "docker pull ${RUST_IMAGE_REPO}:${RUST_IMAGE_TAG}"
             }
         }
-        stage ("Lint and Test"){
+        stage('Lint and Test') {
             environment {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
             }
-            steps {
-                script {
-                    def creds = readJSON file: CREDS_FILE
-                    // Assumes the pipeline-e2e-creds format remains the same. Chase
-                    // refer to the e2e tests's README's authorization docs for the
-                    // current structure
-                    LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
-                }
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws',
-                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                ]]){
-                    sh """
+            parallel {
+                stage('Lint, Unit and Integration Tests'){
+                    steps {
+                        script {
+                            def creds = readJSON file: CREDS_FILE
+                            // Assumes the pipeline-e2e-creds format remains the same. Chase
+                            // refer to the e2e tests's README's authorization docs for the
+                            // current structure
+                            LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
+                        }
+                        withCredentials([[
+                                                 $class: 'AmazonWebServicesCredentialsBinding',
+                                                 credentialsId: 'aws',
+                                                 accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                                 secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                         ]]){
+                            sh """
                         make lint
                         make test
                         make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
                     """
+                        }
+                    }
+                    post {
+                        success {
+                            sh "make clean"
+                        }
+                    }
                 }
-            }
-            post {
-                success {
-                    sh "make clean"
+                stage('Run K8s Integration Tests') {
+                    steps {
+                        withCredentials([[
+                                                 $class: 'AmazonWebServicesCredentialsBinding',
+                                                 credentialsId: 'aws',
+                                                 accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                                 secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                         ]]) {
+                            sh script: '''
+                                    echo Running k8s integration tests
+                                    # Install kind, it should be moved to the image
+                                    if ! command -v kind &> /dev/null
+                                    then
+                                        echo "Installing kind"
+                                        curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.10.0/kind-linux-amd64
+                                        chmod +x ./kind
+                                        sudo mv ./kind /usr/local/bin/
+                                        kind --version
+                                    fi
+                                    
+                                    if ! command -v kubectl &> /dev/null
+                                    then
+                                        echo "Installing kubectl"
+                                        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                                        chmod +x ./kubectl
+                                        sudo mv ./kubectl /usr/local/bin/
+                                        kubectl version --short=true || true
+                                    fi
+                            ''', label: 'Install tools'
+
+                            sh '''
+                                    make k8s-test
+                            '''
+                        }
+                    }
                 }
             }
         }

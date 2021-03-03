@@ -28,6 +28,8 @@ pub struct FileInfo {
     pub tags: Option<String>,
     pub value: String,
     pub lines: usize,
+    pub annotation: Option<HashMap<String, String>>,
+    pub label: Option<HashMap<String, String>>,
 }
 
 pub type HyperError = hyper::Error;
@@ -42,6 +44,8 @@ struct Line {
     line: Option<String>,
     tags: Option<String>,
     file: Option<String>,
+    annotation: Option<HashMap<String, String>>,
+    label: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug)]
@@ -132,9 +136,13 @@ impl Service<Request<Body>> for Svc {
                             tags,
                             value: String::new(),
                             lines: 0,
+                            annotation: None,
+                            label: None,
                         }
                     });
 
+                    file_info.annotation = line.annotation.clone();
+                    file_info.label = line.label.clone();
                     file_info.lines += 1;
                     file_info.value.push_str(raw_line.as_str());
                 }

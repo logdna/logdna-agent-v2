@@ -21,6 +21,7 @@ WORKDIR :=/build
 DOCKER := DOCKER_BUILDKIT=1 docker
 DOCKER_DISPATCH := ./docker/dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
 DOCKER_JOURNALD_DISPATCH := ./docker/journald_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
+DOCKER_KIND_DISPATCH := ./docker/kind_dispatch.sh "$(WORKDIR)"
 DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/logdna-agent-v2
 DOCKER_PUBLIC_IMAGE := docker.io/logdna/logdna-agent
 DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
@@ -31,6 +32,7 @@ HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
 INTEGRATION_TEST_THREADS ?= 1
+K8S_TEST_CREATE_CLUSTER ?= true
 
 VCS_REF := $(shell git rev-parse --short HEAD)
 VCS_URL := https://github.com/logdna/$(REPO)
@@ -105,6 +107,10 @@ test: test-journald ## Run unit tests
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
 	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --manifest-path bin/Cargo.toml --features integration_tests -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
+
+.PHONY:k8s-test
+k8s-test: ## Run integration tests using k8s kind
+	$(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER)
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
