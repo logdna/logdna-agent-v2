@@ -123,6 +123,7 @@ impl<'a> AgentSettings<'a> {
     pub fn new(log_dirs: &'a str) -> Self {
         AgentSettings {
             log_dirs,
+            exclusion_regex: Some(r"^/var.*"),
             use_ssl: true,
             ..Default::default()
         }
@@ -296,6 +297,7 @@ pub fn self_signed_https_ingester() -> (
         .expect("Couldn't write cert file");
 
     let (server, received, shutdown_handle) = https_ingester(addr, certs, key[0].clone());
+    debug!("Started https ingester on port {}", port);
     (
         server,
         received,
