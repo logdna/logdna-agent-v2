@@ -79,28 +79,6 @@ pipeline {
                                                  accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                                                  secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                          ]]) {
-                            sh script: '''
-                                    echo Running k8s integration tests
-                                    # Install kind, it should be moved to the image
-                                    if ! command -v kind &> /dev/null
-                                    then
-                                        echo "Installing kind"
-                                        curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.10.0/kind-linux-amd64
-                                        chmod +x ./kind
-                                        sudo mv ./kind /usr/local/bin/
-                                        kind --version
-                                    fi
-                                    
-                                    if ! command -v kubectl &> /dev/null
-                                    then
-                                        echo "Installing kubectl"
-                                        curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                                        chmod +x ./kubectl
-                                        sudo mv ./kubectl /usr/local/bin/
-                                        kubectl version --short=true || true
-                                    fi
-                            ''', label: 'Install tools'
-
                             sh '''
                                     make k8s-test
                             '''
