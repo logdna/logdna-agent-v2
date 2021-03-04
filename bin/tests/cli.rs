@@ -582,8 +582,6 @@ fn lookback_start_lines_are_delivered() {
                     file.sync_all().expect("Failed to sync file");
                 });
                 tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
-                // Hack to drive stream forward
-                writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
                 file.sync_all().expect("Failed to sync file");
             },
             server

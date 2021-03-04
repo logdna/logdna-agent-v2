@@ -10,6 +10,7 @@ use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
 use config::Config;
 use env_logger::Env;
 use fs::tail::Tailer as FSSource;
+use futures::future::Either;
 use futures::StreamExt;
 use http::client::Client;
 
@@ -26,6 +27,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use tokio::runtime::Runtime;
+
+const POLL_PERIOD_MS: u64 = 100;
 
 mod dep_audit;
 mod stream_adapter;
@@ -137,30 +140,43 @@ fn main() {
             sources.push(k)
         };
 
+        let sources = sources.map(Either::Left);
+
+        let sources = futures::stream::select(
+            sources,
+            tokio::time::interval(tokio::time::Duration::from_millis(POLL_PERIOD_MS))
+                .map(Either::Right),
+        );
+
         sources
             .for_each(|line| async {
                 match line {
-                    StrictOrLazyLineBuilder::Strict(mut line) => {
-                        if executor.process(&mut line).is_some() {
-                            match line.build() {
-                                Ok(line) => {
-                                    client
-                                        .borrow_mut()
-                                        .send(StrictOrLazyLines::Strict(&line))
-                                        .await
+                    Either::Left(line) => match line {
+                        StrictOrLazyLineBuilder::Strict(mut line) => {
+                            if executor.process(&mut line).is_some() {
+                                match line.build() {
+                                    Ok(line) => {
+                                        client
+                                            .borrow_mut()
+                                            .send(StrictOrLazyLines::Strict(&line))
+                                            .await
+                                    }
+                                    Err(e) => {
+                                        error!("Couldn't build line from linebuilder {:?}", e)
+                                    }
                                 }
-                                Err(e) => error!("Couldn't build line from linebuilder {:?}", e),
                             }
                         }
-                    }
-                    StrictOrLazyLineBuilder::Lazy(mut line) => {
-                        if executor.process(&mut line).is_some() {
-                            client
-                                .borrow_mut()
-                                .send(StrictOrLazyLines::Lazy(line))
-                                .await
+                        StrictOrLazyLineBuilder::Lazy(mut line) => {
+                            if executor.process(&mut line).is_some() {
+                                client
+                                    .borrow_mut()
+                                    .send(StrictOrLazyLines::Lazy(line))
+                                    .await
+                            }
                         }
-                    }
+                    },
+                    Either::Right(_) => client.borrow_mut().poll().await,
                 }
             })
             .await
