@@ -383,8 +383,7 @@ impl FileSystem {
             entry_ptr = match entry_ptr {
                 Some(parent_ptr) => match _entries.get(parent_ptr) {
                     Some(parent_entry) => {
-                        let e = parent_entry;
-                        name = e.name().clone();
+                        name = parent_entry.name().clone();
                         parent_entry.parent()
                     }
                     None => break,
