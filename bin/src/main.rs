@@ -66,9 +66,25 @@ fn main() {
 
     spawn(Metrics::start);
 
-    let agent_state = AgentState::new("/var/lib/logdna-agent/agent-state.db").unwrap();
-    let mut offset_state = agent_state.get_offset_state();
-    let client = Rc::new(RefCell::new(Client::new(config.http.template)));
+    let mut _agent_state = None;
+    let mut offset_state = None;
+    if let Some(path) = config.log.db_path {
+        match AgentState::new(path) {
+            Ok(agent_state) => {
+                let _offset_state = agent_state.get_offset_state();
+                _agent_state = Some(agent_state);
+                offset_state = Some(_offset_state);
+            }
+            Err(e) => {
+                error!("Failed to open agent state db {}", e);
+            }
+        }
+    }
+
+    let handles = offset_state
+        .as_ref()
+        .and_then(|os| Some((os.write_handle(), os.flush_handle())));
+    let client = Rc::new(RefCell::new(Client::new(config.http.template, handles)));
     client
         .borrow_mut()
         .set_max_buffer_size(config.http.body_size);
@@ -104,7 +120,9 @@ fn main() {
     // Create the runtime
     let mut rt = Runtime::new().unwrap();
 
-    rt.spawn(offset_state.run().unwrap());
+    if let Some(offset_state) = offset_state {
+        rt.spawn(offset_state.run().unwrap());
+    }
     // Execute the future, blocking the current thread until completion
     rt.block_on(async move {
         let fs_source = fs_source
