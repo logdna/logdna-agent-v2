@@ -112,9 +112,11 @@ pub enum FileOffsetUpdate {
 
 pub enum FileOffsetEvent {
     Update(FileOffsetUpdate),
+    Clear,
     Flush,
 }
 
+#[derive(Clone)]
 pub struct FileOffsetWriteHandle {
     tx: async_channel::Sender<FileOffsetEvent>,
 }
@@ -153,6 +155,10 @@ pub struct FileOffsetFlushHandle {
 impl FileOffsetFlushHandle {
     pub async fn flush(&self) -> Result<(), FileOffsetStateError> {
         Ok(self.tx.send(FileOffsetEvent::Flush).await?)
+    }
+
+    pub async fn clear(&self) -> Result<(), FileOffsetStateError> {
+        Ok(self.tx.send(FileOffsetEvent::Clear).await?)
     }
 }
 
@@ -256,6 +262,7 @@ impl FileOffsetState {
                                 }
                                 Some(wb)
                             }
+                            (_, FileOffsetEvent::Clear) => None,
                         }
                     }
                 }

@@ -1,5 +1,5 @@
 use std::fs::{create_dir_all, read_dir, remove_file, File, OpenOptions};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::str::FromStr;
 
 use chrono::prelude::Utc;
@@ -7,7 +7,9 @@ use crossbeam::queue::SegQueue;
 use uuid::Uuid;
 
 use crate::types::body::{IngestBody, IngestBodyBuffer, IntoIngestBodyBuffer};
+use crate::Offset;
 use metrics::Metrics;
+use serde::Deserialize;
 use std::path::PathBuf;
 
 use thiserror::Error;
@@ -33,6 +35,12 @@ pub struct Retry {
     waiting: SegQueue<PathBuf>,
 }
 
+#[derive(Deserialize)]
+struct DiskRead {
+    offsets: Option<Vec<Offset>>,
+    body: IngestBody,
+}
+
 impl Retry {
     pub fn new() -> Retry {
         create_dir_all("/tmp/logdna/").expect("can't create /tmp/logdna");
@@ -41,30 +49,44 @@ impl Retry {
         }
     }
 
-    pub fn retry(&self, body: &IngestBodyBuffer) -> Result<(), Error> {
+    pub fn retry(
+        &self,
+        offsets: Option<&Vec<Offset>>,
+        body: &IngestBodyBuffer,
+    ) -> Result<(), Error> {
         Metrics::http().increment_retries();
         let mut file = OpenOptions::new().create(true).write(true).open(format!(
             "/tmp/logdna/{}_{}.retry",
             Utc::now().timestamp(),
             Uuid::new_v4().to_string()
         ))?;
+        file.write(b"{")?;
+        if let Some(offsets) = offsets {
+            file.write(b"\"offsets\":")?;
+            serde_json::to_writer(&mut file, &offsets)?;
+            file.write(b",")?;
+        };
+        file.write(b"\"body\":")?;
         let mut reader = body.reader();
         let _bytes_written = std::io::copy(&mut reader, &mut file)?;
+        file.write(b"}")?;
         Ok(())
     }
 
-    pub async fn poll(&self) -> Result<Option<IngestBodyBuffer>, Error> {
+    pub async fn poll(&self) -> Result<(Option<Vec<Offset>>, Option<IngestBodyBuffer>), Error> {
         if self.waiting.is_empty() {
             self.fill_waiting()?
         }
 
         if let Ok(path) = self.waiting.pop() {
-            return Ok(Some(
-                IntoIngestBodyBuffer::into(Self::read_from_disk(&path)?).await?,
+            let (offsets, ingest_body) = Self::read_from_disk(&path)?;
+            return Ok((
+                offsets,
+                Some(IntoIngestBodyBuffer::into(ingest_body).await?),
             ));
         }
 
-        Ok(None)
+        Ok((None, None))
     }
 
     fn fill_waiting(&self) -> Result<(), Error> {
@@ -99,11 +121,12 @@ impl Retry {
         Ok(())
     }
 
-    fn read_from_disk(path: &PathBuf) -> Result<IngestBody, Error> {
+    fn read_from_disk(path: &PathBuf) -> Result<(Option<Vec<Offset>>, IngestBody), Error> {
         let mut file = File::open(path)?;
         let mut data = String::new();
         file.read_to_string(&mut data)?;
         remove_file(&path)?;
-        Ok(serde_json::from_str(&data)?)
+        let DiskRead { offsets, body } = serde_json::from_str(&data)?;
+        Ok((offsets, body))
     }
 }
