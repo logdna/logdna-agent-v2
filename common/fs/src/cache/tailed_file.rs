@@ -305,7 +305,11 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
 }
 
 impl LazyLineSerializer {
-    pub fn new(reader: Arc<Mutex<TailedFileInner>>, path: String, offset: (bytes::Bytes, u64)) -> Self {
+    pub fn new(
+        reader: Arc<Mutex<TailedFileInner>>,
+        path: String,
+        offset: (bytes::Bytes, u64),
+    ) -> Self {
         // New line, make sure the buffer is cleared
         reader.try_lock().unwrap().deref_mut().buf.clear();
         Self {
@@ -389,7 +393,7 @@ impl GetOffset for LazyLineSerializer {
     fn get_offset(&self) -> Option<u64> {
         Some(self.file_offset.1)
     }
-    fn get_key(&self) -> Option<&[u8] > {
+    fn get_key(&self) -> Option<&[u8]> {
         Some(&self.file_offset.0)
     }
 }
@@ -410,7 +414,11 @@ impl Stream for LazyLines {
         let rc_reader = reader;
         loop {
             if current_offset.is_some() && *path < paths.len() {
-                let ret = LazyLineSerializer::new(rc_reader.clone(), paths[*path].clone(), current_offset.clone().unwrap());
+                let ret = LazyLineSerializer::new(
+                    rc_reader.clone(),
+                    paths[*path].clone(),
+                    current_offset.clone().unwrap(),
+                );
                 *path += 1;
                 break Poll::Ready(Some(ret));
             }
@@ -435,7 +443,10 @@ impl Stream for LazyLines {
                     debug!("tailer sendings lines for {:?}", &paths);
                     *path = 0;
                     *offset += TryInto::<u64>::try_into(read).unwrap();
-                    *current_offset = Some((bytes::Bytes::copy_from_slice(file_path.as_os_str().as_bytes()), *offset))
+                    *current_offset = Some((
+                        bytes::Bytes::copy_from_slice(file_path.as_os_str().as_bytes()),
+                        *offset,
+                    ))
                 }
             }
         }

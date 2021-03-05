@@ -277,6 +277,11 @@ impl FileOffsetState {
 
 // cry
 
+pub trait GetOffset {
+    fn get_key(&self) -> Option<&[u8]>;
+    fn get_offset(&self) -> Option<u64>;
+}
+
 #[cfg(test)]
 mod test {
 
