@@ -81,12 +81,23 @@ impl AgentState {
 
 pub struct FileName(bytes::Bytes);
 
+impl<T> From<T> for FileName
+where
+    T: AsRef<[u8]>,
+{
+    fn from(b: T) -> FileName {
+        FileName(bytes::Bytes::copy_from_slice(b.as_ref()))
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum FileOffsetStateError {
     #[error("{0}")]
     UpdateError(#[from] async_channel::SendError<FileOffsetEvent>),
     #[error("FileOffsetState already running")]
     AlreadyRunning,
+    #[error("FileOffsetState shutdown handle already taken")]
+    ShutdownHandleTaken,
 }
 
 pub struct FileOffset {
@@ -125,10 +136,12 @@ impl FileOffsetWriteHandle {
             .await?)
     }
 
-    pub async fn delete(&self, file_name: FileName) -> Result<(), FileOffsetStateError> {
+    pub async fn delete(&self, file_name: impl Into<FileName>) -> Result<(), FileOffsetStateError> {
         Ok(self
             .tx
-            .send(FileOffsetEvent::Update(FileOffsetUpdate::Delete(file_name)))
+            .send(FileOffsetEvent::Update(FileOffsetUpdate::Delete(
+                file_name.into(),
+            )))
             .await?)
     }
 }
@@ -143,11 +156,22 @@ impl FileOffsetFlushHandle {
     }
 }
 
+pub struct FileOffsetShutdownHandle {
+    tx: async_channel::Sender<FileOffsetEvent>,
+}
+
+impl FileOffsetShutdownHandle {
+    pub fn shutdown(&self) -> bool {
+        self.tx.close()
+    }
+}
+
 #[derive(Clone)]
 pub struct FileOffsetState {
     db: Arc<DB>,
     cf_opts: Options,
-    rx: Option<async_channel::Receiver<FileOffsetEvent>>,
+    rx: std::cell::RefCell<Option<async_channel::Receiver<FileOffsetEvent>>>,
+    shutdown: std::cell::RefCell<Option<async_channel::Sender<FileOffsetEvent>>>,
     tx: async_channel::Sender<FileOffsetEvent>,
 }
 
@@ -158,11 +182,13 @@ impl FileOffsetState {
         FileOffsetState {
             db,
             cf_opts,
-            rx: Some(rx),
+            rx: std::cell::RefCell::new(Some(rx)),
+            shutdown: std::cell::RefCell::new(Some(tx.clone())),
             tx,
         }
     }
-    pub fn iter(&self) -> impl Iterator<Item = FileOffset> + '_ {
+
+    pub fn offsets(&self) -> Vec<FileOffset> {
         let cf_handle = self.db.cf_handle(OFFSET_NAME).unwrap();
         self.db
             .iterator_cf(cf_handle, IteratorMode::Start)
@@ -173,6 +199,7 @@ impl FileOffsetState {
                     offset: u64::from_be_bytes(int_bytes.try_into().unwrap_or([0; 8])),
                 }
             })
+            .collect::<Vec<_>>()
     }
 
     pub fn write_handle(&self) -> FileOffsetWriteHandle {
@@ -187,8 +214,22 @@ impl FileOffsetState {
         }
     }
 
-    pub fn run(&mut self) -> Result<impl std::future::Future<Output = ()>, FileOffsetStateError> {
-        let rx = self.rx.take().ok_or(FileOffsetStateError::AlreadyRunning)?;
+    pub fn shutdown_handle(&self) -> Result<FileOffsetShutdownHandle, FileOffsetStateError> {
+        Ok(FileOffsetShutdownHandle {
+            tx: self
+                .shutdown
+                .borrow_mut()
+                .take()
+                .ok_or(FileOffsetStateError::ShutdownHandleTaken)?,
+        })
+    }
+
+    pub fn run(&self) -> Result<impl std::future::Future<Output = ()>, FileOffsetStateError> {
+        let rx = self
+            .rx
+            .borrow_mut()
+            .take()
+            .ok_or(FileOffsetStateError::AlreadyRunning)?;
         let self_ref = self.db.clone();
         Ok(rx
             .fold(Some(WriteBatch::default()), {
@@ -235,7 +276,70 @@ impl FileOffsetState {
 // test
 
 // cry
-#[test]
-fn it_works() {
-    println!("Hello, world!");
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn it_works() {
+        let _ = env_logger::Builder::from_default_env().try_init();
+        let data_dir = tempdir().expect("Could not create temp dir").into_path();
+        let db_path = data_dir.join("agent_state.db");
+
+        fn _test(db_path: &std::path::Path, initial_count: usize) {
+            let agent_state = AgentState::new(db_path).unwrap();
+            let offset_state = agent_state.get_offset_state();
+
+            let wh = offset_state.write_handle();
+            let fh = offset_state.flush_handle();
+            let sh = offset_state.shutdown_handle().unwrap();
+            assert_eq!(initial_count, offset_state.offsets().len());
+
+            let paths = ["path1", "path2", "path3", "path04"];
+
+            tokio_test::block_on(async {
+                let _ = tokio::join!(
+                    async {
+                        tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+
+                        assert_eq!(4, offset_state.offsets().len());
+                        tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+                        assert_eq!(4, offset_state.offsets().len());
+                        assert_eq!(
+                            13 * 2 + 14 * 2,
+                            offset_state.offsets().iter().fold(0, |a, fo| a + fo.offset)
+                        );
+                        tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+                        assert_eq!(2, offset_state.offsets().len());
+                        sh.shutdown();
+                    },
+                    async move {
+                        tokio::time::delay_for(tokio::time::Duration::from_millis(100)).await;
+                        for path in paths.iter() {
+                            wh.update(path.as_bytes(), 13).await.unwrap();
+                        }
+                        fh.flush().await.unwrap();
+                        tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+
+                        for path in paths[..2].iter() {
+                            wh.update(path.as_bytes(), 14).await.unwrap();
+                        }
+                        fh.flush().await.unwrap();
+                        tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+
+                        for path in paths[..2].iter() {
+                            wh.delete(path.as_bytes()).await.unwrap();
+                        }
+                        fh.flush().await.unwrap();
+                    },
+                    offset_state.run().unwrap()
+                );
+            });
+        }
+        _test(&db_path, 0);
+        _test(&db_path, 2);
+    }
 }
