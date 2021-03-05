@@ -6,7 +6,9 @@ use http::types::serialize::{
     IngestLineSerialize, IngestLineSerializeError, SerializeI64, SerializeMap, SerializeStr,
     SerializeUtf8, SerializeValue,
 };
+use state::GetOffset;
 use std::collections::HashMap;
+
 
 pub(crate) enum StrictOrLazyLineBuilder {
     Strict(LineBuilder),
@@ -170,6 +172,22 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         match self {
             StrictOrLazyLines::Strict(line) => line.field_count(),
             StrictOrLazyLines::Lazy(line) => line.field_count(),
+        }
+    }
+}
+
+impl GetOffset for StrictOrLazyLines<'_> {
+    fn get_offset(&self) -> Option<u64> {
+        match self {
+            StrictOrLazyLines::Strict(_) => None,
+            StrictOrLazyLines::Lazy(line) => line.get_offset(),
+        }
+    }
+
+    fn get_key(&self) -> Option<&[u8]> {
+        match self {
+            StrictOrLazyLines::Strict(_) => None,
+            StrictOrLazyLines::Lazy(line) => line.get_key(),
         }
     }
 }
