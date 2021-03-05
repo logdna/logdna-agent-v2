@@ -14,6 +14,7 @@ use std::thread;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 
 use futures::Future;
+use log::debug;
 use logdna_mock_ingester::{http_ingester, https_ingester, FileLineCounter, HyperError};
 
 use rcgen::generate_simple_self_signed;
@@ -213,6 +214,7 @@ where
     let mut lines_buffer = String::new();
     for _safeguard in 0..100_000 {
         reader.read_line(&mut line).unwrap();
+        debug!("{}", line.trim());
         lines_buffer.push_str(&line);
         lines_buffer.push('\n');
         if condition(&line) {
