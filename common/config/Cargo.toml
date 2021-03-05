@@ -9,7 +9,6 @@ edition = "2018"
 fs = { package = "fs", path = "../fs" }
 k8s = { package = "k8s", path = "../k8s" }
 http = { package = "http", path = "../http" }
-config-macro = { package = "config-macro", path = "../config-macro" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
@@ -19,6 +18,7 @@ lazy_static = "1.0"
 async-compression = "0.3"
 log = "0.4"
 sysinfo = "0.15"
+structopt = "0.3"
 
 [dev-dependencies]
 scopeguard = "1.0"

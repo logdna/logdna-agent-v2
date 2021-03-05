@@ -15,11 +15,11 @@ use fs::tail::{DirPathBuf, Lookback};
 use http::types::request::{Encoding, RequestTemplate, Schema};
 use k8s::K8sTrackingConf;
 
-use crate::env::Config as EnvConfig;
+use crate::argv::ArgumentOptions;
 use crate::error::ConfigError;
 use crate::raw::Config as RawConfig;
 
-pub mod env;
+mod argv;
 pub mod error;
 pub mod raw;
 
@@ -67,27 +67,27 @@ pub struct JournaldConfig {
 
 impl Config {
     pub fn new() -> Result<Self, ConfigError> {
-        let env_config: EnvConfig = EnvConfig::parse();
-        let raw_config = match RawConfig::parse(&env_config.config_file) {
-            Ok(v) => v,
+        let argv_options = ArgumentOptions::from_args_with_all_env_vars();
+        let raw_config = match RawConfig::parse(&argv_options.config) {
+            Ok(v) => {
+                info!("using settings defined in config file, env vars and command line options");
+                v
+            }
             Err(e) => {
-                warn!(
-                    "failed to load config, failing back to default \
-                     (ignore if you are not using a configmap or config file): {}",
-                    e
-                );
+                debug!("config file could not be parsed: {}", e);
+                info!("using settings defined in env variables and command line options");
                 RawConfig::default()
             }
         };
 
-        let raw_config = env_config.merge(raw_config);
+        let raw_config = argv_options.merge(raw_config);
 
         let mut tmp_config = raw_config.clone();
         if let Some(ref mut key) = tmp_config.http.ingestion_key {
             *key = "REDACTED".to_string();
         }
         if let Ok(yaml) = serde_yaml::to_string(&tmp_config) {
-            info!("current config: \n{}", yaml)
+            info!("starting with the following options: \n{}", yaml)
         }
 
         Config::try_from(raw_config)
@@ -100,21 +100,14 @@ impl TryFrom<RawConfig> for Config {
     fn try_from(raw: RawConfig) -> Result<Self, Self::Error> {
         let mut template_builder = RequestTemplate::builder();
 
-        template_builder.api_key(
-            raw.http
-                .ingestion_key
-                .filter(|s| !s.is_empty())
-                .ok_or_else(|| {
-                    ConfigError::MissingFieldOrEnvVar(
-                        "http.ingestion_key",
-                        EnvConfig::ingestion_key_vars(),
-                    )
-                })?,
-        );
+        template_builder.api_key(raw.http.ingestion_key.filter(|s| !s.is_empty()).ok_or(
+            ConfigError::MissingFieldOrEnvVar("http.ingestion_key", argv::env::INGESTION_KEY),
+        )?);
 
-        let use_ssl = raw.http.use_ssl.ok_or_else(|| {
-            ConfigError::MissingFieldOrEnvVar("http.use_ssl", EnvConfig::use_ssl_vars())
-        })?;
+        let use_ssl = raw.http.use_ssl.ok_or(ConfigError::MissingFieldOrEnvVar(
+            "http.use_ssl",
+            argv::env::USE_SSL,
+        ))?;
 
         if use_ssl {
             template_builder.schema(Schema::Https);
@@ -122,16 +115,21 @@ impl TryFrom<RawConfig> for Config {
             template_builder.schema(Schema::Http);
         }
 
-        let use_compression = raw.http.use_compression.ok_or_else(|| {
-            ConfigError::MissingFieldOrEnvVar(
+        let use_compression = raw
+            .http
+            .use_compression
+            .ok_or(ConfigError::MissingFieldOrEnvVar(
                 "http.use_compression",
-                EnvConfig::use_compression_vars(),
-            )
-        })?;
+                argv::env::USE_COMPRESSION,
+            ))?;
 
-        let gzip_level = raw.http.gzip_level.ok_or_else(|| {
-            ConfigError::MissingFieldOrEnvVar("http.gzip_level", EnvConfig::gzip_level_vars())
-        })?;
+        let gzip_level = raw
+            .http
+            .gzip_level
+            .ok_or(ConfigError::MissingFieldOrEnvVar(
+                "http.gzip_level",
+                argv::env::GZIP_LEVEL,
+            ))?;
 
         if use_compression {
             template_builder.encoding(Encoding::GzipJson(Level::Precise(gzip_level)));
@@ -139,12 +137,12 @@ impl TryFrom<RawConfig> for Config {
             template_builder.encoding(Encoding::Json);
         }
 
-        template_builder.host(raw.http.host.filter(|s| !s.is_empty()).ok_or_else(|| {
-            ConfigError::MissingFieldOrEnvVar("http.host", EnvConfig::host_vars())
-        })?);
+        template_builder.host(raw.http.host.filter(|s| !s.is_empty()).ok_or(
+            ConfigError::MissingFieldOrEnvVar("http.host", argv::env::HOST),
+        )?);
 
-        template_builder.endpoint(raw.http.endpoint.filter(|s| !s.is_empty()).ok_or_else(
-            || ConfigError::MissingFieldOrEnvVar("http.endpoint", EnvConfig::endpoint_vars()),
+        template_builder.endpoint(raw.http.endpoint.filter(|s| !s.is_empty()).ok_or(
+            ConfigError::MissingFieldOrEnvVar("http.endpoint", argv::env::ENDPOINT),
         )?);
 
         template_builder.params(
@@ -219,12 +217,12 @@ impl TryFrom<RawConfig> for Config {
                 .unwrap_or_else(|| Ok(Lookback::default()))?,
             use_k8s_enrichment: parse_k8s_tracking_or_warn(
                 raw.log.use_k8s_enrichment,
-                "LOGDNA_USE_K8S_LOG_ENRICHMENT",
+                argv::env::USE_K8S_LOG_ENRICHMENT,
                 K8sTrackingConf::Always,
             ),
             log_k8s_events: parse_k8s_tracking_or_warn(
                 raw.log.log_k8s_events,
-                "LOGDNA_LOG_K8S_EVENTS",
+                argv::env::LOG_K8S_EVENTS,
                 K8sTrackingConf::Never,
             ),
         };
@@ -439,20 +437,17 @@ mod tests {
         guard(file, |file| {
             serde_yaml::to_writer(file, &RawConfig::default()).unwrap();
 
-            EnvConfig::ingestion_key_vars()
-                .iter()
-                .for_each(env::remove_var);
-            env::set_var(&EnvConfig::config_file_vars()[0], "test.yaml");
+            env::remove_var(argv::env::INGESTION_KEY);
+            env::remove_var(argv::env::INGESTION_KEY_ALTERNATE);
+            env::remove_var(argv::env::INCLUSION_RULES_DEPRECATED);
+            env::set_var(argv::env::CONFIG_FILE, "test.yaml");
             assert!(Config::new().is_err());
 
-            env::set_var(&EnvConfig::ingestion_key_vars()[0], "ingestion_key_test");
+            env::set_var(argv::env::INGESTION_KEY, "ingestion_key_test");
             assert!(Config::new().is_ok());
 
-            EnvConfig::inclusion_rules_vars()
-                .iter()
-                .for_each(env::remove_var);
             let old_len = Config::new().unwrap().log.rules.inclusion_list().len();
-            env::set_var(&EnvConfig::inclusion_rules_vars()[0], "test.log,test2.log");
+            env::set_var(argv::env::INCLUSION_RULES, "test.log,test2.log");
             assert_eq!(
                 old_len + 2,
                 Config::new().unwrap().log.rules.inclusion_list().len()

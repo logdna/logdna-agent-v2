@@ -121,10 +121,12 @@ The compiled binary will be built to `./target/release/logdna-agent`.
 
 ### Options
 
-The agent accepts configuration from two sources, environment variables and a configuration YAML file. The default configuration yaml file is located at `/etc/logdna/config.yaml`. The following options are available:
+The agent accepts configuration from three different sources: environment variables, command line arguments and/or a
+configuration YAML file. The default configuration yaml file is located at `/etc/logdna/config.yaml`. The following
+options are available:
 
 | Variable Name(s) | Description | Default |
-|-|-|-|
+| ---|---|---|
 |`LOGDNA_INGESTION_KEY`<br>**Deprecated**: `LOGDNA_AGENT_KEY`|**Required**: The ingestion key associated with your LogDNA account||
 |`LOGDNA_CONFIG_FILE`<br>**Deprecated**: `DEFAULT_CONF_FILE`|Path to the configuration yaml|`/etc/logdna/config.yaml`|
 |`LOGDNA_HOST`<br>**Deprecated**: `LDLOGHOST`|The host to forward logs to|`logs.logdna.com`|
@@ -137,10 +139,10 @@ The agent accepts configuration from two sources, environment variables and a co
 |`LOGDNA_TAGS`|Comma separated list of tags metadata to attach to lines forwarded from this agent||
 |`LOGDNA_MAC`|The MAC metadata to attach to lines forwarded from this agent||
 |`LOGDNA_LOG_DIRS`<br>**Deprecated**: `LOG_DIRS`|Comma separated list of folders to recursively monitor for log events|`/var/log/`|
-|`LOGDNA_EXCLUSION_RULES`<br>**Deprecated**: `LOGDNA_EXCLUDE`|Comma separated list of glob patterns to exclude files from monitoring <sup>1</sup>|`/var/log/wtmp,/var/log/btmp,/var/log/utmp,/var/log/wtmpx,/var/log/btmpx,/var/log/utmpx,/var/log/asl/**,/var/log/sa/**,/var/log/sar*,/var/log/tallylog,/var/log/fluentd-buffers/**/*,/var/log/pods/**/*`|
+|`LOGDNA_EXCLUSION_RULES`<br>**Deprecated**: `LOGDNA_EXCLUDE`|Comma separated list of glob patterns to exclude files from monitoring <sup>1</sup>|`/var/log/wtmp,/var/log/btmp,/var/log/utmp,` <br>`/var/log/wtmpx,/var/log/btmpx,/var/log/utmpx,` <br>`/var/log/asl/**,/var/log/sa/**,/var/log/sar*,` <br>`/var/log/tallylog,/var/log/fluentd-buffers/**/*,` <br>`/var/log/pods/**/*`|
 |`LOGDNA_EXCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_EXCLUDE_REGEX`|Comma separated list of regex patterns to exclude files from monitoring||
 |`LOGDNA_INCLUSION_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE`|Comma separated list of glob patterns to includes files for monitoring <sup>1</sup>|`*.log,!(*.*)`|
-|`LOGDNA_INCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE_REGEX`|Comma separated list of regex patterns to exclude files from monitoring||
+|`LOGDNA_INCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE_REGEX`|Comma separated list of regex patterns to include files from monitoring||
 |`LOGDNA_LINE_EXCLUSION_REGEX`|Comma separated list of regex patterns to exclude log lines. When set, the Agent will NOT send log lines that match any of these patterns.||
 |`LOGDNA_LINE_INCLUSION_REGEX`|Comma separated list of regex patterns to include log lines. When set, the Agent will ONLY send log lines that match any of these patterns.||
 |`LOGDNA_REDACT_REGEX`|Comma separated list of regex patterns used to mask matching sensitive information before sending it the log line.||

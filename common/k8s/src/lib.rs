@@ -3,6 +3,8 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+use std::fmt;
+
 pub mod errors;
 pub mod event_source;
 pub mod middleware;
@@ -12,6 +14,25 @@ pub mod restarting_stream;
 pub enum K8sTrackingConf {
     Always,
     Never,
+}
+
+impl Default for K8sTrackingConf {
+    fn default() -> Self {
+        K8sTrackingConf::Never
+    }
+}
+
+impl fmt::Display for K8sTrackingConf {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                K8sTrackingConf::Always => "always",
+                K8sTrackingConf::Never => "never",
+            }
+        )
+    }
 }
 
 #[derive(thiserror::Error, Debug)]
