@@ -22,7 +22,9 @@ use k8s::middleware::K8sMetadata;
 use k8s::K8sEventLogConf;
 use metrics::Metrics;
 use middleware::Executor;
+
 use pin_utils::pin_mut;
+use state::AgentState;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -64,6 +66,8 @@ fn main() {
 
     spawn(Metrics::start);
 
+    let agent_state = AgentState::new("/var/lib/logdna-agent/agent-state.db").unwrap();
+    let mut offset_state = agent_state.get_offset_state();
     let client = Rc::new(RefCell::new(Client::new(config.http.template)));
     client
         .borrow_mut()
@@ -100,6 +104,7 @@ fn main() {
     // Create the runtime
     let mut rt = Runtime::new().unwrap();
 
+    rt.spawn(offset_state.run().unwrap());
     // Execute the future, blocking the current thread until completion
     rt.block_on(async move {
         let fs_source = fs_source

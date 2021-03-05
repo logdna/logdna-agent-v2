@@ -1,0 +1,15 @@
+[package]
+name = "state"
+version = "0.1.0"
+authors = ["Chris Nixon <engineering@logdna.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+derivative = "2.2"
+futures = "0.3"
+rocksdb = "0.15"
+async-channel = "1.6"
+thiserror = "1.0"
+bytes = "1"
