@@ -5,7 +5,10 @@ pub use crate::cache::DirPathBuf;
 use crate::cache::FileSystem;
 use crate::rule::Rules;
 use metrics::Metrics;
+use state::FileName;
+use std::collections::HashMap;
 use std::ops::DerefMut;
+use std::os::unix::ffi::OsStrExt;
 use std::sync::{Arc, Mutex};
 
 use futures::{Stream, StreamExt};
@@ -17,6 +20,7 @@ pub enum Lookback {
     Start,
     SmallFiles,
     None,
+    Stateful,
 }
 
 #[derive(Error, Debug)]
@@ -38,6 +42,7 @@ impl std::str::FromStr for Lookback {
             "start" => Ok(Lookback::Start),
             "smallfiles" => Ok(Lookback::SmallFiles),
             "none" => Ok(Lookback::None),
+            "stateful" => Ok(Lookback::Stateful),
             _ => Err(ParseLookbackError::Unknown(s.into())),
         }
     }
@@ -53,14 +58,21 @@ impl Default for Lookback {
 pub struct Tailer {
     lookback_config: Lookback,
     fs_cache: Arc<Mutex<FileSystem>>,
+    initial_offsets: Option<HashMap<FileName, u64>>,
 }
 
 impl Tailer {
     /// Creates new instance of Tailer
-    pub fn new(watched_dirs: Vec<DirPathBuf>, rules: Rules, lookback_config: Lookback) -> Self {
+    pub fn new(
+        watched_dirs: Vec<DirPathBuf>,
+        rules: Rules,
+        lookback_config: Lookback,
+        initial_offsets: Option<HashMap<FileName, u64>>,
+    ) -> Self {
         Self {
             lookback_config,
             fs_cache: Arc::new(Mutex::new(FileSystem::new(watched_dirs, rules))),
+            initial_offsets,
         }
     }
     /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
@@ -81,10 +93,12 @@ impl Tailer {
         Ok(events.then({
             let fs = self.fs_cache.clone();
             let lookback_config = self.lookback_config.clone();
+            let initial_offsets = self.initial_offsets.clone();
             move |event|{
 
                 let fs = fs.clone();
                 let lookback_config = lookback_config.clone();
+                let initial_offsets = initial_offsets.clone();
                 async move {
                     let fs = fs.lock().expect("Couldn't lock fs");
                     match event {
@@ -114,6 +128,16 @@ impl Tailer {
                                             let len = path.metadata().map(|m| m.len()).unwrap_or(0);
                                             info!("initialized {:?} with offset {}", path, len);
                                             data.borrow_mut().deref_mut().seek(len).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
+                                        }
+                                        Lookback::Stateful => {
+                                            match initial_offsets.as_ref() {
+                                                Some(initial_offsets) => {
+                                                    let offset = initial_offsets.get(&path.as_os_str().as_bytes().into()).copied().unwrap_or_else(||path.metadata().map(|m| m.len()).unwrap_or(0));
+                                                    info!("initialized {:?} with offset {}", path, offset);
+                                                    data.borrow_mut().deref_mut().seek(offset).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
+                                                }
+                                                None => warn!("cannot look up offsets, no state available")
+                                            }
                                         }
                                     }
                                     data.borrow_mut().tail(vec![path]).await
@@ -289,6 +313,7 @@ mod test {
                         .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
                     rules,
                     Lookback::None,
+                    None,
                 );
                 let mut buf = [0u8; 4096];
 
@@ -338,6 +363,7 @@ mod test {
                         .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
                     rules,
                     Lookback::SmallFiles,
+                    None,
                 );
                 let mut buf = [0u8; 4096];
 
@@ -388,6 +414,7 @@ mod test {
                         .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
                     rules,
                     Lookback::Start,
+                    None,
                 );
 
                 let mut buf = [0u8; 4096];

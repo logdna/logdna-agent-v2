@@ -198,8 +198,8 @@ impl Client {
                     // Flush the state
                     if let Err(e) = sf.flush().await {
                         error!("Unable to flush state to disk. error: {}", e);
-                    } else {
-                        self.offsets.as_mut().map(|offsets| offsets.clear());
+                    } else if let Some(offsets) = self.offsets.as_mut() {
+                        offsets.clear()
                     }
                 }
             } //success

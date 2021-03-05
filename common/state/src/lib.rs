@@ -79,6 +79,7 @@ impl AgentState {
     }
 }
 
+#[derive(Hash, Clone, PartialEq, Eq)]
 pub struct FileName(bytes::Bytes);
 
 impl<T> From<T> for FileName
@@ -101,8 +102,8 @@ pub enum FileOffsetStateError {
 }
 
 pub struct FileOffset {
-    key: FileName,
-    offset: u64,
+    pub key: FileName,
+    pub offset: u64,
 }
 
 pub enum FileOffsetUpdate {

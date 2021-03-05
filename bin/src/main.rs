@@ -68,12 +68,15 @@ fn main() {
 
     let mut _agent_state = None;
     let mut offset_state = None;
+    let mut initial_offsets = None;
     if let Some(path) = config.log.db_path {
         match AgentState::new(path) {
             Ok(agent_state) => {
                 let _offset_state = agent_state.get_offset_state();
+                let offsets = _offset_state.offsets();
                 _agent_state = Some(agent_state);
                 offset_state = Some(_offset_state);
+                initial_offsets = Some(offsets.into_iter().map(|fo| (fo.key, fo.offset)).collect());
             }
             Err(e) => {
                 error!("Failed to open agent state db {}", e);
@@ -83,7 +86,7 @@ fn main() {
 
     let handles = offset_state
         .as_ref()
-        .and_then(|os| Some((os.write_handle(), os.flush_handle())));
+        .map(|os| (os.write_handle(), os.flush_handle()));
     let client = Rc::new(RefCell::new(Client::new(config.http.template, handles)));
     client
         .borrow_mut()
@@ -100,7 +103,12 @@ fn main() {
     executor.init();
 
     let mut fs_tailer_buf = [0u8; 4096];
-    let mut fs_source = FSSource::new(config.log.dirs, config.log.rules, config.log.lookback);
+    let mut fs_source = FSSource::new(
+        config.log.dirs,
+        config.log.rules,
+        config.log.lookback,
+        initial_offsets,
+    );
 
     let journald_source = create_source(&config.journald.paths);
 

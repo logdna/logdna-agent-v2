@@ -60,16 +60,16 @@ impl Retry {
             Utc::now().timestamp(),
             Uuid::new_v4().to_string()
         ))?;
-        file.write(b"{")?;
+        file.write_all(b"{")?;
         if let Some(offsets) = offsets {
-            file.write(b"\"offsets\":")?;
+            file.write_all(b"\"offsets\":")?;
             serde_json::to_writer(&mut file, &offsets)?;
-            file.write(b",")?;
+            file.write_all(b",")?;
         };
-        file.write(b"\"body\":")?;
+        file.write_all(b"\"body\":")?;
         let mut reader = body.reader();
         let _bytes_written = std::io::copy(&mut reader, &mut file)?;
-        file.write(b"}")?;
+        file.write_all(b"}")?;
         Ok(())
     }
 
