@@ -9,6 +9,7 @@ use futures::Stream;
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
 use config::Config;
 use env_logger::Env;
+use fs::tail::Lookback;
 use fs::tail::Tailer as FSSource;
 use futures::future::Either;
 use futures::StreamExt;
@@ -69,17 +70,20 @@ fn main() {
     let mut _agent_state = None;
     let mut offset_state = None;
     let mut initial_offsets = None;
-    if let Some(path) = config.log.db_path {
-        match AgentState::new(path) {
-            Ok(agent_state) => {
-                let _offset_state = agent_state.get_offset_state();
-                let offsets = _offset_state.offsets();
-                _agent_state = Some(agent_state);
-                offset_state = Some(_offset_state);
-                initial_offsets = Some(offsets.into_iter().map(|fo| (fo.key, fo.offset)).collect());
-            }
-            Err(e) => {
-                error!("Failed to open agent state db {}", e);
+    if matches!(config.log.lookback, Lookback::Stateful) {
+        if let Some(path) = config.log.db_path {
+            match AgentState::new(path) {
+                Ok(agent_state) => {
+                    let _offset_state = agent_state.get_offset_state();
+                    let offsets = _offset_state.offsets();
+                    _agent_state = Some(agent_state);
+                    offset_state = Some(_offset_state);
+                    initial_offsets =
+                        Some(offsets.into_iter().map(|fo| (fo.key, fo.offset)).collect());
+                }
+                Err(e) => {
+                    error!("Failed to open agent state db {}", e);
+                }
             }
         }
     }
