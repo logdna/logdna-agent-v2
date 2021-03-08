@@ -3,6 +3,8 @@ use std::sync::Arc;
 use http::types::body::LineMetaMut;
 use std::thread::spawn;
 
+pub mod line_rules;
+
 pub enum Status<T> {
     Ok(T),
     Skip,

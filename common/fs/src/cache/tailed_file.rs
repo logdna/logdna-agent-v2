@@ -164,8 +164,8 @@ pub struct LazyLineSerializer {
     labels: Option<KeyValueMap>,
     level: Option<String>,
     meta: Option<Value>,
-
     path: String,
+    line_buffer: Option<Vec<u8>>,
 
     file_offset: (u64, u64),
 
@@ -279,7 +279,11 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
     where
         S: SerializeUtf8<bytes::Bytes> + std::marker::Send,
     {
-        let bytes = {
+        // Try to use the cached value first
+        let replaced_buf = self.line_buffer.take();
+        let bytes = if let Some(buf) = replaced_buf {
+            bytes::Bytes::from(buf)
+        } else {
             let borrowed_reader = self.reader.lock().await;
             bytes::Bytes::copy_from_slice(&borrowed_reader.buf[..borrowed_reader.buf.len() - 1])
         };
@@ -321,6 +325,7 @@ impl LazyLineSerializer {
             labels: None,
             level: None,
             meta: None,
+            line_buffer: None,
             file_offset: offset,
         }
     }
@@ -385,6 +390,36 @@ impl LineMetaMut for LazyLineSerializer {
     fn set_meta(&mut self, meta: Value) -> Result<(), LineMetaError> {
         self.meta = Some(meta);
         Ok(())
+    }
+
+    fn set_line_text(&mut self, _line: String) -> Result<(), LineMetaError> {
+        Err(LineMetaError::Failed(
+            "text line can not be assigned to LazyLineSerializer",
+        ))
+    }
+
+    fn set_line_buffer(&mut self, line: Vec<u8>) -> Result<(), LineMetaError> {
+        self.line_buffer = Some(line);
+        Ok(())
+    }
+
+    fn get_line(&mut self) -> (Option<&str>, Option<&[u8]>) {
+        if let Some(_) = self.line_buffer.as_ref() {
+            // Get the value without locking
+            return (None, self.line_buffer.as_ref().map(|x| x.as_slice()));
+        }
+
+        return match self.reader.try_lock() {
+            Some(file_inner) => {
+                // Cache the value to avoid excessive cloning
+                self.line_buffer = Some(file_inner.buf.clone());
+                (None, self.line_buffer.as_ref().map(|x| x.as_slice()))
+            }
+            None => {
+                // This should never happen but should be handled by callers
+                (None, None)
+            }
+        };
     }
 }
 
@@ -647,5 +682,73 @@ impl TailedFile<LazyLineSerializer> {
                 .map(|path| path.to_string_lossy().into())
                 .collect(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use middleware::line_rules::LineRules;
+    use middleware::{Middleware, Status};
+    use tempfile::tempdir;
+
+    #[test]
+    fn lazy_lines_should_get_set_line_with_rules() {
+        let mut l = get_line();
+        let buf = b"hello trace world".to_vec();
+        l.reader.try_lock().unwrap().deref_mut().buf = buf;
+
+        {
+            let exclusion = &vec!["DEBUG".to_owned(), "(?i:TRACE)".to_owned()];
+            let p = LineRules::new(exclusion, &[], &[]).unwrap();
+            assert!(matches!(p.process(&mut l), Status::Skip));
+        }
+        {
+            let inclusion = &vec!["DEBUG".to_owned(), "(?i:TRACE)".to_owned()];
+            let p = LineRules::new(&[], inclusion, &[]).unwrap();
+            assert!(matches!(p.process(&mut l), Status::Ok(_)));
+        }
+    }
+
+    #[test]
+    fn lazy_lines_should_support_redaction() {
+        let redact = &vec!["NAME".to_owned(), r"\d+".to_owned()];
+        let mut l = get_line();
+
+        {
+            let buf = b"my name is NAME and I was born in the year 1914".to_vec();
+            l.reader.try_lock().unwrap().deref_mut().buf = buf;
+            let p = LineRules::new(&[], &[], redact).unwrap();
+            match p.process(&mut l) {
+                Status::Ok(_) => assert_eq!(
+                    std::str::from_utf8(l.get_line().1.unwrap()).unwrap(),
+                    "my name is [REDACTED] and I was born in the year [REDACTED]"
+                ),
+                _ => panic!("it should have been OK"),
+            }
+        }
+    }
+
+    fn get_line() -> LazyLineSerializer {
+        let file_path = tempdir().unwrap().into_path().join("test.log");
+        let file_inner = Arc::new(Mutex::new(TailedFileInner {
+            reader: BufReader::new(tokio::fs::File::from_std(
+                OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create(true)
+                    .open(&file_path)
+                    .unwrap(),
+            ))
+            .compat(),
+            buf: Vec::new(),
+            offset: 0,
+            file_path: file_path.clone(),
+        }));
+        LazyLineSerializer::new(
+            file_inner,
+            "file/path.log".to_owned(),
+            (bytes::Bytes::from(Vec::new()), 0),
+        )
     }
 }

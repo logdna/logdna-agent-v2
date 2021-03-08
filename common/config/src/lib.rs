@@ -48,6 +48,9 @@ pub struct LogConfig {
     pub dirs: Vec<DirPathBuf>,
     pub db_path: Option<PathBuf>,
     pub rules: Rules,
+    pub line_exclusion_regex: Vec<String>,
+    pub line_inclusion_regex: Vec<String>,
+    pub line_redact_regex: Vec<String>,
     pub lookback: Lookback,
     pub use_k8s_enrichment: K8sTrackingConf,
     pub log_k8s_events: K8sTrackingConf,
@@ -196,6 +199,10 @@ impl TryFrom<RawConfig> for Config {
                 .collect(),
             db_path: raw.log.db_path,
             rules: Rules::new(),
+            // TODO: Parse regex
+            line_exclusion_regex: raw.log.line_exclusion_regex,
+            line_inclusion_regex: raw.log.line_inclusion_regex,
+            line_redact_regex: raw.log.line_redact_regex,
             lookback: raw
                 .log
                 .lookback

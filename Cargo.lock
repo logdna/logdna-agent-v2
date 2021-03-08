@@ -719,6 +719,7 @@ dependencies = [
  "log",
  "memchr",
  "metrics",
+ "middleware",
  "pcre2",
  "pin-project-lite",
  "serde_json",
@@ -1459,6 +1460,8 @@ version = "0.1.0"
 dependencies = [
  "http 0.1.0",
  "memoffset",
+ "regex",
+ "thiserror",
 ]
 
 [[package]]

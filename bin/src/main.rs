@@ -22,6 +22,7 @@ use k8s::event_source::K8sEventStream;
 use k8s::middleware::K8sMetadata;
 use k8s::K8sTrackingConf;
 use metrics::Metrics;
+use middleware::line_rules::LineRules;
 use middleware::Executor;
 
 use pin_utils::pin_mut;
@@ -114,6 +115,19 @@ fn main() {
             Err(e) => warn!("{}", e),
         };
     }
+
+    match LineRules::new(
+        &config.log.line_exclusion_regex,
+        &config.log.line_inclusion_regex,
+        &config.log.line_redact_regex,
+    ) {
+        Ok(v) => executor.register(v),
+        Err(e) => {
+            error!("line regex is invalid: {}", e);
+            std::process::exit(1);
+        }
+    };
+
     executor.init();
 
     let mut fs_tailer_buf = [0u8; 4096];
