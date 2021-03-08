@@ -4,7 +4,7 @@ use derivative::Derivative;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
 
-use log::info;
+use log::{info, warn};
 
 use std::convert::{AsRef, TryInto};
 use std::path::Path;
@@ -42,33 +42,35 @@ impl AgentState {
         let cfs = vec![offset_cf];
 
         info!("Opening state db at {:?}", path);
-        let db = if let Ok(db) = DB::open_cf_descriptors(&db_opts, path, cfs) {
-            db
-        } else {
+        let db = match DB::open_cf_descriptors(&db_opts, path, cfs) {
+            Ok(db) => db,
             // Attempt to repair a badly closed DB
-            DB::repair(&db_opts, path).map_or_else(
-                |_| {
-                    DB::destroy(&db_opts, path).expect("Couldn't destroy state file");
-                    DB::open_cf_descriptors(
-                        &db_opts,
-                        path,
-                        vec![ColumnFamilyDescriptor::new(
-                            OFFSET_NAME,
-                            offset_cf_opt.clone(),
-                        )],
-                    )
-                },
-                |_| {
-                    DB::open_cf_descriptors(
-                        &db_opts,
-                        path,
-                        vec![ColumnFamilyDescriptor::new(
-                            OFFSET_NAME,
-                            offset_cf_opt.clone(),
-                        )],
-                    )
-                },
-            )?
+            Err(e) => {
+                warn!("error opening state db, attempted to repair: {}", e);
+                DB::repair(&db_opts, path).map_or_else(
+                    |_| {
+                        DB::destroy(&db_opts, path).expect("Couldn't destroy state file");
+                        DB::open_cf_descriptors(
+                            &db_opts,
+                            path,
+                            vec![ColumnFamilyDescriptor::new(
+                                OFFSET_NAME,
+                                offset_cf_opt.clone(),
+                            )],
+                        )
+                    },
+                    |_| {
+                        DB::open_cf_descriptors(
+                            &db_opts,
+                            path,
+                            vec![ColumnFamilyDescriptor::new(
+                                OFFSET_NAME,
+                                offset_cf_opt.clone(),
+                            )],
+                        )
+                    },
+                )?
+            }
         };
         Ok(Self {
             db: Arc::new(db),
