@@ -90,6 +90,7 @@ impl Tailer {
             }
         };
 
+        debug!("Tailer starting with lookback: {:?}", self.lookback_config);
         Ok(events.then({
             let fs = self.fs_cache.clone();
             let lookback_config = self.lookback_config.clone();
@@ -132,7 +133,7 @@ impl Tailer {
                                         Lookback::Stateful => {
                                             match initial_offsets.as_ref() {
                                                 Some(initial_offsets) => {
-                                                    let offset = initial_offsets.get(&path.as_os_str().as_bytes().into()).copied().unwrap_or_else(||path.metadata().map(|m| m.len()).unwrap_or(0));
+                                                    let offset = initial_offsets.get(&path.as_os_str().as_bytes().into()).copied().unwrap_or(0);
                                                     info!("initialized {:?} with offset {}", path, offset);
                                                     data.borrow_mut().deref_mut().seek(offset).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
                                                 }

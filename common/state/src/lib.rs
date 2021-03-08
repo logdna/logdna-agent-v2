@@ -3,6 +3,9 @@ use rocksdb::{ColumnFamilyDescriptor, IteratorMode, Options, WriteBatch, DB};
 use derivative::Derivative;
 use futures::future::FutureExt;
 use futures::stream::StreamExt;
+
+use log::info;
+
 use std::convert::{AsRef, TryInto};
 use std::path::Path;
 use std::sync::Arc;
@@ -38,9 +41,11 @@ impl AgentState {
         let offset_cf = ColumnFamilyDescriptor::new(OFFSET_NAME, offset_cf_opt.clone());
         let cfs = vec![offset_cf];
 
+        info!("Opening state db at {:?}", path);
         let db = if let Ok(db) = DB::open_cf_descriptors(&db_opts, path, cfs) {
             db
         } else {
+            // Attempt to repair a badly closed DB
             DB::repair(&db_opts, path).map_or_else(
                 |_| {
                     DB::destroy(&db_opts, path).expect("Couldn't destroy state file");
@@ -65,7 +70,6 @@ impl AgentState {
                 },
             )?
         };
-        // Attempt to repair a badly closed DB
         Ok(Self {
             db: Arc::new(db),
             offset_cf_opt,
