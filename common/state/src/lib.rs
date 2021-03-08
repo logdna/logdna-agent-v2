@@ -302,7 +302,6 @@ mod test {
     fn it_works() {
         let _ = env_logger::Builder::from_default_env().try_init();
         let data_dir = tempdir().expect("Could not create temp dir").into_path();
-        let db_path = data_dir.join("agent_state.db");
 
         // create a db, write to it, mutate it, delete entries.
         // The times/delays are significant
@@ -356,7 +355,7 @@ mod test {
                 );
             });
         }
-        _test(&db_path, 0);
-        _test(&db_path, 2);
+        _test(&data_dir, 0);
+        _test(&data_dir, 2);
     }
 }
