@@ -834,6 +834,7 @@ fn lookback_stateful_lines_are_delivered() {
                 tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
                 let mut file = OpenOptions::new()
                     .append(true)
+                    .create(false)
                     .open(&file_path_clone)
                     .expect("Couldn't create temp log file...");
                 (0..5).for_each(|_| {
