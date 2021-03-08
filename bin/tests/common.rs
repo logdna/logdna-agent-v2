@@ -117,6 +117,7 @@ pub struct AgentSettings<'a> {
     pub use_ssl: bool,
     pub ingester_key: Option<&'a str>,
     pub tags: Option<&'a str>,
+    pub state_db_dir: Option<&'a std::path::Path>,
 }
 
 impl<'a> AgentSettings<'a> {
@@ -177,6 +178,10 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
 
     if let Some(lookback) = settings.lookback {
         agent.env("LOGDNA_LOOKBACK", lookback);
+    }
+
+    if let Some(state_db_dir) = settings.state_db_dir {
+        agent.env("LOGDNA_DB_PATH", state_db_dir);
     }
 
     if let Some(rules) = settings.exclusion_regex {
