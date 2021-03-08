@@ -29,6 +29,9 @@ k8s = { package = "k8s", path = "../common/k8s" }
 metrics = { package = "metrics", path = "../common/metrics" }
 journald = { package = "journald", path = "../common/journald" }
 
+bytes = "0.5"
+chrono = "0.4"
+async-trait = "0.1"
 log = "0.4"
 env_logger = "0.7"
 anyhow = "1.0"

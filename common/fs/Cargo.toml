@@ -9,19 +9,22 @@ edition = "2018"
 http = { package = "http", path = "../http" }
 metrics = { package = "metrics", path = "../metrics" }
 
-#io
+#i
 inotify = "0.8"
 
 #error
 thiserror = "1.0"
 
 #utils
+bytes = "0.5"
+chrono = "0.4"
 pcre2 = "0.2"
 globber = "0.1"
 hashbrown = "0.8"
 slotmap = "1.0"
 smallvec = "1.6"
 memchr = "2"
+serde_json = "1"
 
 #logging
 log = "0.4"
@@ -29,6 +32,7 @@ env_logger = "0.7"
 lazy_static = "1.4"
 
 #async
+async-trait = "0.1"
 tokio = {version= "0.2", features= ["fs"]}
 tokio-util = {version= "0.3", features= ["compat"]}
 futures = "0.3"

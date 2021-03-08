@@ -1,9 +1,9 @@
 use crate::cache::entry::Entry;
 use crate::cache::event::Event;
+use crate::cache::tailed_file::LazyLineSerializer;
 pub use crate::cache::DirPathBuf;
 use crate::cache::FileSystem;
 use crate::rule::Rules;
-use http::types::body::LineBuilder;
 use metrics::Metrics;
 use std::ops::DerefMut;
 use std::sync::{Arc, Mutex};
@@ -67,7 +67,7 @@ impl Tailer {
     pub fn process<'a>(
         &mut self,
         buf: &'a mut [u8],
-    ) -> Result<impl Stream<Item = LineBuilder> + 'a, std::io::Error> {
+    ) -> Result<impl Stream<Item = LazyLineSerializer> + 'a, std::io::Error> {
         let events = {
             match FileSystem::stream_events(self.fs_cache.clone(), buf) {
                 Ok(event) => event,
@@ -108,19 +108,22 @@ impl Tailer {
                                             } else{
                                                 info!("initialized {:?} with offset {}", path, len);
                                             }
-
                                             data.borrow_mut().deref_mut().seek(len).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
                                         },
                                         Lookback::None => {
                                             let len = path.metadata().map(|m| m.len()).unwrap_or(0);
                                             info!("initialized {:?} with offset {}", path, len);
-
                                             data.borrow_mut().deref_mut().seek(len).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
                                         }
                                     }
+                                    data.borrow_mut().tail(vec![path]).await
+                                } else {
+                                    None
                                 }
-                            };
-                            None
+                            } else {
+                                None
+                            }
+
                         }
                         Event::New(entry_ptr) => {
                             Metrics::fs().increment_creates();
@@ -135,7 +138,7 @@ impl Tailer {
                                     } = entry
                                     {
                                         info!("added {:?}", paths[0]);
-                                        data.clone().borrow_mut().tail(paths.clone()).await
+                                        data.borrow_mut().tail(paths.clone()).await
                                     }
                                     else {
                                         None

@@ -250,6 +250,7 @@ pub fn https_ingester(
             let mut tcp = TcpListener::bind(&addr)
                 .await
                 .unwrap_or_else(|_| panic!("Couldn't bind to {:?}", addr));
+            info!("ingester listening at {:?}", addr);
             let tls_acceptor = TlsAcceptor::from(tls_cfg);
             // Prepare a long-running future stream to accept and serve cients.
             let incoming_tls_stream = tcp
