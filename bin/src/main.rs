@@ -70,7 +70,7 @@ fn main() {
     let mut _agent_state = None;
     let mut offset_state = None;
     let mut initial_offsets = None;
-    if matches!(config.log.lookback, Lookback::Stateful) {
+    if !matches!(config.log.lookback, Lookback::None) {
         if let Some(path) = config.log.db_path {
             match AgentState::new(path) {
                 Ok(agent_state) => {

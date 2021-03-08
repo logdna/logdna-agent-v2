@@ -742,7 +742,7 @@ fn lookback_stateful_lines_are_delivered() {
                     log_dirs: &dir_path,
                     exclusion_regex: Some(r"/var\w*"),
                     ssl_cert_file: Some(cert_file.path()),
-                    lookback: Some("stateful"),
+                    lookback: Some("start"),
                     state_db_dir: Some(&db_dir_path),
                     host: Some(&addr),
                     ..Default::default()
@@ -802,7 +802,7 @@ fn lookback_stateful_lines_are_delivered() {
                     log_dirs: &dir_path,
                     exclusion_regex: Some(r"/var\w*"),
                     ssl_cert_file: Some(cert_file.path()),
-                    lookback: Some("stateful"),
+                    lookback: Some("start"),
                     state_db_dir: Some(&db_dir_path),
                     host: Some(&addr),
                     ..Default::default()
