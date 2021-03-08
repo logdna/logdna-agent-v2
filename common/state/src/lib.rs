@@ -6,8 +6,8 @@ use futures::stream::StreamExt;
 
 use log::{info, warn};
 
-use std::convert::{AsRef, TryInto};
-use std::path::Path;
+use std::convert::{AsRef, Into, TryInto};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -17,9 +17,12 @@ const OFFSET_NAME: &str = "file_offsets";
 pub enum StateError {
     #[error("{0}")]
     RocksDb(#[from] rocksdb::Error),
+    #[error("{0}")]
+    IoError(#[from] std::io::Error),
+    #[error("{0:?}")]
+    PermissionDenied(PathBuf),
 }
 
-/**Parent State object **/
 #[derive(Derivative)]
 #[derivative(Debug)]
 pub struct AgentState {
@@ -33,6 +36,12 @@ impl AgentState {
     pub fn new(path: impl AsRef<Path>) -> Result<Self, StateError> {
         let path = path.as_ref();
 
+        if path.metadata()?.permissions().readonly() {
+            return Err(StateError::PermissionDenied(path.into()));
+        }
+
+        let path = path.join("agent_state.db");
+
         let mut db_opts = Options::default();
         db_opts.create_missing_column_families(true);
         db_opts.create_if_missing(true);
@@ -42,17 +51,18 @@ impl AgentState {
         let cfs = vec![offset_cf];
 
         info!("Opening state db at {:?}", path);
-        let db = match DB::open_cf_descriptors(&db_opts, path, cfs) {
+
+        let db = match DB::open_cf_descriptors(&db_opts, &path, cfs) {
             Ok(db) => db,
             // Attempt to repair a badly closed DB
             Err(e) => {
                 warn!("error opening state db, attempted to repair: {}", e);
-                DB::repair(&db_opts, path).map_or_else(
+                DB::repair(&db_opts, &path).map_or_else(
                     |_| {
-                        DB::destroy(&db_opts, path).expect("Couldn't destroy state file");
+                        DB::destroy(&db_opts, &path).expect("Couldn't destroy state file");
                         DB::open_cf_descriptors(
                             &db_opts,
-                            path,
+                            &path,
                             vec![ColumnFamilyDescriptor::new(
                                 OFFSET_NAME,
                                 offset_cf_opt.clone(),
@@ -62,7 +72,7 @@ impl AgentState {
                     |_| {
                         DB::open_cf_descriptors(
                             &db_opts,
-                            path,
+                            &path,
                             vec![ColumnFamilyDescriptor::new(
                                 OFFSET_NAME,
                                 offset_cf_opt.clone(),

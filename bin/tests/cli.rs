@@ -712,7 +712,7 @@ fn lookback_stateful_lines_are_delivered() {
     let _ = env_logger::Builder::from_default_env().try_init();
 
     let db_dir = tempdir().expect("Couldn't create temp dir...");
-    let db_dir_path = db_dir.path().join("logdna-agent.db");
+    let db_dir_path = db_dir.path();
     let dir = tempdir().expect("Couldn't create temp dir...");
 
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
