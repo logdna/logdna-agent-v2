@@ -133,7 +133,7 @@ impl FileOffsetWriteHandle {
             .send(FileOffsetEvent::Update(FileOffsetUpdate::Update(
                 FileOffset {
                     key: file_name.into(),
-                    offset: offset,
+                    offset,
                 },
             )))
             .await?)
@@ -237,22 +237,21 @@ impl FileOffsetState {
             .borrow_mut()
             .take()
             .ok_or(FileOffsetStateError::AlreadyRunning)?;
-        let self_ref = self.db.clone();
+        let db = self.db.clone();
         Ok(rx
             .fold(Some(WriteBatch::default()), {
-                let self_ref = self_ref.clone();
-                move |a, e| {
-                    let self_ref = self_ref.clone();
+                move |acc, event| {
+                    let db = db.clone();
                     async move {
-                        let cf_handle = self_ref.cf_handle(OFFSET_NAME).unwrap();
-                        match (a, e) {
+                        let cf_handle = db.cf_handle(OFFSET_NAME).unwrap();
+                        match (acc, event) {
                             (Some(wb), FileOffsetEvent::Flush) => {
-                                self_ref.write(wb).expect("Couldn't flush state"); // TODO
+                                db.write(wb).expect("Couldn't flush state"); // TODO
                                 None
                             }
                             (None, FileOffsetEvent::Flush) => None,
                             (wb, FileOffsetEvent::Update(e)) => {
-                                let mut wb = wb.unwrap_or(WriteBatch::default());
+                                let mut wb = wb.unwrap_or_default();
                                 match e {
                                     FileOffsetUpdate::Update(FileOffset { key, offset }) => {
                                         wb.put_cf(cf_handle, key.0, u64::to_be_bytes(offset));
@@ -272,19 +271,6 @@ impl FileOffsetState {
     }
 }
 
-// TODO:
-// Give tailer a writer
-// Give Retry a writer
-// Wrap all the Line/LazyLines to carry their offset
-// impl trait to allow things carrying their offset to write them
-// Give http client a flusher
-// Teach it to flush
-// Update fs to populate offsets from offsetstate
-
-// test
-
-// cry
-
 pub trait GetOffset {
     fn get_key(&self) -> Option<&[u8]>;
     fn get_offset(&self) -> Option<u64>;
@@ -302,6 +288,8 @@ mod test {
         let data_dir = tempdir().expect("Could not create temp dir").into_path();
         let db_path = data_dir.join("agent_state.db");
 
+        // create a db, write to it, mutate it, delete entries.
+        // The times/delays are significant
         fn _test(db_path: &std::path::Path, initial_count: usize) {
             let agent_state = AgentState::new(db_path).unwrap();
             let offset_state = agent_state.get_offset_state();
