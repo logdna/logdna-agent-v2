@@ -1,10 +1,10 @@
 use rocksdb::{ColumnFamilyDescriptor, IteratorMode, Options, WriteBatch, DB};
 
 use derivative::Derivative;
-use futures::future::FutureExt;
+use futures::future::{Future, FutureExt};
 use futures::stream::StreamExt;
 
-use log::{info, warn};
+use log::{error, info, warn};
 
 use std::convert::{AsRef, Into, TryInto};
 use std::path::{Path, PathBuf};
@@ -59,7 +59,7 @@ impl AgentState {
                 warn!("error opening state db, attempted to repair: {}", e);
                 DB::repair(&db_opts, &path).map_or_else(
                     |_| {
-                        DB::destroy(&db_opts, &path).expect("Couldn't destroy state file");
+                        DB::destroy(&db_opts, &path)?;
                         DB::open_cf_descriptors(
                             &db_opts,
                             &path,
@@ -111,6 +111,10 @@ where
 pub enum FileOffsetStateError {
     #[error("{0}")]
     UpdateError(#[from] async_channel::SendError<FileOffsetEvent>),
+    #[error("{0}")]
+    DbError(String),
+    #[error("{0}")]
+    RocksDb(#[from] rocksdb::Error),
     #[error("FileOffsetState already running")]
     AlreadyRunning,
     #[error("FileOffsetState shutdown handle already taken")]
@@ -211,9 +215,12 @@ impl FileOffsetState {
         }
     }
 
-    pub fn offsets(&self) -> Vec<FileOffset> {
-        let cf_handle = self.db.cf_handle(OFFSET_NAME).unwrap();
-        self.db
+    pub fn offsets(&self) -> Result<Vec<FileOffset>, FileOffsetStateError> {
+        let cf_handle = self.db.cf_handle(OFFSET_NAME).ok_or_else(|| {
+            FileOffsetStateError::DbError("Failed to get ColumnFamily handle".into())
+        })?;
+        Ok(self
+            .db
             .iterator_cf(cf_handle, IteratorMode::Start)
             .map(|(k, v)| {
                 let (int_bytes, _) = v.split_at(std::mem::size_of::<u64>());
@@ -222,7 +229,7 @@ impl FileOffsetState {
                     offset: u64::from_be_bytes(int_bytes.try_into().unwrap_or([0; 8])),
                 }
             })
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>())
     }
 
     pub fn write_handle(&self) -> FileOffsetWriteHandle {
@@ -247,7 +254,7 @@ impl FileOffsetState {
         })
     }
 
-    pub fn run(&self) -> Result<impl std::future::Future<Output = ()>, FileOffsetStateError> {
+    pub fn run(&self) -> Result<impl Future<Output = ()>, FileOffsetStateError> {
         let rx = self
             .rx
             .borrow_mut()
@@ -255,32 +262,35 @@ impl FileOffsetState {
             .ok_or(FileOffsetStateError::AlreadyRunning)?;
         let db = self.db.clone();
         Ok(rx
-            .fold(Some(WriteBatch::default()), {
-                move |acc, event| {
-                    let db = db.clone();
-                    async move {
-                        let cf_handle = db.cf_handle(OFFSET_NAME).unwrap();
-                        match (acc, event) {
+            .fold(Some(WriteBatch::default()), move |acc, event| {
+                let db = db.clone();
+                async move {
+                    match db.cf_handle(OFFSET_NAME).ok_or_else(|| {
+                        FileOffsetStateError::DbError("Failed to get ColumnFamily handle".into())
+                    }) {
+                        Ok(cf_handle) => match (acc, event) {
                             (Some(wb), FileOffsetEvent::Flush) => {
-                                db.write(wb).expect("Couldn't flush state"); // TODO
-                                None
+                                let ret = db.write(wb).map(|_| ());
+                                ret.map(|_| None).map_err(|e| e.into())
                             }
-                            (None, FileOffsetEvent::Flush) => None,
+                            (None, FileOffsetEvent::Flush) => Ok(None),
                             (wb, FileOffsetEvent::Update(e)) => {
                                 let mut wb = wb.unwrap_or_default();
                                 match e {
                                     FileOffsetUpdate::Update(FileOffset { key, offset }) => {
-                                        wb.put_cf(cf_handle, key.0, u64::to_be_bytes(offset));
+                                        wb.put_cf(cf_handle, key.0, u64::to_be_bytes(offset))
                                     }
-                                    FileOffsetUpdate::Delete(key) => {
-                                        wb.delete_cf(cf_handle, key.0);
-                                    }
-                                }
-                                Some(wb)
+                                    FileOffsetUpdate::Delete(key) => wb.delete_cf(cf_handle, key.0),
+                                };
+                                Ok(Some(wb))
                             }
-                            (_, FileOffsetEvent::Clear) => None,
-                        }
+                            (_, FileOffsetEvent::Clear) => Ok(None),
+                        },
+                        Err(e) => Err(e),
                     }
+                    .map_err(|e| error!("{:?}", e))
+                    .ok()
+                    .flatten()
                 }
             })
             .map(|_| ()))
@@ -312,7 +322,7 @@ mod test {
             let wh = offset_state.write_handle();
             let fh = offset_state.flush_handle();
             let sh = offset_state.shutdown_handle().unwrap();
-            assert_eq!(initial_count, offset_state.offsets().len());
+            assert_eq!(initial_count, offset_state.offsets().unwrap().len());
 
             let paths = ["path1", "path2", "path3", "path04"];
 
@@ -321,15 +331,19 @@ mod test {
                     async {
                         tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
 
-                        assert_eq!(4, offset_state.offsets().len());
+                        assert_eq!(4, offset_state.offsets().unwrap().len());
                         tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
-                        assert_eq!(4, offset_state.offsets().len());
+                        assert_eq!(4, offset_state.offsets().unwrap().len());
                         assert_eq!(
                             13 * 2 + 14 * 2,
-                            offset_state.offsets().iter().fold(0, |a, fo| a + fo.offset)
+                            offset_state
+                                .offsets()
+                                .unwrap()
+                                .iter()
+                                .fold(0, |a, fo| a + fo.offset)
                         );
                         tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
-                        assert_eq!(2, offset_state.offsets().len());
+                        assert_eq!(2, offset_state.offsets().unwrap().len());
                         sh.shutdown();
                     },
                     async move {

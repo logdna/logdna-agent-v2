@@ -78,8 +78,13 @@ fn main() {
                     let offsets = _offset_state.offsets();
                     _agent_state = Some(agent_state);
                     offset_state = Some(_offset_state);
-                    initial_offsets =
-                        Some(offsets.into_iter().map(|fo| (fo.key, fo.offset)).collect());
+                    match offsets {
+                        Ok(os) => {
+                            initial_offsets =
+                                Some(os.into_iter().map(|fo| (fo.key, fo.offset)).collect())
+                        }
+                        Err(e) => warn!("couldn't retrieve offsets from agent state, {:?}", e),
+                    }
                 }
                 Err(e) => {
                     error!("Failed to open agent state db {}", e);
