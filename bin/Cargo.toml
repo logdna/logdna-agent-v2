@@ -28,6 +28,7 @@ middleware = { package = "middleware", path = "../common/middleware" }
 k8s = { package = "k8s", path = "../common/k8s" }
 metrics = { package = "metrics", path = "../common/metrics" }
 journald = { package = "journald", path = "../common/journald" }
+state = { package = "state", path = "../common/state" }
 
 bytes = "0.5"
 chrono = "0.4"

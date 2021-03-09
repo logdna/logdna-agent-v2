@@ -9,6 +9,7 @@ use futures::Stream;
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
 use config::Config;
 use env_logger::Env;
+use fs::tail::Lookback;
 use fs::tail::Tailer as FSSource;
 use futures::future::Either;
 use futures::StreamExt;
@@ -22,7 +23,9 @@ use k8s::middleware::K8sMetadata;
 use k8s::K8sEventLogConf;
 use metrics::Metrics;
 use middleware::Executor;
+
 use pin_utils::pin_mut;
+use state::AgentState;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -64,7 +67,36 @@ fn main() {
 
     spawn(Metrics::start);
 
-    let client = Rc::new(RefCell::new(Client::new(config.http.template)));
+    let mut _agent_state = None;
+    let mut offset_state = None;
+    let mut initial_offsets = None;
+    if !matches!(config.log.lookback, Lookback::None) {
+        if let Some(path) = config.log.db_path {
+            match AgentState::new(path) {
+                Ok(agent_state) => {
+                    let _offset_state = agent_state.get_offset_state();
+                    let offsets = _offset_state.offsets();
+                    _agent_state = Some(agent_state);
+                    offset_state = Some(_offset_state);
+                    match offsets {
+                        Ok(os) => {
+                            initial_offsets =
+                                Some(os.into_iter().map(|fo| (fo.key, fo.offset)).collect())
+                        }
+                        Err(e) => warn!("couldn't retrieve offsets from agent state, {:?}", e),
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to open agent state db {}", e);
+                }
+            }
+        }
+    }
+
+    let handles = offset_state
+        .as_ref()
+        .map(|os| (os.write_handle(), os.flush_handle()));
+    let client = Rc::new(RefCell::new(Client::new(config.http.template, handles)));
     client
         .borrow_mut()
         .set_max_buffer_size(config.http.body_size);
@@ -80,7 +112,12 @@ fn main() {
     executor.init();
 
     let mut fs_tailer_buf = [0u8; 4096];
-    let mut fs_source = FSSource::new(config.log.dirs, config.log.rules, config.log.lookback);
+    let mut fs_source = FSSource::new(
+        config.log.dirs,
+        config.log.rules,
+        config.log.lookback,
+        initial_offsets,
+    );
 
     let journald_source = create_source(&config.journald.paths);
 
@@ -100,6 +137,9 @@ fn main() {
     // Create the runtime
     let mut rt = Runtime::new().unwrap();
 
+    if let Some(offset_state) = offset_state {
+        rt.spawn(offset_state.run().unwrap());
+    }
     // Execute the future, blocking the current thread until completion
     rt.block_on(async move {
         let fs_source = fs_source

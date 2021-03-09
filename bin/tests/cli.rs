@@ -3,7 +3,7 @@ use assert_cmd::prelude::*;
 use log::debug;
 use predicates::prelude::*;
 use std::fs;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::Command;
 use std::thread::{self, sleep};
@@ -704,4 +704,149 @@ async fn test_tags() {
 
     server_result.unwrap();
     agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn lookback_stateful_lines_are_delivered() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+
+    let db_dir = tempdir().expect("Couldn't create temp dir...");
+    let db_dir_path = db_dir.path();
+    let dir = tempdir().expect("Couldn't create temp dir...");
+
+    let dir_path = format!("{}/", dir.path().to_str().unwrap());
+    let log_lines = "This is a test log line";
+
+    let file_path = dir.path().join("test.log");
+    let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
+
+    // Enough bytes to get past the lookback threshold
+    let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
+
+    (0..line_write_count)
+        .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
+    file.sync_all().expect("Failed to sync file");
+
+    // Write initial lines
+    debug!("First agent run");
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
+    thread::sleep(std::time::Duration::from_millis(250));
+    let file_path1 = file_path.clone();
+    let file_path_clone = file_path.clone();
+    tokio_test::block_on(async {
+        let (line_count, _, server) = tokio::join!(
+            async {
+                tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+                let mut handle = common::spawn_agent(AgentSettings {
+                    log_dirs: &dir_path,
+                    exclusion_regex: Some(r"/var\w*"),
+                    ssl_cert_file: Some(cert_file.path()),
+                    lookback: Some("start"),
+                    state_db_dir: Some(&db_dir_path),
+                    host: Some(&addr),
+                    ..Default::default()
+                });
+
+                tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
+
+                let mut output = String::new();
+
+                handle.kill().unwrap();
+                let stderr_ref = handle.stderr.as_mut().unwrap();
+
+                stderr_ref.read_to_string(&mut output).unwrap();
+
+                debug!("{}", output);
+                debug!("getting lines from {}", &file_path1.to_str().unwrap());
+                let line_count = received
+                    .lock()
+                    .await
+                    .get(&file_path1.to_str().unwrap().to_string())
+                    .unwrap()
+                    .lines;
+                shutdown_handle();
+
+                handle.wait().unwrap();
+                line_count
+            },
+            async move {
+                tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                let mut file = OpenOptions::new()
+                    .append(true)
+                    .open(&file_path_clone)
+                    .expect("Couldn't create temp log file...");
+                (0..5).for_each(|_| {
+                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                    file.sync_all().expect("Failed to sync file");
+                });
+                tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                file.sync_all().expect("Failed to sync file");
+            },
+            server
+        );
+        server.unwrap();
+        assert_eq!(line_count, line_write_count + 5);
+    });
+
+    debug!("Second agent run");
+    // Make sure the agent starts where it left off
+    let file_path_clone = file_path.clone();
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
+    thread::sleep(std::time::Duration::from_millis(250));
+    tokio_test::block_on(async {
+        let (line_count, _, server) = tokio::join!(
+            async {
+                tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+                let mut handle = common::spawn_agent(AgentSettings {
+                    log_dirs: &dir_path,
+                    exclusion_regex: Some(r"/var\w*"),
+                    ssl_cert_file: Some(cert_file.path()),
+                    lookback: Some("start"),
+                    state_db_dir: Some(&db_dir_path),
+                    host: Some(&addr),
+                    ..Default::default()
+                });
+
+                tokio::time::delay_for(tokio::time::Duration::from_millis(3000)).await;
+
+                let mut output = String::new();
+
+                handle.kill().unwrap();
+                let stderr_ref = handle.stderr.as_mut().unwrap();
+
+                stderr_ref.read_to_string(&mut output).unwrap();
+
+                debug!("{}", output);
+                debug!("getting lines from {}", &file_path.to_str().unwrap());
+                let line_count = received
+                    .lock()
+                    .await
+                    .get(&file_path.to_str().unwrap().to_string())
+                    .unwrap()
+                    .lines;
+                shutdown_handle();
+
+                handle.wait().unwrap();
+                line_count
+            },
+            async move {
+                tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                let mut file = OpenOptions::new()
+                    .append(true)
+                    .create(false)
+                    .open(&file_path_clone)
+                    .expect("Couldn't create temp log file...");
+                (0..5).for_each(|_| {
+                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                    file.sync_all().expect("Failed to sync file");
+                });
+                tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                file.sync_all().expect("Failed to sync file");
+            },
+            server
+        );
+        server.unwrap();
+        assert_eq!(line_count, 5);
+    });
 }

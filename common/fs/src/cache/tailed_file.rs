@@ -6,6 +6,8 @@ use http::types::serialize::{
     SerializeUtf8, SerializeValue,
 };
 
+use state::GetOffset;
+
 use chrono::Utc;
 use metrics::Metrics;
 
@@ -25,6 +27,7 @@ use std::fs::OpenOptions;
 use std::io;
 use std::mem;
 use std::ops::DerefMut;
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -103,6 +106,7 @@ impl Stream for LineBuilderLines {
             ref mut reader,
             ref mut buf,
             ref mut offset,
+            ..
         } = borrow.deref_mut();
 
         let pinned_reader = Pin::new(reader);
@@ -128,7 +132,7 @@ impl Stream for LineBuilderLines {
 
 pub struct LazyLines {
     reader: Arc<Mutex<TailedFileInner>>,
-    current: Option<Arc<Mutex<TailedFileInner>>>,
+    current_offset: Option<(bytes::Bytes, u64)>,
     read: usize,
     path: usize,
     paths: Vec<String>,
@@ -138,7 +142,7 @@ impl LazyLines {
     pub fn new(reader: Arc<Mutex<TailedFileInner>>, paths: Vec<String>) -> Self {
         Self {
             reader,
-            current: None,
+            current_offset: None,
             read: 0,
             path: 0,
             paths,
@@ -157,6 +161,8 @@ pub struct LazyLineSerializer {
     meta: Option<Value>,
 
     path: String,
+
+    file_offset: (bytes::Bytes, u64),
 
     reader: Arc<Mutex<TailedFileInner>>,
 }
@@ -299,7 +305,11 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
 }
 
 impl LazyLineSerializer {
-    pub fn new(reader: Arc<Mutex<TailedFileInner>>, path: String) -> Self {
+    pub fn new(
+        reader: Arc<Mutex<TailedFileInner>>,
+        path: String,
+        offset: (bytes::Bytes, u64),
+    ) -> Self {
         // New line, make sure the buffer is cleared
         reader.try_lock().unwrap().deref_mut().buf.clear();
         Self {
@@ -312,6 +322,7 @@ impl LazyLineSerializer {
             labels: None,
             level: None,
             meta: None,
+            file_offset: offset,
         }
     }
 }
@@ -378,6 +389,15 @@ impl LineMetaMut for LazyLineSerializer {
     }
 }
 
+impl GetOffset for LazyLineSerializer {
+    fn get_offset(&self) -> Option<u64> {
+        Some(self.file_offset.1)
+    }
+    fn get_key(&self) -> Option<&[u8]> {
+        Some(&self.file_offset.0)
+    }
+}
+
 impl Stream for LazyLines {
     type Item = LazyLineSerializer;
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -386,15 +406,19 @@ impl Stream for LazyLines {
         let LazyLines {
             reader,
             ref mut read,
-            ref mut current,
+            ref mut current_offset,
             ref mut path,
             paths,
             ..
         } = self.get_mut();
         let rc_reader = reader;
         loop {
-            if current.is_some() && *path < paths.len() {
-                let ret = LazyLineSerializer::new(rc_reader.clone(), paths[*path].clone());
+            if current_offset.is_some() && *path < paths.len() {
+                let ret = LazyLineSerializer::new(
+                    rc_reader.clone(),
+                    paths[*path].clone(),
+                    current_offset.clone().unwrap(),
+                );
                 *path += 1;
                 break Poll::Ready(Some(ret));
             }
@@ -404,6 +428,7 @@ impl Stream for LazyLines {
                 ref mut reader,
                 ref mut buf,
                 ref mut offset,
+                ref file_path,
             } = borrow.deref_mut();
 
             if *path >= paths.len() {
@@ -418,7 +443,10 @@ impl Stream for LazyLines {
                     debug!("tailer sendings lines for {:?}", &paths);
                     *path = 0;
                     *offset += TryInto::<u64>::try_into(read).unwrap();
-                    *current = Some(rc_reader.clone())
+                    *current_offset = Some((
+                        bytes::Bytes::copy_from_slice(file_path.as_os_str().as_bytes()),
+                        *offset,
+                    ))
                 }
             }
         }
@@ -430,6 +458,7 @@ pub struct TailedFileInner {
     reader: Compat<tokio::io::BufReader<tokio::fs::File>>,
     buf: Vec<u8>,
     offset: u64,
+    file_path: PathBuf,
 }
 
 #[derive(Debug, Clone)]
@@ -448,6 +477,7 @@ impl<T> TailedFile<T> {
                 .compat(),
                 buf: Vec::new(),
                 offset: 0,
+                file_path: path.into(),
             })),
             _phantom: std::marker::PhantomData::<T>,
         })

@@ -5,7 +5,10 @@ pub use crate::cache::DirPathBuf;
 use crate::cache::FileSystem;
 use crate::rule::Rules;
 use metrics::Metrics;
+use state::FileName;
+use std::collections::HashMap;
 use std::ops::DerefMut;
+use std::os::unix::ffi::OsStrExt;
 use std::sync::{Arc, Mutex};
 
 use futures::{Stream, StreamExt};
@@ -53,14 +56,21 @@ impl Default for Lookback {
 pub struct Tailer {
     lookback_config: Lookback,
     fs_cache: Arc<Mutex<FileSystem>>,
+    initial_offsets: Option<HashMap<FileName, u64>>,
 }
 
 impl Tailer {
     /// Creates new instance of Tailer
-    pub fn new(watched_dirs: Vec<DirPathBuf>, rules: Rules, lookback_config: Lookback) -> Self {
+    pub fn new(
+        watched_dirs: Vec<DirPathBuf>,
+        rules: Rules,
+        lookback_config: Lookback,
+        initial_offsets: Option<HashMap<FileName, u64>>,
+    ) -> Self {
         Self {
             lookback_config,
             fs_cache: Arc::new(Mutex::new(FileSystem::new(watched_dirs, rules))),
+            initial_offsets,
         }
     }
     /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
@@ -78,13 +88,16 @@ impl Tailer {
             }
         };
 
+        debug!("Tailer starting with lookback: {:?}", self.lookback_config);
         Ok(events.then({
             let fs = self.fs_cache.clone();
             let lookback_config = self.lookback_config.clone();
+            let initial_offsets = self.initial_offsets.clone();
             move |event|{
 
                 let fs = fs.clone();
                 let lookback_config = lookback_config.clone();
+                let initial_offsets = initial_offsets.clone();
                 async move {
                     let fs = fs.lock().expect("Couldn't lock fs");
                     match event {
@@ -93,22 +106,34 @@ impl Tailer {
                             // will initiate a file to it's current length
                             if let Some(entry) = fs.entries.borrow().get(entry_ptr){
                                 let path = fs.resolve_direct_path(&entry, &fs.entries.borrow());
-
                                 if let Entry::File { data, .. } = entry {
                                     match lookback_config {
                                         Lookback::Start => {
-                                            info!("initialized {:?} with offset {}", path, 0);
-                                            data.borrow_mut().deref_mut().seek(0).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
+                                            let offset = match initial_offsets.as_ref() {
+                                                Some(initial_offsets) => {
+                                                    initial_offsets.get(&path.as_os_str().as_bytes().into()).copied().unwrap_or(0)
+                                                }
+                                                None => 0
+                                            };
+                                            info!("initialized {:?} with offset {}", path, offset);
+                                            data.borrow_mut().deref_mut().seek(offset).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
                                         },
                                         Lookback::SmallFiles => {
-                                            let mut len = path.metadata().map(|m| m.len()).unwrap_or(0);
-                                            if len < 8192 {
-                                                info!("initialized {:?} with len {} offset {}", path, len, 0);
-                                                len = 0;
-                                            } else{
-                                                info!("initialized {:?} with offset {}", path, len);
-                                            }
-                                            data.borrow_mut().deref_mut().seek(len).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
+                                            let offset = match initial_offsets.as_ref() {
+                                                Some(initial_offsets) => {
+                                                    initial_offsets.get(&path.as_os_str().as_bytes().into()).copied().unwrap_or(0)
+                                                }
+                                                None => {
+                                                    let len = path.metadata().map(|m| m.len()).unwrap_or(0);
+                                                    if len < 8192 {
+                                                        0
+                                                    } else{
+                                                        len
+                                                    }
+                                                }
+                                            };
+                                            info!("initialized {:?} with offset {}", path, offset);
+                                            data.borrow_mut().deref_mut().seek(offset).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
                                         },
                                         Lookback::None => {
                                             let len = path.metadata().map(|m| m.len()).unwrap_or(0);
@@ -289,6 +314,7 @@ mod test {
                         .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
                     rules,
                     Lookback::None,
+                    None,
                 );
                 let mut buf = [0u8; 4096];
 
@@ -338,6 +364,7 @@ mod test {
                         .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
                     rules,
                     Lookback::SmallFiles,
+                    None,
                 );
                 let mut buf = [0u8; 4096];
 
@@ -388,6 +415,7 @@ mod test {
                         .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
                     rules,
                     Lookback::Start,
+                    None,
                 );
 
                 let mut buf = [0u8; 4096];
