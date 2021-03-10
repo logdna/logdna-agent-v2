@@ -193,11 +193,7 @@ impl TryFrom<RawConfig> for Config {
                         .ok()
                 })
                 .collect(),
-            db_path: Some(
-                raw.log
-                    .db_path
-                    .unwrap_or_else(|| "/var/lib/logdna/agent_state.db".into()),
-            ),
+            db_path: raw.log.db_path,
             rules: Rules::new(),
             lookback: raw
                 .log
