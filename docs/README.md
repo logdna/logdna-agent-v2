@@ -139,7 +139,7 @@ The agent accepts configuration from two sources, environment variables and a co
 |`LOGDNA_JOURNALD_PATHS`|Comma separated list of paths (directories or files) of journald paths to monitor||
 |`LOGDNA_LOOKBACK`|The lookback strategy on startup|`smallfiles`|
 |`LOGDNA_LOG_K8S_EVENTS`|Whether the agent should capture Kubernetes events|`always`|
-|`LOGDNA_DB_PATH`|The directory the agent will store it's state database||
+|`LOGDNA_DB_PATH`|The directory the agent will store it's state database. Note that the agent must have write access to the directory and be a persistent volume.||
 
 1. We support [this flavor of globber syntax](https://github.com/CJP10/globber).
 
