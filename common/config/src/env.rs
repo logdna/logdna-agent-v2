@@ -87,7 +87,7 @@ pub struct Config {
     pub log_k8s_events: Option<String>,
 
     #[env(LOGDNA_DB_PATH)]
-    #[example("/var/lib/logdna-agent/agent_state.db")]
+    #[example("/var/lib/logdna-agent/")]
     pub db_path: Option<String>,
 }
 
