@@ -1,20 +1,22 @@
+use std::cell::RefCell;
 use std::ffi::OsString;
-use std::fs::File;
 use std::path::PathBuf;
 
 use inotify::WatchDescriptor;
 
+use crate::cache::TailedFile;
 use crate::cache::{Children, EntryKey};
 use crate::rule::Rules;
 
+use crate::cache::tailed_file::LazyLineSerializer;
+
 #[derive(Debug)]
-pub enum Entry<T> {
+pub enum Entry {
     File {
         name: OsString,
         parent: EntryKey,
         wd: WatchDescriptor,
-        data: T,
-        file_handle: File,
+        data: RefCell<TailedFile<LazyLineSerializer>>,
     },
     Dir {
         name: OsString,
@@ -31,7 +33,7 @@ pub enum Entry<T> {
     },
 }
 
-impl<T> Entry<T> {
+impl Entry {
     pub fn name(&self) -> &OsString {
         match self {
             Entry::File { name, .. } | Entry::Dir { name, .. } | Entry::Symlink { name, .. } => {
@@ -86,13 +88,6 @@ impl<T> Entry<T> {
     pub fn watch_descriptor(&self) -> &WatchDescriptor {
         match self {
             Entry::Dir { wd, .. } | Entry::Symlink { wd, .. } | Entry::File { wd, .. } => wd,
-        }
-    }
-
-    pub fn file_handle(&self) -> Option<&File> {
-        match self {
-            Entry::Dir { .. } | Entry::Symlink { .. } => None,
-            Entry::File { file_handle, .. } => Some(file_handle),
         }
     }
 }

@@ -1,14 +1,14 @@
 use crate::cache::entry::Entry;
 use crate::cache::event::Event;
+use crate::cache::tailed_file::LazyLineSerializer;
 pub use crate::cache::DirPathBuf;
 use crate::cache::FileSystem;
 use crate::rule::Rules;
-use http::types::body::LineBuilder;
 use metrics::Metrics;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Seek, SeekFrom};
-use std::ops::{Deref, DerefMut};
-use std::path::PathBuf;
+use state::FileName;
+use std::collections::HashMap;
+use std::ops::DerefMut;
+use std::os::unix::ffi::OsStrExt;
 use std::sync::{Arc, Mutex};
 
 use futures::{Stream, StreamExt};
@@ -55,22 +55,29 @@ impl Default for Lookback {
 /// Tails files on a filesystem by inheriting events from a Watcher
 pub struct Tailer {
     lookback_config: Lookback,
-    fs_cache: Arc<Mutex<FileSystem<u64>>>,
+    fs_cache: Arc<Mutex<FileSystem>>,
+    initial_offsets: Option<HashMap<FileName, u64>>,
 }
 
 impl Tailer {
     /// Creates new instance of Tailer
-    pub fn new(watched_dirs: Vec<DirPathBuf>, rules: Rules, lookback_config: Lookback) -> Self {
+    pub fn new(
+        watched_dirs: Vec<DirPathBuf>,
+        rules: Rules,
+        lookback_config: Lookback,
+        initial_offsets: Option<HashMap<FileName, u64>>,
+    ) -> Self {
         Self {
             lookback_config,
             fs_cache: Arc::new(Mutex::new(FileSystem::new(watched_dirs, rules))),
+            initial_offsets,
         }
     }
     /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
     pub fn process<'a>(
         &mut self,
         buf: &'a mut [u8],
-    ) -> Result<impl Stream<Item = Vec<LineBuilder>> + 'a, std::io::Error> {
+    ) -> Result<impl Stream<Item = LazyLineSerializer> + 'a, std::io::Error> {
         let events = {
             match FileSystem::stream_events(self.fs_cache.clone(), buf) {
                 Ok(event) => event,
@@ -81,222 +88,171 @@ impl Tailer {
             }
         };
 
-        Ok(events.map({
+        debug!("Tailer starting with lookback: {:?}", self.lookback_config);
+        Ok(events.then({
             let fs = self.fs_cache.clone();
             let lookback_config = self.lookback_config.clone();
-            move |event| {
-                let mut final_lines = Vec::new();
+            let initial_offsets = self.initial_offsets.clone();
+            move |event|{
 
-                let fs = fs.lock().expect("Couldn't lock fs");
-                match event {
-                    Event::Initialize(entry_ptr) => {
-                        // will initiate a file to it's current length
-                        if let Some(entry) = fs.entries.borrow().get(entry_ptr){
-                            let path = fs.resolve_direct_path(&entry.borrow(), &fs.entries.borrow());
+                let fs = fs.clone();
+                let lookback_config = lookback_config.clone();
+                let initial_offsets = initial_offsets.clone();
+                async move {
+                    let fs = fs.lock().expect("Couldn't lock fs");
+                    match event {
+                        Event::Initialize(entry_ptr) => {
                             debug!("Initialise Event");
-
-                            if let Entry::File { ref mut data, .. } = entry.borrow_mut().deref_mut() {
-                                *data = match lookback_config {
-                                    Lookback::Start => {
-                                        info!("initialized {:?} with offset {}", path, 0);
-                                        0
-                                    },
-                                    Lookback::SmallFiles => {
-                                        let mut len = path.metadata().map(|m| m.len()).unwrap_or(0);
-                                        if len < 8192 {
-                                            info!("initialized {:?} with len {} offset {}", path, len, 0);
-                                            len = 0;
-                                        } else{
+                            // will initiate a file to it's current length
+                            if let Some(entry) = fs.entries.borrow().get(entry_ptr){
+                                let path = fs.resolve_direct_path(&entry, &fs.entries.borrow());
+                                if let Entry::File { data, .. } = entry {
+                                    match lookback_config {
+                                        Lookback::Start => {
+                                            let offset = match initial_offsets.as_ref() {
+                                                Some(initial_offsets) => {
+                                                    initial_offsets.get(&path.as_os_str().as_bytes().into()).copied().unwrap_or(0)
+                                                }
+                                                None => 0
+                                            };
+                                            info!("initialized {:?} with offset {}", path, offset);
+                                            data.borrow_mut().deref_mut().seek(offset).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
+                                        },
+                                        Lookback::SmallFiles => {
+                                            let offset = match initial_offsets.as_ref() {
+                                                Some(initial_offsets) => {
+                                                    initial_offsets.get(&path.as_os_str().as_bytes().into()).copied().unwrap_or(0)
+                                                }
+                                                None => {
+                                                    let len = path.metadata().map(|m| m.len()).unwrap_or(0);
+                                                    if len < 8192 {
+                                                        0
+                                                    } else{
+                                                        len
+                                                    }
+                                                }
+                                            };
+                                            info!("initialized {:?} with offset {}", path, offset);
+                                            data.borrow_mut().deref_mut().seek(offset).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
+                                        },
+                                        Lookback::None => {
+                                            let len = path.metadata().map(|m| m.len()).unwrap_or(0);
                                             info!("initialized {:?} with offset {}", path, len);
+                                            data.borrow_mut().deref_mut().seek(len).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
                                         }
-                                        len
-                                    },
-                                    Lookback::None => {
-                                        let len = path.metadata().map(|m| m.len()).unwrap_or(0);
-                                        info!("initialized {:?} with offset {}", path, len);
-                                        len
                                     }
+                                    data.borrow_mut().tail(vec![path]).await
+                                } else {
+                                    None
                                 }
+                            } else {
+                                None
                             }
-                        };
-                    }
-                    Event::New(entry_ptr) => {
-                        Metrics::fs().increment_creates();
-                        // similar to initiate but sets the offset to 0
-                        if let Some(entry) = fs.entries.borrow().get(entry_ptr){
-                            let paths = fs.resolve_valid_paths(&entry.borrow(), &fs.entries.borrow());
+
+                        }
+                        Event::New(entry_ptr) => {
+                            Metrics::fs().increment_creates();
                             debug!("New Event");
-                            if !paths.is_empty() {
-                                if let Entry::File {
-                                    ref mut data,
-                                    file_handle,
-                                    ..
-                                } = entry.borrow_mut().deref_mut()
-                                {
-                                    info!("added {:?}", paths[0]);
-                                    *data = 0;
-                                    if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
-                                        final_lines.append(&mut lines);
-                                    }
-                                }
-                            }
-                        }
-
-
-                    }
-                    Event::Write(entry_ptr) => {
-                        Metrics::fs().increment_writes();
-                        if let Some(entry) = fs.entries.borrow().get(entry_ptr){
-                            let paths = fs.resolve_valid_paths(&entry.borrow(), &fs.entries.borrow());
-                            debug!("Write Event");
-                            if !paths.is_empty() {
-
-                                if let  Entry::File {
-                                    ref mut data,
-                                    file_handle,
-                                    ..
-                                } = entry.borrow_mut().deref_mut()
-                                {
-                                    if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
-                                        final_lines.append(&mut lines);
-                                    }
-                                }
-
-                            }
-                        }
-                    }
-                    Event::Delete(entry_ptr) => {
-                        Metrics::fs().increment_deletes();
-                        {
-                            let entries = fs.entries.borrow();
-                            if let Some(mut entry) = entries.get(entry_ptr){
-                                let paths = fs.resolve_valid_paths(&entry.borrow(), &entries);
-                                debug!("Delete Event");
+                            // similar to initiate but sets the offset to 0
+                            if let Some(entry) = fs.entries.borrow().get(entry_ptr){
+                                let paths = fs.resolve_valid_paths(&entry, &fs.entries.borrow());
                                 if !paths.is_empty() {
-                                    if let Entry::Symlink { link, .. } = entry.borrow().deref() {
-                                        if let Ok(Some(real_entry)) = fs.lookup(link, &entries) {
-                                            if let Some(r_entry) = entries.get(real_entry) {
-                                                entry = r_entry
+                                    if let Entry::File {
+                                        data,
+                                        ..
+                                    } = entry
+                                    {
+                                        info!("added {:?}", paths[0]);
+                                        data.borrow_mut().tail(paths.clone()).await
+                                    }
+                                    else {
+                                        None
+                                    }
+
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+
+                        }
+                        Event::Write(entry_ptr) => {
+                            Metrics::fs().increment_writes();
+                            debug!("Write Event");
+                            if let Some(entry) = fs.entries.borrow().get(entry_ptr){
+                                let paths = fs.resolve_valid_paths(&entry, &fs.entries.borrow());
+                                if !paths.is_empty() {
+
+                                    if let  Entry::File {
+                                        data,
+                                        ..
+                                    } = entry
+                                    {
+                                        data.borrow_mut().deref_mut().tail(paths).await
+                                    } else {
+                                        None
+                                    }
+
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+
+                        }
+                        Event::Delete(entry_ptr) => {
+                            Metrics::fs().increment_deletes();
+                            debug!("Delete Event");
+                            let ret = {
+                                let entries = fs.entries.borrow();
+                                if let Some(mut entry) = entries.get(entry_ptr){
+                                    let paths = fs.resolve_valid_paths(&entry, &entries);
+                                    if !paths.is_empty() {
+                                        if let Entry::Symlink { link, .. } = entry {
+                                            if let Some(real_entry) = fs.lookup(link, &entries) {
+                                                if let Some(r_entry) = entries.get(real_entry) {
+                                                    entry = r_entry
+                                                }
+                                            } else {
+                                                info!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths[0]);
                                             }
-                                        } else {
-                                            info!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths[0]);
-                                        }
                                     }
 
                                     if let Entry::File {
-                                        ref mut data,
-                                        file_handle,
+                                        data,
                                         ..
-                                    } = entry.borrow_mut().deref_mut()
-                                    {
-                                        if let Some(mut lines) = Tailer::tail(file_handle, &paths, data) {
-                                            final_lines.append(&mut lines);
+                                    } = entry
+                                        {
+                                            data.borrow_mut().deref_mut().tail(paths).await
+                                        } else {
+                                            None
                                         }
+                                    } else {
+                                        None
                                     }
+                                } else {
+                                    None
+                                }
+                            };
+                            {
+                                // At this point, the entry should not longer be used
+                                // and removed from the map to allow the file handle to be dropped.
+                                // In case following events contain this entry key, it
+                                // should be ignored by the Tailer (all branches MUST contain
+                                // if Some(..) = entries.get(key) clauses)
+                                let mut entries = fs.entries.borrow_mut();
+                                if entries.remove(entry_ptr).is_some() {
+                                    info!(
+                                        "Removed file information, currently tracking {} files",
+                                        entries.len());
                                 }
                             }
-                        }
-                        {
-                            // At this point, the entry should not longer be used
-                            // and removed from the map to allow the file handle to be dropped.
-                            // In case following events contain this entry key, it
-                            // should be ignored by the Tailer (all branches MUST contain
-                            // if Some(..) = entries.get(key) clauses)
-                            let mut entries = fs.entries.borrow_mut();
-                            if entries.remove(entry_ptr).is_some() {
-                                debug!(
-                                    "Entry was removed from the map, new length: {}",
-                                    entries.len());
-                            }
-                        }
+                            ret
                     }
-                };
-                futures::stream::iter(final_lines)
-            }}).flatten())
-    }
-
-    // tail a file for new line(s)
-    fn tail(
-        file_handle: &File,
-        paths: &[PathBuf],
-        offset: &mut u64,
-    ) -> Option<Vec<Vec<LineBuilder>>> {
-        // get the file len
-        let len = match file_handle.metadata().map(|m| m.len()) {
-            Ok(v) => v,
-            Err(e) => {
-                error!("unable to stat {:?}: {:?}", &paths[0], e);
-                return None;
-            }
-        };
-
-        // if we are at the end of the file there's no work to do
-        if *offset == len {
-            return None;
-        }
-        // open the file, create a reader
-        let mut reader = BufReader::new(file_handle);
-        // if the offset is greater than the file's len
-        // it's very likely a truncation occurred
-        if *offset > len {
-            info!("{:?} was truncated from {} to {}", &paths[0], *offset, len);
-            *offset = if len < 8192 { 0 } else { len };
-            return None;
-        }
-        // seek to the offset, this creates the "tailing" effect
-        if let Err(e) = reader.seek(SeekFrom::Start(*offset)) {
-            error!("error seeking {:?}", e);
-            return None;
-        }
-
-        let mut line_groups = Vec::new();
-
-        loop {
-            let mut raw_line = Vec::new();
-            // read until a new line returning the line length
-            let line_len = match reader.read_until(b'\n', &mut raw_line) {
-                Ok(v) => v as u64,
-                Err(e) => {
-                    error!("error reading from file {:?}: {:?}", &paths[0], e);
-                    break;
                 }
-            };
-            // try to parse the raw data as utf8
-            // if that fails replace invalid chars with blank chars
-            // see String::from_utf8_lossy docs
-            let mut line = String::from_utf8(raw_line)
-                .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).to_string());
-            // if the line doesn't end with a new line we might have read in the middle of a write
-            // so we return in this case
-            if !line.ends_with('\n') {
-                Metrics::fs().increment_partial_reads();
-                break;
-            }
-            // remove the trailing new line
-            line.pop();
-            // increment the offset
-            *offset += line_len;
-            // send the line upstream, safe to unwrap
-            debug!("tailer sendings lines for {:?}", paths);
-            line_groups.push(
-                paths
-                    .iter()
-                    .map(|path| {
-                        Metrics::fs().increment_lines();
-                        Metrics::fs().add_bytes(line_len);
-                        LineBuilder::new()
-                            .line(line.clone())
-                            .file(path.to_str().unwrap_or("").to_string())
-                    })
-                    .collect(),
-            );
-        }
-
-        if line_groups.is_empty() {
-            None
-        } else {
-            Some(line_groups)
-        }
+            }}}).filter_map(|x|async move {x}).flatten())
     }
 }
 
@@ -306,6 +262,7 @@ mod test {
     use crate::rule::{GlobRule, Rules};
     use crate::test::LOGGER;
     use std::convert::TryInto;
+    use std::fs::File;
     use std::io::Write;
     use std::panic;
     use tempfile::tempdir;
@@ -357,6 +314,7 @@ mod test {
                         .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
                     rules,
                     Lookback::None,
+                    None,
                 );
                 let mut buf = [0u8; 4096];
 
@@ -385,17 +343,17 @@ mod test {
                 let mut rules = Rules::new();
                 rules.add_inclusion(GlobRule::new(r"**").unwrap());
 
-                let log_lines = "This is a test log line";
-                debug!("{}", log_lines.as_bytes().len());
+                let log_lines1 = "This is a test log line";
+                debug!("{}", log_lines1.as_bytes().len());
                 let dir = tempdir().expect("Couldn't create temp dir...");
 
                 let file_path = dir.path().join("test.log");
 
                 let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
-                let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 2;
+                let line_write_count = (8192 / (log_lines1.as_bytes().len() + 1)) + 2;
                 (0..line_write_count).for_each(|_| {
-                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...")
+                    writeln!(file, "{}", log_lines1).expect("Couldn't write to temp log file...")
                 });
                 file.sync_all().expect("Failed to sync file");
 
@@ -406,6 +364,7 @@ mod test {
                         .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
                     rules,
                     Lookback::SmallFiles,
+                    None,
                 );
                 let mut buf = [0u8; 4096];
 
@@ -416,7 +375,9 @@ mod test {
 
                 let write_files = async move {
                     tokio::time::delay_for(tokio::time::Duration::from_millis(250)).await;
-                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+
+                    let log_lines2 = "This is a test log line2";
+                    writeln!(file, "{}", log_lines2).expect("Couldn't write to temp log file...");
                     file.sync_all().expect("Failed to sync file");
                 };
                 let (_, events) =
@@ -441,7 +402,7 @@ mod test {
                 let file_path = dir.path().join("test.log");
 
                 let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
-                let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
+                let line_write_count = (8_388_608 / (log_lines.as_bytes().len() + 1)) + 1;
                 (0..line_write_count).for_each(|_| {
                     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...")
                 });
@@ -454,6 +415,7 @@ mod test {
                         .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
                     rules,
                     Lookback::Start,
+                    None,
                 );
 
                 let mut buf = [0u8; 4096];

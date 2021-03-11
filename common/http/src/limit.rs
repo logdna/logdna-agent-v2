@@ -33,22 +33,26 @@ impl RateLimiter {
                 continue;
             }
 
-            if current
-                == self
-                    .slots
-                    .compare_and_swap(current, current + 1, Ordering::SeqCst)
-            {
-                return Slot {
-                    inner: Arc::new(InnerSlot {
-                        inner: item,
-                        slot: current + 1,
-                        slots: self.slots.clone(),
-                    }),
-                };
-            } else {
-                Metrics::http().increment_limit_hits();
-                backoff.snooze();
-                continue;
+            match self.slots.compare_exchange(
+                current,
+                current + 1,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(res) if current == res => {
+                    return Slot {
+                        inner: Arc::new(InnerSlot {
+                            inner: item,
+                            slot: current + 1,
+                            slots: self.slots.clone(),
+                        }),
+                    }
+                }
+                _ => {
+                    Metrics::http().increment_limit_hits();
+                    backoff.snooze();
+                    continue;
+                }
             }
         }
     }

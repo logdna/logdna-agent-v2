@@ -4,3 +4,4 @@
 **/*.rs.bk
 /.idea
 .cargo_cache/
+**.profraw

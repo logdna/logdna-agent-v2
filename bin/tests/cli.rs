@@ -3,11 +3,14 @@ use assert_cmd::prelude::*;
 use log::debug;
 use predicates::prelude::*;
 use std::fs;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::Command;
-use std::thread;
+use std::thread::{self, sleep};
+use std::time::Duration;
+use systemd::journal;
 use tempfile::tempdir;
+
 mod common;
 
 #[test]
@@ -34,7 +37,12 @@ fn api_key_present() {
     let before_file_path = dir.path().join("before.log");
     let mut file = File::create(&before_file_path).expect("Couldn't create temp log file...");
 
-    let mut handle = common::spawn_agent(AgentSettings::new(&dir_path));
+    let mut handle = common::spawn_agent(AgentSettings {
+        exclusion_regex: Some(r"/var\w*"),
+        log_dirs: &dir_path,
+        lookback: Some("start"),
+        ..Default::default()
+    });
     // Dump the agent's stdout
     // TODO: assert that it's successfully uploaded
 
@@ -149,7 +157,7 @@ fn test_append_and_delete() {
 
     let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
 
-    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
 
     common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
     common::append_to_file(&file_path, 10_000, 50).expect("Could not append");
@@ -168,12 +176,35 @@ fn test_append_and_delete() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_file_added_after_initialization() {
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
+
+    let mut reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    thread::sleep(std::time::Duration::from_millis(2000));
+
+    let file_path = dir.join("file1.log");
+    File::create(&file_path).expect("Could not create file");
+    common::wait_for_file_event("added", &file_path, &mut reader);
+    common::append_to_file(&file_path, 1000, 50).expect("Could not append");
+    common::wait_for_file_event("tailer sendings lines for", &file_path, &mut reader);
+
+    common::assert_agent_running(&mut agent_handle);
+
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_delete_does_not_leave_file_descriptor() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file_path = dir.join("file1.log");
     File::create(&file_path).expect("Could not create file");
 
     let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
+
     let process_id = agent_handle.id();
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
@@ -270,9 +301,7 @@ fn test_exclusion_rules() {
     let mut agent_handle = common::spawn_agent(AgentSettings {
         log_dirs: &dir.to_str().unwrap(),
         exclusion_regex: Some(r"\w+ile2\.\w{3}"),
-        ssl_cert_file: None,
-        lookback: None,
-        host: None,
+        ..Default::default()
     });
 
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
@@ -301,6 +330,52 @@ fn test_exclusion_rules() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_files_other_than_dot_log_should_be_not_included_by_default() {
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let included_file = dir.join("file1.log");
+    let not_included_files = vec![
+        "file2.tar.gz",
+        "file3.tar",
+        "file4.0",
+        "file5.1",
+        ".file6",
+        "file7",
+    ];
+    common::append_to_file(&included_file, 100, 50).expect("Could not append");
+
+    for file_name in &not_included_files {
+        common::append_to_file(&dir.join(file_name), 100, 50).expect("Could not append");
+    }
+
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
+
+    let mut reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    let lines = common::wait_for_file_event("initialized", &included_file, &mut reader);
+
+    for file_name in &not_included_files {
+        let file_parts: Vec<&str> = file_name.split('.').collect();
+        let regex;
+        if file_parts.len() == 2 {
+            regex = format!(
+                "{}{}\\.{}",
+                r"initialized [^\n]*", file_parts[0], file_parts[1]
+            );
+        } else {
+            regex = format!("{}{}", r"initialized [^\n]*", file_name);
+        }
+        let matches_excluded_file = predicate::str::is_match(regex).unwrap();
+        assert!(
+            !matches_excluded_file.eval(&lines),
+            format!("{} should not been included", file_name)
+        );
+    }
+
+    common::assert_agent_running(&mut agent_handle);
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg_attr(not(target_os = "linux"), ignore)]
 fn test_dangling_symlinks() {
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
@@ -310,6 +385,7 @@ fn test_dangling_symlinks() {
     common::append_to_file(&file_path, 100, 50).expect("Could not append");
 
     let mut agent_handle = common::spawn_agent(AgentSettings::new(&log_dir.to_str().unwrap()));
+
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
     std::os::unix::fs::symlink(&file_path, &symlink_path).unwrap();
@@ -382,6 +458,7 @@ fn test_directory_symlinks_delete() {
     common::append_to_file(&file3_path, 100, 50).expect("Could not append");
 
     let mut agent_handle = common::spawn_agent(AgentSettings::new(&log_dir.to_str().unwrap()));
+
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
     std::os::unix::fs::symlink(&dir_1_path, &symlink_path).unwrap();
@@ -396,6 +473,44 @@ fn test_directory_symlinks_delete() {
 
     common::wait_for_file_event("unwatching", &file3_path, &mut stderr_reader);
 
+    common::assert_agent_running(&mut agent_handle);
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg_attr(not(target_os = "linux"), ignore)]
+async fn test_journald_support() {
+    assert_eq!(journal::print(6, "Sample info"), 0);
+    sleep(Duration::from_millis(1000));
+    let dir = "/var/log/journal";
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+    let mut settings = AgentSettings::with_mock_ingester("/var/log/journal", &addr);
+    settings.journald_dirs = Some(dir);
+    settings.exclusion_regex = Some(r"^(?!/var/log/journal).*$");
+    let mut agent_handle = common::spawn_agent(settings);
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    common::wait_for_event("monitoring journald path", &mut stderr_reader);
+
+    let (server_result, _) = tokio::join!(server, async {
+        for _ in 0..10 {
+            journal::print(1, "Sample alert");
+            journal::print(6, "Sample info");
+        }
+
+        // Wait for the data to be received by the mock ingester
+        tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+
+        let map = received.lock().await;
+        let file_info = map.values().next().unwrap();
+        assert!(predicate::str::contains("Sample alert").eval(file_info.value.as_str()));
+        assert!(predicate::str::contains("Sample info").eval(file_info.value.as_str()));
+
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
     common::assert_agent_running(&mut agent_handle);
     agent_handle.kill().expect("Could not kill process");
 }
@@ -420,14 +535,6 @@ fn lookback_start_lines_are_delivered() {
         .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
     file.sync_all().expect("Failed to sync file");
 
-    let mut handle = common::spawn_agent(AgentSettings {
-        log_dirs: &dir_path,
-        exclusion_regex: None,
-        ssl_cert_file: Some(cert_file.path()),
-        lookback: Some("start"),
-        host: Some(&addr),
-    });
-
     // Dump the agent's stdout
     // TODO: assert that it's successfully uploaded
 
@@ -436,7 +543,18 @@ fn lookback_start_lines_are_delivered() {
     tokio_test::block_on(async {
         let (line_count, _, server) = tokio::join!(
             async {
+                tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+                let mut handle = common::spawn_agent(AgentSettings {
+                    log_dirs: &dir_path,
+                    exclusion_regex: Some(r"/var\w*"),
+                    ssl_cert_file: Some(cert_file.path()),
+                    lookback: Some("start"),
+                    host: Some(&addr),
+                    ..Default::default()
+                });
+
                 tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
+
                 let mut output = String::new();
 
                 handle.kill().unwrap();
@@ -445,13 +563,13 @@ fn lookback_start_lines_are_delivered() {
                 stderr_ref.read_to_string(&mut output).unwrap();
 
                 debug!("{}", output);
+                debug!("getting lines from {}", file_path.to_str().unwrap());
                 let line_count = received
                     .lock()
                     .await
                     .get(file_path.to_str().unwrap())
                     .unwrap()
-                    .0
-                    .load(std::sync::atomic::Ordering::Relaxed);
+                    .lines;
                 shutdown_handle();
 
                 handle.wait().unwrap();
@@ -464,8 +582,6 @@ fn lookback_start_lines_are_delivered() {
                     file.sync_all().expect("Failed to sync file");
                 });
                 tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
-                // Hack to drive stream forward
-                writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
                 file.sync_all().expect("Failed to sync file");
             },
             server
@@ -489,27 +605,149 @@ fn lookback_none_lines_are_delivered() {
     let file_path = dir.path().join("test.log");
     let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
+    debug!("test log: {}", file_path.to_str().unwrap());
     // Enough bytes to get past the lookback threshold
     let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
     (0..line_write_count)
         .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
-    file.sync_all().expect("Failed to sync file");
 
-    let mut handle = common::spawn_agent(AgentSettings {
-        log_dirs: &dir_path,
-        exclusion_regex: None,
-        ssl_cert_file: Some(cert_file.path()),
-        lookback: None,
-        host: Some(&addr),
-    });
+    debug!(
+        "wrote {} lines to {} with size {}",
+        line_write_count,
+        file_path.to_str().unwrap(),
+        (log_lines.as_bytes().len() + 1) * line_write_count
+    );
+    file.sync_all().expect("Failed to sync file");
 
     // Dump the agent's stdout
     // TODO: assert that it's successfully uploaded
 
-    thread::sleep(std::time::Duration::from_secs(1));
     tokio_test::block_on(async {
         let (line_count, _, server) = tokio::join!(
             async {
+                tokio::time::delay_for(tokio::time::Duration::from_millis(100)).await;
+                let mut handle = common::spawn_agent(AgentSettings {
+                    log_dirs: &dir_path,
+                    exclusion_regex: Some(r"^/var.*"),
+                    ssl_cert_file: Some(cert_file.path()),
+                    lookback: Some("none"),
+                    host: Some(&addr),
+                    ..Default::default()
+                });
+                debug!("spawned agent");
+
+                tokio::time::delay_for(tokio::time::Duration::from_millis(3000)).await;
+
+                let mut output = String::new();
+
+                handle.kill().unwrap();
+                let stderr_ref = handle.stderr.as_mut().unwrap();
+
+                stderr_ref.read_to_string(&mut output).unwrap();
+
+                debug!("{}", output);
+                debug!("getting lines from {}", file_path.to_str().unwrap());
+                handle.wait().unwrap();
+                let line_count = received
+                    .lock()
+                    .await
+                    .get(file_path.to_str().unwrap())
+                    .unwrap()
+                    .lines;
+                shutdown_handle();
+                line_count
+            },
+            async move {
+                tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+                (0..5).for_each(|_| {
+                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                    file.sync_all().expect("Failed to sync file");
+                });
+                file.sync_all().expect("Failed to sync file");
+                debug!("wrote 5 lines");
+            },
+            server
+        );
+        server.unwrap();
+        assert_eq!(line_count, 5);
+    });
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_tags() {
+    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+    let file_path = dir.join("test.log");
+    let tag = "my-tag";
+    File::create(&file_path).expect("Couldn't create temp log file...");
+    let mut settings = AgentSettings::with_mock_ingester(&dir.to_str().unwrap(), &addr);
+    settings.tags = Some(tag);
+    settings.exclusion_regex = Some(r"/var\w*");
+    let mut agent_handle = common::spawn_agent(settings);
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+
+    let (server_result, _) = tokio::join!(server, async {
+        common::append_to_file(&file_path, 10, 5).unwrap();
+        common::force_client_to_flush(&dir).await;
+
+        // Wait for the data to be received by the mock ingester
+        tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+
+        let map = received.lock().await;
+        let file_info = map.get(file_path.to_str().unwrap()).unwrap();
+        assert_eq!(file_info.lines, 10);
+        assert_eq!(file_info.tags, Some(tag.to_string()));
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn lookback_stateful_lines_are_delivered() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+
+    let db_dir = tempdir().expect("Couldn't create temp dir...");
+    let db_dir_path = db_dir.path();
+    let dir = tempdir().expect("Couldn't create temp dir...");
+
+    let dir_path = format!("{}/", dir.path().to_str().unwrap());
+    let log_lines = "This is a test log line";
+
+    let file_path = dir.path().join("test.log");
+    let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
+
+    // Enough bytes to get past the lookback threshold
+    let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
+
+    (0..line_write_count)
+        .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
+    file.sync_all().expect("Failed to sync file");
+
+    // Write initial lines
+    debug!("First agent run");
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
+    thread::sleep(std::time::Duration::from_millis(250));
+    let file_path1 = file_path.clone();
+    let file_path_clone = file_path.clone();
+    tokio_test::block_on(async {
+        let (line_count, _, server) = tokio::join!(
+            async {
+                tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+                let mut handle = common::spawn_agent(AgentSettings {
+                    log_dirs: &dir_path,
+                    exclusion_regex: Some(r"/var\w*"),
+                    ssl_cert_file: Some(cert_file.path()),
+                    lookback: Some("start"),
+                    state_db_dir: Some(&db_dir_path),
+                    host: Some(&addr),
+                    ..Default::default()
+                });
+
                 tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
 
                 let mut output = String::new();
@@ -520,26 +758,90 @@ fn lookback_none_lines_are_delivered() {
                 stderr_ref.read_to_string(&mut output).unwrap();
 
                 debug!("{}", output);
-                handle.wait().unwrap();
+                debug!("getting lines from {}", &file_path1.to_str().unwrap());
                 let line_count = received
                     .lock()
                     .await
-                    .get(file_path.to_str().unwrap())
+                    .get(&file_path1.to_str().unwrap().to_string())
                     .unwrap()
-                    .0
-                    .load(std::sync::atomic::Ordering::Relaxed);
+                    .lines;
                 shutdown_handle();
+
+                handle.wait().unwrap();
                 line_count
             },
             async move {
                 tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                let mut file = OpenOptions::new()
+                    .append(true)
+                    .open(&file_path_clone)
+                    .expect("Couldn't create temp log file...");
                 (0..5).for_each(|_| {
                     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
                     file.sync_all().expect("Failed to sync file");
                 });
                 tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
-                // Hack to drive stream forward
-                writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                file.sync_all().expect("Failed to sync file");
+            },
+            server
+        );
+        server.unwrap();
+        assert_eq!(line_count, line_write_count + 5);
+    });
+
+    debug!("Second agent run");
+    // Make sure the agent starts where it left off
+    let file_path_clone = file_path.clone();
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
+    thread::sleep(std::time::Duration::from_millis(250));
+    tokio_test::block_on(async {
+        let (line_count, _, server) = tokio::join!(
+            async {
+                tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+                let mut handle = common::spawn_agent(AgentSettings {
+                    log_dirs: &dir_path,
+                    exclusion_regex: Some(r"/var\w*"),
+                    ssl_cert_file: Some(cert_file.path()),
+                    lookback: Some("start"),
+                    state_db_dir: Some(&db_dir_path),
+                    host: Some(&addr),
+                    ..Default::default()
+                });
+
+                tokio::time::delay_for(tokio::time::Duration::from_millis(3000)).await;
+
+                let mut output = String::new();
+
+                handle.kill().unwrap();
+                let stderr_ref = handle.stderr.as_mut().unwrap();
+
+                stderr_ref.read_to_string(&mut output).unwrap();
+
+                debug!("{}", output);
+                debug!("getting lines from {}", &file_path.to_str().unwrap());
+                let line_count = received
+                    .lock()
+                    .await
+                    .get(&file_path.to_str().unwrap().to_string())
+                    .unwrap()
+                    .lines;
+                shutdown_handle();
+
+                handle.wait().unwrap();
+                line_count
+            },
+            async move {
+                tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                let mut file = OpenOptions::new()
+                    .append(true)
+                    .create(false)
+                    .open(&file_path_clone)
+                    .expect("Couldn't create temp log file...");
+                (0..5).for_each(|_| {
+                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                    file.sync_all().expect("Failed to sync file");
+                });
+                tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
                 file.sync_all().expect("Failed to sync file");
             },
             server

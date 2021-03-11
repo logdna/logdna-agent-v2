@@ -1,11 +1,12 @@
 use crate::cache::entry::Entry;
 use crate::cache::event::Event;
+use crate::cache::tailed_file::TailedFile;
 use crate::cache::watch::{WatchEvent, Watcher};
 use crate::rule::{GlobRule, Rules, Status};
 
 use std::cell::RefCell;
 use std::ffi::{OsStr, OsString};
-use std::fs::{read_dir, OpenOptions};
+use std::fs::read_dir;
 use std::iter::FromIterator;
 use std::ops::Deref;
 use std::path::{Component, PathBuf};
@@ -24,6 +25,7 @@ use thiserror::Error;
 pub mod dir_path;
 pub mod entry;
 pub mod event;
+pub mod tailed_file;
 pub use dir_path::{DirPathBuf, DirPathBufError};
 
 mod watch;
@@ -34,7 +36,7 @@ type WatchDescriptors = HashMap<WatchDescriptor, Vec<EntryKey>>;
 
 pub type EntryKey = DefaultKey;
 
-type EntryMap<T> = SlotMap<EntryKey, RefCell<entry::Entry<T>>>;
+type EntryMap = SlotMap<EntryKey, entry::Entry>;
 type FsResult<T> = Result<T, Error>;
 
 #[derive(Debug, Error)]
@@ -57,14 +59,13 @@ pub enum Error {
     PathNotValid,
     #[error("encountered errors when inserting recursively: {0:?}")]
     InsertRecursively(Vec<Error>),
+    #[error("error reading file: {0:?}")]
+    File(io::Error),
 }
 
-pub struct FileSystem<T>
-where
-    T: Clone + std::fmt::Debug,
-{
+pub struct FileSystem {
     watcher: Watcher,
-    pub entries: Rc<RefCell<EntryMap<T>>>,
+    pub entries: Rc<RefCell<EntryMap>>,
     root: EntryKey,
 
     symlinks: Symlinks,
@@ -77,10 +78,7 @@ where
     initial_events: Vec<Event>,
 }
 
-impl<'a, T: 'a + Default> FileSystem<T>
-where
-    T: Clone + std::fmt::Debug,
-{
+impl FileSystem {
     pub fn new(initial_dirs: Vec<DirPathBuf>, rules: Rules) -> Self {
         initial_dirs.iter().for_each(|path| {
             if !path.is_dir() {
@@ -90,12 +88,12 @@ where
         let mut watcher = Watcher::new().expect("unable to initialize inotify");
 
         let mut entries = SlotMap::new();
-        let root = entries.insert(RefCell::new(Entry::Dir {
+        let root = entries.insert(Entry::Dir {
             name: "/".into(),
             parent: None,
             children: Children::new(),
             wd: watcher.watch("/").expect("unable to watch /"),
-        }));
+        });
 
         let mut initial_dir_rules = Rules::new();
         for path in initial_dirs.iter() {
@@ -164,9 +162,9 @@ where
     }
 
     pub fn stream_events(
-        fs: Arc<Mutex<FileSystem<T>>>,
-        buf: &'a mut [u8],
-    ) -> Result<impl Stream<Item = Event> + 'a, std::io::Error> {
+        fs: Arc<Mutex<FileSystem>>,
+        buf: &mut [u8],
+    ) -> Result<impl Stream<Item = Event> + '_, std::io::Error> {
         let events_stream = {
             match fs
                 .try_lock()
@@ -280,18 +278,18 @@ where
         watch_descriptor: &WatchDescriptor,
         name: OsString,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<T>,
+        _entries: &mut EntryMap,
     ) -> FsResult<()> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
         let entry_key = self.get_first_entry(watch_descriptor)?;
         let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
-        let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
+        let mut path = self.resolve_direct_path(&entry, _entries);
         path.push(name);
 
         if let Some(new_entry) = self.insert(&path, events, _entries)? {
             let mut errors = vec![];
-            if matches!(_entries.get(new_entry).map(|n_e| n_e.borrow()), Some(_)) {
+            if matches!(_entries.get(new_entry), Some(_)) {
                 for new_path in recursive_scan(&path) {
                     if let Err(e) = self.insert(&new_path, events, _entries) {
                         errors.push(e);
@@ -332,13 +330,13 @@ where
         watch_descriptor: &WatchDescriptor,
         name: OsString,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<T>,
+        _entries: &mut EntryMap,
     ) -> FsResult<()> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
         let entry_key = self.get_first_entry(watch_descriptor)?;
         let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
-        let mut path = self.resolve_direct_path(&entry.borrow(), _entries);
+        let mut path = self.resolve_direct_path(&entry, _entries);
         path.push(name);
         if !self.initial_dirs.iter().any(|dir| dir.as_ref() == path) {
             self.remove(&path, events, _entries)
@@ -354,7 +352,7 @@ where
         to_watch_descriptor: &WatchDescriptor,
         to_name: OsString,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<T>,
+        _entries: &mut EntryMap,
     ) -> FsResult<()> {
         let from_entry_key = self.get_first_entry(from_watch_descriptor)?;
         let to_entry_key = self.get_first_entry(to_watch_descriptor)?;
@@ -362,9 +360,9 @@ where
         let from_entry = _entries.get(from_entry_key).ok_or(Error::Lookup)?;
         let to_entry = _entries.get(to_entry_key).ok_or(Error::Lookup)?;
 
-        let mut from_path = self.resolve_direct_path(&from_entry.borrow(), _entries);
+        let mut from_path = self.resolve_direct_path(&from_entry, _entries);
         from_path.push(from_name);
-        let mut to_path = self.resolve_direct_path(&to_entry.borrow(), _entries);
+        let mut to_path = self.resolve_direct_path(&to_entry, _entries);
         to_path.push(to_name);
 
         // the entry is expected to exist
@@ -372,7 +370,8 @@ where
             .map(|_| ())
     }
 
-    pub fn resolve_direct_path(&self, entry: &Entry<T>, _entries: &EntryMap<T>) -> PathBuf {
+    pub fn resolve_direct_path(&self, entry: &Entry, _entries: &EntryMap) -> PathBuf {
+        // TODO: extract these Vecs or replace with SmallVec
         let mut components = Vec::new();
 
         let mut name = entry.name().clone();
@@ -384,9 +383,8 @@ where
             entry_ptr = match entry_ptr {
                 Some(parent_ptr) => match _entries.get(parent_ptr) {
                     Some(parent_entry) => {
-                        let e = parent_entry.borrow();
-                        name = e.name().clone();
-                        parent_entry.borrow().parent()
+                        name = parent_entry.name().clone();
+                        parent_entry.parent()
                     }
                     None => break,
                 },
@@ -398,7 +396,8 @@ where
         components.into_iter().collect()
     }
 
-    pub fn resolve_valid_paths(&self, entry: &Entry<T>, _entries: &EntryMap<T>) -> Vec<PathBuf> {
+    pub fn resolve_valid_paths(&self, entry: &Entry, _entries: &EntryMap) -> Vec<PathBuf> {
+        // TODO: extract these Vecs or replace with SmallVec
         let mut paths = Vec::new();
         self.resolve_valid_paths_helper(entry, &mut paths, Vec::new(), _entries);
         paths
@@ -406,10 +405,10 @@ where
 
     fn resolve_valid_paths_helper(
         &self,
-        entry: &Entry<T>,
+        entry: &Entry,
         paths: &mut Vec<PathBuf>,
         mut components: Vec<OsString>,
-        _entries: &EntryMap<T>,
+        _entries: &EntryMap,
     ) {
         let mut base_components: Vec<OsString> =
             into_components(&self.resolve_direct_path(entry, _entries));
@@ -432,7 +431,7 @@ where
                     let symlink = _entries.get(*symlink_ptr);
                     if let Some(symlink) = symlink {
                         self.resolve_valid_paths_helper(
-                            &symlink.borrow(),
+                            &symlink,
                             paths,
                             symlink_components.clone(),
                             _entries,
@@ -456,7 +455,7 @@ where
         &mut self,
         path: &PathBuf,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<T>,
+        _entries: &mut EntryMap,
     ) -> FsResult<Option<EntryKey>> {
         if !self.passes(path, _entries) {
             info!("ignoring {:?}", path);
@@ -469,7 +468,7 @@ where
         }
 
         let parent_ref = self.create_dir(&path.parent().unwrap().into(), _entries)?;
-        let parent_ref = self.follow_links(parent_ref, _entries)?;
+        let parent_ref = self.follow_links(parent_ref, _entries);
 
         if parent_ref.is_none() {
             return Ok(None);
@@ -491,9 +490,8 @@ where
             CreateFile,
         }
 
-        let parent = _entries.get(parent_ref).ok_or(Error::Lookup)?;
+        let parent = _entries.get_mut(parent_ref).ok_or(Error::Lookup)?;
         let action = match parent
-            .borrow_mut()
             .children_mut()
             .ok_or(Error::ParentNotValid)?
             .entry(component.clone())
@@ -517,8 +515,7 @@ where
                     name: component,
                     parent: parent_ref,
                     wd,
-                    data: T::default(),
-                    file_handle: OpenOptions::new().read(true).open(path).unwrap(),
+                    data: RefCell::new(TailedFile::new(path).map_err(Error::File)?),
                 };
 
                 let new_key = self.register_as_child(parent_ref, new_entry, _entries)?;
@@ -558,16 +555,16 @@ where
         }
     }
 
-    fn register(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<T>) -> FsResult<()> {
+    fn register(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap) -> FsResult<()> {
         let entry = _entries.get(entry_ptr).ok_or(Error::Lookup)?;
-        let path = self.resolve_direct_path(&entry.borrow(), _entries);
+        let path = self.resolve_direct_path(&entry, _entries);
 
         self.watch_descriptors
-            .entry(entry.borrow().watch_descriptor().clone())
+            .entry(entry.watch_descriptor().clone())
             .or_insert(Vec::new())
             .push(entry_ptr);
 
-        if let Entry::Symlink { link, .. } = entry.borrow().deref() {
+        if let Entry::Symlink { link, .. } = entry.deref() {
             self.symlinks
                 .entry(link.clone())
                 .or_insert(Vec::new())
@@ -578,11 +575,11 @@ where
         Ok(())
     }
 
-    fn unregister(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap<T>) {
+    fn unregister(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap) {
         if let Some(entry) = _entries.get(entry_ptr) {
-            let path = self.resolve_direct_path(&entry.borrow(), _entries);
+            let path = self.resolve_direct_path(&entry, _entries);
 
-            let wd = entry.borrow().watch_descriptor().clone();
+            let wd = entry.watch_descriptor().clone();
             let entries = match self.watch_descriptors.get_mut(&wd) {
                 Some(v) => v,
                 None => {
@@ -603,7 +600,7 @@ where
                 }
             }
 
-            if let Entry::Symlink { link, .. } = entry.borrow().deref() {
+            if let Entry::Symlink { link, .. } = entry.deref() {
                 let entries = match self.symlinks.get_mut(link) {
                     Some(v) => v,
                     None => {
@@ -628,18 +625,17 @@ where
         &mut self,
         path: &PathBuf,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<T>,
+        _entries: &mut EntryMap,
     ) -> FsResult<()> {
         let path_buf = path.parent().ok_or(Error::PathNotValid)?.into();
         let parent = self
-            .lookup(&path_buf, _entries)?
+            .lookup(&path_buf, _entries)
             .ok_or(Error::ParentLookup)?;
         let component = into_components(path).pop().ok_or(Error::PathNotValid)?;
 
         let to_drop = _entries
-            .get(parent)
+            .get_mut(parent)
             .ok_or(Error::ParentLookup)?
-            .borrow_mut()
             .children_mut()
             .ok_or(Error::ParentNotValid)?
             .remove(&component);
@@ -655,13 +651,13 @@ where
         &mut self,
         entry_key: EntryKey,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<T>,
+        _entries: &mut EntryMap,
     ) {
         self.unregister(entry_key, _entries);
         if let Some(entry) = _entries.get(entry_key) {
             let mut _children = vec![];
             let mut _links = vec![];
-            match entry.borrow().deref() {
+            match entry.deref() {
                 Entry::Dir { children, .. } => {
                     for (_, child) in children {
                         _children.push(*child);
@@ -701,35 +697,32 @@ where
         from: &PathBuf,
         to: &PathBuf,
         events: &mut Vec<Event>,
-        _entries: &mut EntryMap<T>,
+        _entries: &mut EntryMap,
     ) -> FsResult<Option<EntryKey>> {
         let parent_path = to.parent().ok_or(Error::ParentNotValid)?;
         let new_parent = self.create_dir(&parent_path.into(), _entries)?;
 
-        match self.lookup(from, _entries)? {
+        match self.lookup(from, _entries) {
             Some(entry_key) => {
-                let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
+                let entry = _entries.get_mut(entry_key).ok_or(Error::Lookup)?;
                 let new_name = into_components(to).pop().ok_or(Error::PathNotValid)?;
-                let old_name = entry.borrow().name().clone();
-
-                if let Some(parent) = entry.borrow().parent() {
+                let old_name = entry.name().clone();
+                if let Some(parent) = entry.parent() {
                     _entries
-                        .get(parent)
+                        .get_mut(parent)
                         .ok_or(Error::ParentLookup)?
-                        .borrow_mut()
                         .children_mut()
                         .ok_or(Error::ParentNotValid)?
                         .remove(&old_name);
                 }
 
-                let mut entry = entry.borrow_mut();
+                let entry = _entries.get_mut(entry_key).ok_or(Error::Lookup)?;
                 entry.set_parent(new_parent);
                 entry.set_name(new_name.clone());
 
                 Ok(_entries
-                    .get(new_parent)
+                    .get_mut(new_parent)
                     .ok_or(Error::ParentLookup)?
-                    .borrow_mut()
                     .children_mut()
                     .ok_or(Error::ParentNotValid)?
                     .insert(new_name, entry_key))
@@ -741,7 +734,7 @@ where
     // Creates all entries for a directory.
     // If one of the entries already exists, it is skipped over.
     // The returns a linked list of all entries.
-    fn create_dir(&mut self, path: &PathBuf, _entries: &mut EntryMap<T>) -> FsResult<EntryKey> {
+    fn create_dir(&mut self, path: &PathBuf, _entries: &mut EntryMap) -> FsResult<EntryKey> {
         let mut m_entry = self.root;
 
         let components = into_components(path);
@@ -763,9 +756,8 @@ where
             let current_path = PathBuf::from_iter(&components[0..=i]);
 
             let action = match _entries
-                .get(m_entry)
+                .get_mut(m_entry)
                 .ok_or(Error::ParentLookup)?
-                .borrow_mut()
                 .children_mut()
                 .ok_or(Error::ParentNotValid)?
                 .entry(component.clone())
@@ -774,7 +766,7 @@ where
                     let entry_key = *v.get();
                     let existing_entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
 
-                    match existing_entry.borrow().deref() {
+                    match existing_entry.deref() {
                         Entry::Symlink { link, .. } => Action::Lookup(link.clone()),
                         _ => Action::Return(entry_key),
                     }
@@ -787,7 +779,7 @@ where
 
             let new_entry = match action {
                 Action::Return(key) => key,
-                Action::Lookup(ref link) => self.lookup(link, _entries)?.ok_or(Error::Lookup)?,
+                Action::Lookup(ref link) => self.lookup(link, _entries).ok_or(Error::Lookup)?,
                 Action::CreateDir => {
                     let wd = self
                         .watcher
@@ -831,17 +823,16 @@ where
     fn register_as_child(
         &mut self,
         parent_key: EntryKey,
-        new_entry: Entry<T>,
-        entries: &mut EntryMap<T>,
+        new_entry: Entry,
+        entries: &mut EntryMap,
     ) -> FsResult<EntryKey> {
         let component = new_entry.name().clone();
-        let new_key = entries.insert(RefCell::new(new_entry));
+        let new_key = entries.insert(new_entry);
         self.register(new_key, entries)?;
 
         match entries
-            .get(parent_key)
+            .get_mut(parent_key)
             .ok_or(Error::ParentLookup)?
-            .borrow_mut()
             .children_mut()
             .ok_or(Error::ParentNotValid)?
             .entry(component)
@@ -851,8 +842,9 @@ where
         }
     }
 
-    /// Returns the entry that represents the supplied path or `Ok(None)`.
-    pub fn lookup(&self, path: &PathBuf, _entries: &EntryMap<T>) -> FsResult<Option<EntryKey>> {
+    /// Returns the entry that represents the supplied path.
+    /// When the path is not represented and therefore has no entry then `None` is return.
+    pub fn lookup(&self, path: &PathBuf, _entries: &EntryMap) -> Option<EntryKey> {
         let mut parent = self.root;
         let mut components = into_components(path);
         // remove the first component because it will always be the root
@@ -860,63 +852,48 @@ where
 
         // If the path has no components there is nothing to look up.
         if components.is_empty() {
-            return Ok(None);
+            return None;
         }
 
-        let last_component = components.pop().unwrap();
+        let last_component = components.pop()?;
 
         for component in components {
-            if let Some(entry) = self.follow_links(parent, _entries)? {
-                if let Some(parent_ref) = _entries
-                    .get(entry)
-                    .ok_or(Error::ParentLookup)?
-                    .borrow()
-                    .children()
-                    .ok_or(Error::ParentNotValid)?
-                    .get(&component)
-                {
-                    if let Some(parent_ref) = self.follow_links(*parent_ref, _entries)? {
-                        parent = parent_ref;
-                        continue;
-                    }
+            parent = self.follow_links(parent, _entries).and_then(|e| {
+                if let Some(e) = _entries.get(e) {
+                    e.children()?
+                        .get(&component)
+                        .and_then(|entry| self.follow_links(*entry, _entries))
+                } else {
+                    info!("Failed to find entry on lookup");
+                    None
                 }
-            }
-
-            // When components are not found `Ok(None)` is returned
-            return Ok(None);
+            })?;
         }
 
-        Ok(_entries
-            .get(parent)
-            .ok_or(Error::ParentLookup)?
-            .borrow()
-            .children()
-            .ok_or(Error::ParentNotValid)?
+        _entries
+            .get(parent)?
+            .children()?
             .get(&last_component)
-            .copied())
+            .copied()
     }
 
-    fn follow_links(&self, entry: EntryKey, _entries: &EntryMap<T>) -> FsResult<Option<EntryKey>> {
+    fn follow_links(&self, entry: EntryKey, _entries: &EntryMap) -> Option<EntryKey> {
         let mut result = entry;
-        while let Some(e) = _entries.get(entry) {
-            if let Some(link) = e.borrow().link() {
-                if let Some(e) = self.lookup(link, _entries)? {
-                    result = e;
-                } else {
-                    return Ok(None);
-                }
+        while let Some(e) = _entries.get(result) {
+            if let Some(link) = e.link() {
+                result = self.lookup(link, _entries)?;
             } else {
                 break;
             }
         }
-        Ok(Some(result))
+        Some(result)
     }
 
-    fn is_symlink_target(&self, path: &PathBuf, _entries: &EntryMap<T>) -> bool {
+    fn is_symlink_target(&self, path: &PathBuf, _entries: &EntryMap) -> bool {
         for (_, symlink_ptrs) in self.symlinks.iter() {
             for symlink_ptr in symlink_ptrs.iter() {
                 if let Some(symlink) = _entries.get(*symlink_ptr) {
-                    match symlink.borrow().deref() {
+                    match symlink {
                         Entry::Symlink { rules, .. } => {
                             if let Status::Ok = rules.passes(path) {
                                 if let Status::Ok = self.master_rules.included(path) {
@@ -939,23 +916,33 @@ where
         false
     }
 
+    /// Determines whether the path is within the initial dir
+    /// and either passes the master rules (e.g. "*.log") or it's a directory
     fn is_initial_dir_target(&self, path: &PathBuf) -> bool {
-        if let Status::Ok = self.initial_dir_rules.passes(path) {
-            if let Status::Ok = self.master_rules.passes(path) {
-                return true;
-            }
+        // Must be within the initial dir
+        if self.initial_dir_rules.passes(path) != Status::Ok {
+            return false;
         }
-        false
+
+        // The file should validate the file rules or be a directory
+        if self.master_rules.passes(path) != Status::Ok {
+            if let Ok(metadata) = std::fs::metadata(path) {
+                return metadata.is_dir();
+            }
+            return false;
+        }
+
+        true
     }
 
     /// Helper method for checking if a path passes exclusion/inclusion rules
-    fn passes(&self, path: &PathBuf, _entries: &EntryMap<T>) -> bool {
+    fn passes(&self, path: &PathBuf, _entries: &EntryMap) -> bool {
         self.is_initial_dir_target(path) || self.is_symlink_target(path, _entries)
     }
 
-    fn entry_path_passes(&self, entry: EntryKey, name: &OsStr, _entries: &EntryMap<T>) -> bool {
+    fn entry_path_passes(&self, entry: EntryKey, name: &OsStr, _entries: &EntryMap) -> bool {
         if let Some(entry_ref) = _entries.get(entry) {
-            let mut path = self.resolve_direct_path(&entry_ref.borrow(), &_entries);
+            let mut path = self.resolve_direct_path(&entry_ref, &_entries);
             path.push(name);
             self.passes(&path, &_entries)
         } else {
@@ -979,7 +966,7 @@ where
 }
 
 // conditionally implement std::fmt::Debug if the underlying type T implements it
-impl<T: fmt::Debug + Clone> fmt::Debug for FileSystem<T> {
+impl fmt::Debug for FileSystem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut builder = f.debug_struct("FileSystem");
         builder.field("root", &&self.root);
@@ -1098,14 +1085,14 @@ mod tests {
             let fs = $x.lock().expect("failed to lock fs");
             let entries = fs.entries.clone();
             let entries = entries.borrow();
-            fs.lookup(&$y, &entries).unwrap()
+            fs.lookup(&$y, &entries)
         }};
     }
 
     fn new_fs<T: Default + Clone + std::fmt::Debug>(
         path: PathBuf,
         rules: Option<Rules>,
-    ) -> FileSystem<T> {
+    ) -> FileSystem {
         let rules = rules.unwrap_or_else(|| {
             let mut rules = Rules::new();
             rules.add_inclusion(GlobRule::new(r"**").unwrap());
@@ -1149,7 +1136,7 @@ mod tests {
                 let _fs = fs.lock().expect("couldn't lock fs");
                 let _entries = &_fs.entries;
                 let _entries = _entries.borrow();
-                match _entries.get(entry.unwrap()).unwrap().borrow().deref() {
+                match _entries.get(entry.unwrap()).unwrap().deref() {
                     Entry::File { .. } => {}
                     _ => panic!("wrong entry type"),
                 };
@@ -1169,7 +1156,7 @@ mod tests {
                 let _fs = fs.lock().expect("couldn't lock fs");
                 let _entries = &_fs.entries;
                 let _entries = _entries.borrow();
-                match _entries.get(entry.unwrap()).unwrap().borrow().deref() {
+                match _entries.get(entry.unwrap()).unwrap().deref() {
                     Entry::File { .. } => {}
                     _ => panic!("wrong entry type"),
                 };
@@ -1184,7 +1171,7 @@ mod tests {
                 let _fs = fs.lock().expect("couldn't lock fs");
                 let _entries = &_fs.entries;
                 let _entries = _entries.borrow();
-                match _entries.get(entry.unwrap()).unwrap().borrow().deref() {
+                match _entries.get(entry.unwrap()).unwrap().deref() {
                     Entry::File { .. } => {}
                     _ => panic!("wrong entry type"),
                 };
@@ -1213,7 +1200,7 @@ mod tests {
                 let _fs = fs.lock().expect("couldn't lock fs");
                 let _entries = &_fs.entries;
                 let _entries = _entries.borrow();
-                match _entries.get(entry.unwrap()).unwrap().borrow().deref() {
+                match _entries.get(entry.unwrap()).unwrap().deref() {
                     Entry::File { .. } => {}
                     _ => panic!("wrong entry type"),
                 };
@@ -1235,7 +1222,7 @@ mod tests {
                 let _fs = fs.lock().expect("couldn't lock fs");
                 let _entries = &_fs.entries;
                 let _entries = _entries.borrow();
-                match _entries.get(entry.unwrap()).unwrap().borrow().deref() {
+                match _entries.get(entry.unwrap()).unwrap().deref() {
                     Entry::File { .. } => {}
                     _ => panic!("wrong entry type"),
                 };
@@ -1250,7 +1237,7 @@ mod tests {
             let _fs = fs.lock().expect("couldn't lock fs");
             let _entries = &_fs.entries;
             let _entries = _entries.borrow();
-            match _entries.get(entry.unwrap()).unwrap().borrow().deref() {
+            match _entries.get(entry.unwrap()).unwrap().deref() {
                 Entry::File { .. } => {}
                 _ => panic!("wrong entry type"),
             };
@@ -1269,6 +1256,29 @@ mod tests {
             take_events!(fs, 1);
 
             assert!(lookup_entry!(fs, path).is_some());
+        });
+    }
+
+    /// Creates a dir w/ dots and a file after initialization
+    #[test]
+    fn filesystem_create_dir_after_init() {
+        run_test(|| {
+            let tempdir = TempDir::new().unwrap();
+            let path = tempdir.path().to_path_buf();
+
+            let file_system = Arc::new(Mutex::new(new_fs::<()>(path.clone(), None)));
+
+            take_events!(file_system, 1);
+
+            // Use a subdirectory with dots
+            let sub_dir = path.join("sub.dir");
+            create_dir(&sub_dir).unwrap();
+            let file_path = sub_dir.join("insert.log");
+            File::create(&file_path).unwrap();
+
+            take_events!(file_system, 2);
+
+            assert!(lookup_entry!(file_system, &file_path).is_some());
         });
     }
 
@@ -1311,12 +1321,12 @@ mod tests {
             let _fs = fs.lock().expect("couldn't lock fs");
             let _entries = &_fs.entries;
             let _entries = _entries.borrow();
-            match _entries.get(entry.unwrap()).unwrap().borrow().deref() {
+            match _entries.get(entry.unwrap()).unwrap().deref() {
                 Entry::Dir { .. } => {}
                 _ => panic!("wrong entry type"),
             };
 
-            match _entries.get(entry2.unwrap()).unwrap().borrow().deref() {
+            match _entries.get(entry2.unwrap()).unwrap().deref() {
                 Entry::Symlink { link, .. } => {
                     assert_eq!(*link, a);
                 }
@@ -1348,7 +1358,6 @@ mod tests {
             let _entries = &_fs.entries;
             let _entries = _entries.borrow();
             let _entry = _entries.get(entry).unwrap();
-            let _entry = _entry.borrow();
             match _entry.deref() {
                 Entry::File { wd, .. } => {
                     real_watch_descriptor = wd;
@@ -1357,7 +1366,7 @@ mod tests {
             };
 
             assert!(entry2.is_some());
-            match _entries.get(entry2.unwrap()).unwrap().borrow().deref() {
+            match _entries.get(entry2.unwrap()).unwrap().deref() {
                 Entry::File { ref wd, .. } => assert_eq!(wd, real_watch_descriptor),
                 _ => panic!("wrong entry type"),
             };
@@ -1610,22 +1619,22 @@ mod tests {
             let _fs = fs.lock().expect("couldn't lock fs");
             let _entries = &_fs.entries;
             let _entries = _entries.borrow();
-            match _entries.get(entry.unwrap()).unwrap().borrow().deref() {
+            match _entries.get(entry.unwrap()).unwrap().deref() {
                 Entry::Dir { .. } => {}
                 _ => panic!("wrong entry type"),
             };
 
-            match _entries.get(entry2.unwrap()).unwrap().borrow().deref() {
+            match _entries.get(entry2.unwrap()).unwrap().deref() {
                 Entry::File { .. } => {}
                 _ => panic!("wrong entry type"),
             };
 
-            match _entries.get(entry3.unwrap()).unwrap().borrow().deref() {
+            match _entries.get(entry3.unwrap()).unwrap().deref() {
                 Entry::File { .. } => {}
                 _ => panic!("wrong entry type"),
             };
 
-            match _entries.get(entry4.unwrap()).unwrap().borrow().deref() {
+            match _entries.get(entry4.unwrap()).unwrap().deref() {
                 Entry::Symlink { link, .. } => {
                     // symlinks don't update so this link is bad
                     assert_eq!(*link, file_path);
@@ -1710,22 +1719,22 @@ mod tests {
             let _fs = fs.lock().expect("couldn't lock fs");
             let _entries = &_fs.entries;
             let _entries = _entries.borrow();
-            match _entries.get(entry.unwrap()).unwrap().borrow().deref() {
+            match _entries.get(entry.unwrap()).unwrap().deref() {
                 Entry::Dir { .. } => {}
                 _ => panic!("wrong entry type"),
             };
 
-            match _entries.get(entry2.unwrap()).unwrap().borrow().deref() {
+            match _entries.get(entry2.unwrap()).unwrap().deref() {
                 Entry::File { .. } => {}
                 _ => panic!("wrong entry type"),
             };
 
-            match _entries.get(entry3.unwrap()).unwrap().borrow().deref() {
+            match _entries.get(entry3.unwrap()).unwrap().deref() {
                 Entry::File { .. } => {}
                 _ => panic!("wrong entry type"),
             };
 
-            match _entries.get(entry4.unwrap()).unwrap().borrow().deref() {
+            match _entries.get(entry4.unwrap()).unwrap().deref() {
                 Entry::Symlink { link, .. } => {
                     // symlinks don't update so this link is bad
                     assert_eq!(*link, file_path);
@@ -1759,7 +1768,7 @@ mod tests {
             let _fs = fs.lock().expect("couldn't lock fs");
             let _entries = &_fs.entries;
             let _entries = _entries.borrow();
-            match _entries.get(entry.unwrap()).unwrap().borrow().deref() {
+            match _entries.get(entry.unwrap()).unwrap().deref() {
                 Entry::File { .. } => {}
                 _ => panic!("wrong entry type"),
             };
@@ -1827,7 +1836,7 @@ mod tests {
             let _fs = fs.lock().expect("couldn't lock fs");
             let _entries = &_fs.entries;
             let _entries = _entries.borrow();
-            match _entries.get(entry.unwrap()).unwrap().borrow().deref() {
+            match _entries.get(entry.unwrap()).unwrap().deref() {
                 Entry::File { .. } => {}
                 _ => panic!("wrong entry type"),
             };
@@ -1931,10 +1940,8 @@ mod tests {
 
             let _fs = fs.lock().expect("failed to lock fs");
             let entries = _fs.entries.borrow();
-            let resolved_paths = _fs.resolve_valid_paths(
-                _fs.entries.borrow().get(entry).unwrap().borrow().deref(),
-                &entries,
-            );
+            let resolved_paths =
+                _fs.resolve_valid_paths(_fs.entries.borrow().get(entry).unwrap().deref(), &entries);
 
             assert!(resolved_paths
                 .iter()

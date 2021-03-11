@@ -7,7 +7,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.0.0-beta.1
+    app.kubernetes.io/version: 3.1.0-beta.1
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
@@ -21,7 +21,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.0.0-beta.1
+    app.kubernetes.io/version: 3.1.0-beta.1
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -38,7 +38,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.0.0-beta.1
+    app.kubernetes.io/version: 3.1.0-beta.1
 rules:
   - apiGroups: [""]
     resources: ["events"]
@@ -54,7 +54,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.0.0-beta.1
+    app.kubernetes.io/version: 3.1.0-beta.1
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -72,7 +72,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.0.0-beta.1
+    app.kubernetes.io/version: 3.1.0-beta.1
 spec:
   updateStrategy:
     type: RollingUpdate
@@ -87,12 +87,12 @@ spec:
         app: logdna-agent
         app.kubernetes.io/name: logdna-agent
         app.kubernetes.io/instance: logdna-agent
-        app.kubernetes.io/version: 3.0.0-beta.1
+        app.kubernetes.io/version: 3.1.0-beta.1
     spec:
       serviceAccountName: logdna-agent
       containers:
         - name: logdna-agent
-          image: logdna/logdna-agent:3.0.0-beta.1
+          image: logdna/logdna-agent:3.1.0-beta.1
           imagePullPolicy: Always
           securityContext:
             privileged: true
@@ -107,6 +107,8 @@ spec:
                 secretKeyRef:
                   name: logdna-agent-key
                   key: logdna-agent-key
+            - name: LOGDNA_DB_PATH
+              value: /var/lib/logdna
             - name: POD_APP_LABEL
               valueFrom:
                 fieldRef:
@@ -133,6 +135,8 @@ spec:
               mountPath: /var/log
             - name: vardata
               mountPath: /var/data
+            - name: varliblogdna
+              mountPath: /var/lib/logdna
             - name: varlibdockercontainers
               mountPath: /var/lib/docker/containers
               readOnly: true
@@ -150,6 +154,9 @@ spec:
         - name: vardata
           hostPath:
             path: /var/data
+        - name: varliblogdna
+          hostPath:
+            path: /var/lib/logdna
         - name: varlibdockercontainers
           hostPath:
             path: /var/lib/docker/containers

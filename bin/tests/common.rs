@@ -14,7 +14,8 @@ use std::thread;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 
 use futures::Future;
-use logdna_mock_ingester::{https_ingester, FileLineCounter, HyperError};
+use log::debug;
+use logdna_mock_ingester::{http_ingester, https_ingester, FileLineCounter, HyperError};
 
 use rcgen::generate_simple_self_signed;
 use rustls::internal::pemfile;
@@ -89,6 +90,13 @@ pub fn append_to_file(file_path: &Path, lines: i32, sync_every: i32) -> Result<(
     Ok(())
 }
 
+pub async fn force_client_to_flush(dir_path: &Path) {
+    // Client flushing delay
+    tokio::time::delay_for(tokio::time::Duration::from_millis(300)).await;
+    // Append to a dummy file
+    append_to_file(&dir_path.join("force_flush.log"), 1, 1).unwrap();
+}
+
 pub fn truncate_file(file_path: &PathBuf) -> Result<(), std::io::Error> {
     OpenOptions::new()
         .read(true)
@@ -102,15 +110,32 @@ pub fn truncate_file(file_path: &PathBuf) -> Result<(), std::io::Error> {
 pub struct AgentSettings<'a> {
     pub log_dirs: &'a str,
     pub exclusion_regex: Option<&'a str>,
+    pub journald_dirs: Option<&'a str>,
     pub ssl_cert_file: Option<&'a std::path::Path>,
     pub lookback: Option<&'a str>,
     pub host: Option<&'a str>,
+    pub use_ssl: bool,
+    pub ingester_key: Option<&'a str>,
+    pub tags: Option<&'a str>,
+    pub state_db_dir: Option<&'a std::path::Path>,
 }
 
 impl<'a> AgentSettings<'a> {
     pub fn new(log_dirs: &'a str) -> Self {
         AgentSettings {
             log_dirs,
+            exclusion_regex: Some(r"^/var.*"),
+            use_ssl: true,
+            ..Default::default()
+        }
+    }
+
+    pub fn with_mock_ingester(log_dirs: &'a str, server_address: &'a str) -> Self {
+        AgentSettings {
+            log_dirs,
+            host: Some(server_address),
+            use_ssl: false,
+            ingester_key: Some("mock_key"),
             ..Default::default()
         }
     }
@@ -119,8 +144,12 @@ impl<'a> AgentSettings<'a> {
 pub fn spawn_agent(settings: AgentSettings) -> Child {
     let mut cmd = Command::cargo_bin("logdna-agent").unwrap();
 
-    let ingestion_key =
-        std::env::var("LOGDNA_INGESTION_KEY").expect("LOGDNA_INGESTION_KEY env var not set");
+    let ingestion_key = if let Some(key) = settings.ingester_key {
+        key.to_string()
+    } else {
+        std::env::var("LOGDNA_INGESTION_KEY").unwrap()
+    };
+
     assert_ne!(ingestion_key, "");
 
     let agent = cmd
@@ -134,6 +163,8 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
 
     if let Some(cert_file_path) = settings.ssl_cert_file {
         agent.env("SSL_CERT_FILE", cert_file_path);
+    } else {
+        agent.env("LOGDNA_USE_SSL", settings.use_ssl.to_string());
     }
 
     if let Some(host) = settings.host {
@@ -149,35 +180,56 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
         agent.env("LOGDNA_LOOKBACK", lookback);
     }
 
+    if let Some(state_db_dir) = settings.state_db_dir {
+        agent.env("LOGDNA_DB_PATH", state_db_dir);
+    }
+
     if let Some(rules) = settings.exclusion_regex {
         agent.env("LOGDNA_EXCLUSION_REGEX_RULES", rules);
     }
+
+    if let Some(tags) = settings.tags {
+        agent.env("LOGDNA_TAGS", tags);
+    }
+
+    if let Some(journald_dirs) = settings.journald_dirs {
+        agent.env("LOGDNA_JOURNALD_PATHS", journald_dirs);
+    }
+
     agent.spawn().expect("Failed to start agent")
 }
 
+/// Blocks until a certain event referencing a file name is logged by the agent
+pub fn wait_for_file_event(event: &str, file_path: &Path, reader: &mut dyn BufRead) -> String {
+    let file_name = &file_path.file_name().unwrap().to_str().unwrap();
+    wait_for_line(reader, event, |line| {
+        line.contains(event) && line.contains(file_name)
+    })
+}
+
 /// Blocks until a certain event is logged by the agent
-pub fn wait_for_file_event(
-    event: &str,
-    file_path: &PathBuf,
-    stderr_reader: &mut dyn BufRead,
-) -> String {
+pub fn wait_for_event(event: &str, reader: &mut dyn BufRead) -> String {
+    wait_for_line(reader, event, |line| line.contains(event))
+}
+
+fn wait_for_line<F>(reader: &mut dyn BufRead, event_info: &str, condition: F) -> String
+where
+    F: Fn(&str) -> bool,
+{
     let mut line = String::new();
     let mut lines_buffer = String::new();
-    let file_name = &file_path.file_name().unwrap().to_str().unwrap();
     for _safeguard in 0..100_000 {
-        stderr_reader.read_line(&mut line).unwrap();
+        reader.read_line(&mut line).unwrap();
+        debug!("{}", line.trim());
         lines_buffer.push_str(&line);
         lines_buffer.push('\n');
-        if line.contains(event) && line.contains(file_name) {
+        if condition(&line) {
             return lines_buffer;
         }
         line.clear();
     }
 
-    panic!(
-        "file {:?} event {:?} not found in agent output",
-        file_path, event
-    );
+    panic!("event not found in agent output: {}", event_info);
 }
 
 /// Verifies that the agent is still running
@@ -197,7 +249,7 @@ pub fn create_dirs<P: AsRef<Path>>(dirs: &[P]) {
 
 pub fn open_files_include(id: u32, file: &PathBuf) -> Option<String> {
     let child = Command::new("lsof")
-        .args(&["-p", &id.to_string()])
+        .args(&["-l", "-p", &id.to_string()])
         .stdout(Stdio::piped())
         .spawn()
         .expect("failed to execute child");
@@ -250,11 +302,30 @@ pub fn self_signed_https_ingester() -> (
         .expect("Couldn't write cert file");
 
     let (server, received, shutdown_handle) = https_ingester(addr, certs, key[0].clone());
+    debug!("Started https ingester on port {}", port);
     (
         server,
         received,
         shutdown_handle,
         cert_file,
+        format!("localhost:{}", port),
+    )
+}
+
+pub fn start_http_ingester() -> (
+    impl Future<Output = std::result::Result<(), HyperError>>,
+    FileLineCounter,
+    impl FnOnce(),
+    String,
+) {
+    let port = get_available_port().expect("No ports free");
+    let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
+
+    let (server, received, shutdown_handle) = http_ingester(address);
+    (
+        server,
+        received,
+        shutdown_handle,
         format!("localhost:{}", port),
     )
 }

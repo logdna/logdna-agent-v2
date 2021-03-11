@@ -10,9 +10,9 @@ members = [
     "common/middleware",
     "common/journald",
     "common/source",
+    "common/state",
 ]
 
 [profile.release]
 opt-level = 3
 debug = true
-panic = "abort"

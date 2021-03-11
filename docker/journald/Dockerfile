@@ -1,5 +1,4 @@
 FROM docker.io/logdna/build-images:rust-buster-stable
-RUN apt update -y && apt install -y systemd lsof procps
 STOPSIGNAL SIGRTMIN+3
 
 RUN mkdir -p /var/log/journal
