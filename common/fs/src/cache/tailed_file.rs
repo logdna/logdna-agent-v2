@@ -309,8 +309,6 @@ impl LazyLineSerializer {
         path: String,
         offset: (bytes::Bytes, u64),
     ) -> Self {
-        // New line, make sure the buffer is cleared
-        reader.try_lock().unwrap().deref_mut().buf.clear();
         Self {
             reader,
             path,
