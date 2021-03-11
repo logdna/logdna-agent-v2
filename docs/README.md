@@ -64,6 +64,8 @@ By default the agent will run as root. Below are environment-specific instructio
 * [Running as Non-Root on Kubernetes](KUBERNETES.md#run-as-non-root)
 * [Running as Non-Root on OpenShift](OPENSHIFT.md#run-as-non-root)
 
+If you configure the agent to run as non-root, review the [documentation about enabling "statefulness" for the agent](KUBERNETES.md#enabling-persistent-agent-state).
+
 ### Additional Installation Options
 
 More information about managing your deployments is documented for [Kubernetes](KUBERNETES.md) or [OpenShift](OPENSHIFT.md). This includes topics such as
@@ -157,12 +159,23 @@ Check out [Kubernetes documentation](https://kubernetes.io/docs/tasks/inject-dat
 
 ### Configuring Lookback
 
-The lookback strategy determines how the agent handles existing files on startup. This strategy is determined by `LOGDNA_LOOKBACK`. The set of valid values for this option are:
+The lookback strategy determines how the agent handles existing files on startup. This strategy is determined by `LOGDNA_LOOKBACK`.
 
-* `start` - Always start at the beginning of the file
-* `smallfiles` - If the file is less than 8KiB, start at the beginning. Otherwise, start at the end
-* `none` - Always start at the end of the file
-* __Note:__ The default option is `smallfiles`.
+The valid values for this option are:
+   * When set to **`none`**: lookback is disabled, and LogDNA continues to read from where the file ended at the time of the stop/restart action. 
+   * When set to **`smallfiles`** (default):
+       * If there is information in the “state file”, use the last recorded state. 
+       * If the file is not present in the “state file” and the file is less than 8KiB, start at the beginning. If the file is larger than 8KiB, start at the end. 
+   * When set to **`start`**:
+    * If there is information in the “state file”, use the last recorded state. 
+    * If the file is not present in the “state file”, start at the beginning. 
+
+The state file location is defined using the LOGDNA_DB_PATH env variable (the default path is /var/lib/logdna/agent_state.db).
+
+**Notes:**
+* If you configure the agent to run as non-root, review the [documentation](KUBERNETES.md#enabling-persistent-agent-state) about enabling "statefulness" for the agent.
+* When upgrading from LogDNA Agent versin 3.0 to 3.1, the state file will initially be empty, so the lookback setting will be used for existing files. After that (i.e. on process restart), the state file will be present and will be used.
+
 
 ### Configuring Journald
 
