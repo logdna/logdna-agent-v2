@@ -562,16 +562,15 @@ proptest! {
                         ..Default::default()
                     });
 
+                    let stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
+                    std::thread::spawn(move || {
+                        stderr_reader.lines().for_each(|line| debug!("{:?}", line))
+                    });
+
                     tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
 
-                    let mut output = String::new();
-
                     handle.kill().unwrap();
-                    let stderr_ref = handle.stderr.as_mut().unwrap();
 
-                    stderr_ref.read_to_string(&mut output).unwrap();
-
-                    debug!("{}", output);
                     debug!("getting lines from {}", file_path.to_str().unwrap());
                     let file_info = received.lock().await;
                     let file_info = file_info
@@ -653,16 +652,15 @@ fn lookback_none_lines_are_delivered() {
                 });
                 debug!("spawned agent");
 
+                let stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
+                std::thread::spawn(move || {
+                    stderr_reader.lines().for_each(|line| debug!("{:?}", line))
+                });
+
                 tokio::time::delay_for(tokio::time::Duration::from_millis(3000)).await;
 
-                let mut output = String::new();
-
                 handle.kill().unwrap();
-                let stderr_ref = handle.stderr.as_mut().unwrap();
 
-                stderr_ref.read_to_string(&mut output).unwrap();
-
-                debug!("{}", output);
                 debug!("getting lines from {}", file_path.to_str().unwrap());
                 handle.wait().unwrap();
                 let line_count = received
@@ -766,16 +764,15 @@ fn lookback_stateful_lines_are_delivered() {
                     ..Default::default()
                 });
 
+                let stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
+                std::thread::spawn(move || {
+                    stderr_reader.lines().for_each(|line| debug!("{:?}", line))
+                });
+
                 tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
 
-                let mut output = String::new();
-
                 handle.kill().unwrap();
-                let stderr_ref = handle.stderr.as_mut().unwrap();
 
-                stderr_ref.read_to_string(&mut output).unwrap();
-
-                debug!("{}", output);
                 debug!("getting lines from {}", &file_path1.to_str().unwrap());
                 let line_count = received
                     .lock()
@@ -826,16 +823,15 @@ fn lookback_stateful_lines_are_delivered() {
                     ..Default::default()
                 });
 
+                let stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
+                std::thread::spawn(move || {
+                    stderr_reader.lines().for_each(|line| debug!("{:?}", line))
+                });
+
                 tokio::time::delay_for(tokio::time::Duration::from_millis(3000)).await;
 
-                let mut output = String::new();
-
                 handle.kill().unwrap();
-                let stderr_ref = handle.stderr.as_mut().unwrap();
 
-                stderr_ref.read_to_string(&mut output).unwrap();
-
-                debug!("{}", output);
                 debug!("getting lines from {}", &file_path.to_str().unwrap());
                 let line_count = received
                     .lock()
