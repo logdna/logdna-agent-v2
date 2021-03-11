@@ -275,7 +275,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
     {
         let bytes = {
             let borrowed_reader = self.reader.lock().await;
-            bytes::Bytes::copy_from_slice(&borrowed_reader.buf)
+            bytes::Bytes::copy_from_slice(&borrowed_reader.buf[..borrowed_reader.buf.len() - 1])
         };
         writer.serialize_utf8(bytes).await?;
 
