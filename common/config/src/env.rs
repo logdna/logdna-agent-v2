@@ -85,6 +85,10 @@ pub struct Config {
     #[env(LOGDNA_LOG_K8S_EVENTS)]
     #[example("always")]
     pub log_k8s_events: Option<String>,
+
+    #[env(LOGDNA_DB_PATH)]
+    #[example("/var/lib/logdna-agent/")]
+    pub db_path: Option<String>,
 }
 
 impl Config {
@@ -149,6 +153,10 @@ impl Config {
 
         if let Some(mut v) = self.log_dirs {
             raw.log.dirs.append(&mut v)
+        }
+
+        if let Some(p) = self.db_path {
+            raw.log.db_path = Some(p.into())
         }
 
         if let Some(mut v) = self.exclusion_rules {

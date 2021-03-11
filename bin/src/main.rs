@@ -6,9 +6,12 @@ use std::thread::spawn;
 
 use futures::Stream;
 
+use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
 use config::Config;
 use env_logger::Env;
+use fs::tail::Lookback;
 use fs::tail::Tailer as FSSource;
+use futures::future::Either;
 use futures::StreamExt;
 use http::client::Client;
 
@@ -20,13 +23,18 @@ use k8s::middleware::K8sMetadata;
 use k8s::K8sEventLogConf;
 use metrics::Metrics;
 use middleware::Executor;
+
 use pin_utils::pin_mut;
+use state::AgentState;
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use tokio::runtime::Runtime;
 
+const POLL_PERIOD_MS: u64 = 100;
+
 mod dep_audit;
+mod stream_adapter;
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
@@ -59,7 +67,36 @@ fn main() {
 
     spawn(Metrics::start);
 
-    let client = Rc::new(RefCell::new(Client::new(config.http.template)));
+    let mut _agent_state = None;
+    let mut offset_state = None;
+    let mut initial_offsets = None;
+    if !matches!(config.log.lookback, Lookback::None) {
+        if let Some(path) = config.log.db_path {
+            match AgentState::new(path) {
+                Ok(agent_state) => {
+                    let _offset_state = agent_state.get_offset_state();
+                    let offsets = _offset_state.offsets();
+                    _agent_state = Some(agent_state);
+                    offset_state = Some(_offset_state);
+                    match offsets {
+                        Ok(os) => {
+                            initial_offsets =
+                                Some(os.into_iter().map(|fo| (fo.key, fo.offset)).collect())
+                        }
+                        Err(e) => warn!("couldn't retrieve offsets from agent state, {:?}", e),
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to open agent state db {}", e);
+                }
+            }
+        }
+    }
+
+    let handles = offset_state
+        .as_ref()
+        .map(|os| (os.write_handle(), os.flush_handle()));
+    let client = Rc::new(RefCell::new(Client::new(config.http.template, handles)));
     client
         .borrow_mut()
         .set_max_buffer_size(config.http.body_size);
@@ -75,7 +112,12 @@ fn main() {
     executor.init();
 
     let mut fs_tailer_buf = [0u8; 4096];
-    let mut fs_source = FSSource::new(config.log.dirs, config.log.rules, config.log.lookback);
+    let mut fs_source = FSSource::new(
+        config.log.dirs,
+        config.log.rules,
+        config.log.lookback,
+        initial_offsets,
+    );
 
     let journald_source = create_source(&config.journald.paths);
 
@@ -95,19 +137,27 @@ fn main() {
     // Create the runtime
     let mut rt = Runtime::new().unwrap();
 
+    if let Some(offset_state) = offset_state {
+        rt.spawn(offset_state.run().unwrap());
+    }
     // Execute the future, blocking the current thread until completion
     rt.block_on(async move {
         let fs_source = fs_source
             .process(&mut fs_tailer_buf)
-            .expect("except Failed to create FS Tailer");
+            .expect("except Failed to create FS Tailer")
+            .map(StrictOrLazyLineBuilder::Lazy);
 
-        let journald_source = journald_source;
+        let journald_source = journald_source.map(StrictOrLazyLineBuilder::Strict);
 
         let k8s_event_source: Option<_> = if let Some(fut) = k8s_event_stream
             .map(|e| e.ok().map(|e| e.event_stream()))
             .flatten()
         {
-            Some(fut.await.expect("Failed to create stream"))
+            Some(
+                fut.await
+                    .expect("Failed to create stream")
+                    .map(StrictOrLazyLineBuilder::Strict),
+            )
         } else {
             None
         };
@@ -118,7 +168,7 @@ fn main() {
 
         let mut k8s_event_source: Option<std::pin::Pin<&mut _>> = k8s_event_source.as_pin_mut();
 
-        let mut sources: futures::stream::SelectAll<&mut (dyn Stream<Item = Vec<_>> + Unpin)> =
+        let mut sources: futures::stream::SelectAll<&mut (dyn Stream<Item = _> + Unpin)> =
             futures::stream::SelectAll::new();
 
         info!("Enabling filesystem");
@@ -130,12 +180,43 @@ fn main() {
             sources.push(k)
         };
 
+        let sources = sources.map(Either::Left);
+
+        let sources = futures::stream::select(
+            sources,
+            tokio::time::interval(tokio::time::Duration::from_millis(POLL_PERIOD_MS))
+                .map(Either::Right),
+        );
+
         sources
-            .for_each(|lines| async {
-                if let Some(lines) = executor.process(lines) {
-                    for line in lines {
-                        client.borrow_mut().send(line).await
-                    }
+            .for_each(|line| async {
+                match line {
+                    Either::Left(line) => match line {
+                        StrictOrLazyLineBuilder::Strict(mut line) => {
+                            if executor.process(&mut line).is_some() {
+                                match line.build() {
+                                    Ok(line) => {
+                                        client
+                                            .borrow_mut()
+                                            .send(StrictOrLazyLines::Strict(&line))
+                                            .await
+                                    }
+                                    Err(e) => {
+                                        error!("Couldn't build line from linebuilder {:?}", e)
+                                    }
+                                }
+                            }
+                        }
+                        StrictOrLazyLineBuilder::Lazy(mut line) => {
+                            if executor.process(&mut line).is_some() {
+                                client
+                                    .borrow_mut()
+                                    .send(StrictOrLazyLines::Lazy(line))
+                                    .await
+                            }
+                        }
+                    },
+                    Either::Right(_) => client.borrow_mut().poll().await,
                 }
             })
             .await

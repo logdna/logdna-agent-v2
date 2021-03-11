@@ -4,7 +4,7 @@ use http::types::body::LineBuilder;
 use log::{info, warn};
 use std::path::PathBuf;
 
-pub fn create_source(paths: &[PathBuf]) -> impl FutureStream<Item = Vec<LineBuilder>> {
+pub fn create_source(paths: &[PathBuf]) -> impl FutureStream<Item = LineBuilder> {
     let mut journal_files: Vec<PathBuf> = Vec::new();
     let mut journal_directories: Vec<PathBuf> = Vec::new();
     for path in paths {

@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
-use http::types::body::LineBuilder;
+use http::types::body::LineMetaMut;
 use std::thread::spawn;
 
-pub enum Status {
-    Ok(Vec<LineBuilder>),
+pub enum Status<T> {
+    Ok(T),
     Skip,
 }
 
 pub trait Middleware: Send + Sync + 'static {
     fn run(&self);
-    fn process(&self, lines: Vec<LineBuilder>) -> Status;
+    fn process<'a>(&self, lines: &'a mut dyn LineMetaMut) -> Status<&'a mut dyn LineMetaMut>;
 }
 
 #[derive(Default)]
@@ -36,25 +36,13 @@ impl Executor {
         }
     }
 
-    pub fn process(&self, mut lines: Vec<LineBuilder>) -> Option<Vec<LineBuilder>> {
-        let mut skipped = false;
-
-        for middleware in &self.middlewares {
-            match middleware.process(lines.clone()) {
-                Status::Ok(v) => {
-                    lines = v;
-                }
-                Status::Skip => {
-                    skipped = true;
-                    break;
-                }
-            }
-        }
-
-        if skipped {
-            None
-        } else {
-            Some(lines)
-        }
+    pub fn process<'a>(&self, line: &'a mut dyn LineMetaMut) -> Option<&'a mut dyn LineMetaMut> {
+        self.middlewares
+            .iter()
+            .try_fold(line, |l, m| match m.process(l) {
+                Status::Ok(l) => Ok(l),
+                Status::Skip => Err(()),
+            })
+            .ok()
     }
 }
