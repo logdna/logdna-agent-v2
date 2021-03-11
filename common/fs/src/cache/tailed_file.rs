@@ -1,4 +1,3 @@
-#![allow(clippy::await_holding_refcell_ref)]
 use http::types::body::{KeyValueMap, LineBuilder, LineMeta, LineMetaMut};
 use http::types::error::LineMetaError;
 use http::types::serialize::{
