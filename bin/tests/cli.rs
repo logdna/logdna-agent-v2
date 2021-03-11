@@ -577,7 +577,7 @@ proptest! {
                     let file_info = file_info
                         .get(file_path.to_str().unwrap())
                         .unwrap();
-                    let line_count = file_info.lines.clone();
+                    let line_count = file_info.lines;
                     let lines = file_info.values.clone();
                     shutdown_handle();
 
