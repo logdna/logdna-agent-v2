@@ -507,8 +507,6 @@ async fn test_journald_support() {
         let map = received.lock().await;
         let file_info = map.values().next().unwrap();
 
-        debug!("lines: {:?}", file_info.values);
-
         let predicate_fn = predicate::in_iter(file_info.values.iter().map(|s| s.trim_end()));
         assert!(predicate_fn.eval(&"Sample alert"));
         assert!(predicate_fn.eval(&"Sample info"));

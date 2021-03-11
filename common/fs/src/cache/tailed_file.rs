@@ -429,17 +429,20 @@ impl Stream for LazyLines {
             } = borrow.deref_mut();
 
             if *path >= paths.len() {
+                debug_assert_eq!(*read, 0);
+                *current_offset = None;
+                *path = 0;
                 buf.clear();
             }
 
             let pinned_reader = Pin::new(reader);
-            if let Ok(read) = ready!(read_until_internal(pinned_reader, cx, b'\n', buf, read)) {
-                if read == 0 {
+            if let Ok(count) = ready!(read_until_internal(pinned_reader, cx, b'\n', buf, read)) {
+                debug_assert_eq!(*read, 0);
+                if count == 0 && buf.is_empty() {
                     break Poll::Ready(None);
                 } else {
                     debug!("tailer sendings lines for {:?}", &paths);
-                    *path = 0;
-                    *offset += TryInto::<u64>::try_into(read).unwrap();
+                    *offset += TryInto::<u64>::try_into(count).unwrap();
                     *current_offset = Some((
                         bytes::Bytes::copy_from_slice(file_path.as_os_str().as_bytes()),
                         *offset,
@@ -623,7 +626,6 @@ impl TailedFile<LazyLineSerializer> {
             }
         }
 
-        debug!("tailer sendings lines for {:?}", &paths);
         Some(LazyLines::new(
             self.inner.clone(),
             paths
