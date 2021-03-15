@@ -1,4 +1,3 @@
-#![allow(clippy::await_holding_refcell_ref)]
 use http::types::body::{KeyValueMap, LineBuilder, LineMeta, LineMetaMut};
 use http::types::error::LineMetaError;
 use http::types::serialize::{
@@ -26,6 +25,7 @@ use std::convert::TryInto;
 use std::fs::OpenOptions;
 use std::io;
 use std::mem;
+use std::num::NonZeroUsize;
 use std::ops::DerefMut;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -40,7 +40,7 @@ fn read_until_internal<R: AsyncBufRead + ?Sized>(
     byte: u8,
     buf: &mut Vec<u8>,
     read: &mut usize,
-) -> Poll<io::Result<usize>> {
+) -> Poll<io::Result<Option<NonZeroUsize>>> {
     loop {
         let (done, used) = {
             let available = ready!(reader.as_mut().poll_fill_buf(cx))?;
@@ -54,11 +54,17 @@ fn read_until_internal<R: AsyncBufRead + ?Sized>(
         };
         reader.as_mut().consume(used);
         *read += used;
-        if done || used == 0 {
-            if used == 0 {
-                Metrics::fs().increment_partial_reads();
-            }
-            return Poll::Ready(Ok(mem::replace(read, 0)));
+        if done {
+            debug_assert!(*read > 0);
+            return Poll::Ready(Ok(Some(
+                NonZeroUsize::new(mem::replace(read, 0))
+                    .expect("No such thing as a line 0 bytes long"),
+            )));
+        }
+        if used == 0 {
+            // We've hit the end of the file and not finished a line
+            Metrics::fs().increment_partial_reads();
+            return Poll::Ready(Ok(None));
         }
     }
 }
@@ -68,15 +74,14 @@ fn read_line_lossy<R: AsyncBufRead + ?Sized>(
     cx: &mut Context<'_>,
     bytes: &mut Vec<u8>,
     read: &mut usize,
-) -> Poll<io::Result<(String, usize)>> {
-    match ready!(read_until_internal(reader, cx, b'\n', bytes, read)) {
-        Ok(count) => {
-            debug_assert_eq!(*read, 0);
+) -> Poll<io::Result<Option<(String, NonZeroUsize)>>> {
+    match ready!(read_until_internal(reader, cx, b'\n', bytes, read))? {
+        Some(count) => {
             let ret = String::from_utf8_lossy(bytes).to_string();
             bytes.clear();
-            Poll::Ready(Ok((ret, count)))
+            Poll::Ready(Ok(Some((ret, count))))
         }
-        Err(e) => Poll::Ready(Err(e)),
+        None => Poll::Ready(Ok(None)),
     }
 }
 
@@ -110,12 +115,12 @@ impl Stream for LineBuilderLines {
         } = borrow.deref_mut();
 
         let pinned_reader = Pin::new(reader);
-        let (mut s, n) = ready!(read_line_lossy(pinned_reader, cx, buf, this.read))?;
-        if n == 0 && s.is_empty() {
-            return Poll::Ready(None);
-        }
-
-        let n: u64 = n.try_into().unwrap();
+        let (mut s, n) = match ready!(read_line_lossy(pinned_reader, cx, buf, this.read)) {
+            Ok(Some((s, n))) => (s, n),
+            Err(e) => return Poll::Ready(Some(Err(e))),
+            Ok(None) => return Poll::Ready(None),
+        };
+        let n: u64 = n.get().try_into().unwrap();
         if s.ends_with('\n') {
             s.pop();
             if s.ends_with('\r') {
@@ -276,7 +281,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
     {
         let bytes = {
             let borrowed_reader = self.reader.lock().await;
-            bytes::Bytes::copy_from_slice(&borrowed_reader.buf)
+            bytes::Bytes::copy_from_slice(&borrowed_reader.buf[..borrowed_reader.buf.len() - 1])
         };
         writer.serialize_utf8(bytes).await?;
 
@@ -310,8 +315,6 @@ impl LazyLineSerializer {
         path: String,
         offset: (bytes::Bytes, u64),
     ) -> Self {
-        // New line, make sure the buffer is cleared
-        reader.try_lock().unwrap().deref_mut().buf.clear();
         Self {
             reader,
             path,
@@ -432,22 +435,30 @@ impl Stream for LazyLines {
             } = borrow.deref_mut();
 
             if *path >= paths.len() {
+                debug_assert_eq!(*read, 0);
+                *current_offset = None;
+                *path = 0;
                 buf.clear();
             }
 
             let pinned_reader = Pin::new(reader);
-            if let Ok(read) = ready!(read_until_internal(pinned_reader, cx, b'\n', buf, read)) {
-                if read == 0 {
-                    break Poll::Ready(None);
-                } else {
+            let result = ready!(read_until_internal(pinned_reader, cx, b'\n', buf, read));
+            match result {
+                Ok(Some(count)) => {
+                    // Got a line
+                    debug_assert_eq!(*read, 0);
                     debug!("tailer sendings lines for {:?}", &paths);
-                    *path = 0;
-                    *offset += TryInto::<u64>::try_into(read).unwrap();
+                    *offset += TryInto::<u64>::try_into(count.get()).unwrap();
                     *current_offset = Some((
                         bytes::Bytes::copy_from_slice(file_path.as_os_str().as_bytes()),
                         *offset,
                     ))
                 }
+                // We got an error, should we propagate this up somehow? calls to TailedFile::tail
+                // will implicitly retry
+                Err(e) => warn!("{}", e),
+                // Reached the end of the file, but havn't hit a newline yet
+                Ok(None) => break Poll::Ready(None),
             }
         }
     }
@@ -626,7 +637,6 @@ impl TailedFile<LazyLineSerializer> {
             }
         }
 
-        debug!("tailer sendings lines for {:?}", &paths);
         Some(LazyLines::new(
             self.inner.clone(),
             paths
