@@ -708,7 +708,7 @@ async fn test_partial_fsynced_lines() {
             .unwrap();
 
         write!(file, "{}", "first part ").unwrap();
-        write!(file, "{}", " second part").unwrap();
+        write!(file, "{}", "second part").unwrap();
 
         file.sync_all().unwrap();
         common::force_client_to_flush(&dir).await;
@@ -716,8 +716,8 @@ async fn test_partial_fsynced_lines() {
 
         {
             let map = received.lock().await;
-            let file_info = map.get(file_path.to_str().unwrap()).unwrap();
-            assert_eq!(file_info.values, Vec::<String>::new());
+            // The ingester should not have received any lines yet
+            assert!(map.get(file_path.to_str().unwrap()).is_none());
         }
 
         write!(file, "{}", " third part\n").unwrap();
