@@ -690,6 +690,61 @@ fn lookback_none_lines_are_delivered() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_partial_fsynced_lines() {
+    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+    let file_path = dir.join("test.log");
+    File::create(&file_path).expect("Couldn't create temp log file...");
+    let mut settings = AgentSettings::with_mock_ingester(&dir.to_str().unwrap(), &addr);
+    settings.exclusion_regex = Some(r"/var\w*");
+    let mut agent_handle = common::spawn_agent(settings);
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+    let (server_result, _) = tokio::join!(server, async {
+        let mut file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&file_path)
+            .unwrap();
+
+        write!(file, "{}", "first part ").unwrap();
+        write!(file, "{}", " second part").unwrap();
+
+        file.sync_all().unwrap();
+        common::force_client_to_flush(&dir).await;
+        tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+
+        {
+            let map = received.lock().await;
+            let file_info = map.get(file_path.to_str().unwrap()).unwrap();
+            assert_eq!(file_info.values, Vec::<String>::new());
+        }
+
+        write!(file, "{}", " third part\n").unwrap();
+        write!(file, "{}", "begin second line").unwrap();
+
+        file.sync_all().unwrap();
+        common::force_client_to_flush(&dir).await;
+        tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+
+        {
+            let map = received.lock().await;
+            let file_info = map.get(file_path.to_str().unwrap()).unwrap();
+            assert_eq!(
+                file_info.values,
+                vec!["first part second part third part\n".to_string()]
+            );
+        }
+
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_tags() {
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
 
