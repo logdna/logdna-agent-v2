@@ -20,7 +20,7 @@ use logdna_mock_ingester::{http_ingester, https_ingester, FileLineCounter, Hyper
 use rcgen::generate_simple_self_signed;
 use rustls::internal::pemfile;
 
-static LINE: &str = "Nov 30 09:14:47 sample-host-name sampleprocess[1204]: Hello from process";
+pub static LINE: &str = "Nov 30 09:14:47 sample-host-name sampleprocess[1204]: Hello from process";
 
 pub struct FileContext {
     pub file_path: PathBuf,
