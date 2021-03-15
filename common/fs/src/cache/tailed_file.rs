@@ -39,13 +39,10 @@ fn read_until_internal<R: AsyncBufRead + ?Sized>(
     byte: u8,
     buf: &mut Vec<u8>,
     read: &mut usize,
-) -> Poll<Option<io::Result<usize>>> {
+) -> Poll<io::Result<Option<usize>>> {
     loop {
         let (done, used) = {
-            let available = match ready!(reader.as_mut().poll_fill_buf(cx)) {
-                Ok(available) => available,
-                Err(e) => return Poll::Ready(Some(Err(e))),
-            };
+            let available = ready!(reader.as_mut().poll_fill_buf(cx))?;
             if let Some(i) = memchr::memchr(byte, available) {
                 buf.extend_from_slice(&available[..=i]);
                 (true, i + 1)
@@ -59,9 +56,9 @@ fn read_until_internal<R: AsyncBufRead + ?Sized>(
         if done || used == 0 {
             if used == 0 {
                 Metrics::fs().increment_partial_reads();
-                return Poll::Ready(None);
+                return Poll::Ready(Ok(None));
             }
-            return Poll::Ready(Some(Ok(mem::replace(read, 0))));
+            return Poll::Ready(Ok(Some(mem::replace(read, 0))));
         }
     }
 }
@@ -71,16 +68,15 @@ fn read_line_lossy<R: AsyncBufRead + ?Sized>(
     cx: &mut Context<'_>,
     bytes: &mut Vec<u8>,
     read: &mut usize,
-) -> Poll<Option<io::Result<(String, usize)>>> {
-    match ready!(read_until_internal(reader, cx, b'\n', bytes, read)) {
-        Some(Ok(count)) => {
+) -> Poll<io::Result<Option<(String, usize)>>> {
+    match ready!(read_until_internal(reader, cx, b'\n', bytes, read))? {
+        Some(count) => {
             debug_assert_eq!(*read, 0);
             let ret = String::from_utf8_lossy(bytes).to_string();
             bytes.clear();
-            Poll::Ready(Some(Ok((ret, count))))
+            Poll::Ready(Ok(Some((ret, count))))
         }
-        Some(Err(e)) => Poll::Ready(Some(Err(e))),
-        None => Poll::Ready(None),
+        None => Poll::Ready(Ok(None)),
     }
 }
 
@@ -115,9 +111,9 @@ impl Stream for LineBuilderLines {
 
         let pinned_reader = Pin::new(reader);
         let (mut s, n) = match ready!(read_line_lossy(pinned_reader, cx, buf, this.read)) {
-            Some(Ok((s, n))) => (s, n),
-            Some(Err(e)) => return Poll::Ready(Some(Err(e))),
-            None => return Poll::Ready(None),
+            Ok(Some((s, n))) => (s, n),
+            Err(e) => return Poll::Ready(Some(Err(e))),
+            Ok(None) => return Poll::Ready(None),
         };
         if n == 0 && s.is_empty() {
             return Poll::Ready(None);
@@ -446,7 +442,7 @@ impl Stream for LazyLines {
             let pinned_reader = Pin::new(reader);
             let result = ready!(read_until_internal(pinned_reader, cx, b'\n', buf, read));
             match result {
-                Some(Ok(count)) => {
+                Ok(Some(count)) => {
                     if count == 0 && buf.is_empty() {
                         break Poll::Ready(None);
                     }
@@ -461,9 +457,9 @@ impl Stream for LazyLines {
                 }
                 // We got an error, should we propagate this up somehow? calls to TailedFile::tail
                 // will implicitly retry
-                Some(Err(e)) => warn!("{}", e),
+                Err(e) => warn!("{}", e),
                 // Reached the end of the file, but havn't hit a newline yet
-                None => break Poll::Ready(None),
+                Ok(None) => break Poll::Ready(None),
             }
         }
     }
