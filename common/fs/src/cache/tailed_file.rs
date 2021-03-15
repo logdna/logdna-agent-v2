@@ -25,6 +25,7 @@ use std::convert::TryInto;
 use std::fs::OpenOptions;
 use std::io;
 use std::mem;
+use std::num::NonZeroUsize;
 use std::ops::DerefMut;
 use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
@@ -39,7 +40,7 @@ fn read_until_internal<R: AsyncBufRead + ?Sized>(
     byte: u8,
     buf: &mut Vec<u8>,
     read: &mut usize,
-) -> Poll<io::Result<Option<usize>>> {
+) -> Poll<io::Result<Option<NonZeroUsize>>> {
     loop {
         let (done, used) = {
             let available = ready!(reader.as_mut().poll_fill_buf(cx))?;
@@ -53,12 +54,17 @@ fn read_until_internal<R: AsyncBufRead + ?Sized>(
         };
         reader.as_mut().consume(used);
         *read += used;
-        if done || used == 0 {
-            if used == 0 {
-                Metrics::fs().increment_partial_reads();
-                return Poll::Ready(Ok(None));
-            }
-            return Poll::Ready(Ok(Some(mem::replace(read, 0))));
+        if done {
+            debug_assert!(*read > 0);
+            return Poll::Ready(Ok(Some(
+                NonZeroUsize::new(mem::replace(read, 0))
+                    .expect("No such thing as a line 0 bytes long"),
+            )));
+        }
+        if used == 0 {
+            // We've hit the end of the file and not finished a line
+            Metrics::fs().increment_partial_reads();
+            return Poll::Ready(Ok(None));
         }
     }
 }
@@ -68,10 +74,9 @@ fn read_line_lossy<R: AsyncBufRead + ?Sized>(
     cx: &mut Context<'_>,
     bytes: &mut Vec<u8>,
     read: &mut usize,
-) -> Poll<io::Result<Option<(String, usize)>>> {
+) -> Poll<io::Result<Option<(String, NonZeroUsize)>>> {
     match ready!(read_until_internal(reader, cx, b'\n', bytes, read))? {
         Some(count) => {
-            debug_assert_eq!(*read, 0);
             let ret = String::from_utf8_lossy(bytes).to_string();
             bytes.clear();
             Poll::Ready(Ok(Some((ret, count))))
@@ -115,10 +120,7 @@ impl Stream for LineBuilderLines {
             Err(e) => return Poll::Ready(Some(Err(e))),
             Ok(None) => return Poll::Ready(None),
         };
-        if n == 0 && s.is_empty() {
-            return Poll::Ready(None);
-        };
-        let n: u64 = n.try_into().unwrap();
+        let n: u64 = n.get().try_into().unwrap();
         if s.ends_with('\n') {
             s.pop();
             if s.ends_with('\r') {
@@ -443,13 +445,10 @@ impl Stream for LazyLines {
             let result = ready!(read_until_internal(pinned_reader, cx, b'\n', buf, read));
             match result {
                 Ok(Some(count)) => {
-                    if count == 0 && buf.is_empty() {
-                        break Poll::Ready(None);
-                    }
                     // Got a line
                     debug_assert_eq!(*read, 0);
                     debug!("tailer sendings lines for {:?}", &paths);
-                    *offset += TryInto::<u64>::try_into(count).unwrap();
+                    *offset += TryInto::<u64>::try_into(count.get()).unwrap();
                     *current_offset = Some((
                         bytes::Bytes::copy_from_slice(file_path.as_os_str().as_bytes()),
                         *offset,
