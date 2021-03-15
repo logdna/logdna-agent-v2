@@ -47,6 +47,7 @@ impl Client {
         let buffer_source = Box::pin(body_serializer_source(
             2 * 1024 * 1024, /* 2MB */
             100 * 1024,      /*100 KB*/
+            None,
         ));
         let (offsets, state_write, state_flush) = state_handles
             .map(|(sw, sf)| (Some(Vec::new()), Some(sw), Some(sf)))
