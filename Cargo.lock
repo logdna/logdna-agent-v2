@@ -71,12 +71,11 @@ dependencies = [
 
 [[package]]
 name = "async-buf-pool"
-version = "0.1.0"
-source = "git+https://github.com/logdna/async-buf-pool-rs.git?branch=convenience-impls#946d581b74189567970ff763c5d695da20414dc9"
+version = "0.2.0"
+source = "git+https://github.com/logdna/async-buf-pool-rs.git?tag=0.2#1f018f7bc27ce18d64f8e4f530d57fe75b17a8c1"
 dependencies = [
  "async-channel",
  "bytes 0.5.6",
- "hyper",
  "thiserror",
 ]
 
@@ -463,6 +462,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea221b5284a47e40033bf9b66f35f984ec0ea2931eb03505246cd27a963f981b"
 
 [[package]]
+name = "countme"
+version = "2.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "328b822bdcba4d4e402be8d9adb6eebf269f969f8eadef977a553ff3c4fbcb58"
+dependencies = [
+ "dashmap 4.0.2",
+ "once_cell",
+ "rustc-hash",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -621,6 +631,16 @@ checksum = "0f260e2fc850179ef410018660006951c1b55b79e8087e87111a2c388994b9b5"
 dependencies = [
  "ahash",
  "cfg-if 0.1.10",
+ "num_cpus",
+]
+
+[[package]]
+name = "dashmap"
+version = "4.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e77a43b28d0668df09411cb0bc9a8c2adc40f9a048afe863e05fd43251e8e39c"
+dependencies = [
+ "cfg-if 1.0.0",
  "num_cpus",
 ]
 
@@ -1419,7 +1439,7 @@ dependencies = [
  "serde_yaml",
  "static_assertions",
  "thiserror",
- "time 0.2.25",
+ "time 0.2.26",
  "tokio",
  "url 2.2.1",
 ]
@@ -1430,7 +1450,7 @@ version = "0.46.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "efbf94071a4f9f987b058bd71bf96deed5a1d438b1c7778b120e0a759640bf5d"
 dependencies = [
- "dashmap",
+ "dashmap 3.11.10",
  "derivative",
  "futures",
  "k8s-openapi",
@@ -1560,19 +1580,21 @@ dependencies = [
 
 [[package]]
 name = "logdna-client"
-version = "0.3.0"
-source = "git+https://github.com/logdna/logdna-rust.git?branch=simplify-buf-handling#e30e1bbd9006573c73ebea2792f9bf538aa45cd8"
+version = "0.4.0"
+source = "git+https://github.com/logdna/logdna-rust.git?tag=0.4#0b48fa9f58c6bf1830e6ba525bf44dbeadacb4ff"
 dependencies = [
  "async-buf-pool",
  "async-compression",
  "async-trait",
  "bytes 0.5.6",
  "chrono",
+ "countme",
  "derivative",
  "futures",
  "http 0.2.3",
  "hyper",
  "hyper-rustls",
+ "log",
  "pin-project 1.0.5",
  "quick-error 1.2.3",
  "rustls",
@@ -2959,9 +2981,9 @@ dependencies = [
 
 [[package]]
 name = "time"
-version = "0.2.25"
+version = "0.2.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1195b046942c221454c2539395f85413b33383a067449d78aab2b7b052a142f7"
+checksum = "08a8cbfbf47955132d0202d1662f49b2423ae35862aee471f3ba4b133358f372"
 dependencies = [
  "const_fn",
  "libc",
@@ -3267,9 +3289,9 @@ checksum = "f1bddf1187be692e79c5ffeab891132dfb0f236ed36a43c7ed39f1165ee20191"
 
 [[package]]
 name = "version_check"
-version = "0.9.2"
+version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5a972e5669d67ba988ce3dc826706fb0a8b01471c088cb0b6110b805cc36aed"
+checksum = "5fecdca9a5291cc2b8dcf7dc02453fee791a280f3743cb0905f8822ae463b3fe"
 
 [[package]]
 name = "wait-timeout"
