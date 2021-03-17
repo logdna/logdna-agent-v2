@@ -45,9 +45,10 @@ impl Client {
         state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
     ) -> Self {
         let buffer_source = Box::pin(body_serializer_source(
-            2 * 1024 * 1024, /* 2MB */
-            100 * 1024,      /*100 KB*/
-            None,
+            16 * 1024, /* 16 KB segments */
+            50,        /* 16KB * 50 = 256 KB initial capacity */
+            None,      /* No max size */
+            Some(100), /* max 512KB idle buffers */
         ));
         let (offsets, state_write, state_flush) = state_handles
             .map(|(sw, sf)| (Some(Vec::new()), Some(sw), Some(sf)))
