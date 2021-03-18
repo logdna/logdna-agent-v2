@@ -72,7 +72,7 @@ dependencies = [
 [[package]]
 name = "async-buf-pool"
 version = "0.2.0"
-source = "git+https://github.com/logdna/async-buf-pool-rs.git?tag=0.2#1f018f7bc27ce18d64f8e4f530d57fe75b17a8c1"
+source = "git+https://github.com/logdna/async-buf-pool-rs.git?tag=0.2.0#1f018f7bc27ce18d64f8e4f530d57fe75b17a8c1"
 dependencies = [
  "async-channel",
  "bytes 0.5.6",
@@ -1581,7 +1581,7 @@ dependencies = [
 [[package]]
 name = "logdna-client"
 version = "0.4.0"
-source = "git+https://github.com/logdna/logdna-rust.git?tag=0.4#0b48fa9f58c6bf1830e6ba525bf44dbeadacb4ff"
+source = "git+https://github.com/logdna/logdna-rust.git?tag=0.4.0#9df87c840b774c2385a099e5d031d05ecc129438"
 dependencies = [
  "async-buf-pool",
  "async-compression",
