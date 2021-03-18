@@ -1,11 +1,9 @@
 #![recursion_limit = "128"]
 
-extern crate proc_macro;
-
 use proc_macro::TokenStream;
 
-use hashbrown::HashMap;
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
+use std::collections::HashMap;
 use syn::{ItemStruct, Lit, Meta, NestedMeta};
 
 use quote::{quote, ToTokens, TokenStreamExt};
@@ -32,13 +30,13 @@ pub fn env_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
             // parse the attribute into a Meta::List
             if let Meta::List(list) = attr.parse_meta().unwrap() {
                 // make sure we are only working with env attributes
-                if list.ident == "env" {
+                if list.path.is_ident("env") {
                     // the list of env var name we parsed from the attribute
                     let mut envs = Vec::new();
                     // collect all the env var names into envs
                     for nested in list.nested {
                         if let NestedMeta::Meta(meta) = nested {
-                            envs.push(meta.name().to_string())
+                            meta.path().get_ident().map(|i| envs.push(i.to_string()));
                         }
                     }
                     // insert the field and env var mapping
@@ -47,10 +45,10 @@ pub fn env_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     return false;
                 }
 
-                if list.ident == "default" {
+                if list.path.is_ident("default") {
                     // this attribute has only one nested meta
                     if let Some(pair) = list.nested.first() {
-                        if let NestedMeta::Literal(lit) = pair.into_value() {
+                        if let NestedMeta::Lit(lit) = pair {
                             // insert the default value for that field
                             default_map.insert(field_name.clone(), lit.clone());
                             return false;
@@ -58,10 +56,10 @@ pub fn env_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 }
 
-                if list.ident == "example" {
+                if list.path.is_ident("example") {
                     // this attribute has only one nested meta
                     if let Some(pair) = list.nested.first() {
-                        if let NestedMeta::Literal(lit) = pair.into_value() {
+                        if let NestedMeta::Lit(lit) = pair {
                             // insert the default value for that field
                             example_map.insert(field_name.clone(), lit.clone());
                             return false;
@@ -128,7 +126,7 @@ fn generate_env_vars(
         });
     }
 
-    return quote! {
+    quote! {
 
         impl #name {
             pub fn parse() -> Self {
@@ -154,7 +152,7 @@ fn generate_env_vars(
             first_non_empty(envs).and_then(|s| T::from_str(&s).ok())
         }
 
-    };
+    }
 }
 
 fn generate_tests(
