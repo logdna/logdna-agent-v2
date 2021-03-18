@@ -203,7 +203,7 @@ mod tests {
                     let slot = tmp.get_slot(());
                     assert_ne!(slot.inner.slot, 0);
                     assert!(slot.inner.slot <= 2);
-                    sleep(Duration::from_micros(rng.gen_range(1, 100)))
+                    sleep(Duration::from_micros(rng.gen_range(1..100)))
                 }
             });
             joins.push(join_handle);

@@ -30,16 +30,17 @@ metrics = { package = "metrics", path = "../common/metrics" }
 journald = { package = "journald", path = "../common/journald" }
 state = { package = "state", path = "../common/state" }
 
-bytes = "0.5"
+bytes = "1"
 chrono = "0.4"
 async-trait = "0.1"
 log = "0.4"
 env_logger = "0.7"
-anyhow = "1.0"
+anyhow = "1"
 serde_yaml = "0.8"
 jemallocator = "0.3"
 futures = "0.3"
-tokio = { version = "0.2", features = ["rt-threaded"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+tokio-stream = "0.1"
 pin-utils = "0.1"
 
 auditable = "0.1"
@@ -57,12 +58,12 @@ assert_cmd = "1"
 itertools = "0.10"
 predicates = "1"
 tempfile = "3"
-rustls = "0.18"
+rustls = "0.19"
 rcgen = "0.8"
 logdna_mock_ingester = { package = "logdna-mock-ingester", path = "../common/test/mock-ingester" }
 test_types = { package = "types", path = "../common/test/types" }
 proptest = "1"
-tokio-test = "0.2"
+tokio-test = "0.4"
 rand = "0.8"
 systemd = "0.7"
 

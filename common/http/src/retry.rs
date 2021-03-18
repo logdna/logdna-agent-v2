@@ -21,9 +21,9 @@ pub enum Error {
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
     #[error(transparent)]
-    Recv(#[from] crossbeam::RecvError),
+    Recv(#[from] crossbeam::channel::RecvError),
     #[error(transparent)]
-    Send(#[from] crossbeam::SendError<Box<IngestBodyBuffer>>),
+    Send(#[from] crossbeam::channel::SendError<Box<IngestBodyBuffer>>),
     #[error("{0:?} is not valid utf8")]
     NonUTF8(std::path::PathBuf),
     #[error("{0} is not a valid file name")]
@@ -78,7 +78,7 @@ impl Retry {
             self.fill_waiting()?
         }
 
-        if let Ok(path) = self.waiting.pop() {
+        if let Some(path) = self.waiting.pop() {
             let (offsets, ingest_body) = Self::read_from_disk(&path)?;
             return Ok((
                 offsets,

@@ -12,12 +12,15 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{fs, io};
+use thiserror::Error;
 use tokio::macros::support::{Future, Pin};
 use tokio::sync::Mutex;
 
+use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::server::TlsStream;
 use tokio_rustls::TlsAcceptor;
+use tokio_stream::wrappers::TcpListenerStream;
 
 const ROOT: &str = "/logs/agent";
 
@@ -32,7 +35,13 @@ pub struct FileInfo {
     pub label: Option<HashMap<String, String>>,
 }
 
-pub type HyperError = hyper::Error;
+#[derive(Debug, Error)]
+pub enum IngestError {
+    #[error(transparent)]
+    HyperError(#[from] hyper::Error),
+    #[error(transparent)]
+    IoError(#[from] std::io::Error),
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 struct IngestBody {
@@ -57,7 +66,7 @@ impl Unpin for Svc {}
 
 impl Service<Request<Body>> for Svc {
     type Response = Response<Body>;
-    type Error = HyperError;
+    type Error = IngestError;
     #[allow(clippy::type_complexity)]
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
@@ -94,20 +103,17 @@ impl Service<Request<Body>> for Svc {
                 })
                 .unwrap_or_else(HashMap::new);
 
-            let mut body = req.into_body();
+            let body = req.into_body();
+            let mut body = tokio_util::io::StreamReader::new(
+                body.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
+            );
             match encoding {
                 Some(encoding) if encoding == "gzip" => {
-                    let mut decoder = async_compression::stream::GzipDecoder::new(
-                        body.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
-                    );
-                    while let Some(Ok(chunk)) = decoder.next().await {
-                        bytes.extend_from_slice(&chunk);
-                    }
+                    let mut decoder = async_compression::tokio::bufread::GzipDecoder::new(body);
+                    decoder.read_to_end(&mut bytes).await?;
                 }
                 _ => {
-                    while let Some(Ok(chunk)) = body.next().await {
-                        bytes.extend_from_slice(&chunk);
-                    }
+                    body.read_to_end(&mut bytes).await?;
                 }
             }
 
@@ -190,7 +196,7 @@ impl<T> Service<T> for MakeSvc {
 pub fn http_ingester(
     addr: SocketAddr,
 ) -> (
-    impl Future<Output = std::result::Result<(), HyperError>>,
+    impl Future<Output = std::result::Result<(), IngestError>>,
     FileLineCounter,
     impl FnOnce(),
 ) {
@@ -200,15 +206,14 @@ pub fn http_ingester(
     (
         async move {
             // Create a TCP listener via tokio.
-            let mut tcp = TcpListener::bind(&addr)
+            let tcp = TcpListener::bind(&addr)
                 .await
                 .unwrap_or_else(|_| panic!("Couldn't bind to {:?}", addr));
             // Prepare a long-running future stream to accept and serve cients.
-            let incoming_stream = tcp
-                .incoming()
+            let incoming_stream = TcpListenerStream::new(tcp)
                 .map_err(|e| error(format!("Incoming failed: {:?}", e)))
                 .boxed();
-            hyper::Server::builder(HyperAcceptor {
+            hyper::server::Server::builder(HyperAcceptor {
                 acceptor: incoming_stream,
             })
             .serve(mk_svc)
@@ -216,6 +221,7 @@ pub fn http_ingester(
                 rx.await.ok();
             })
             .await
+            .map_err(IngestError::HyperError)
         },
         received,
         move || tx.send(()).expect("Couldn't terminate server"),
@@ -231,7 +237,7 @@ pub fn https_ingester(
     server_cert: Vec<rustls::Certificate>,
     private_key: rustls::PrivateKey,
 ) -> (
-    impl Future<Output = std::result::Result<(), HyperError>>,
+    impl Future<Output = std::result::Result<(), IngestError>>,
     FileLineCounter,
     impl FnOnce(),
 ) {
@@ -255,14 +261,14 @@ pub fn https_ingester(
             };
 
             // Create a TCP listener via tokio.
-            let mut tcp = TcpListener::bind(&addr)
+            let tcp = TcpListener::bind(&addr)
                 .await
                 .unwrap_or_else(|_| panic!("Couldn't bind to {:?}", addr));
             info!("ingester listening at {:?}", addr);
             let tls_acceptor = TlsAcceptor::from(tls_cfg);
             // Prepare a long-running future stream to accept and serve cients.
-            let incoming_tls_stream = tcp
-                .incoming()
+            //
+            let incoming_tls_stream = TcpListenerStream::new(tcp)
                 .map_err(|e| error(format!("Incoming failed: {:?}", e)))
                 .and_then(move |s| {
                     tls_acceptor.accept(s).map_err(|e| {
@@ -273,7 +279,7 @@ pub fn https_ingester(
                     })
                 })
                 .boxed();
-            hyper::Server::builder(HyperTlsAcceptor {
+            hyper::server::Server::builder(HyperTlsAcceptor {
                 acceptor: incoming_tls_stream,
             })
             .serve(mk_svc)
@@ -281,6 +287,7 @@ pub fn https_ingester(
                 rx.await.ok();
             })
             .await
+            .map_err(IngestError::HyperError)
         },
         received,
         move || tx.send(()).expect("Couldn't terminate server"),

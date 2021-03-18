@@ -16,7 +16,7 @@ use middleware::{Middleware, Status};
 use parking_lot::Mutex;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::env;
 use std::rc::Rc;
 use thiserror::Error;
@@ -41,10 +41,9 @@ pub struct K8sMetadata {
 // TODO refactor to use kube-rs Reflector instead of manually managing hashmap
 impl K8sMetadata {
     pub fn new() -> Result<Self, K8sError> {
-        let mut runtime = match Builder::new()
-            .threaded_scheduler()
+        let runtime = match Builder::new_multi_thread()
             .enable_all()
-            .core_threads(2)
+            .worker_threads(2)
             .build()
         {
             Ok(v) => v,
@@ -65,7 +64,7 @@ impl K8sMetadata {
                     )))
                 }
             };
-            let client = Client::new(config);
+            let client = Client::new(config.try_into()?);
 
             let mut params = ListParams::default();
             if let Ok(node) = env::var("NODE_NAME") {
@@ -160,14 +159,14 @@ impl K8sMetadata {
             interval = Some(backoff.max_interval);
         }
         if let Some(duration) = interval {
-            tokio::time::delay_for(duration).await;
+            tokio::time::sleep(duration).await;
         }
     }
 }
 
 impl Middleware for K8sMetadata {
     fn run(&self) {
-        let mut runtime = self
+        let runtime = self
             .runtime
             .lock()
             .take()
@@ -323,7 +322,7 @@ mod tests {
         let config = Config::new(Url::parse("https://sample.url/").unwrap());
         K8sMetadata {
             metadata: Mutex::new(map),
-            api: Api::<Pod>::all(Client::new(config)),
+            api: Api::<Pod>::all(Client::new(config.try_into().unwrap())),
             runtime: Mutex::new(None),
         }
     }

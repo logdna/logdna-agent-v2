@@ -140,7 +140,7 @@ fn main() {
         ),
     };
     // Create the runtime
-    let mut rt = Runtime::new().unwrap();
+    let rt = Runtime::new().unwrap();
 
     if let Some(offset_state) = offset_state {
         rt.spawn(offset_state.run().unwrap());
@@ -189,8 +189,10 @@ fn main() {
 
         let sources = futures::stream::select(
             sources,
-            tokio::time::interval(tokio::time::Duration::from_millis(POLL_PERIOD_MS))
-                .map(Either::Right),
+            tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
+                tokio::time::Duration::from_millis(POLL_PERIOD_MS),
+            ))
+            .map(Either::Right),
         );
 
         sources

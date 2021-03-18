@@ -1065,7 +1065,7 @@ mod tests {
 
     macro_rules! take_events {
         ( $x:expr, $y: expr ) => {{
-            use tokio::stream::StreamExt;
+            use tokio_stream::StreamExt;
             let mut buf = [0u8; 4096];
 
             tokio_test::block_on(async {
