@@ -769,6 +769,7 @@ async fn test_tags() {
         let map = received.lock().await;
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();
         assert_eq!(file_info.lines, 10);
+        assert_eq!(file_info.values, vec![common::LINE.to_owned() + "\n"; 10]);
         assert_eq!(file_info.tags, Some(tag.to_string()));
         shutdown_handle();
     });
