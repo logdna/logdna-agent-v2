@@ -36,7 +36,9 @@ pub fn env_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     // collect all the env var names into envs
                     for nested in list.nested {
                         if let NestedMeta::Meta(meta) = nested {
-                            meta.path().get_ident().map(|i| envs.push(i.to_string()));
+                            if let Some(i) = meta.path().get_ident() {
+                                envs.push(i.to_string())
+                            }
                         }
                     }
                     // insert the field and env var mapping
@@ -47,23 +49,19 @@ pub fn env_config(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
                 if list.path.is_ident("default") {
                     // this attribute has only one nested meta
-                    if let Some(pair) = list.nested.first() {
-                        if let NestedMeta::Lit(lit) = pair {
-                            // insert the default value for that field
-                            default_map.insert(field_name.clone(), lit.clone());
-                            return false;
-                        }
+                    if let Some(NestedMeta::Lit(lit)) = list.nested.first() {
+                        // insert the default value for that field
+                        default_map.insert(field_name.clone(), lit.clone());
+                        return false;
                     }
                 }
 
                 if list.path.is_ident("example") {
                     // this attribute has only one nested meta
-                    if let Some(pair) = list.nested.first() {
-                        if let NestedMeta::Lit(lit) = pair {
-                            // insert the default value for that field
-                            example_map.insert(field_name.clone(), lit.clone());
-                            return false;
-                        }
+                    if let Some(NestedMeta::Lit(lit)) = list.nested.first() {
+                        // insert the default value for that field
+                        example_map.insert(field_name.clone(), lit.clone());
+                        return false;
                     }
                 }
             }

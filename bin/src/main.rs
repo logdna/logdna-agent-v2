@@ -49,7 +49,7 @@ pub static PKG_NAME: &str = env!("CARGO_PKG_NAME");
 pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
-    env_logger::from_env(Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
 
     // Actually use the data to work around a bug in rustc:
