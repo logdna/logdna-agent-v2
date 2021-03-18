@@ -28,7 +28,6 @@ serde_json = "1"
 
 #logging
 log = "0.4"
-env_logger = "0.8"
 lazy_static = "1"
 
 #async
@@ -42,6 +41,7 @@ futures-util = "0.3"
 pin-project-lite = "0.2"
 
 [dev-dependencies]
+env_logger = "0.8"
 tempfile = "3"
 tokio-test = "0.4"
 tokio = {version= "1", features= ["fs", "io-util", "time"]}
