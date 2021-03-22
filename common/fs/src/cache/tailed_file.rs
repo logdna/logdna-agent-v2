@@ -423,6 +423,7 @@ impl Stream for LazyLines {
                     current_offset.clone().unwrap(),
                 );
                 *path += 1;
+                Metrics::fs().increment_lines();
                 break Poll::Ready(Some(ret));
             }
             // Get the next line
