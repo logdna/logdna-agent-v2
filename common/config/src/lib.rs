@@ -199,10 +199,9 @@ impl TryFrom<RawConfig> for Config {
                 .collect(),
             db_path: raw.log.db_path,
             rules: Rules::new(),
-            // TODO: Parse regex
-            line_exclusion_regex: raw.log.line_exclusion_regex,
-            line_inclusion_regex: raw.log.line_inclusion_regex,
-            line_redact_regex: raw.log.line_redact_regex,
+            line_exclusion_regex: raw.log.line_exclusion_regex.unwrap_or_default(),
+            line_inclusion_regex: raw.log.line_inclusion_regex.unwrap_or_default(),
+            line_redact_regex: raw.log.line_redact_regex.unwrap_or_default(),
             lookback: raw
                 .log
                 .lookback

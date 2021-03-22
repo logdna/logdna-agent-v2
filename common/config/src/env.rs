@@ -247,16 +247,16 @@ impl Config {
             raw.log.lookback = self.lookback;
         }
 
-        if let Some(mut list) = self.line_exclusion_regex {
-            raw.log.line_exclusion_regex.append(&mut list);
+        if let Some(list) = self.line_exclusion_regex {
+            raw.log.line_exclusion_regex = Some(list.deref().clone());
         }
 
-        if let Some(mut list) = self.line_inclusion_regex {
-            raw.log.line_inclusion_regex.append(&mut list);
+        if let Some(list) = self.line_inclusion_regex {
+            raw.log.line_inclusion_regex = Some(list.deref().clone());
         }
 
-        if let Some(mut list) = self.line_redact_regex {
-            raw.log.line_redact_regex.append(&mut list);
+        if let Some(list) = self.line_redact_regex {
+            raw.log.line_redact_regex = Some(list.deref().clone());
         }
 
         raw

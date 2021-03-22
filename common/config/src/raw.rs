@@ -51,12 +51,12 @@ pub struct LogConfig {
     pub include: Option<Rules>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exclude: Option<Rules>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub line_exclusion_regex: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub line_inclusion_regex: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub line_redact_regex: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_exclusion_regex: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_inclusion_regex: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line_redact_regex: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lookback: Option<String>,
     pub use_k8s_enrichment: Option<String>,
@@ -130,9 +130,9 @@ impl Default for LogConfig {
                 ],
                 regex: Vec::new(),
             }),
-            line_exclusion_regex: Vec::new(),
-            line_inclusion_regex: Vec::new(),
-            line_redact_regex: Vec::new(),
+            line_exclusion_regex: None,
+            line_inclusion_regex: None,
+            line_redact_regex: None,
             lookback: None,
             use_k8s_enrichment: None,
             log_k8s_events: None,
