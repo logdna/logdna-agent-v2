@@ -449,7 +449,9 @@ impl Stream for LazyLines {
                     // Got a line
                     debug_assert_eq!(*read, 0);
                     debug!("tailer sendings lines for {:?}", &paths);
-                    *offset += TryInto::<u64>::try_into(count.get()).unwrap();
+                    let count = TryInto::<u64>::try_into(count.get()).unwrap();
+                    Metrics::fs().add_bytes(count);
+                    *offset += count;
                     *current_offset = Some((
                         bytes::Bytes::copy_from_slice(file_path.as_os_str().as_bytes()),
                         *offset,
