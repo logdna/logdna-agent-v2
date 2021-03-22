@@ -20,7 +20,7 @@ use journald::source::create_source;
 use k8s::event_source::K8sEventStream;
 
 use k8s::middleware::K8sMetadata;
-use k8s::K8sEventLogConf;
+use k8s::K8sTrackingConf;
 use metrics::Metrics;
 use middleware::Executor;
 
@@ -103,7 +103,9 @@ fn main() {
     client.borrow_mut().set_timeout(config.http.timeout);
 
     let mut executor = Executor::new();
-    if PathBuf::from("/var/log/containers/").exists() {
+    if config.log.use_k8s_enrichment == K8sTrackingConf::Always
+        && PathBuf::from("/var/log/containers/").exists()
+    {
         match K8sMetadata::new() {
             Ok(v) => {
                 executor.register(v);
@@ -125,8 +127,8 @@ fn main() {
     let journald_source = create_source(&config.journald.paths);
 
     let k8s_event_stream = match config.log.log_k8s_events {
-        K8sEventLogConf::Never => None,
-        K8sEventLogConf::Always => Some(
+        K8sTrackingConf::Never => None,
+        K8sTrackingConf::Always => Some(
             K8sEventStream::try_default(
                 std::env::var("POD_NAME").ok(),
                 std::env::var("NAMESPACE").ok(),

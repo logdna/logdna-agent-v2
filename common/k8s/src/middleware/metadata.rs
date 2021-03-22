@@ -9,12 +9,16 @@ use kube::{api::ListParams, config::Config, Api, Client};
 use kube_runtime::watcher;
 use kube_runtime::watcher::Event as WatcherEvent;
 
+use backoff::backoff::Backoff;
+use backoff::ExponentialBackoff;
 use metrics::Metrics;
 use middleware::{Middleware, Status};
 use parking_lot::Mutex;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::env;
+use std::rc::Rc;
 use thiserror::Error;
 use tokio::runtime::{Builder, Runtime};
 
@@ -149,6 +153,16 @@ impl K8sMetadata {
         }
         Ok(())
     }
+
+    async fn add_delay(&self, backoff: &mut ExponentialBackoff) {
+        let mut interval = backoff.next_backoff();
+        if interval.is_none() {
+            interval = Some(backoff.max_interval);
+        }
+        if let Some(duration) = interval {
+            tokio::time::delay_for(duration).await;
+        }
+    }
 }
 
 impl Middleware for K8sMetadata {
@@ -160,14 +174,23 @@ impl Middleware for K8sMetadata {
             .expect("tokio runtime not initialized");
 
         runtime.block_on(async move {
+            let backoff = Rc::new(RefCell::new(ExponentialBackoff::default()));
             let watcher = watcher(self.api.clone(), ListParams::default());
+
             watcher
                 .into_stream()
                 .filter_map(|r| async {
+                    let mut backoff = backoff.borrow_mut();
                     match r {
-                        Ok(event) => Some(event),
+                        Ok(event) => {
+                            backoff.reset();
+                            Some(event)
+                        }
                         Err(e) => {
                             log::warn!("k8s watch stream error: {}", e);
+                            // When polled after a some errors, the watcher will try to recover.
+                            // We should avoid eagerly polling in those cases.
+                            self.add_delay(&mut backoff).await;
                             None
                         }
                     }
@@ -238,4 +261,79 @@ struct PodMetadata {
     namespace: String,
     labels: KeyValueMap,
     annotations: KeyValueMap,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use http::types::body::{LineBuilder, LineMeta};
+    use url::Url;
+
+    #[test]
+    fn test_process_with_file_that_can_not_be_parsed() {
+        let k8s_meta = get_instance(HashMap::new());
+        let mut line = LineBuilder::new().line("abc").file("abc.log");
+        let result = k8s_meta.process(&mut line);
+        assert!(matches!(&result, Status::Ok(_)));
+        if let Status::Ok(l) = result {
+            assert!(l.get_annotations().is_none());
+            assert!(l.get_labels().is_none());
+        }
+    }
+
+    #[test]
+    fn test_process_with_different_files() {
+        let matching_file1 = "/var/log/containers/first_file_sample-f39155eb652f5161f4a34b1fbd89a4d361e76ccb6c3cdc0e2c18e0d0abb26516.log";
+        let matching_file2 = "/var/log/containers/second_file_sample-f39155eb652f5161f4a34b1fbd89a4d361e76ccb6c3cdc0e2c18e0d0abb26516.log";
+        let mut map = HashMap::new();
+        map.insert(("first".into(), "file".into()), get_pod_metadata());
+        let k8s_meta = get_instance(map);
+        let mut lines = vec![
+            LineBuilder::new().line("line 0").file(matching_file1),
+            // 1: File not matching
+            LineBuilder::new()
+                .line("line 1")
+                .file("/tmp/not_matching_file.log"),
+            LineBuilder::new().line("line 2").file(matching_file1),
+            // 3: The file matches but there's no metadata for it
+            LineBuilder::new().line("line 3").file(matching_file2),
+            // 4..6 Repeat multiple times w/ file matches with metadata
+            LineBuilder::new().line("line 4").file(matching_file1),
+            LineBuilder::new().line("line 5").file(matching_file1),
+        ];
+
+        for (i, line) in lines.iter_mut().enumerate() {
+            let result = k8s_meta.process(line);
+            if let Status::Ok(_) = result {
+                assert_eq!(line.line, Some(format!("line {}", i)));
+                if i == 1 || i == 3 {
+                    assert!(line.get_annotations().is_none());
+                    assert!(line.get_labels().is_none());
+                } else {
+                    assert!(line.get_annotations().is_some());
+                    assert!(line.get_labels().is_some());
+                }
+            } else {
+                panic!("Unexpected status");
+            }
+        }
+    }
+
+    fn get_instance(map: HashMap<(String, String), PodMetadata>) -> K8sMetadata {
+        let config = Config::new(Url::parse("https://sample.url/").unwrap());
+        K8sMetadata {
+            metadata: Mutex::new(map),
+            api: Api::<Pod>::all(Client::new(config)),
+            runtime: Mutex::new(None),
+        }
+    }
+
+    fn get_pod_metadata() -> PodMetadata {
+        PodMetadata {
+            name: "sample name".to_string(),
+            namespace: "sample ns".to_string(),
+            labels: Default::default(),
+            annotations: Default::default(),
+        }
+    }
 }

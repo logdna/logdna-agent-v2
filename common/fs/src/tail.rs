@@ -15,7 +15,7 @@ use futures::{Stream, StreamExt};
 
 use thiserror::Error;
 
-#[derive(Clone, std::fmt::Debug)]
+#[derive(Clone, std::fmt::Debug, PartialEq)]
 pub enum Lookback {
     Start,
     SmallFiles,

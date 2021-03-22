@@ -9,23 +9,23 @@ pub mod middleware;
 pub mod restarting_stream;
 
 #[derive(Clone, std::fmt::Debug, PartialEq)]
-pub enum K8sEventLogConf {
+pub enum K8sTrackingConf {
     Always,
     Never,
 }
 
 #[derive(thiserror::Error, Debug)]
 #[error("{0}")]
-pub struct ParseK8sEventLogConf(String);
+pub struct ParseK8sTrackingConf(String);
 
-impl std::str::FromStr for K8sEventLogConf {
-    type Err = ParseK8sEventLogConf;
+impl std::str::FromStr for K8sTrackingConf {
+    type Err = ParseK8sTrackingConf;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.trim().to_lowercase().as_str() {
-            "always" => Ok(K8sEventLogConf::Always),
-            "never" => Ok(K8sEventLogConf::Never),
-            _ => Err(ParseK8sEventLogConf(format!("failed to parse {}", s))),
+            "always" => Ok(K8sTrackingConf::Always),
+            "never" => Ok(K8sTrackingConf::Never),
+            _ => Err(ParseK8sTrackingConf(format!("failed to parse {}", s))),
         }
     }
 }
