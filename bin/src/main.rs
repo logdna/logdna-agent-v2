@@ -49,7 +49,7 @@ pub static PKG_NAME: &str = env!("CARGO_PKG_NAME");
 pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
-    env_logger::from_env(Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
 
     // Actually use the data to work around a bug in rustc:
@@ -140,7 +140,7 @@ fn main() {
         ),
     };
     // Create the runtime
-    let mut rt = Runtime::new().unwrap();
+    let rt = Runtime::new().unwrap();
 
     if let Some(offset_state) = offset_state {
         rt.spawn(offset_state.run().unwrap());
@@ -189,8 +189,10 @@ fn main() {
 
         let sources = futures::stream::select(
             sources,
-            tokio::time::interval(tokio::time::Duration::from_millis(POLL_PERIOD_MS))
-                .map(Either::Right),
+            tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
+                tokio::time::Duration::from_millis(POLL_PERIOD_MS),
+            ))
+            .map(Either::Right),
         );
 
         sources

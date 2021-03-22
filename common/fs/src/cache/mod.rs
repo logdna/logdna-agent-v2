@@ -15,11 +15,11 @@ use std::sync::{Arc, Mutex};
 use std::{fmt, io};
 
 use futures::{Stream, StreamExt};
-use hashbrown::hash_map::Entry as HashMapEntry;
-use hashbrown::HashMap;
 use inotify::WatchDescriptor;
 use metrics::Metrics;
 use slotmap::{DefaultKey, SlotMap};
+use std::collections::hash_map::Entry as HashMapEntry;
+use std::collections::HashMap;
 use thiserror::Error;
 
 pub mod dir_path;
@@ -561,13 +561,13 @@ impl FileSystem {
 
         self.watch_descriptors
             .entry(entry.watch_descriptor().clone())
-            .or_insert(Vec::new())
+            .or_insert_with(Vec::new)
             .push(entry_ptr);
 
         if let Entry::Symlink { link, .. } = entry.deref() {
             self.symlinks
                 .entry(link.clone())
-                .or_insert(Vec::new())
+                .or_insert_with(Vec::new)
                 .push(entry_ptr);
         }
 
@@ -659,7 +659,7 @@ impl FileSystem {
             let mut _links = vec![];
             match entry.deref() {
                 Entry::Dir { children, .. } => {
-                    for (_, child) in children {
+                    for child in children.values() {
                         _children.push(*child);
                         //self.drop_entry(*child, events, _entries);
                     }
@@ -1065,7 +1065,7 @@ mod tests {
 
     macro_rules! take_events {
         ( $x:expr, $y: expr ) => {{
-            use tokio::stream::StreamExt;
+            use tokio_stream::StreamExt;
             let mut buf = [0u8; 4096];
 
             tokio_test::block_on(async {

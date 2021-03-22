@@ -9,7 +9,6 @@ members = [
     "common/metrics",
     "common/middleware",
     "common/journald",
-    "common/source",
     "common/state",
 ]
 
