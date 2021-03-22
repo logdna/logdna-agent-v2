@@ -153,7 +153,6 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
     assert_ne!(ingestion_key, "");
 
     let agent = cmd
-        .env_clear()
         .env("RUST_LOG", "debug")
         .env("RUST_BACKTRACE", "full")
         .env("LOGDNA_LOG_DIRS", settings.log_dirs)
