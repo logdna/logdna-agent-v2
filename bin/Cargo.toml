@@ -48,6 +48,7 @@ miniz_oxide = "0.4"
 [features]
 default = []
 integration_tests = []
+k8s_tests = []
 journald_tests = ["journald/journald_tests"]
 
 [dev-dependencies]

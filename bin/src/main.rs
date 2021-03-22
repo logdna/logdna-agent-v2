@@ -105,7 +105,10 @@ fn main() {
     let mut executor = Executor::new();
     if PathBuf::from("/var/log/containers/").exists() {
         match K8sMetadata::new() {
-            Ok(v) => executor.register(v),
+            Ok(v) => {
+                executor.register(v);
+                info!("Registered k8s metadata middleware");
+            }
             Err(e) => warn!("{}", e),
         };
     }
