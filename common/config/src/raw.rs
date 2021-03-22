@@ -46,6 +46,8 @@ pub struct HttpConfig {
 pub struct LogConfig {
     pub dirs: Vec<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub db_path: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub include: Option<Rules>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exclude: Option<Rules>,
@@ -99,6 +101,7 @@ impl Default for LogConfig {
     fn default() -> Self {
         LogConfig {
             dirs: vec!["/var/log/".into()],
+            db_path: None,
             include: Some(Rules {
                 glob: vec!["*.log".parse().unwrap()],
                 regex: Vec::new(),

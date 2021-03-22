@@ -14,12 +14,13 @@ use std::thread;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 
 use futures::Future;
+use log::debug;
 use logdna_mock_ingester::{http_ingester, https_ingester, FileLineCounter, HyperError};
 
 use rcgen::generate_simple_self_signed;
 use rustls::internal::pemfile;
 
-static LINE: &str = "Nov 30 09:14:47 sample-host-name sampleprocess[1204]: Hello from process";
+pub static LINE: &str = "Nov 30 09:14:47 sample-host-name sampleprocess[1204]: Hello from process";
 
 pub struct FileContext {
     pub file_path: PathBuf,
@@ -116,12 +117,14 @@ pub struct AgentSettings<'a> {
     pub use_ssl: bool,
     pub ingester_key: Option<&'a str>,
     pub tags: Option<&'a str>,
+    pub state_db_dir: Option<&'a std::path::Path>,
 }
 
 impl<'a> AgentSettings<'a> {
     pub fn new(log_dirs: &'a str) -> Self {
         AgentSettings {
             log_dirs,
+            exclusion_regex: Some(r"^/var.*"),
             use_ssl: true,
             ..Default::default()
         }
@@ -176,6 +179,10 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
         agent.env("LOGDNA_LOOKBACK", lookback);
     }
 
+    if let Some(state_db_dir) = settings.state_db_dir {
+        agent.env("LOGDNA_DB_PATH", state_db_dir);
+    }
+
     if let Some(rules) = settings.exclusion_regex {
         agent.env("LOGDNA_EXCLUSION_REGEX_RULES", rules);
     }
@@ -212,6 +219,7 @@ where
     let mut lines_buffer = String::new();
     for _safeguard in 0..100_000 {
         reader.read_line(&mut line).unwrap();
+        debug!("{}", line.trim());
         lines_buffer.push_str(&line);
         lines_buffer.push('\n');
         if condition(&line) {
@@ -293,6 +301,7 @@ pub fn self_signed_https_ingester() -> (
         .expect("Couldn't write cert file");
 
     let (server, received, shutdown_handle) = https_ingester(addr, certs, key[0].clone());
+    debug!("Started https ingester on port {}", port);
     (
         server,
         received,

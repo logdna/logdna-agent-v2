@@ -26,7 +26,7 @@ pub type FileLineCounter = Arc<Mutex<HashMap<String, FileInfo>>>;
 #[derive(Debug)]
 pub struct FileInfo {
     pub tags: Option<String>,
-    pub value: String,
+    pub values: Vec<String>,
     pub lines: usize,
     pub annotation: Option<HashMap<String, String>>,
     pub label: Option<HashMap<String, String>>,
@@ -134,7 +134,7 @@ impl Service<Request<Body>> for Svc {
                         info!("creating {}", file_name);
                         FileInfo {
                             tags,
-                            value: String::new(),
+                            values: Vec::new(),
                             lines: 0,
                             annotation: None,
                             label: None,
@@ -144,7 +144,7 @@ impl Service<Request<Body>> for Svc {
                     file_info.annotation = line.annotation.clone();
                     file_info.label = line.label.clone();
                     file_info.lines += 1;
-                    file_info.value.push_str(raw_line.as_str());
+                    file_info.values.push(raw_line);
                 }
             }
 
@@ -258,6 +258,7 @@ pub fn https_ingester(
             let mut tcp = TcpListener::bind(&addr)
                 .await
                 .unwrap_or_else(|_| panic!("Couldn't bind to {:?}", addr));
+            info!("ingester listening at {:?}", addr);
             let tls_acceptor = TlsAcceptor::from(tls_cfg);
             // Prepare a long-running future stream to accept and serve cients.
             let incoming_tls_stream = tcp

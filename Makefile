@@ -74,7 +74,7 @@ AWS_SHARED_CREDENTIALS_FILE=$(HOME)/.aws/credentials
 
 LOGDNA_HOST?=localhost:1337
 
-RUST_LOG=debug
+RUST_LOG?=info
 
 _TAC= awk '{line[NR]=$$0} END {for (i=NR; i>=1; i--) print line[i]}'
 TEST_RULES=
@@ -82,7 +82,7 @@ TEST_RULES=
 define TEST_RULE
 TEST_RULES=$(TEST_RULES)test-$(1): <> Run unit tests for $(1) crate\\n
 test-$(1):
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=1" "cargo test -p $(1)"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=1" "cargo test -p $(1) $(TESTS)"
 endef
 
 CRATES=$(shell sed -e '/members/,/]/!d' Cargo.toml | tail -n +2 | $(_TAC) | tail -n +2 | $(_TAC) | sed 's/,//' | xargs -n1 -I{} sh -c 'grep -E "^name *=" {}/Cargo.toml | tail -n1' | sed 's/name *= *"\([A-Za-z0-9_\-]*\)"/\1/' | awk '!/journald/{print $0}')
@@ -102,11 +102,11 @@ check: ## Run unit tests
 
 .PHONY:test
 test: test-journald ## Run unit tests
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo test --no-run && cargo test"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --no-run && cargo test $(TESTS)"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
-	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --manifest-path bin/Cargo.toml --features integration_tests -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
+	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --manifest-path bin/Cargo.toml --features integration_tests $(TESTS) -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
 
 .PHONY:k8s-test
 k8s-test: ## Run integration tests using k8s kind

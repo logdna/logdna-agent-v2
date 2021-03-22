@@ -8,3 +8,5 @@ pub mod retry;
 pub mod types {
     pub use logdna_client::*;
 }
+
+type Offset = (Box<[u8]>, u64);

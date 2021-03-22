@@ -46,6 +46,7 @@ pub struct HttpConfig {
 #[derive(Debug)]
 pub struct LogConfig {
     pub dirs: Vec<DirPathBuf>,
+    pub db_path: Option<PathBuf>,
     pub rules: Rules,
     pub lookback: Lookback,
     pub log_k8s_events: K8sEventLogConf,
@@ -192,6 +193,7 @@ impl TryFrom<RawConfig> for Config {
                         .ok()
                 })
                 .collect(),
+            db_path: raw.log.db_path,
             rules: Rules::new(),
             lookback: raw
                 .log
