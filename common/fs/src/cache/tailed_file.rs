@@ -404,16 +404,16 @@ impl LineMetaMut for LazyLineSerializer {
     }
 
     fn get_line(&mut self) -> (Option<&str>, Option<&[u8]>) {
-        if let Some(_) = self.line_buffer.as_ref() {
+        if self.line_buffer.as_ref().is_some() {
             // Get the value without locking
-            return (None, self.line_buffer.as_ref().map(|x| x.as_slice()));
+            return (None, self.line_buffer.as_deref());
         }
 
         return match self.reader.try_lock() {
             Some(file_inner) => {
                 // Cache the value to avoid excessive cloning
                 self.line_buffer = Some(file_inner.buf.clone());
-                (None, self.line_buffer.as_ref().map(|x| x.as_slice()))
+                (None, self.line_buffer.as_deref())
             }
             None => {
                 // This should never happen but should be handled by callers
@@ -743,7 +743,7 @@ mod tests {
             .compat(),
             buf: Vec::new(),
             offset: 0,
-            file_path: file_path.clone(),
+            file_path,
         }));
         LazyLineSerializer::new(
             file_inner,

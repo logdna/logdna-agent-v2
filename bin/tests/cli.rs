@@ -1275,7 +1275,7 @@ async fn test_line_rules(
         for item in to_write {
             write!(file, "{}", item).unwrap();
 
-            if !item.ends_with("\n") {
+            if !item.ends_with('\n') {
                 // Add partial lines on purpose
                 file.sync_all().unwrap();
                 common::force_client_to_flush(&dir).await;
