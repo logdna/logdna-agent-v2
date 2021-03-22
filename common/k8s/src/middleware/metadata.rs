@@ -14,7 +14,6 @@ use backoff::ExponentialBackoff;
 use metrics::Metrics;
 use middleware::{Middleware, Status};
 use parking_lot::Mutex;
-use pin_utils::core_reexport::option::Option::Some;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::TryFrom;

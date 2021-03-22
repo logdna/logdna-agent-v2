@@ -103,7 +103,7 @@ fn main() {
     client.borrow_mut().set_timeout(config.http.timeout);
 
     let mut executor = Executor::new();
-    if config.log.use_k8s_api == K8sTrackingConf::Always
+    if config.log.use_k8s_enrichment == K8sTrackingConf::Always
         && PathBuf::from("/var/log/containers/").exists()
     {
         match K8sMetadata::new() {

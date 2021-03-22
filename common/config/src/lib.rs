@@ -49,7 +49,7 @@ pub struct LogConfig {
     pub db_path: Option<PathBuf>,
     pub rules: Rules,
     pub lookback: Lookback,
-    pub use_k8s_api: K8sTrackingConf,
+    pub use_k8s_enrichment: K8sTrackingConf,
     pub log_k8s_events: K8sTrackingConf,
 }
 
@@ -201,9 +201,9 @@ impl TryFrom<RawConfig> for Config {
                 .lookback
                 .map(|s| s.parse::<Lookback>())
                 .unwrap_or_else(|| Ok(Lookback::default()))?,
-            use_k8s_api: parse_k8s_tracking_or_warn(
-                raw.log.use_k8s_api,
-                "LOGDNA_USE_K8S_API",
+            use_k8s_enrichment: parse_k8s_tracking_or_warn(
+                raw.log.use_k8s_enrichment,
+                "LOGDNA_USE_K8S_LOG_ENRICHMENT",
                 K8sTrackingConf::Always,
             ),
             log_k8s_events: parse_k8s_tracking_or_warn(
@@ -213,7 +213,7 @@ impl TryFrom<RawConfig> for Config {
             ),
         };
 
-        if log.use_k8s_api == K8sTrackingConf::Never
+        if log.use_k8s_enrichment == K8sTrackingConf::Never
             || log.log_k8s_events == K8sTrackingConf::Always
         {
             // It's unlikely that a user will want to disable k8s metadata enrichment
@@ -342,7 +342,7 @@ mod tests {
     #[test]
     fn test_default_parsed() {
         let config = get_default_config();
-        assert_eq!(config.log.use_k8s_api, K8sTrackingConf::Always);
+        assert_eq!(config.log.use_k8s_enrichment, K8sTrackingConf::Always);
         assert_eq!(config.log.log_k8s_events, K8sTrackingConf::Never);
         assert_eq!(config.log.lookback, Lookback::SmallFiles);
         assert_eq!(

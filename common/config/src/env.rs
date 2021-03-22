@@ -82,9 +82,9 @@ pub struct Config {
     #[example("none")]
     pub lookback: Option<String>,
 
-    #[env(LOGDNA_USE_K8S_API)]
+    #[env(LOGDNA_USE_K8S_LOG_ENRICHMENT)]
     #[example("always")]
-    pub use_k8s_api: Option<String>,
+    pub use_k8s_enrichment: Option<String>,
 
     #[env(LOGDNA_LOG_K8S_EVENTS)]
     #[example("always")]
@@ -224,8 +224,8 @@ impl Config {
             paths.append(&mut v);
         }
 
-        if self.use_k8s_api.is_some() {
-            raw.log.use_k8s_api = self.use_k8s_api;
+        if self.use_k8s_enrichment.is_some() {
+            raw.log.use_k8s_enrichment = self.use_k8s_enrichment;
         }
 
         if self.log_k8s_events.is_some() {
