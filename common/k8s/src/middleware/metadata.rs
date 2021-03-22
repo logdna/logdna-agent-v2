@@ -268,8 +268,8 @@ mod tests {
     use http::types::body::{LineBuilder, LineMeta};
     use url::Url;
 
-    #[test]
-    fn test_process_with_file_that_can_not_be_parsed() {
+    #[tokio::test]
+    async fn test_process_with_file_that_can_not_be_parsed() {
         let k8s_meta = get_instance(HashMap::new());
         let mut line = LineBuilder::new().line("abc").file("abc.log");
         let result = k8s_meta.process(&mut line);
@@ -280,8 +280,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_process_with_different_files() {
+    #[tokio::test]
+    async fn test_process_with_different_files() {
         let matching_file1 = "/var/log/containers/first_file_sample-f39155eb652f5161f4a34b1fbd89a4d361e76ccb6c3cdc0e2c18e0d0abb26516.log";
         let matching_file2 = "/var/log/containers/second_file_sample-f39155eb652f5161f4a34b1fbd89a4d361e76ccb6c3cdc0e2c18e0d0abb26516.log";
         let mut map = HashMap::new();
