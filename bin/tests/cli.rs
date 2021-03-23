@@ -6,7 +6,7 @@ use proptest::prelude::*;
 use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::process::Command;
+use std::process::{Child, Command};
 use std::thread::{self, sleep};
 use std::time::Duration;
 use systemd::journal;
@@ -781,83 +781,71 @@ async fn test_tags() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_lookback_restarting_agent() {
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
-    let db_dir = &tempdir().expect("Couldn't create temp dir...").into_path();
+    let db_dir = tempdir().unwrap().into_path();
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester_with_delay(200);
 
-    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
-    let file_path = dir.join("test.log");
-    File::create(&file_path).expect("Couldn't create temp log file...");
     let mut settings = AgentSettings::with_mock_ingester(&dir.to_str().unwrap(), &addr);
-    settings.state_db_dir = Some(db_dir);
+    settings.state_db_dir = Some(&db_dir);
     settings.exclusion_regex = Some(r"/var\w*");
 
     let (server_result, _) = tokio::join!(server, async {
-        let mut file = OpenOptions::new().append(true).open(&file_path).unwrap();
+        let file_path = dir.join("test.log");
+        let mut file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&file_path)
+            .unwrap();
         std::thread::spawn(move || {
             for i in 0..1_000_000 {
                 writeln!(file, "Hello from line {}", i).unwrap();
-
                 if i % 1000 == 0 {
                     file.sync_all().unwrap();
                 }
 
-                if i % 100 == 0 {
+                if i % 5 == 0 {
                     std::thread::sleep(core::time::Duration::from_millis(5));
                 }
             }
         });
 
         let mut agent_handle = common::spawn_agent(settings.clone());
-        let stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
-        std::thread::spawn(move || {
-            stderr_reader.lines().for_each(|_line| {
-                // let line = line.unwrap();
-                // if !line.contains("DEBUG") {
-                //     eprintln!("-- line: {:?}", line.trim());
-                // }
-            })
-        });
+        consume_output(&mut agent_handle);
 
-        // Wait for a while
+        // Wait for a while before killing the agent
         tokio::time::delay_for(tokio::time::Duration::from_millis(1000)).await;
-
-        eprintln!("Killing the agent");
         agent_handle.kill().expect("Could not kill process");
 
         // Inserting more lines while the agent is down
-        tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
+        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
 
+        // Restart it back again
         let mut agent_handle = common::spawn_agent(settings.clone());
-        let stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
-        std::thread::spawn(move || {
-            stderr_reader.lines().for_each(|_line| {
-                // let line = line.unwrap();
-                // if !line.contains("DEBUG") {
-                //     eprintln!("-- line: {:?}", line.trim());
-                // }
-            })
-        });
+        consume_output(&mut agent_handle);
 
-        eprintln!("LAST GROUP");
-
-        tokio::time::delay_for(tokio::time::Duration::from_millis(4000)).await;
+        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
 
         let map = received.lock().await;
         assert!(map.len() > 0);
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();
 
-        assert!(file_info.values.len() > 1_000);
+        assert!(file_info.values.len() > 100);
 
         for i in 0..file_info.values.len() {
             assert_eq!(file_info.values[i], format!("Hello from line {}\n", i));
         }
 
         agent_handle.kill().expect("Could not kill process");
-
-        eprintln!("Ingester shutdown");
         shutdown_handle();
     });
 
     server_result.unwrap();
+}
+
+fn consume_output(agent_handle: &mut Child) {
+    let stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
+    std::thread::spawn(move || {
+        stderr_reader.lines().count();
+    });
 }
 
 #[test]

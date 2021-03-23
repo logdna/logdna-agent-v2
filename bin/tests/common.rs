@@ -220,7 +220,7 @@ where
     let mut lines_buffer = String::new();
     for _safeguard in 0..100_000 {
         reader.read_line(&mut line).unwrap();
-        eprintln!("--line {}", line.trim());
+        debug!("{}", line.trim());
         lines_buffer.push_str(&line);
         lines_buffer.push('\n');
         if condition(&line) {
@@ -318,10 +318,22 @@ pub fn start_http_ingester() -> (
     impl FnOnce(),
     String,
 ) {
+    start_http_ingester_with_delay(0)
+}
+
+/// Starts the http ingester that introduces an artificial delay between request and response.
+pub fn start_http_ingester_with_delay(
+    delay_ms: u64,
+) -> (
+    impl Future<Output = std::result::Result<(), HyperError>>,
+    FileLineCounter,
+    impl FnOnce(),
+    String,
+) {
     let port = get_available_port().expect("No ports free");
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
 
-    let (server, received, shutdown_handle) = http_ingester(address);
+    let (server, received, shutdown_handle) = http_ingester(address, delay_ms);
     (
         server,
         received,
