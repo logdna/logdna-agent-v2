@@ -777,6 +777,78 @@ async fn test_tags() {
     agent_handle.kill().expect("Could not kill process");
 }
 
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_lookback_restarting_agent() {
+    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let db_dir = &tempdir().expect("Couldn't create temp dir...").into_path();
+
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+    let file_path = dir.join("test.log");
+    File::create(&file_path).expect("Couldn't create temp log file...");
+    let mut settings = AgentSettings::with_mock_ingester(&dir.to_str().unwrap(), &addr);
+    settings.state_db_dir = Some(db_dir);
+    settings.exclusion_regex = Some(r"/var\w*");
+
+    let (server_result, _) = tokio::join!(server, async {
+        let mut agent_handle = common::spawn_agent(settings.clone());
+        let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+        common::wait_for_file_event("watching", &file_path, &mut stderr_reader);
+
+        let mut file = OpenOptions::new().append(true).open(&file_path).unwrap();
+
+        let group_size = 20;
+
+        insert_lines(&mut file, group_size, 0);
+        common::force_client_to_flush(&dir).await;
+
+        // Wait for a while
+        tokio::time::delay_for(tokio::time::Duration::from_millis(300)).await;
+
+        eprintln!("Killing the agent");
+        agent_handle.kill().expect("Could not kill process");
+
+        // Inserting more lines while the agent is down
+        insert_lines(&mut file, group_size, 1);
+
+        let mut agent_handle = common::spawn_agent(settings.clone());
+        let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+        common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+
+        // Inserting more lines after initialization
+        insert_lines(&mut file, group_size, 2);
+
+        // Wait for the data to be received
+        tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+
+        let map = received.lock().await;
+        assert!(map.len() > 0);
+        let file_info = map.get(file_path.to_str().unwrap()).unwrap();
+
+        let expected: Vec<String> = (0..group_size * 3)
+            .map(|i| format!("Hello from line {}\n", i))
+            .collect();
+
+        assert_eq!(file_info.values, expected);
+
+        agent_handle.kill().expect("Could not kill process");
+
+        eprintln!("Ingester shutdown");
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
+}
+
+fn insert_lines(file: &mut File, group_size: usize, index: usize) {
+    for i in (group_size * index)..(group_size * (index + 1)) {
+        writeln!(file, "Hello from line {}", i).unwrap();
+    }
+    file.sync_all().unwrap();
+}
+
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn lookback_stateful_lines_are_delivered() {
