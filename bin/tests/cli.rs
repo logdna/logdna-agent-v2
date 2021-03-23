@@ -792,13 +792,19 @@ async fn test_lookback_restarting_agent() {
 
     let (server_result, _) = tokio::join!(server, async {
         let mut agent_handle = common::spawn_agent(settings.clone());
-        let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
-
-        common::wait_for_file_event("watching", &file_path, &mut stderr_reader);
+        let stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
+        std::thread::spawn(move || {
+            stderr_reader.lines().for_each(|line| {
+                let line = line.unwrap();
+                if !line.contains("DEBUG") {
+                    eprintln!("-- line: {:?}", line);
+                }
+            })
+        });
 
         let mut file = OpenOptions::new().append(true).open(&file_path).unwrap();
 
-        let group_size = 20;
+        let group_size = 5000;
 
         insert_lines(&mut file, group_size, 0);
         common::force_client_to_flush(&dir).await;
@@ -813,25 +819,40 @@ async fn test_lookback_restarting_agent() {
         insert_lines(&mut file, group_size, 1);
 
         let mut agent_handle = common::spawn_agent(settings.clone());
-        let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+        let stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
+        std::thread::spawn(move || {
+            stderr_reader.lines().for_each(|line| {
+                let line = line.unwrap();
+                if !line.contains("DEBUG") {
+                    eprintln!("-- line: {:?}", line);
+                }
+            })
+        });
 
-        common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+        eprintln!("LAST GROUP");
 
         // Inserting more lines after initialization
         insert_lines(&mut file, group_size, 2);
 
+        writeln!(file, "More data").unwrap();
+        file.sync_all().unwrap();
+
+        // eprintln!("Peek output");
+        // common::wait_for_file_event("ZZZZ", &file_path, &mut stderr_reader);
+
         // Wait for the data to be received
-        tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+        common::force_client_to_flush(&dir).await;
+        tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
 
         let map = received.lock().await;
         assert!(map.len() > 0);
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();
 
-        let expected: Vec<String> = (0..group_size * 3)
-            .map(|i| format!("Hello from line {}\n", i))
-            .collect();
+        assert_eq!(file_info.values.len(), group_size * 3 + 1);
 
-        assert_eq!(file_info.values, expected);
+        for i in 0..group_size * 3 {
+            assert_eq!(file_info.values[i], format!("Hello from line {}\n", i));
+        }
 
         agent_handle.kill().expect("Could not kill process");
 

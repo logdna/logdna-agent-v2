@@ -220,7 +220,7 @@ where
     let mut lines_buffer = String::new();
     for _safeguard in 0..100_000 {
         reader.read_line(&mut line).unwrap();
-        debug!("{}", line.trim());
+        eprintln!("--line {}", line.trim());
         lines_buffer.push_str(&line);
         lines_buffer.push('\n');
         if condition(&line) {

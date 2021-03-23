@@ -62,7 +62,7 @@ impl Service<Request<Body>> for Svc {
     }
 
     fn call(&mut self, req: Request<Body>) -> Self::Future {
-        info!("Received {:?}", req);
+        eprintln!("_!_! INGESTER: Received {:?}", req);
         let files = self.files.clone();
         Box::pin(async move {
             let rsp = Response::builder();
@@ -114,6 +114,8 @@ impl Service<Request<Body>> for Svc {
                     return Ok(rsp.status(500).body(Body::empty()).unwrap());
                 }
             };
+
+            eprintln!("!_!_! Obtained {} lines", ingest_body.lines.len());
 
             for line in ingest_body.lines {
                 if let Some(mut raw_line) = line.line {
@@ -189,6 +191,7 @@ pub fn http_ingester(
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
     let mk_svc = MakeSvc::new();
     let received = mk_svc.files.clone();
+    eprintln!("----------STARTING INGESTER");
     (
         async move {
             // Create a TCP listener via tokio.
