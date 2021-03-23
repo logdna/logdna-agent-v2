@@ -116,6 +116,7 @@ impl Service<Request<Body>> for Svc {
             };
 
             eprintln!("!_!_! Obtained {} lines", ingest_body.lines.len());
+            std::thread::sleep(core::time::Duration::from_millis(200));
 
             for line in ingest_body.lines {
                 if let Some(mut raw_line) = line.line {

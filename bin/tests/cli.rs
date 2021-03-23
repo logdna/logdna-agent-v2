@@ -791,66 +791,63 @@ async fn test_lookback_restarting_agent() {
     settings.exclusion_regex = Some(r"/var\w*");
 
     let (server_result, _) = tokio::join!(server, async {
+        let mut file = OpenOptions::new().append(true).open(&file_path).unwrap();
+        std::thread::spawn(move || {
+            for i in 0..1_000_000 {
+                writeln!(file, "Hello from line {}", i).unwrap();
+
+                if i % 1000 == 0 {
+                    file.sync_all().unwrap();
+                }
+
+                if i % 100 == 0 {
+                    std::thread::sleep(core::time::Duration::from_millis(5));
+                }
+            }
+        });
+
         let mut agent_handle = common::spawn_agent(settings.clone());
         let stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
         std::thread::spawn(move || {
-            stderr_reader.lines().for_each(|line| {
-                let line = line.unwrap();
-                if !line.contains("DEBUG") {
-                    eprintln!("-- line: {:?}", line);
-                }
+            stderr_reader.lines().for_each(|_line| {
+                // let line = line.unwrap();
+                // if !line.contains("DEBUG") {
+                //     eprintln!("-- line: {:?}", line.trim());
+                // }
             })
         });
 
-        let mut file = OpenOptions::new().append(true).open(&file_path).unwrap();
-
-        let group_size = 5000;
-
-        insert_lines(&mut file, group_size, 0);
-        common::force_client_to_flush(&dir).await;
-
         // Wait for a while
-        tokio::time::delay_for(tokio::time::Duration::from_millis(300)).await;
+        tokio::time::delay_for(tokio::time::Duration::from_millis(1000)).await;
 
         eprintln!("Killing the agent");
         agent_handle.kill().expect("Could not kill process");
 
         // Inserting more lines while the agent is down
-        insert_lines(&mut file, group_size, 1);
+        tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
 
         let mut agent_handle = common::spawn_agent(settings.clone());
         let stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
         std::thread::spawn(move || {
-            stderr_reader.lines().for_each(|line| {
-                let line = line.unwrap();
-                if !line.contains("DEBUG") {
-                    eprintln!("-- line: {:?}", line);
-                }
+            stderr_reader.lines().for_each(|_line| {
+                // let line = line.unwrap();
+                // if !line.contains("DEBUG") {
+                //     eprintln!("-- line: {:?}", line.trim());
+                // }
             })
         });
 
         eprintln!("LAST GROUP");
 
-        // Inserting more lines after initialization
-        insert_lines(&mut file, group_size, 2);
-
-        writeln!(file, "More data").unwrap();
-        file.sync_all().unwrap();
-
-        // eprintln!("Peek output");
-        // common::wait_for_file_event("ZZZZ", &file_path, &mut stderr_reader);
-
-        // Wait for the data to be received
-        common::force_client_to_flush(&dir).await;
-        tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
+        tokio::time::delay_for(tokio::time::Duration::from_millis(4000)).await;
 
         let map = received.lock().await;
         assert!(map.len() > 0);
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();
 
-        assert_eq!(file_info.values.len(), group_size * 3 + 1);
+        assert!(file_info.values.len() > 1_000);
 
-        for i in 0..group_size * 3 {
+        for i in 0..file_info.values.len() {
             assert_eq!(file_info.values[i], format!("Hello from line {}\n", i));
         }
 
@@ -861,13 +858,6 @@ async fn test_lookback_restarting_agent() {
     });
 
     server_result.unwrap();
-}
-
-fn insert_lines(file: &mut File, group_size: usize, index: usize) {
-    for i in (group_size * index)..(group_size * (index + 1)) {
-        writeln!(file, "Hello from line {}", i).unwrap();
-    }
-    file.sync_all().unwrap();
 }
 
 #[test]
