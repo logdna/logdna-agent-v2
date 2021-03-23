@@ -64,7 +64,7 @@ By default the agent will run as root. Below are environment-specific instructio
 * [Running as Non-Root on Kubernetes](KUBERNETES.md#run-as-non-root)
 * [Running as Non-Root on OpenShift](OPENSHIFT.md#run-as-non-root)
 
-If you configure the agent to run as non-root, review the [documentation about enabling "statefulness" for the agent](KUBERNETES.md#enabling-persistent-agent-state).
+If you configure the LogDNA Agent to run as non-root, review the [documentation about enabling "statefulness" for the agent](KUBERNETES.md#enabling-persistent-agent-state).
 
 ### Additional Installation Options
 
@@ -165,7 +165,7 @@ By default, the agent provides a "stateful", or persistent, collection of files 
 
 The valid values for this option are:
    * When set to **`none`**:
-      * lookback is disabled, and LogDNA Agent will reading new lines as those are added to the file, ignoring the lines that were written before the time the Agent restarted.
+      * lookback is disabled, and LogDNA Agent will read new lines as those are added to the file, ignoring the lines that were written before the time the Agent restarted.
    * When set to **`smallfiles`** (default):
        * If there is information in the “state file”, use the last recorded state. 
        * If the file is not present in the “state file” and the file is less than 8KiB, start at the beginning. If the file is larger than 8KiB, start at the end. 
@@ -174,7 +174,7 @@ The valid values for this option are:
     * If the file is not present in the “state file”, start at the beginning. 
 
 **Notes:**
-* If you configure the agent to run as non-root, review the [documentation](KUBERNETES.md#enabling-persistent-agent-state) about enabling "statefulness" for the agent.
+* If you configure the LogDNA Agent to run as non-root, review the [documentation](KUBERNETES.md#enabling-persistent-agent-state) about enabling "statefulness" for the LogDNA Agent.
 * When upgrading from LogDNA Agent version 3.0 to 3.1, the state file will initially be empty, so the lookback setting will be used for existing files. After that (i.e. on process restart), the state file will be present and will be used.
 
 
