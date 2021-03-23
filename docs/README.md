@@ -159,7 +159,9 @@ Check out [Kubernetes documentation](https://kubernetes.io/docs/tasks/inject-dat
 
 ### Configuring Lookback
 
-The lookback strategy determines how the agent handles existing files on startup. This strategy is determined by the `LOGDNA_LOOKBACK` variable.
+The lookback strategy determines how the agent handles existing files on agent startup. This strategy is determined by the `LOGDNA_LOOKBACK` variable.
+
+By default, the agent provides a "stateful", or persistent, collection of files that can be referenced whenever the agent is restarted, in order to return (or look back) to see any files that were ingested during the time that the agent was not running. The state file location is defined using the `LOGDNA_DB_PATH` environment variable in the YAML file (the default path is /var/lib/logdna/agent_state.db).
 
 The valid values for this option are:
    * When set to **`none`**:
@@ -170,8 +172,6 @@ The valid values for this option are:
    * When set to **`start`**:
     * If there is information in the “state file”, use the last recorded state. 
     * If the file is not present in the “state file”, start at the beginning. 
-
-The state file location is defined using the `LOGDNA_DB_PATH` env variable (the default path is /var/lib/logdna/agent_state.db).
 
 **Notes:**
 * If you configure the agent to run as non-root, review the [documentation](KUBERNETES.md#enabling-persistent-agent-state) about enabling "statefulness" for the agent.
