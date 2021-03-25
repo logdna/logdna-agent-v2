@@ -894,50 +894,54 @@ async fn test_symlink_initialization() {
 
     std::os::unix::fs::symlink(&file_path, &symlink_path).unwrap();
 
-    let settings = AgentSettings {
-        log_dirs: &log_dir.to_str().unwrap(),
-        exclusion_regex: Some(r"/var\w*"),
-        ssl_cert_file: Some(cert_file.path()),
-        lookback: Some("start"),
-        state_db_dir: Some(&db_dir_path),
-        host: Some(&addr),
-        ..Default::default()
-    };
-    let mut agent_handle = common::spawn_agent(settings.clone());
-    let stderr_reader = agent_handle.stderr.take().unwrap();
-    // Consume output
-    consume_output(stderr_reader);
+    let (server_result, _, _) = tokio::join!(
+        server,
+        async {
+            for i in 10..20 {
+                writeln!(file, "SAMPLE {}", i).unwrap();
+            }
+            file.sync_all().unwrap();
+            common::force_client_to_flush(&log_dir).await;
 
-    tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
-    agent_handle.kill().expect("Could not kill process");
+            // Wait for the data to be received by the mock ingester
+            tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
 
-    let mut agent_handle = common::spawn_agent(settings);
-    let stderr_reader = agent_handle.stderr.take().unwrap();
-    // Consume output
-    consume_output(stderr_reader);
+            let map = received.lock().await;
+            eprintln!("Map: {:?}", map);
+            let file_info = map
+                .get(symlink_path.to_str().unwrap())
+                .expect("symlink not found");
+            for (i, line) in file_info.values.iter().enumerate() {
+                assert_eq!(line.as_str(), &format!("SAMPLE {}\n", i));
+            }
+            shutdown_handle();
+        },
+        async {
+            tokio::time::delay_for(tokio::time::Duration::from_millis(100)).await;
+            let settings = AgentSettings {
+                log_dirs: &log_dir.to_str().unwrap(),
+                exclusion_regex: Some(r"/var\w*"),
+                ssl_cert_file: Some(cert_file.path()),
+                lookback: Some("start"),
+                state_db_dir: Some(&db_dir_path),
+                host: Some(&addr),
+                ..Default::default()
+            };
+            let mut agent_handle = common::spawn_agent(settings.clone());
+            let stderr_reader = agent_handle.stderr.take().unwrap();
+            // Consume output
+            consume_output(stderr_reader);
 
-    tokio::time::delay_for(tokio::time::Duration::from_millis(1000)).await;
+            tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+            agent_handle.kill().expect("Could not kill process");
 
-    let (server_result, _) = tokio::join!(server, async {
-        for i in 10..20 {
-            writeln!(file, "SAMPLE {}", i).unwrap();
+            let mut agent_handle = common::spawn_agent(settings);
+            let stderr_reader = agent_handle.stderr.take().unwrap();
+            // Consume output
+            consume_output(stderr_reader);
+            tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
         }
-        file.sync_all().unwrap();
-        common::force_client_to_flush(&log_dir).await;
-
-        // Wait for the data to be received by the mock ingester
-        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
-
-        let map = received.lock().await;
-        let file_info = map
-            .get(symlink_path.to_str().unwrap())
-            .expect("symlink not found");
-        for (i, line) in file_info.values.iter().enumerate() {
-            assert_eq!(line.as_str(), &format!("SAMPLE {}\n", i));
-        }
-        agent_handle.kill().expect("Could not kill process");
-        shutdown_handle();
-    });
+    );
 
     server_result.unwrap();
 }

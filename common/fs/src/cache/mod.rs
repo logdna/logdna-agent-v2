@@ -918,7 +918,7 @@ impl FileSystem {
 
     /// Determines whether the path is within the initial dir
     /// and either passes the master rules (e.g. "*.log") or it's a directory
-    fn is_initial_dir_target(&self, path: &PathBuf) -> bool {
+    pub(crate) fn is_initial_dir_target(&self, path: &PathBuf) -> bool {
         // Must be within the initial dir
         if self.initial_dir_rules.passes(path) != Status::Ok {
             return false;
