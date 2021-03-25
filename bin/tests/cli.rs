@@ -12,6 +12,7 @@ use std::time::Duration;
 use systemd::journal;
 use tempfile::tempdir;
 use test_types::random_line_string_vec;
+use tokio::task;
 
 mod common;
 
@@ -775,6 +776,179 @@ async fn test_tags() {
 
     server_result.unwrap();
     agent_handle.kill().expect("Could not kill process");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_lookback_restarting_agent() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    let line_count = Arc::new(AtomicUsize::new(0));
+
+    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let db_dir = tempdir().unwrap().into_path();
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+
+    let mut settings = AgentSettings::with_mock_ingester(&dir.to_str().unwrap(), &addr);
+    settings.state_db_dir = Some(&db_dir);
+    settings.exclusion_regex = Some(r"/var\w*");
+
+    let line_count_target = 20_000;
+
+    let line_count_clone = line_count.clone();
+
+    let (server_result, _) = tokio::join!(server, async {
+        let file_path = dir.join("test.log");
+        let mut file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&file_path)
+            .unwrap();
+        let writer_thread = std::thread::spawn(move || {
+            for i in 0..line_count_target {
+                writeln!(file, "Hello from line {}", i).unwrap();
+                line_count_clone.fetch_add(1, Ordering::SeqCst);
+                if i % 1000 == 0 {
+                    file.sync_all().unwrap();
+                }
+
+                if i % 20 == 0 {
+                    std::thread::sleep(core::time::Duration::from_millis(1));
+                }
+            }
+        });
+
+        debug!("Running first agent");
+        let mut agent_handle = common::spawn_agent(settings.clone());
+        let agent_stderr = agent_handle.stderr.take().unwrap();
+        consume_output(agent_stderr);
+        tokio::time::delay_for(tokio::time::Duration::from_millis(1_000)).await;
+
+        while line_count.load(Ordering::SeqCst) < line_count_target {
+            tokio::time::delay_for(tokio::time::Duration::from_millis(1_000)).await;
+            agent_handle.kill().expect("Could not kill process");
+            // Restart it back again
+            debug!("Running next agent");
+            agent_handle = common::spawn_agent(settings.clone());
+            let agent_stderr = agent_handle.stderr.take().unwrap();
+            consume_output(agent_stderr);
+        }
+
+        // Block til writing is definitely done
+        task::spawn_blocking(move || writer_thread.join().unwrap())
+            .await
+            .unwrap();
+
+        // Give the agent a chance to catch up
+        tokio::time::delay_for(tokio::time::Duration::from_millis(10_000)).await;
+
+        let map = received.lock().await;
+        assert!(map.len() > 0);
+        let file_info = map.get(file_path.to_str().unwrap()).unwrap();
+
+        assert!(file_info.values.len() > 100);
+        debug!(
+            "{}, {}",
+            file_info.values.len(),
+            line_count.load(Ordering::SeqCst)
+        );
+        assert!(file_info.values.len() >= line_count.load(Ordering::SeqCst));
+
+        for i in 0..file_info.values.len() {
+            assert_eq!(file_info.values[i], format!("Hello from line {}\n", i));
+        }
+
+        agent_handle.kill().expect("Could not kill process");
+        shutdown_handle();
+    });
+    server_result.unwrap();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg_attr(not(target_os = "linux"), ignore)]
+async fn test_symlink_initialization() {
+    let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let excluded_dir = tempdir().expect("Couldn't create temp dir...").into_path();
+
+    let db_dir = tempdir().expect("Couldn't create temp dir...");
+    let db_dir_path = db_dir.path();
+
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
+
+    let file_path = excluded_dir.join("test.log");
+    let symlink_path = log_dir.join("test-symlink.log");
+
+    File::create(&file_path).expect("Couldn't create temp log file...");
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&file_path)
+        .unwrap();
+
+    for i in 0..10 {
+        writeln!(file, "SAMPLE {}", i).unwrap();
+    }
+    file.sync_all().unwrap();
+
+    std::os::unix::fs::symlink(&file_path, &symlink_path).unwrap();
+
+    let settings = AgentSettings {
+        log_dirs: &log_dir.to_str().unwrap(),
+        exclusion_regex: Some(r"/var\w*"),
+        ssl_cert_file: Some(cert_file.path()),
+        lookback: Some("start"),
+        state_db_dir: Some(&db_dir_path),
+        host: Some(&addr),
+        ..Default::default()
+    };
+    let mut agent_handle = common::spawn_agent(settings.clone());
+    let stderr_reader = agent_handle.stderr.take().unwrap();
+    // Consume output
+    consume_output(stderr_reader);
+
+    tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+    agent_handle.kill().expect("Could not kill process");
+
+    let mut agent_handle = common::spawn_agent(settings);
+    let stderr_reader = agent_handle.stderr.take().unwrap();
+    // Consume output
+    consume_output(stderr_reader);
+
+    tokio::time::delay_for(tokio::time::Duration::from_millis(1000)).await;
+
+    let (server_result, _) = tokio::join!(server, async {
+        for i in 10..20 {
+            writeln!(file, "SAMPLE {}", i).unwrap();
+        }
+        file.sync_all().unwrap();
+        common::force_client_to_flush(&log_dir).await;
+
+        // Wait for the data to be received by the mock ingester
+        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+
+        let map = received.lock().await;
+        let file_info = map
+            .get(symlink_path.to_str().unwrap())
+            .expect("symlink not found");
+        for (i, line) in file_info.values.iter().enumerate() {
+            assert_eq!(line.as_str(), &format!("SAMPLE {}\n", i));
+        }
+        agent_handle.kill().expect("Could not kill process");
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
+}
+
+fn consume_output(stderr_handle: std::process::ChildStderr) {
+    let stderr_reader = std::io::BufReader::new(stderr_handle);
+    std::thread::spawn(move || {
+        for line in stderr_reader.lines() {
+            debug!("{:?}", line);
+        }
+    });
 }
 
 #[test]

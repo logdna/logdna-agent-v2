@@ -106,7 +106,7 @@ pub fn truncate_file(file_path: &PathBuf) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct AgentSettings<'a> {
     pub log_dirs: &'a str,
     pub exclusion_regex: Option<&'a str>,
