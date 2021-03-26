@@ -442,6 +442,7 @@ fn test_append_after_symlinks_delete() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg_attr(not(target_os = "linux"), ignore)]
 fn test_directory_symlinks_delete() {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
     let data_dir = tempdir().expect("Could not create temp dir").into_path();
 
@@ -466,7 +467,8 @@ fn test_directory_symlinks_delete() {
 
     std::os::unix::fs::symlink(&dir_1_path, &symlink_path).unwrap();
 
-    common::wait_for_file_event("initialized", &file1_path, &mut stderr_reader);
+    eprintln!("waiting for initialized");
+    common::wait_for_file_event("watching", &symlink_path, &mut stderr_reader);
 
     common::append_to_file(&file1_path, 1_000, 50).expect("Could not append");
     common::append_to_file(&file2_path, 1_000, 50).expect("Could not append");
@@ -474,6 +476,7 @@ fn test_directory_symlinks_delete() {
 
     fs::remove_file(&symlink_path).expect("Could not remove symlink");
 
+    eprintln!("waiting for unwatching");
     common::wait_for_file_event("unwatching", &file3_path, &mut stderr_reader);
 
     common::assert_agent_running(&mut agent_handle);
@@ -971,6 +974,7 @@ async fn test_symlink_initialization_excluded_file() {
         for i in 0..20 {
             assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
         }
+        assert!(map.get(file_path.to_str().unwrap()).is_none());
         agent_handle.kill().expect("Could not kill process");
         shutdown_handle();
     });

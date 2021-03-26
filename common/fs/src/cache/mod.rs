@@ -150,7 +150,14 @@ impl FileSystem {
                 } else {
                     for event in events {
                         match event {
-                            Event::New(entry) => fs.initial_events.push(Event::Initialize(entry)),
+                            Event::New(entry_key) => {
+                                if let Some(entry) = entries.get(entry_key) {
+                                    let path = fs.resolve_direct_path(entry, &entries);
+                                    if fs.is_initial_dir_target(&path) {
+                                        fs.initial_events.push(Event::Initialize(entry_key))
+                                    }
+                                }
+                            }
                             _ => panic!("unexpected event in initialization"),
                         };
                     }
