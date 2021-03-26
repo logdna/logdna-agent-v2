@@ -868,7 +868,66 @@ async fn test_lookback_restarting_agent() {
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg_attr(not(target_os = "linux"), ignore)]
-async fn test_symlink_initialization_2() {
+async fn test_symlink_initialization_both_included() {
+    let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+    let file_path = log_dir.join("test.log");
+    let symlink_path = log_dir.join("test-symlink.log");
+    File::create(&file_path).expect("Couldn't create temp log file...");
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&file_path)
+        .unwrap();
+    for i in 0..10 {
+        writeln!(file, "SAMPLE {}", i).unwrap();
+    }
+    file.sync_all().unwrap();
+    std::os::unix::fs::symlink(&file_path, &symlink_path).unwrap();
+    tokio::time::delay_for(tokio::time::Duration::from_millis(1000)).await;
+    let (server_result, _) = tokio::join!(server, async {
+        let settings = AgentSettings::with_mock_ingester(&log_dir.to_str().unwrap(), &addr);
+        let mut agent_handle = common::spawn_agent(settings);
+        let stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
+        // Consume output
+        std::thread::spawn(move || {
+            stderr_reader.lines().for_each(|line| {
+                eprintln!("---- line: {}", line.unwrap());
+            });
+        });
+        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+        for i in 10..20 {
+            writeln!(file, "SAMPLE {}", i).unwrap();
+        }
+        file.sync_all().unwrap();
+        common::force_client_to_flush(&log_dir).await;
+        // Wait for the data to be received by the mock ingester
+        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+        let map = received.lock().await;
+        eprintln!("--TEST MAP KEYS: {:?}", map.keys());
+        let file_info = map
+            .get(file_path.to_str().unwrap())
+            .expect("symlink not found");
+        for i in 0..20 {
+            assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
+        }
+        let file_info = map
+            .get(symlink_path.to_str().unwrap())
+            .expect("symlink not found");
+        for i in 0..20 {
+            assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
+        }
+
+        agent_handle.kill().expect("Could not kill process");
+        shutdown_handle();
+    });
+    server_result.unwrap();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg_attr(not(target_os = "linux"), ignore)]
+async fn test_symlink_initialization_excluded_file() {
     let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let excluded_dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();

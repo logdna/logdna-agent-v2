@@ -202,12 +202,7 @@ impl Tailer {
                                                             data.borrow_mut().deref_mut().seek(len).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
                                                         }
                                                     }
-                                                    if !fs.is_initial_dir_target(link) {
-                                                        debug!("symlink target is excluded, tailing it");
-                                                        data.borrow_mut().tail(vec![sym_path]).await
-                                                    } else {
-                                                        None
-                                                    }
+                                                    data.borrow_mut().tail(vec![sym_path]).await
                                                 } else {
                                                     None
                                                 }
