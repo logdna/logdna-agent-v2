@@ -2,7 +2,7 @@ use crate::cache::entry::Entry;
 use crate::cache::event::Event;
 use crate::cache::tailed_file::LazyLineSerializer;
 pub use crate::cache::DirPathBuf;
-use crate::cache::FileSystem;
+use crate::cache::{EntryKey, FileSystem};
 use crate::rule::Rules;
 use metrics::Metrics;
 use state::FileName;
@@ -73,6 +73,21 @@ impl Tailer {
             initial_offsets,
         }
     }
+
+    fn get_file_for_path(fs: &FileSystem, next_path: &std::path::PathBuf) -> Option<EntryKey> {
+        let entries = fs.entries.borrow();
+        let mut next_path = next_path;
+        loop {
+            let next_entry_key = fs.lookup(next_path, &entries)?;
+            match entries.get(next_entry_key) {
+                Some(Entry::Symlink { link, .. }) => next_path = link,
+                Some(Entry::File { .. }) => return Some(next_entry_key),
+                _ => break,
+            }
+        }
+        None
+    }
+
     /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
     pub fn process<'a>(
         &mut self,
@@ -158,7 +173,7 @@ impl Tailer {
                                         let sym_path = path.clone();
                                         let sym_name = name;
                                         info!("initialize event for symlink {:?}, target {:?}", name, link);
-                                        if let Some(real_entry) = fs.lookup(link, &fs.entries.borrow()) {
+                                        if let Some(real_entry) = Tailer::get_file_for_path(&fs, link) {
                                             if let Some(entry) = &fs.entries.borrow().get(real_entry) {
                                                 let path = fs.resolve_direct_path(entry, &fs.entries.borrow());
                                                 if let Entry::File { data, .. } = entry {
