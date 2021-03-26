@@ -102,7 +102,7 @@ impl Tailer {
                     let fs = fs.lock().expect("Couldn't lock fs");
                     match event {
                         Event::Initialize(entry_ptr) => {
-                            debug!("Initialise Event");
+                            debug!("initialize Event");
                             // will initiate a file to it's current length
                             if let Some(entry) = fs.entries.borrow().get(entry_ptr){
                                 let path = fs.resolve_direct_path(&entry, &fs.entries.borrow());
@@ -157,7 +157,7 @@ impl Tailer {
                                     Entry::Symlink { name, link, .. } => {
                                         let sym_path = path.clone();
                                         let sym_name = name;
-                                        info!("Initialise event for symlink {:?}, target {:?}", name, link);
+                                        info!("initialize event for symlink {:?}, target {:?}", name, link);
                                         if let Some(real_entry) = fs.lookup(link, &fs.entries.borrow()) {
                                             if let Some(entry) = &fs.entries.borrow().get(real_entry) {
                                                 let path = fs.resolve_direct_path(entry, &fs.entries.borrow());

@@ -907,13 +907,13 @@ async fn test_symlink_initialization_both_included() {
         eprintln!("--TEST MAP KEYS: {:?}", map.keys());
         let file_info = map
             .get(file_path.to_str().unwrap())
-            .expect("symlink not found");
+            .expect("lines for file not found");
         for i in 0..20 {
             assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
         }
         let file_info = map
             .get(symlink_path.to_str().unwrap())
-            .expect("symlink not found");
+            .expect("lines for symlink not found");
         for i in 0..20 {
             assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
         }
