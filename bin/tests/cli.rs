@@ -1,8 +1,3 @@
-use crate::common::{consume_output, AgentSettings};
-use assert_cmd::prelude::*;
-use log::debug;
-use predicates::prelude::*;
-use proptest::prelude::*;
 use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
@@ -10,6 +5,14 @@ use std::os::unix::fs::MetadataExt;
 use std::process::Command;
 use std::thread::{self, sleep};
 use std::time::Duration;
+
+use crate::common::{consume_output, AgentSettings};
+
+use assert_cmd::prelude::*;
+use futures::FutureExt;
+use log::debug;
+use predicates::prelude::*;
+use proptest::prelude::*;
 use systemd::journal;
 use tempfile::tempdir;
 use test_types::random_line_string_vec;
@@ -800,7 +803,7 @@ async fn test_lookback_restarting_agent() {
     settings.state_db_dir = Some(&db_dir);
     settings.exclusion_regex = Some(r"/var\w*");
 
-    let line_count_target = 20_000;
+    let line_count_target = 5_000;
 
     let line_count_clone = line_count.clone();
 
@@ -842,12 +845,11 @@ async fn test_lookback_restarting_agent() {
         }
 
         // Block til writing is definitely done
-        task::spawn_blocking(move || writer_thread.join().unwrap())
-            .await
-            .unwrap();
 
-        // Give the agent a chance to catch up
-        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+        task::spawn_blocking(move || writer_thread.join().unwrap())
+            // Give the agent a chance to catch up
+            .then(|_| tokio::time::sleep(tokio::time::Duration::from_millis(5000)))
+            .await;
 
         let map = received.lock().await;
         assert!(map.len() > 0);
