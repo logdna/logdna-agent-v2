@@ -1580,8 +1580,8 @@ dependencies = [
 
 [[package]]
 name = "logdna-client"
-version = "0.4.0"
-source = "git+https://github.com/logdna/logdna-rust.git?tag=0.4.0#9df87c840b774c2385a099e5d031d05ecc129438"
+version = "0.4.1"
+source = "git+https://github.com/logdna/logdna-rust.git?tag=0.4.1#09a8aea1006a2c793d96692f135125d9b23d0c3b"
 dependencies = [
  "async-buf-pool",
  "async-compression",
