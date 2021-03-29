@@ -467,7 +467,7 @@ fn test_directory_symlinks_delete() {
 
     std::os::unix::fs::symlink(&dir_1_path, &symlink_path).unwrap();
 
-    eprintln!("waiting for initialized");
+    debug!("waiting for initialized");
     common::wait_for_file_event("watching", &symlink_path, &mut stderr_reader);
 
     common::append_to_file(&file1_path, 1_000, 50).expect("Could not append");
@@ -476,7 +476,7 @@ fn test_directory_symlinks_delete() {
 
     fs::remove_file(&symlink_path).expect("Could not remove symlink");
 
-    eprintln!("waiting for unwatching");
+    debug!("waiting for unwatching");
     common::wait_for_file_event("unwatching", &file3_path, &mut stderr_reader);
 
     common::assert_agent_running(&mut agent_handle);
@@ -784,6 +784,7 @@ async fn test_tags() {
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_lookback_restarting_agent() {
+    let _ = env_logger::Builder::from_default_env().try_init();
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
@@ -902,7 +903,7 @@ async fn test_symlink_initialization_both_included() {
         // Wait for the data to be received by the mock ingester
         tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
         let map = received.lock().await;
-        eprintln!("--TEST MAP KEYS: {:?}", map.keys());
+        debug!("--TEST MAP KEYS: {:?}", map.keys());
         let file_info = map
             .get(file_path.to_str().unwrap())
             .expect("lines for file not found");
@@ -958,7 +959,6 @@ async fn test_symlink_initialization_excluded_file() {
         // Wait for the data to be received by the mock ingester
         tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
         let map = received.lock().await;
-        eprintln!("--TEST MAP KEYS: {:?}", map.keys());
         let file_info = map
             .get(symlink_path.to_str().unwrap())
             .expect("symlink not found");
@@ -1010,7 +1010,6 @@ async fn test_symlink_to_symlink_initialization_excluded_file() {
         // Wait for the data to be received by the mock ingester
         tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
         let map = received.lock().await;
-        eprintln!("--TEST MAP KEYS: {:?}", map.keys());
         let file_info = map
             .get(symlink_path.to_str().unwrap())
             .expect("symlink not found");
@@ -1065,7 +1064,6 @@ async fn test_symlink_initialization_with_stateful_lookback() {
             tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
 
             let map = received.lock().await;
-            eprintln!("Map: {:?}", map);
             let file_info = map
                 .get(symlink_path.to_str().unwrap())
                 .expect("symlink not found");
