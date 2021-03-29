@@ -95,7 +95,7 @@ impl AgentState {
     }
 }
 
-#[derive(Hash, Clone, PartialEq, Eq)]
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
 pub struct FileName(bytes::Bytes);
 
 impl FileName {
