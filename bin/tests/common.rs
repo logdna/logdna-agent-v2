@@ -106,7 +106,7 @@ pub fn truncate_file(file_path: &PathBuf) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct AgentSettings<'a> {
     pub log_dirs: &'a str,
     pub exclusion_regex: Option<&'a str>,
@@ -327,4 +327,13 @@ pub fn start_http_ingester() -> (
         shutdown_handle,
         format!("localhost:{}", port),
     )
+}
+
+pub fn consume_output(stderr_handle: std::process::ChildStderr) {
+    let stderr_reader = std::io::BufReader::new(stderr_handle);
+    std::thread::spawn(move || {
+        for line in stderr_reader.lines() {
+            debug!("{:?}", line);
+        }
+    });
 }

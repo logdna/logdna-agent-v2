@@ -95,8 +95,14 @@ impl AgentState {
     }
 }
 
-#[derive(Hash, Clone, PartialEq, Eq)]
+#[derive(Debug, Hash, Clone, PartialEq, Eq)]
 pub struct FileName(bytes::Bytes);
+
+impl FileName {
+    pub fn bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
 
 impl<T> From<T> for FileName
 where
