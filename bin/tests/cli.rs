@@ -1,4 +1,4 @@
-use crate::common::AgentSettings;
+use crate::common::{consume_output, AgentSettings};
 use assert_cmd::prelude::*;
 use log::debug;
 use predicates::prelude::*;
@@ -891,13 +891,8 @@ async fn test_symlink_initialization_both_included() {
     let (server_result, _) = tokio::join!(server, async {
         let settings = AgentSettings::with_mock_ingester(&log_dir.to_str().unwrap(), &addr);
         let mut agent_handle = common::spawn_agent(settings);
-        let stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
-        // Consume output
-        std::thread::spawn(move || {
-            stderr_reader.lines().for_each(|line| {
-                eprintln!("---- line: {}", line.unwrap());
-            });
-        });
+        let stderr_reader = agent_handle.stderr.take().unwrap();
+        consume_output(stderr_reader);
         tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
         for i in 10..20 {
             writeln!(file, "SAMPLE {}", i).unwrap();
@@ -951,13 +946,9 @@ async fn test_symlink_initialization_excluded_file() {
     let (server_result, _) = tokio::join!(server, async {
         let settings = AgentSettings::with_mock_ingester(&log_dir.to_str().unwrap(), &addr);
         let mut agent_handle = common::spawn_agent(settings);
-        let stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
+        let stderr_reader = agent_handle.stderr.take().unwrap();
         // Consume output
-        std::thread::spawn(move || {
-            stderr_reader.lines().for_each(|line| {
-                eprintln!("---- line: {}", line.unwrap());
-            });
-        });
+        consume_output(stderr_reader);
         tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
         for i in 10..20 {
             writeln!(file, "SAMPLE {}", i).unwrap();
@@ -1007,13 +998,9 @@ async fn test_symlink_to_symlink_initialization_excluded_file() {
     let (server_result, _) = tokio::join!(server, async {
         let settings = AgentSettings::with_mock_ingester(&log_dir.to_str().unwrap(), &addr);
         let mut agent_handle = common::spawn_agent(settings);
-        let stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
+        let stderr_reader = agent_handle.stderr.take().unwrap();
         // Consume output
-        std::thread::spawn(move || {
-            stderr_reader.lines().for_each(|line| {
-                eprintln!("---- line: {}", line.unwrap());
-            });
-        });
+        consume_output(stderr_reader);
         tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
         for i in 10..20 {
             writeln!(file, "SAMPLE {}", i).unwrap();
@@ -1117,15 +1104,6 @@ async fn test_symlink_initialization_with_stateful_lookback() {
     server_result.unwrap();
 }
 
-fn consume_output(stderr_handle: std::process::ChildStderr) {
-    let stderr_reader = std::io::BufReader::new(stderr_handle);
-    std::thread::spawn(move || {
-        for line in stderr_reader.lines() {
-            debug!("{:?}", line);
-        }
-    });
-}
-
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn lookback_stateful_lines_are_delivered() {
@@ -1168,10 +1146,7 @@ fn lookback_stateful_lines_are_delivered() {
                     ..Default::default()
                 });
 
-                let stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
-                std::thread::spawn(move || {
-                    stderr_reader.lines().for_each(|line| debug!("{:?}", line))
-                });
+                consume_output(handle.stderr.take().unwrap());
 
                 tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
 
@@ -1227,11 +1202,8 @@ fn lookback_stateful_lines_are_delivered() {
                     ..Default::default()
                 });
 
-                let stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
-                std::thread::spawn(move || {
-                    stderr_reader.lines().for_each(|line| debug!("{:?}", line))
-                });
-
+                let stderr_reader = handle.stderr.take().unwrap();
+                consume_output(stderr_reader);
                 tokio::time::delay_for(tokio::time::Duration::from_millis(3000)).await;
 
                 handle.kill().unwrap();

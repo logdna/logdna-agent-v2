@@ -329,3 +329,12 @@ pub fn start_http_ingester() -> (
         format!("localhost:{}", port),
     )
 }
+
+pub fn consume_output(stderr_handle: std::process::ChildStderr) {
+    let stderr_reader = std::io::BufReader::new(stderr_handle);
+    std::thread::spawn(move || {
+        for line in stderr_reader.lines() {
+            debug!("{:?}", line);
+        }
+    });
+}
