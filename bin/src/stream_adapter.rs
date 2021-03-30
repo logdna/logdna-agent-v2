@@ -183,7 +183,7 @@ impl GetOffset for StrictOrLazyLines<'_> {
         }
     }
 
-    fn get_key(&self) -> Option<&[u8]> {
+    fn get_key(&self) -> Option<u64> {
         match self {
             StrictOrLazyLines::Strict(_) => None,
             StrictOrLazyLines::Lazy(line) => line.get_key(),

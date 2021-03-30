@@ -27,7 +27,7 @@ use std::io;
 use std::mem;
 use std::num::NonZeroUsize;
 use std::ops::DerefMut;
-use std::os::unix::ffi::OsStrExt;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -137,7 +137,7 @@ impl Stream for LineBuilderLines {
 
 pub struct LazyLines {
     reader: Arc<Mutex<TailedFileInner>>,
-    current_offset: Option<(bytes::Bytes, u64)>,
+    current_offset: Option<(u64, u64)>,
     read: usize,
     path: usize,
     paths: Vec<String>,
@@ -167,7 +167,7 @@ pub struct LazyLineSerializer {
 
     path: String,
 
-    file_offset: (bytes::Bytes, u64),
+    file_offset: (u64, u64),
 
     reader: Arc<Mutex<TailedFileInner>>,
 }
@@ -310,11 +310,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
 }
 
 impl LazyLineSerializer {
-    pub fn new(
-        reader: Arc<Mutex<TailedFileInner>>,
-        path: String,
-        offset: (bytes::Bytes, u64),
-    ) -> Self {
+    pub fn new(reader: Arc<Mutex<TailedFileInner>>, path: String, offset: (u64, u64)) -> Self {
         Self {
             reader,
             path,
@@ -396,8 +392,8 @@ impl GetOffset for LazyLineSerializer {
     fn get_offset(&self) -> Option<u64> {
         Some(self.file_offset.1)
     }
-    fn get_key(&self) -> Option<&[u8]> {
-        Some(&self.file_offset.0)
+    fn get_key(&self) -> Option<u64> {
+        Some(self.file_offset.0)
     }
 }
 
@@ -432,7 +428,8 @@ impl Stream for LazyLines {
                 ref mut reader,
                 ref mut buf,
                 ref mut offset,
-                ref file_path,
+                ref inode,
+                ..
             } = borrow.deref_mut();
 
             if *path >= paths.len() {
@@ -452,10 +449,7 @@ impl Stream for LazyLines {
                     let count = TryInto::<u64>::try_into(count.get()).unwrap();
                     Metrics::fs().add_bytes(count);
                     *offset += count;
-                    *current_offset = Some((
-                        bytes::Bytes::copy_from_slice(file_path.as_os_str().as_bytes()),
-                        *offset,
-                    ))
+                    *current_offset = Some((*inode, *offset))
                 }
                 // We got an error, should we propagate this up somehow? calls to TailedFile::tail
                 // will implicitly retry
@@ -473,6 +467,7 @@ pub struct TailedFileInner {
     buf: Vec<u8>,
     offset: u64,
     file_path: PathBuf,
+    inode: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -492,6 +487,7 @@ impl<T> TailedFile<T> {
                 buf: Vec::new(),
                 offset: 0,
                 file_path: path.into(),
+                inode: path.metadata()?.ino(),
             })),
             _phantom: std::marker::PhantomData::<T>,
         })
@@ -506,6 +502,10 @@ impl<T> TailedFile<T> {
             .seek(SeekFrom::Start(offset))
             .await?;
         Ok(())
+    }
+    pub(crate) async fn get_inode(&self) -> u64 {
+        let inner = self.inner.lock().await;
+        inner.inode
     }
 }
 
