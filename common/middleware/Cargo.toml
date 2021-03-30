@@ -7,4 +7,4 @@ edition = "2018"
 [dependencies]
 #local
 http = { package = "http", path = "../http" }
-memoffset = "0.5"
+memoffset = "0.6"

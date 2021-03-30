@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sample-job
+  labels:
+    app.kubernetes.io/name: sample-job
+    app.kubernetes.io/instance: sample-job-instance
+    app.kubernetes.io/version: 1.0.0
+spec:
+  template:
+    spec:
+      containers:
+        - name: hello
+          image: busybox
+          command: ['sh', '-c', 'while true; do echo "Hello from job"; sleep 0.5; done']
+      restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sample-pod
+  labels:
+    app.kubernetes.io/name: sample-pod
+    app.kubernetes.io/instance: sample-pod-instance
+    app.kubernetes.io/version: 1.0.0
+spec:
+  containers:
+    - name: sample-pod
+      image: busybox
+      imagePullPolicy: IfNotPresent
+      command: ["/bin/sh"]
+      args: ['-c', 'while true; do echo "Hello from pod"; sleep 0.5; done']

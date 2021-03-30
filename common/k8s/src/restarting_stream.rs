@@ -1,7 +1,7 @@
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use pin_project::pin_project;
+use pin_project_lite::pin_project;
 
 use futures::{ready, Future, Stream};
 
@@ -10,15 +10,16 @@ pub enum RequiresRestart {
     No,
 }
 
-#[pin_project]
-#[must_use = "streams do nothing unless polled"]
-pub struct RestartingStream<F, R, S, Fut> {
-    f: F,
-    r: R,
-    #[pin]
-    stream: S,
-    #[pin]
-    pending: Option<Fut>,
+pin_project! {
+    #[must_use = "streams do nothing unless polled"]
+    pub struct RestartingStream<F, R, S, Fut> {
+        f: F,
+        r: R,
+        #[pin]
+        stream: S,
+        #[pin]
+        pending: Option<Fut>,
+    }
 }
 
 impl<F, R, S, T, Fut> RestartingStream<F, R, S, Fut>

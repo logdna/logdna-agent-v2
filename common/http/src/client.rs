@@ -45,8 +45,10 @@ impl Client {
         state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
     ) -> Self {
         let buffer_source = Box::pin(body_serializer_source(
-            2 * 1024 * 1024, /* 2MB */
-            100 * 1024,      /*100 KB*/
+            16 * 1024, /* 16 KB segments */
+            50,        /* 16KB * 50 = 256 KB initial capacity */
+            None,      /* No max size */
+            Some(100), /* max 512KB idle buffers */
         ));
         let (offsets, state_write, state_flush) = state_handles
             .map(|(sw, sf)| (Some(Vec::new()), Some(sw), Some(sf)))
@@ -84,6 +86,7 @@ impl Client {
                 Ok((offsets, Some(body))) => {
                     if let (Some(sw), Some(offsets)) = (self.state_write.as_ref(), &offsets) {
                         for (file_name, offset) in offsets {
+                            debug!("Updating offset for {:?} to {}", file_name, *offset);
                             if let Err(e) = sw.update(file_name, *offset).await {
                                 error!("Unable to write offsets. error: {}", e);
                             };
@@ -114,6 +117,7 @@ impl Client {
             Ok(_) => {
                 if let Some(wh) = self.state_write.as_ref() {
                     if let (Some(key), Some(offset)) = (key.as_ref(), offset) {
+                        debug!("Updating offset for {:?} to {}", key, offset);
                         wh.update(key, offset).await.unwrap();
                     }
                 }
