@@ -6,6 +6,7 @@ use proptest::prelude::*;
 use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
+use std::os::unix::fs::MetadataExt;
 use std::process::Command;
 use std::thread::{self, sleep};
 use std::time::Duration;
@@ -1018,6 +1019,152 @@ async fn test_symlink_to_symlink_initialization_excluded_file() {
             assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
         }
         agent_handle.kill().expect("Could not kill process");
+        shutdown_handle();
+    });
+    server_result.unwrap();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg_attr(not(target_os = "linux"), ignore)]
+async fn test_symlink_to_hardlink_initialization_excluded_file() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+
+    let db_dir = tempdir().expect("Couldn't create temp dir...");
+    let db_dir_path = db_dir.path();
+
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
+
+    let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let excluded_dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let file_path = excluded_dir.join("test.log");
+    let excluded_hardlink_path = excluded_dir.join("test-hardlink.log");
+    let excluded_symlink_path = excluded_dir.join("test-symlink.log");
+    let symlink_path = log_dir.join("test-symlink.log");
+
+    File::create(&file_path).expect("Couldn't create temp log file...");
+    std::fs::hard_link(&file_path, &excluded_hardlink_path).unwrap();
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&file_path)
+        .unwrap();
+    for i in 0..10 {
+        writeln!(file, "SAMPLE {}", i).unwrap();
+    }
+    file.sync_all().unwrap();
+    std::os::unix::fs::symlink(&file_path, &excluded_symlink_path).unwrap();
+    std::os::unix::fs::symlink(&excluded_symlink_path, &symlink_path).unwrap();
+
+    debug!(
+        "----{:?}: {}",
+        file_path,
+        file_path.metadata().unwrap().ino()
+    );
+    debug!(
+        "----{:?}: {}",
+        excluded_hardlink_path,
+        excluded_hardlink_path.metadata().unwrap().ino()
+    );
+    debug!(
+        "----{:?}: {}",
+        excluded_symlink_path,
+        excluded_symlink_path.metadata().unwrap().ino()
+    );
+    debug!(
+        "----{:?}: {}",
+        symlink_path,
+        symlink_path.metadata().unwrap().ino()
+    );
+
+    let (server_result, _) = tokio::join!(server, async {
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+        let settings = AgentSettings {
+            log_dirs: &log_dir.to_str().unwrap(),
+            exclusion_regex: Some(r"/var\w*"),
+            ssl_cert_file: Some(cert_file.path()),
+            lookback: Some("start"),
+            state_db_dir: Some(&db_dir_path),
+            host: Some(&addr),
+            ..Default::default()
+        };
+
+        let mut agent_handle = common::spawn_agent(settings.clone());
+        let stderr_reader = agent_handle.stderr.take().unwrap();
+        // Consume output
+        consume_output(stderr_reader);
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        for i in 10..20 {
+            writeln!(file, "SAMPLE {}", i).unwrap();
+        }
+        file.sync_all().unwrap();
+        common::force_client_to_flush(&log_dir).await;
+        // Wait for the data to be received by the mock ingester
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        {
+            let map = received.lock().await;
+            let file_info = map
+                .get(symlink_path.to_str().unwrap())
+                .expect("symlink not found");
+            for i in 0..20 {
+                assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
+            }
+        }
+        agent_handle.kill().expect("Could not kill process");
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+        // move 2nd symlink to point to hardlink
+        std::fs::remove_file(&excluded_symlink_path).unwrap();
+        std::os::unix::fs::symlink(&excluded_hardlink_path, &excluded_symlink_path).unwrap();
+
+        debug!(
+            "----{:?}: {}",
+            file_path,
+            file_path.metadata().unwrap().ino()
+        );
+        debug!(
+            "----{:?}: {}",
+            excluded_hardlink_path,
+            excluded_hardlink_path.metadata().unwrap().ino()
+        );
+        debug!(
+            "----{:?}: {}",
+            excluded_symlink_path,
+            excluded_symlink_path.metadata().unwrap().ino()
+        );
+        debug!(
+            "----{:?}: {}",
+            symlink_path,
+            symlink_path.metadata().unwrap().ino()
+        );
+
+        let mut agent_handle = common::spawn_agent(settings);
+        let stderr_reader = agent_handle.stderr.take().unwrap();
+        // Consume output
+        consume_output(stderr_reader);
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        for i in 20..30 {
+            writeln!(file, "SAMPLE {}", i).unwrap();
+        }
+        file.sync_all().unwrap();
+        common::force_client_to_flush(&log_dir).await;
+        // Wait for the data to be received by the mock ingester
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        let map = received.lock().await;
+        let file_info = map
+            .get(symlink_path.to_str().unwrap())
+            .expect("symlink not found");
+
+        for v in file_info.values.iter() {
+            debug!("line: {:?}", v);
+        }
+        for i in 0..30 {
+            assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
+        }
+        agent_handle.kill().expect("Could not kill process");
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
         shutdown_handle();
     });
     server_result.unwrap();

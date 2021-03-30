@@ -9,4 +9,4 @@ pub mod types {
     pub use logdna_client::*;
 }
 
-type Offset = (Box<[u8]>, u64);
+type Offset = (u64, u64);

@@ -5,10 +5,9 @@ pub use crate::cache::DirPathBuf;
 use crate::cache::{EntryKey, FileSystem};
 use crate::rule::Rules;
 use metrics::Metrics;
-use state::FileName;
+use state::FileId;
 use std::collections::HashMap;
-use std::ops::DerefMut;
-use std::os::unix::ffi::OsStrExt;
+use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex};
 
 use futures::{Stream, StreamExt};
@@ -56,7 +55,7 @@ impl Default for Lookback {
 pub struct Tailer {
     lookback_config: Lookback,
     fs_cache: Arc<Mutex<FileSystem>>,
-    initial_offsets: Option<HashMap<FileName, u64>>,
+    initial_offsets: Option<HashMap<FileId, u64>>,
 }
 
 impl Tailer {
@@ -65,7 +64,7 @@ impl Tailer {
         watched_dirs: Vec<DirPathBuf>,
         rules: Rules,
         lookback_config: Lookback,
-        initial_offsets: Option<HashMap<FileName, u64>>,
+        initial_offsets: Option<HashMap<FileId, u64>>,
     ) -> Self {
         Self {
             lookback_config,
@@ -123,12 +122,13 @@ impl Tailer {
                                 let path = fs.resolve_direct_path(&entry, &fs.entries.borrow());
                                 match entry {
                                     Entry::File { name, data, .. } => {
+                                        let inode: FileId = { (&data.borrow().deref().get_inode().await).into() };
                                         match lookback_config {
                                             Lookback::Start => {
                                                 let offset = match initial_offsets.as_ref() {
                                                     Some(initial_offsets) => {
-                                                        let offset = initial_offsets.get(&path.as_os_str().as_bytes().into()).copied().unwrap_or(0);
-                                                        debug!("Got offset {} from state for {:?} using key {:?}", offset, name, path);
+                                                        let offset = initial_offsets.get(&inode).copied().unwrap_or(0);
+                                                        debug!("Got offset {} from state for {:?} using key {:?} for path {:?}", offset, name, inode, path);
                                                         offset
                                                     }
                                                     None => 0
@@ -139,13 +139,13 @@ impl Tailer {
                                             Lookback::SmallFiles => {
                                                 let offset = match initial_offsets.as_ref() {
                                                     Some(initial_offsets) => {
-                                                        let offset = initial_offsets.get(&path.as_os_str().as_bytes().into()).copied().unwrap_or(0);
-                                                        debug!("Got offset {} from state for {:?} using key {:?}", offset, name, path);
+                                                        let offset = initial_offsets.get(&inode).copied().unwrap_or(0);
+                                                        debug!("Got offset {} from state for {:?} using key {:?} for path {:?}", offset, name, inode, path);
                                                         offset
                                                     }
                                                     None => {
                                                         let len = path.metadata().map(|m| m.len()).unwrap_or(0);
-                                                        debug!("Smallfiles lookback {} from state for {:?} using key {:?}", len, name, path);
+                                                        debug!("Smallfiles lookback {} from len for {:?} using key {:?}", len, name, path);
                                                         if len < 8192 {
                                                             0
                                                         } else{
@@ -177,12 +177,13 @@ impl Tailer {
                                             if let Some(entry) = &fs.entries.borrow().get(real_entry) {
                                                 let path = fs.resolve_direct_path(entry, &fs.entries.borrow());
                                                 if let Entry::File { data, .. } = entry {
+                                                    let inode: FileId = { (&data.borrow().deref().get_inode().await).into() };
                                                     match lookback_config {
                                                         Lookback::Start => {
                                                             let offset = match initial_offsets.as_ref() {
                                                                 Some(initial_offsets) => {
-                                                                    let offset = initial_offsets.get(&path.as_os_str().as_bytes().into()).copied().unwrap_or(0);
-                                                                    debug!("Got offset {} from state for {:?} using key {:?}", offset, sym_name, path);
+                                                                    let offset = initial_offsets.get(&inode).copied().unwrap_or(0);
+                                                                    debug!("Got offset {} from state for {:?} using key {:?} for path {:?}", offset, name, inode, path);
                                                                     offset
                                                                 }
                                                                 None => 0
@@ -193,14 +194,14 @@ impl Tailer {
                                                         Lookback::SmallFiles => {
                                                             let offset = match initial_offsets.as_ref() {
                                                                 Some(initial_offsets) => {
-                                                                    let offset = initial_offsets.get(&path.as_os_str().as_bytes().into()).copied().unwrap_or(0);
-                                                                    debug!("Got offset {} from state for {:?} using key {:?}", offset, sym_name, path);
+                                                                    let offset = initial_offsets.get(&inode).copied().unwrap_or(0);
+                                                                    debug!("Got offset {} from state for {:?} using key {:?} for path {:?}", offset, name, inode, path);
                                                                     offset
                                                                 }
                                                                 None => {
                                                                     // Check the actual file len
                                                                     let len = path.metadata().map(|m| m.len()).unwrap_or(0);
-                                                                    debug!("Smallfiles lookback {} from state for {:?} using key {:?}", len, sym_name, path);
+                                                                    debug!("Smallfiles lookback {} from len for {:?} using key {:?}", len, sym_name, path);
                                                                     if len < 8192 {
                                                                         0
                                                                     } else{
