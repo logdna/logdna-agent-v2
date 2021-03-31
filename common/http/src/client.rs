@@ -109,7 +109,7 @@ impl Client {
         line: impl IngestLineSerialize<String, bytes::Bytes, HashMap<String, String>, Ok = ()>
             + GetOffset,
     ) {
-        let key = line.get_key().map(bytes::Bytes::copy_from_slice);
+        let key = line.get_key();
         let offset = line.get_offset();
         self.poll().await;
         match self.buffer.as_mut().unwrap(/* poll will panic if this isn't set */).write_line(line).await

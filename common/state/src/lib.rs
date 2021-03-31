@@ -96,20 +96,11 @@ impl AgentState {
 }
 
 #[derive(Debug, Hash, Clone, PartialEq, Eq)]
-pub struct FileName(bytes::Bytes);
+pub struct FileId(u64);
 
-impl FileName {
-    pub fn bytes(&self) -> &[u8] {
-        &self.0
-    }
-}
-
-impl<T> From<T> for FileName
-where
-    T: AsRef<[u8]>,
-{
-    fn from(b: T) -> FileName {
-        FileName(bytes::Bytes::copy_from_slice(b.as_ref()))
+impl From<&u64> for FileId {
+    fn from(i: &u64) -> FileId {
+        FileId(*i)
     }
 }
 
@@ -128,13 +119,13 @@ pub enum FileOffsetStateError {
 }
 
 pub struct FileOffset {
-    pub key: FileName,
+    pub key: FileId,
     pub offset: u64,
 }
 
 pub enum FileOffsetUpdate {
     Update(FileOffset),
-    Delete(FileName),
+    Delete(FileId),
 }
 
 pub enum FileOffsetEvent {
@@ -151,7 +142,7 @@ pub struct FileOffsetWriteHandle {
 impl FileOffsetWriteHandle {
     pub async fn update(
         &self,
-        file_name: impl Into<FileName>,
+        file_name: impl Into<FileId>,
         offset: u64,
     ) -> Result<(), FileOffsetStateError> {
         Ok(self
@@ -165,7 +156,7 @@ impl FileOffsetWriteHandle {
             .await?)
     }
 
-    pub async fn delete(&self, file_name: impl Into<FileName>) -> Result<(), FileOffsetStateError> {
+    pub async fn delete(&self, file_name: impl Into<FileId>) -> Result<(), FileOffsetStateError> {
         Ok(self
             .tx
             .send(FileOffsetEvent::Update(FileOffsetUpdate::Delete(
@@ -229,10 +220,11 @@ impl FileOffsetState {
             .db
             .iterator_cf(cf_handle, IteratorMode::Start)
             .map(|(k, v)| {
-                let (int_bytes, _) = v.split_at(std::mem::size_of::<u64>());
+                let (k_bytes, _) = k.split_at(std::mem::size_of::<u64>());
+                let (v_bytes, _) = v.split_at(std::mem::size_of::<u64>());
                 FileOffset {
-                    key: FileName(bytes::Bytes::copy_from_slice(k.as_ref())),
-                    offset: u64::from_be_bytes(int_bytes.try_into().unwrap_or([0; 8])),
+                    key: FileId(u64::from_be_bytes(k_bytes.try_into().unwrap_or([0; 8]))),
+                    offset: u64::from_be_bytes(v_bytes.try_into().unwrap_or([0; 8])),
                 }
             })
             .collect::<Vec<_>>())
@@ -283,10 +275,15 @@ impl FileOffsetState {
                             (wb, FileOffsetEvent::Update(e)) => {
                                 let mut wb = wb.unwrap_or_default();
                                 match e {
-                                    FileOffsetUpdate::Update(FileOffset { key, offset }) => {
-                                        wb.put_cf(cf_handle, key.0, u64::to_be_bytes(offset))
+                                    FileOffsetUpdate::Update(FileOffset { key, offset }) => wb
+                                        .put_cf(
+                                            cf_handle,
+                                            u64::to_be_bytes(key.0),
+                                            u64::to_be_bytes(offset),
+                                        ),
+                                    FileOffsetUpdate::Delete(key) => {
+                                        wb.delete_cf(cf_handle, u64::to_be_bytes(key.0))
                                     }
-                                    FileOffsetUpdate::Delete(key) => wb.delete_cf(cf_handle, key.0),
                                 };
                                 Ok(Some(wb))
                             }
@@ -304,7 +301,7 @@ impl FileOffsetState {
 }
 
 pub trait GetOffset {
-    fn get_key(&self) -> Option<&[u8]>;
+    fn get_key(&self) -> Option<u64>;
     fn get_offset(&self) -> Option<u64>;
 }
 
@@ -330,7 +327,7 @@ mod test {
             let sh = offset_state.shutdown_handle().unwrap();
             assert_eq!(initial_count, offset_state.offsets().unwrap().len());
 
-            let paths = ["path1", "path2", "path3", "path04"];
+            let paths = [1, 2, 3, 4];
 
             tokio_test::block_on(async {
                 let _ = tokio::join!(
@@ -355,19 +352,19 @@ mod test {
                     async move {
                         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                         for path in paths.iter() {
-                            wh.update(path.as_bytes(), 13).await.unwrap();
+                            wh.update(path, 13).await.unwrap();
                         }
                         fh.flush().await.unwrap();
                         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
                         for path in paths[..2].iter() {
-                            wh.update(path.as_bytes(), 14).await.unwrap();
+                            wh.update(path, 14).await.unwrap();
                         }
                         fh.flush().await.unwrap();
                         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
                         for path in paths[..2].iter() {
-                            wh.delete(path.as_bytes()).await.unwrap();
+                            wh.delete(path).await.unwrap();
                         }
                         fh.flush().await.unwrap();
                     },
