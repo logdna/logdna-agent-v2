@@ -170,8 +170,8 @@ The valid values for this option are:
        * If there is information in the “state file”, use the last recorded state. 
        * If the file is not present in the “state file” and the file is less than 8KiB, start at the beginning. If the file is larger than 8KiB, start at the end. 
    * When set to **`start`**:
-    * If there is information in the “state file”, use the last recorded state. 
-    * If the file is not present in the “state file”, start at the beginning. 
+      * If there is information in the “state file”, use the last recorded state. 
+      * If the file is not present in the “state file”, start at the beginning. 
 
 **Notes:**
 * If you configure the LogDNA Agent to run as non-root, review the [documentation](KUBERNETES.md#enabling-persistent-agent-state) about enabling "statefulness" for the LogDNA Agent.
