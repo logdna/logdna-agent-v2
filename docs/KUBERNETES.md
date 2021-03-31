@@ -191,7 +191,7 @@ kubectl patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"add
 
 To avoid possible duplication or skipping of log messages during agent restart or upgrade, the agent stores its current file offsets on the host's filesystem, using a `hostPath` volume.
 
-The host directory must be writable by the user or group specified in the securityContext.
+The host directory must be writable by the user or group specified in the `securityContext`.
 
 To achieve this the host directory must either already exist with the correct
 permissions or else Kubernetes will create the directory without write permissions for the agent user.
