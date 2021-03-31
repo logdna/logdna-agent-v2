@@ -65,6 +65,8 @@ By default the agent will run as root. Below are environment-specific instructio
 * [Running as Non-Root on Kubernetes](KUBERNETES.md#run-as-non-root)
 * [Running as Non-Root on OpenShift](OPENSHIFT.md#run-as-non-root)
 
+If you configure the LogDNA Agent to run as non-root, review the [documentation about enabling "statefulness" for the agent](KUBERNETES.md#enabling-persistent-agent-state).
+
 ### Additional Installation Options
 
 More information about managing your deployments is documented for [Kubernetes](KUBERNETES.md) or [OpenShift](OPENSHIFT.md). This includes topics such as
@@ -158,12 +160,24 @@ Check out [Kubernetes documentation](https://kubernetes.io/docs/tasks/inject-dat
 
 ### Configuring Lookback
 
-The lookback strategy determines how the agent handles existing files on startup. This strategy is determined by `LOGDNA_LOOKBACK`. The set of valid values for this option are:
+The lookback strategy determines how the agent handles existing files on agent startup. This strategy is determined by the `LOGDNA_LOOKBACK` variable.
 
-* `start` - Always start at the beginning of the file
-* `smallfiles` - If the file is less than 8KiB, start at the beginning. Otherwise, start at the end
-* `none` - Always start at the end of the file
-* __Note:__ The default option is `smallfiles`.
+By default, the agent provides a "stateful", or persistent, collection of files that can be referenced whenever the agent is restarted, in order to return (or look back) to see any files that were ingested during the time that the agent was not running. The state directory location is defined using the `LOGDNA_DB_PATH` environment variable in the YAML file (the default path is `/var/lib/logdna`).
+
+The valid values for this option are:
+   * When set to **`none`**:
+      * lookback is disabled, and LogDNA Agent will read new lines as those are added to the file, ignoring the lines that were written before the time the Agent restarted.
+   * When set to **`smallfiles`** (default):
+       * If there is information in the “state file”, use the last recorded state. 
+       * If the file is not present in the “state file” and the file is less than 8KiB, start at the beginning. If the file is larger than 8KiB, start at the end. 
+   * When set to **`start`**:
+      * If there is information in the “state file”, use the last recorded state. 
+      * If the file is not present in the “state file”, start at the beginning. 
+
+**Notes:**
+* If you configure the LogDNA Agent to run as non-root, review the [documentation](KUBERNETES.md#enabling-persistent-agent-state) about enabling "statefulness" for the LogDNA Agent.
+* When upgrading from LogDNA Agent version 3.0 to 3.1, the state file will initially be empty, so the lookback setting will be used for existing files. After that (i.e. on process restart), the state file will be present and will be used.
+
 
 ### Configuring Journald
 
