@@ -198,7 +198,7 @@ permissions or else Kubernetes will create the directory without write permissio
 
 In this case the permissions must be set before the agent starts. When running as non-root the agent pod does not have permissions to do this, so an initcontainer may be used.
 
-Below is an example manifest section which can be added to the pod specification alongside the containers array. It assumes the agent user/group are both 5000 and the volume is mounted at /var/lib/logdna
+Below is an example manifest section which can be added to the pod specification alongside the containers array. It assumes the agent user/group are both `5000` and the volume is mounted at `/var/lib/logdna`:
 
 ```console
       initContainers:
