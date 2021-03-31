@@ -187,9 +187,11 @@ Alternatively, update the DaemonSet configuration directly by using the followin
 kubectl patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"add","path":"/spec/template/spec/containers/0/securityContext/runAsUser","value":5000},{"op":"add","path":"/spec/template/spec/containers/0/securityContext/runAsGroup","value":5000}]'
 ```
 
-### Enabling persistent agent state
+### Enabling file offset tracking across restarts
 
-To avoid skipping or duplicating logs when the agent pod restarts or is replaced the agent needs to store it's progress on the host node's filesystem. This is achieved using a hostPath volume. The host directory must be writable by the user or group specified in the securityContext.
+To avoid possible duplication or skipping of log messages during agent restart or upgrade, the agent stores its current file offsets on the host node's filesystem, using a hostPath volume.
+
+The host directory must be writable by the user or group specified in the securityContext.
 
 To achieve this the host directory must either already exist with the correct
 permissions or else Kubernetes will create the directory without write permissions for the agent user.
