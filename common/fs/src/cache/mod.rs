@@ -15,11 +15,11 @@ use std::sync::{Arc, Mutex};
 use std::{fmt, io};
 
 use futures::{Stream, StreamExt};
-use hashbrown::hash_map::Entry as HashMapEntry;
-use hashbrown::HashMap;
 use inotify::WatchDescriptor;
 use metrics::Metrics;
 use slotmap::{DefaultKey, SlotMap};
+use std::collections::hash_map::Entry as HashMapEntry;
+use std::collections::HashMap;
 use thiserror::Error;
 
 pub mod dir_path;
@@ -150,7 +150,14 @@ impl FileSystem {
                 } else {
                     for event in events {
                         match event {
-                            Event::New(entry) => fs.initial_events.push(Event::Initialize(entry)),
+                            Event::New(entry_key) => {
+                                if let Some(entry) = entries.get(entry_key) {
+                                    let path = fs.resolve_direct_path(entry, &entries);
+                                    if fs.is_initial_dir_target(&path) {
+                                        fs.initial_events.push(Event::Initialize(entry_key))
+                                    }
+                                }
+                            }
                             _ => panic!("unexpected event in initialization"),
                         };
                     }
@@ -561,13 +568,13 @@ impl FileSystem {
 
         self.watch_descriptors
             .entry(entry.watch_descriptor().clone())
-            .or_insert(Vec::new())
+            .or_insert_with(Vec::new)
             .push(entry_ptr);
 
         if let Entry::Symlink { link, .. } = entry.deref() {
             self.symlinks
                 .entry(link.clone())
-                .or_insert(Vec::new())
+                .or_insert_with(Vec::new)
                 .push(entry_ptr);
         }
 
@@ -659,7 +666,7 @@ impl FileSystem {
             let mut _links = vec![];
             match entry.deref() {
                 Entry::Dir { children, .. } => {
-                    for (_, child) in children {
+                    for child in children.values() {
                         _children.push(*child);
                         //self.drop_entry(*child, events, _entries);
                     }
@@ -918,7 +925,7 @@ impl FileSystem {
 
     /// Determines whether the path is within the initial dir
     /// and either passes the master rules (e.g. "*.log") or it's a directory
-    fn is_initial_dir_target(&self, path: &PathBuf) -> bool {
+    pub(crate) fn is_initial_dir_target(&self, path: &PathBuf) -> bool {
         // Must be within the initial dir
         if self.initial_dir_rules.passes(path) != Status::Ok {
             return false;
@@ -1065,7 +1072,7 @@ mod tests {
 
     macro_rules! take_events {
         ( $x:expr, $y: expr ) => {{
-            use tokio::stream::StreamExt;
+            use tokio_stream::StreamExt;
             let mut buf = [0u8; 4096];
 
             tokio_test::block_on(async {

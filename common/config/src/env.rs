@@ -82,6 +82,10 @@ pub struct Config {
     #[example("none")]
     pub lookback: Option<String>,
 
+    #[env(LOGDNA_USE_K8S_LOG_ENRICHMENT)]
+    #[example("always")]
+    pub use_k8s_enrichment: Option<String>,
+
     #[env(LOGDNA_LOG_K8S_EVENTS)]
     #[example("always")]
     pub log_k8s_events: Option<String>,
@@ -218,6 +222,10 @@ impl Config {
         if let Some(mut v) = self.journald_paths {
             let paths = raw.journald.paths.get_or_insert(Vec::new());
             paths.append(&mut v);
+        }
+
+        if self.use_k8s_enrichment.is_some() {
+            raw.log.use_k8s_enrichment = self.use_k8s_enrichment;
         }
 
         if self.log_k8s_events.is_some() {

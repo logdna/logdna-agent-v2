@@ -1,12 +1,13 @@
 # LogDNA Agent
 
-[![Rustc Version 1.42+]][rustc] [Join us on LogDNA's Public Slack]
+[![Rustc Version 1.46+]][rustc]
+[Join us at the LogDNA community forum]: https://community.logdna.com
 
-The LogDNA agent is a fast, resource-efficient log collection client that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
+The LogDNA agent is a resource-efficient log collection client that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
 
-[Rustc Version 1.42+]: https://img.shields.io/badge/rustc-1.42+-lightgray.svg
+[Rustc Version 1.46+]: https://img.shields.io/badge/rustc-1.42+-lightgray.svg
 [rustc]: https://blog.rust-lang.org/2020/03/12/Rust-1.42.html
-[Join us on LogDNA's Public Slack]: http://chat.logdna.com/
+[Join us at the LogDNA community forum]: https://community.logdna.com
 [LogDNA]: https://logdna.com
 [Rust]: https://www.rust-lang.org/
 [Kubernetes]: https://kubernetes.io/
@@ -140,7 +141,8 @@ The agent accepts configuration from two sources, environment variables and a co
 |`LOGDNA_INCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE_REGEX`|Comma separated list of regex patterns to exclude files from monitoring||
 |`LOGDNA_JOURNALD_PATHS`|Comma separated list of paths (directories or files) of journald paths to monitor||
 |`LOGDNA_LOOKBACK`|The lookback strategy on startup|`smallfiles`|
-|`LOGDNA_LOG_K8S_EVENTS`|Whether the agent should capture Kubernetes events|`always`|
+|`LOGDNA_USE_K8S_LOG_ENRICHMENT`|Determines whether the agent should query the K8s API to enrich log lines from other pods.|`always`|
+|`LOGDNA_LOG_K8S_EVENTS`|Whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
 |`LOGDNA_DB_PATH`|The directory the agent will store it's state database. Note that the agent must have write access to the directory and be a persistent volume.||
 
 1. We support [this flavor of globber syntax](https://github.com/CJP10/globber).
@@ -161,7 +163,7 @@ Check out [Kubernetes documentation](https://kubernetes.io/docs/tasks/inject-dat
 
 The lookback strategy determines how the agent handles existing files on agent startup. This strategy is determined by the `LOGDNA_LOOKBACK` variable.
 
-By default, the agent provides a "stateful", or persistent, collection of files that can be referenced whenever the agent is restarted, in order to return (or look back) to see any files that were ingested during the time that the agent was not running. The state file location is defined using the `LOGDNA_DB_PATH` environment variable in the YAML file (the default path is /var/lib/logdna/agent_state.db).
+By default, the agent provides a "stateful", or persistent, collection of files that can be referenced whenever the agent is restarted, in order to return (or look back) to see any files that were ingested during the time that the agent was not running. The state directory location is defined using the `LOGDNA_DB_PATH` environment variable in the YAML file (the default path is `/var/lib/logdna`).
 
 The valid values for this option are:
    * When set to **`none`**:

@@ -1,0 +1,113 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: logdna-agent
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: logdna-agent
+rules:
+  - apiGroups: [ "" ]
+    resources: [ "configmaps" ]
+    verbs: [ "get","list", "create", "watch" ]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: logdna-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: logdna-agent
+subjects:
+  - kind: ServiceAccount
+    name: logdna-agent
+    namespace: agent-dev
+
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: logdna-agent
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get","list", "create", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get","list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: logdna-agent
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: logdna-agent
+subjects:
+  - kind: ServiceAccount
+    name: logdna-agent
+    namespace: agent-dev
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: agent-dev-build
+spec:
+  serviceAccountName: logdna-agent
+  containers:
+    - name: logdna-agent-kind
+      image: logdna-agent-kind:building
+      imagePullPolicy: IfNotPresent
+      env:
+        - name: RUST_BACKTRACE
+          value: "full"
+        - name: SCCACHE_BUCKET
+          value: "$SCCACHE_BUCKET"
+        - name: SCCACHE_REGION
+          value: "$SCCACHE_REGION"
+        - name: AWS_ACCESS_KEY_ID
+          value: "$AWS_ACCESS_KEY_ID"
+        - name: AWS_SECRET_ACCESS_KEY
+          value: "$AWS_SECRET_ACCESS_KEY"
+      volumeMounts:
+        - mountPath: /var/log
+          name: varlog
+        - mountPath: /var/data
+          name: vardata
+        - mountPath: /var/lib/docker/containers
+          name: varlibdockercontainers
+          readOnly: true
+        - mountPath: /mnt
+          name: mnt
+          readOnly: true
+        - mountPath: /etc/os-release
+          name: osrelease
+        - mountPath: /etc/logdna-hostname
+          name: logdnahostname
+      command: ["/bin/sh"]
+      args: ["-c", "cargo test --manifest-path bin/Cargo.toml --features k8s_tests -- --nocapture"]
+  restartPolicy: Never
+  volumes:
+    - name: varlog
+      hostPath:
+        path: /var/log
+    - name: vardata
+      hostPath:
+        path: /var/data
+    - name: varlibdockercontainers
+      hostPath:
+        path: /var/lib/docker/containers
+    - name: mnt
+      hostPath:
+        path: /mnt
+    - name: osrelease
+      hostPath:
+        path: /etc/os-release
+    - name: logdnahostname
+      hostPath:
+        path: /etc/hostname

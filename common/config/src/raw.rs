@@ -53,6 +53,7 @@ pub struct LogConfig {
     pub exclude: Option<Rules>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lookback: Option<String>,
+    pub use_k8s_enrichment: Option<String>,
     pub log_k8s_events: Option<String>,
 }
 
@@ -124,6 +125,7 @@ impl Default for LogConfig {
                 regex: Vec::new(),
             }),
             lookback: None,
+            use_k8s_enrichment: None,
             log_k8s_events: None,
         }
     }

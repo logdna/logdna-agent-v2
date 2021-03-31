@@ -15,12 +15,12 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 
 use futures::Future;
 use log::debug;
-use logdna_mock_ingester::{http_ingester, https_ingester, FileLineCounter, HyperError};
+use logdna_mock_ingester::{http_ingester, https_ingester, FileLineCounter, IngestError};
 
 use rcgen::generate_simple_self_signed;
 use rustls::internal::pemfile;
 
-static LINE: &str = "Nov 30 09:14:47 sample-host-name sampleprocess[1204]: Hello from process";
+pub static LINE: &str = "Nov 30 09:14:47 sample-host-name sampleprocess[1204]: Hello from process";
 
 pub struct FileContext {
     pub file_path: PathBuf,
@@ -92,7 +92,7 @@ pub fn append_to_file(file_path: &Path, lines: i32, sync_every: i32) -> Result<(
 
 pub async fn force_client_to_flush(dir_path: &Path) {
     // Client flushing delay
-    tokio::time::delay_for(tokio::time::Duration::from_millis(300)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
     // Append to a dummy file
     append_to_file(&dir_path.join("force_flush.log"), 1, 1).unwrap();
 }
@@ -106,7 +106,7 @@ pub fn truncate_file(file_path: &PathBuf) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct AgentSettings<'a> {
     pub log_dirs: &'a str,
     pub exclusion_regex: Option<&'a str>,
@@ -153,7 +153,6 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
     assert_ne!(ingestion_key, "");
 
     let agent = cmd
-        .env_clear()
         .env("RUST_LOG", "debug")
         .env("RUST_BACKTRACE", "full")
         .env("LOGDNA_LOG_DIRS", settings.log_dirs)
@@ -277,7 +276,7 @@ fn get_available_port() -> Option<u16> {
 }
 
 pub fn self_signed_https_ingester() -> (
-    impl Future<Output = std::result::Result<(), HyperError>>,
+    impl Future<Output = std::result::Result<(), IngestError>>,
     FileLineCounter,
     impl FnOnce(),
     tempfile::NamedTempFile,
@@ -313,7 +312,7 @@ pub fn self_signed_https_ingester() -> (
 }
 
 pub fn start_http_ingester() -> (
-    impl Future<Output = std::result::Result<(), HyperError>>,
+    impl Future<Output = std::result::Result<(), IngestError>>,
     FileLineCounter,
     impl FnOnce(),
     String,
@@ -328,4 +327,13 @@ pub fn start_http_ingester() -> (
         shutdown_handle,
         format!("localhost:{}", port),
     )
+}
+
+pub fn consume_output(stderr_handle: std::process::ChildStderr) {
+    let stderr_reader = std::io::BufReader::new(stderr_handle);
+    std::thread::spawn(move || {
+        for line in stderr_reader.lines() {
+            debug!("{:?}", line);
+        }
+    });
 }

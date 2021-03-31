@@ -20,7 +20,7 @@ use journald::source::create_source;
 use k8s::event_source::K8sEventStream;
 
 use k8s::middleware::K8sMetadata;
-use k8s::K8sEventLogConf;
+use k8s::K8sTrackingConf;
 use metrics::Metrics;
 use middleware::Executor;
 
@@ -49,7 +49,7 @@ pub static PKG_NAME: &str = env!("CARGO_PKG_NAME");
 pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
-    env_logger::from_env(Env::default().default_filter_or("info")).init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
 
     // Actually use the data to work around a bug in rustc:
@@ -81,7 +81,7 @@ fn main() {
                     match offsets {
                         Ok(os) => {
                             initial_offsets =
-                                Some(os.into_iter().map(|fo| (fo.key, fo.offset)).collect())
+                                Some(os.into_iter().map(|fo| (fo.key, fo.offset)).collect());
                         }
                         Err(e) => warn!("couldn't retrieve offsets from agent state, {:?}", e),
                     }
@@ -103,9 +103,14 @@ fn main() {
     client.borrow_mut().set_timeout(config.http.timeout);
 
     let mut executor = Executor::new();
-    if PathBuf::from("/var/log/containers/").exists() {
+    if config.log.use_k8s_enrichment == K8sTrackingConf::Always
+        && PathBuf::from("/var/log/containers/").exists()
+    {
         match K8sMetadata::new() {
-            Ok(v) => executor.register(v),
+            Ok(v) => {
+                executor.register(v);
+                info!("Registered k8s metadata middleware");
+            }
             Err(e) => warn!("{}", e),
         };
     }
@@ -122,8 +127,8 @@ fn main() {
     let journald_source = create_source(&config.journald.paths);
 
     let k8s_event_stream = match config.log.log_k8s_events {
-        K8sEventLogConf::Never => None,
-        K8sEventLogConf::Always => Some(
+        K8sTrackingConf::Never => None,
+        K8sTrackingConf::Always => Some(
             K8sEventStream::try_default(
                 std::env::var("POD_NAME").ok(),
                 std::env::var("NAMESPACE").ok(),
@@ -135,7 +140,7 @@ fn main() {
         ),
     };
     // Create the runtime
-    let mut rt = Runtime::new().unwrap();
+    let rt = Runtime::new().unwrap();
 
     if let Some(offset_state) = offset_state {
         rt.spawn(offset_state.run().unwrap());
@@ -184,8 +189,10 @@ fn main() {
 
         let sources = futures::stream::select(
             sources,
-            tokio::time::interval(tokio::time::Duration::from_millis(POLL_PERIOD_MS))
-                .map(Either::Right),
+            tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
+                tokio::time::Duration::from_millis(POLL_PERIOD_MS),
+            ))
+            .map(Either::Right),
         );
 
         sources

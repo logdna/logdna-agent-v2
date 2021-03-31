@@ -2,20 +2,19 @@ use crate::cache::entry::Entry;
 use crate::cache::event::Event;
 use crate::cache::tailed_file::LazyLineSerializer;
 pub use crate::cache::DirPathBuf;
-use crate::cache::FileSystem;
+use crate::cache::{EntryKey, FileSystem};
 use crate::rule::Rules;
 use metrics::Metrics;
-use state::FileName;
+use state::FileId;
 use std::collections::HashMap;
-use std::ops::DerefMut;
-use std::os::unix::ffi::OsStrExt;
+use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, Mutex};
 
 use futures::{Stream, StreamExt};
 
 use thiserror::Error;
 
-#[derive(Clone, std::fmt::Debug)]
+#[derive(Clone, std::fmt::Debug, PartialEq)]
 pub enum Lookback {
     Start,
     SmallFiles,
@@ -56,7 +55,7 @@ impl Default for Lookback {
 pub struct Tailer {
     lookback_config: Lookback,
     fs_cache: Arc<Mutex<FileSystem>>,
-    initial_offsets: Option<HashMap<FileName, u64>>,
+    initial_offsets: Option<HashMap<FileId, u64>>,
 }
 
 impl Tailer {
@@ -65,7 +64,7 @@ impl Tailer {
         watched_dirs: Vec<DirPathBuf>,
         rules: Rules,
         lookback_config: Lookback,
-        initial_offsets: Option<HashMap<FileName, u64>>,
+        initial_offsets: Option<HashMap<FileId, u64>>,
     ) -> Self {
         Self {
             lookback_config,
@@ -73,6 +72,21 @@ impl Tailer {
             initial_offsets,
         }
     }
+
+    fn get_file_for_path(fs: &FileSystem, next_path: &std::path::PathBuf) -> Option<EntryKey> {
+        let entries = fs.entries.borrow();
+        let mut next_path = next_path;
+        loop {
+            let next_entry_key = fs.lookup(next_path, &entries)?;
+            match entries.get(next_entry_key) {
+                Some(Entry::Symlink { link, .. }) => next_path = link,
+                Some(Entry::File { .. }) => return Some(next_entry_key),
+                _ => break,
+            }
+        }
+        None
+    }
+
     /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
     pub fn process<'a>(
         &mut self,
@@ -102,53 +116,125 @@ impl Tailer {
                     let fs = fs.lock().expect("Couldn't lock fs");
                     match event {
                         Event::Initialize(entry_ptr) => {
-                            debug!("Initialise Event");
+                            debug!("initialize Event");
                             // will initiate a file to it's current length
                             if let Some(entry) = fs.entries.borrow().get(entry_ptr){
                                 let path = fs.resolve_direct_path(&entry, &fs.entries.borrow());
-                                if let Entry::File { data, .. } = entry {
-                                    match lookback_config {
-                                        Lookback::Start => {
-                                            let offset = match initial_offsets.as_ref() {
-                                                Some(initial_offsets) => {
-                                                    initial_offsets.get(&path.as_os_str().as_bytes().into()).copied().unwrap_or(0)
-                                                }
-                                                None => 0
-                                            };
-                                            info!("initialized {:?} with offset {}", path, offset);
-                                            data.borrow_mut().deref_mut().seek(offset).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
-                                        },
-                                        Lookback::SmallFiles => {
-                                            let offset = match initial_offsets.as_ref() {
-                                                Some(initial_offsets) => {
-                                                    initial_offsets.get(&path.as_os_str().as_bytes().into()).copied().unwrap_or(0)
-                                                }
-                                                None => {
-                                                    let len = path.metadata().map(|m| m.len()).unwrap_or(0);
-                                                    if len < 8192 {
-                                                        0
-                                                    } else{
-                                                        len
+                                match entry {
+                                    Entry::File { name, data, .. } => {
+                                        let inode: FileId = { (&data.borrow().deref().get_inode().await).into() };
+                                        match lookback_config {
+                                            Lookback::Start => {
+                                                let offset = match initial_offsets.as_ref() {
+                                                    Some(initial_offsets) => {
+                                                        let offset = initial_offsets.get(&inode).copied().unwrap_or(0);
+                                                        debug!("Got offset {} from state for {:?} using key {:?} for path {:?}", offset, name, inode, path);
+                                                        offset
                                                     }
-                                                }
-                                            };
-                                            info!("initialized {:?} with offset {}", path, offset);
-                                            data.borrow_mut().deref_mut().seek(offset).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
-                                        },
-                                        Lookback::None => {
-                                            let len = path.metadata().map(|m| m.len()).unwrap_or(0);
-                                            info!("initialized {:?} with offset {}", path, len);
-                                            data.borrow_mut().deref_mut().seek(len).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
+                                                    None => 0
+                                                };
+                                                info!("initialized {:?} with offset {}", path, offset);
+                                                data.borrow_mut().deref_mut().seek(offset).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
+                                            },
+                                            Lookback::SmallFiles => {
+                                                let offset = match initial_offsets.as_ref() {
+                                                    Some(initial_offsets) => {
+                                                        let offset = initial_offsets.get(&inode).copied().unwrap_or(0);
+                                                        debug!("Got offset {} from state for {:?} using key {:?} for path {:?}", offset, name, inode, path);
+                                                        offset
+                                                    }
+                                                    None => {
+                                                        let len = path.metadata().map(|m| m.len()).unwrap_or(0);
+                                                        debug!("Smallfiles lookback {} from len for {:?} using key {:?}", len, name, path);
+                                                        if len < 8192 {
+                                                            0
+                                                        } else{
+                                                            len
+                                                        }
+                                                    }
+                                                };
+                                                info!("initialized {:?} with offset {}", path, offset);
+                                                data.borrow_mut().deref_mut().seek(offset).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
+                                            },
+                                            Lookback::None => {
+                                                let len = path.metadata().map(|m| m.len()).unwrap_or(0);
+                                                info!("initialized {:?} with offset {}", path, len);
+                                                data.borrow_mut().deref_mut().seek(len).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
+                                            }
+                                        }
+                                        if fs.is_initial_dir_target(&path) {
+                                            debug!("File is in initial dirs");
+                                            data.borrow_mut().tail(vec![path]).await
+                                        } else {
+                                            None
                                         }
                                     }
-                                    data.borrow_mut().tail(vec![path]).await
-                                } else {
-                                    None
+                                    Entry::Symlink { name, link, .. } => {
+                                        let sym_path = path.clone();
+                                        let sym_name = name;
+                                        info!("initialize event for symlink {:?}, target {:?}", name, link);
+                                        if let Some(real_entry) = Tailer::get_file_for_path(&fs, link) {
+                                            if let Some(entry) = &fs.entries.borrow().get(real_entry) {
+                                                let path = fs.resolve_direct_path(entry, &fs.entries.borrow());
+                                                if let Entry::File { data, .. } = entry {
+                                                    let inode: FileId = { (&data.borrow().deref().get_inode().await).into() };
+                                                    match lookback_config {
+                                                        Lookback::Start => {
+                                                            let offset = match initial_offsets.as_ref() {
+                                                                Some(initial_offsets) => {
+                                                                    let offset = initial_offsets.get(&inode).copied().unwrap_or(0);
+                                                                    debug!("Got offset {} from state for {:?} using key {:?} for path {:?}", offset, name, inode, path);
+                                                                    offset
+                                                                }
+                                                                None => 0
+                                                            };
+                                                            info!("initialized symlink {:?} with offset {}", sym_name, offset);
+                                                            data.borrow_mut().deref_mut().seek(offset).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
+                                                        },
+                                                        Lookback::SmallFiles => {
+                                                            let offset = match initial_offsets.as_ref() {
+                                                                Some(initial_offsets) => {
+                                                                    let offset = initial_offsets.get(&inode).copied().unwrap_or(0);
+                                                                    debug!("Got offset {} from state for {:?} using key {:?} for path {:?}", offset, name, inode, path);
+                                                                    offset
+                                                                }
+                                                                None => {
+                                                                    // Check the actual file len
+                                                                    let len = path.metadata().map(|m| m.len()).unwrap_or(0);
+                                                                    debug!("Smallfiles lookback {} from len for {:?} using key {:?}", len, sym_name, path);
+                                                                    if len < 8192 {
+                                                                        0
+                                                                    } else{
+                                                                        len
+                                                                    }
+                                                                }
+                                                            };
+                                                            info!("initialized symlink {:?} with offset {}", sym_name, offset);
+                                                            data.borrow_mut().deref_mut().seek(offset).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
+                                                        },
+                                                        Lookback::None => {
+                                                            let len = path.metadata().map(|m| m.len()).unwrap_or(0);
+                                                            info!("initialized symlink {:?} with offset {}", sym_name, len);
+                                                            data.borrow_mut().deref_mut().seek(len).await.unwrap_or_else(|e| error!("error seeking {:?}", e))
+                                                        }
+                                                    }
+                                                    data.borrow_mut().tail(vec![sym_path]).await
+                                                } else {
+                                                    None
+                                                }
+                                            } else {
+                                                None
+                                            }
+                                        } else {
+                                            info!("can't initialize symlink - pointed to file / directory doesn't exist: {:?}", path);
+                                            None
+                                        }
+                                    }
+                                    _ => None
                                 }
                             } else {
                                 None
                             }
-
                         }
                         Event::New(entry_ptr) => {
                             Metrics::fs().increment_creates();
@@ -266,7 +352,7 @@ mod test {
     use std::io::Write;
     use std::panic;
     use tempfile::tempdir;
-    use tokio::stream::StreamExt;
+    use tokio_stream::StreamExt;
 
     macro_rules! take_events {
         ( $x:expr, $y: expr ) => {{
@@ -324,7 +410,7 @@ mod test {
                     .timeout(std::time::Duration::from_millis(500));
 
                 let write_files = async move {
-                    tokio::time::delay_for(tokio::time::Duration::from_millis(250)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
                     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
                     file.sync_all().expect("Failed to sync file");
                 };
@@ -374,7 +460,7 @@ mod test {
                     .timeout(std::time::Duration::from_millis(500));
 
                 let write_files = async move {
-                    tokio::time::delay_for(tokio::time::Duration::from_millis(250)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
 
                     let log_lines2 = "This is a test log line2";
                     writeln!(file, "{}", log_lines2).expect("Couldn't write to temp log file...");
@@ -426,7 +512,7 @@ mod test {
                     .timeout(std::time::Duration::from_millis(500));
 
                 let write_files = async move {
-                    tokio::time::delay_for(tokio::time::Duration::from_millis(250)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
                     (0..5).for_each(|_| {
                         writeln!(file, "{}", log_lines)
                             .expect("Couldn't write to temp log file...");
