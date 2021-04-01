@@ -175,7 +175,7 @@ The valid values for this option are:
       * If the file is not present in the “state file”, start at the beginning. 
 
 **Notes:**
-* If you configure the LogDNA Agent to run as non-root, review the [documentation](KUBERNETES.md#enabling-persistent-agent-state) about enabling "statefulness" for the LogDNA Agent.
+* If you configure the LogDNA Agent to run as non-root, review the [documentation](KUBERNETES.md#enabling-file-offset-tracking-across-restarts) about enabling "statefulness" for the LogDNA Agent.
 * When upgrading from LogDNA Agent version 3.0 to 3.1, the state file will initially be empty, so the lookback setting will be used for existing files. After that (i.e. on process restart), the state file will be present and will be used.
 
 
