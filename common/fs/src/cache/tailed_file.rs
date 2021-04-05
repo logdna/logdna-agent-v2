@@ -409,7 +409,7 @@ impl LineMetaMut for LazyLineSerializer {
             return (None, self.line_buffer.as_deref());
         }
 
-        return match self.reader.try_lock() {
+        match self.reader.try_lock() {
             Some(file_inner) => {
                 // Cache the value to avoid excessive cloning
                 self.line_buffer = Some(file_inner.buf.clone());
@@ -419,7 +419,7 @@ impl LineMetaMut for LazyLineSerializer {
                 // This should never happen but should be handled by callers
                 (None, None)
             }
-        };
+        }
     }
 }
 

@@ -1,25 +1,26 @@
 use crate::{Middleware, Status};
 use http::types::body::LineMetaMut;
-use regex::bytes::Regex as BytesRegex;
-use regex::Regex as TextRegex;
+use regex::bytes::Regex;
+use std::str::from_utf8;
 use thiserror::Error;
 
-static REDACTED_TEXT: &str = "[REDACTED]";
-static REDACT_BYTES: &[u8] = &REDACTED_TEXT.as_bytes();
+static REDACT_BYTES: &[u8] = "[REDACTED]".as_bytes();
 
 pub struct LineRules {
-    exclusion_text: Vec<TextRegex>,
-    exclusion_bytes: Vec<BytesRegex>,
-    inclusion_text: Vec<TextRegex>,
-    inclusion_bytes: Vec<BytesRegex>,
-    redact_text: Vec<TextRegex>,
-    redact_bytes: Vec<BytesRegex>,
+    exclusion: Vec<Regex>,
+    inclusion: Vec<Regex>,
+    redact: Vec<Regex>,
 }
 
 #[derive(Clone, Debug, Error)]
 pub enum LineRulesError {
     #[error(transparent)]
     RegexError(regex::Error),
+}
+
+enum LineType {
+    String,
+    Buffer,
 }
 
 impl LineRules {
@@ -29,75 +30,53 @@ impl LineRules {
         redact: &[String],
     ) -> Result<LineRules, LineRulesError> {
         Ok(LineRules {
-            exclusion_text: map_to_regex(exclusion)?,
-            inclusion_text: map_to_regex(inclusion)?,
-            redact_text: map_to_regex(redact)?,
-            // At this time, regex values has been validated, it's safe to unwrap()
-            exclusion_bytes: exclusion
-                .iter()
-                .map(|s| BytesRegex::new(s).unwrap())
-                .collect(),
-            inclusion_bytes: inclusion
-                .iter()
-                .map(|s| BytesRegex::new(s).unwrap())
-                .collect(),
-            redact_bytes: redact.iter().map(|s| BytesRegex::new(s).unwrap()).collect(),
+            exclusion: map_to_regex(exclusion)?,
+            inclusion: map_to_regex(inclusion)?,
+            redact: map_to_regex(redact)?,
         })
     }
 
-    /// Applies inclusion and exclusion rules and replaces the redacted values
-    fn process_text<'a>(&self, line: &'a mut dyn LineMetaMut) -> Status<&'a mut dyn LineMetaMut> {
-        let value = line.get_line().0.unwrap();
+    /// Applies inclusion and exclusion rules and replaces the redacted values.
+    fn process_line<'a>(
+        &self,
+        line_type: LineType,
+        line: &'a mut dyn LineMetaMut,
+    ) -> Status<&'a mut dyn LineMetaMut> {
+        let value = match line_type {
+            LineType::Buffer => line.get_line().1.unwrap(),
+            LineType::String => line.get_line().0.unwrap().as_bytes(),
+        };
 
         // If it doesn't match any inclusion rule -> skip
-        if !self.inclusion_text.is_empty() && !self.inclusion_text.iter().any(|r| r.is_match(value))
-        {
+        if !self.inclusion.is_empty() && !self.inclusion.iter().any(|r| r.is_match(value)) {
             return Status::Skip;
         }
 
         // If any exclusion rule matches -> skip
-        if self.exclusion_text.iter().any(|r| r.is_match(value)) {
+        if self.exclusion.iter().any(|r| r.is_match(value)) {
             return Status::Skip;
         }
 
-        if !self.redact_text.is_empty() {
-            let mut v = value.to_string();
-            for r in self.redact_text.iter() {
-                v = r.replace_all(&v, REDACTED_TEXT).to_string();
-            }
-
-            if line.set_line_text(v).is_err() {
-                return Status::Skip;
-            }
-        }
-
-        Status::Ok(line)
-    }
-
-    /// Applies inclusion and exclusion rules and replaces the redacted values
-    fn process_bytes<'a>(&self, line: &'a mut dyn LineMetaMut) -> Status<&'a mut dyn LineMetaMut> {
-        let value = line.get_line().1.unwrap();
-
-        // If it doesn't match any inclusion rule -> skip
-        if !self.inclusion_bytes.is_empty()
-            && !self.inclusion_bytes.iter().any(|r| r.is_match(value))
-        {
-            return Status::Skip;
-        }
-
-        // If any exclusion rule matches -> skip
-        if self.exclusion_bytes.iter().any(|r| r.is_match(value)) {
-            return Status::Skip;
-        }
-
-        if !self.redact_bytes.is_empty() {
+        if !self.redact.is_empty() {
             let mut v = value.to_owned();
-            for r in self.redact_bytes.iter() {
+            for r in self.redact.iter() {
                 v = r.replace_all(&v, REDACT_BYTES).to_vec();
             }
 
-            if line.set_line_buffer(v).is_err() {
-                return Status::Skip;
+            match line_type {
+                LineType::Buffer => {
+                    if line.set_line_buffer(v).is_err() {
+                        return Status::Skip;
+                    }
+                }
+                LineType::String => match from_utf8(&v) {
+                    Ok(v) => {
+                        if line.set_line_text(v.to_string()).is_err() {
+                            return Status::Skip;
+                        }
+                    }
+                    _ => return Status::Skip,
+                },
             }
         }
 
@@ -109,28 +88,25 @@ impl Middleware for LineRules {
     fn run(&self) {}
 
     fn process<'a>(&self, line: &'a mut dyn LineMetaMut) -> Status<&'a mut dyn LineMetaMut> {
-        if self.exclusion_text.is_empty()
-            && self.inclusion_text.is_empty()
-            && self.redact_text.is_empty()
-        {
+        if self.exclusion.is_empty() && self.inclusion.is_empty() && self.redact.is_empty() {
             // Avoid unnecessary allocations when no rules were defined
             return Status::Ok(line);
         }
 
         match line.get_line() {
-            (Some(_), None) => self.process_text(line),
-            (None, Some(_)) => self.process_bytes(line),
+            (Some(_), None) => self.process_line(LineType::String, line),
+            (None, Some(_)) => self.process_line(LineType::Buffer, line),
             (None, None) => Status::Skip,
             (Some(_), Some(_)) => panic!("line represented in both bytes and text"),
         }
     }
 }
 
-fn map_to_regex(rules: &[String]) -> Result<Vec<TextRegex>, LineRulesError> {
+fn map_to_regex(rules: &[String]) -> Result<Vec<Regex>, LineRulesError> {
     let mut result = Vec::with_capacity(rules.len());
     // Use a normal foreach to bubble up parsing errors
     for s in rules.iter() {
-        result.push(TextRegex::new(s).map_err(LineRulesError::RegexError)?);
+        result.push(Regex::new(s).map_err(LineRulesError::RegexError)?);
     }
     Ok(result)
 }
