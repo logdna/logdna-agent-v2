@@ -207,7 +207,7 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
     }
 
     if let Some(regex_str) = settings.line_redact_regex {
-        agent.env("LOGDNA_LINE_REDACT_REGEX", regex_str);
+        agent.env("LOGDNA_REDACT_REGEX", regex_str);
     }
 
     agent.spawn().expect("Failed to start agent")

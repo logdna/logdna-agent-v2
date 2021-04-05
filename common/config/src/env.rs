@@ -81,7 +81,7 @@ pub struct Config {
     #[env(LOGDNA_LINE_INCLUSION_REGEX)]
     pub line_inclusion_regex: Option<EnvList<String>>,
 
-    #[env(LOGDNA_LINE_REDACT_REGEX)]
+    #[env(LOGDNA_REDACT_REGEX)]
     #[example(r"\S+@\S+\.\S+")]
     pub line_redact_regex: Option<EnvList<String>>,
 
