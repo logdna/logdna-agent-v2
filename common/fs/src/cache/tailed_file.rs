@@ -744,11 +744,8 @@ mod tests {
             buf: Vec::new(),
             offset: 0,
             file_path,
+            inode: 0,
         }));
-        LazyLineSerializer::new(
-            file_inner,
-            "file/path.log".to_owned(),
-            (bytes::Bytes::from(Vec::new()), 0),
-        )
+        LazyLineSerializer::new(file_inner, "file/path.log".to_owned(), (0, 0))
     }
 }
