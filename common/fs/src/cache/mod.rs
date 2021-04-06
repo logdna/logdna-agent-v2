@@ -9,7 +9,7 @@ use std::ffi::{OsStr, OsString};
 use std::fs::read_dir;
 use std::iter::FromIterator;
 use std::ops::Deref;
-use std::path::{Component, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::{fmt, io};
@@ -460,7 +460,7 @@ impl FileSystem {
     /// returns an `Err`.
     fn insert(
         &mut self,
-        path: &PathBuf,
+        path: &Path,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap,
     ) -> FsResult<Option<EntryKey>> {
@@ -474,7 +474,7 @@ impl FileSystem {
             return Ok(None);
         }
 
-        let parent_ref = self.create_dir(&path.parent().unwrap().into(), _entries)?;
+        let parent_ref = self.create_dir(&path.parent().unwrap(), _entries)?;
         let parent_ref = self.follow_links(parent_ref, _entries);
 
         if parent_ref.is_none() {
@@ -630,14 +630,12 @@ impl FileSystem {
 
     fn remove(
         &mut self,
-        path: &PathBuf,
+        path: &Path,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap,
     ) -> FsResult<()> {
-        let path_buf = path.parent().ok_or(Error::PathNotValid)?.into();
-        let parent = self
-            .lookup(&path_buf, _entries)
-            .ok_or(Error::ParentLookup)?;
+        let parent = path.parent().ok_or(Error::PathNotValid)?;
+        let parent = self.lookup(parent, _entries).ok_or(Error::ParentLookup)?;
         let component = into_components(path).pop().ok_or(Error::PathNotValid)?;
 
         let to_drop = _entries
@@ -701,13 +699,13 @@ impl FileSystem {
     // e.g from = /var/log/syslog and to = /var/log/syslog.1.log
     fn rename(
         &mut self,
-        from: &PathBuf,
-        to: &PathBuf,
+        from: &Path,
+        to: &Path,
         events: &mut Vec<Event>,
         _entries: &mut EntryMap,
     ) -> FsResult<Option<EntryKey>> {
         let parent_path = to.parent().ok_or(Error::ParentNotValid)?;
-        let new_parent = self.create_dir(&parent_path.into(), _entries)?;
+        let new_parent = self.create_dir(parent_path, _entries)?;
 
         match self.lookup(from, _entries) {
             Some(entry_key) => {
@@ -741,7 +739,7 @@ impl FileSystem {
     // Creates all entries for a directory.
     // If one of the entries already exists, it is skipped over.
     // The returns a linked list of all entries.
-    fn create_dir(&mut self, path: &PathBuf, _entries: &mut EntryMap) -> FsResult<EntryKey> {
+    fn create_dir(&mut self, path: &Path, _entries: &mut EntryMap) -> FsResult<EntryKey> {
         let mut m_entry = self.root;
 
         let components = into_components(path);
@@ -851,7 +849,7 @@ impl FileSystem {
 
     /// Returns the entry that represents the supplied path.
     /// When the path is not represented and therefore has no entry then `None` is return.
-    pub fn lookup(&self, path: &PathBuf, _entries: &EntryMap) -> Option<EntryKey> {
+    pub fn lookup(&self, path: &Path, _entries: &EntryMap) -> Option<EntryKey> {
         let mut parent = self.root;
         let mut components = into_components(path);
         // remove the first component because it will always be the root
@@ -896,7 +894,7 @@ impl FileSystem {
         Some(result)
     }
 
-    fn is_symlink_target(&self, path: &PathBuf, _entries: &EntryMap) -> bool {
+    fn is_symlink_target(&self, path: &Path, _entries: &EntryMap) -> bool {
         for (_, symlink_ptrs) in self.symlinks.iter() {
             for symlink_ptr in symlink_ptrs.iter() {
                 if let Some(symlink) = _entries.get(*symlink_ptr) {
@@ -925,7 +923,7 @@ impl FileSystem {
 
     /// Determines whether the path is within the initial dir
     /// and either passes the master rules (e.g. "*.log") or it's a directory
-    pub(crate) fn is_initial_dir_target(&self, path: &PathBuf) -> bool {
+    pub(crate) fn is_initial_dir_target(&self, path: &Path) -> bool {
         // Must be within the initial dir
         if self.initial_dir_rules.passes(path) != Status::Ok {
             return false;
@@ -943,7 +941,7 @@ impl FileSystem {
     }
 
     /// Helper method for checking if a path passes exclusion/inclusion rules
-    fn passes(&self, path: &PathBuf, _entries: &EntryMap) -> bool {
+    fn passes(&self, path: &Path, _entries: &EntryMap) -> bool {
         self.is_initial_dir_target(path) || self.is_symlink_target(path, _entries)
     }
 
@@ -987,12 +985,12 @@ impl fmt::Debug for FileSystem {
 }
 
 // recursively scans a directory for unlimited depth
-fn recursive_scan(path: &PathBuf) -> Vec<PathBuf> {
+fn recursive_scan(path: &Path) -> Vec<PathBuf> {
     if !path.is_dir() {
         return vec![];
     }
 
-    let mut paths = vec![path.clone()];
+    let mut paths = vec![path.to_path_buf()];
 
     // read all files/dirs in path at depth 1
     let tmp_paths = match read_dir(&path) {
@@ -1024,7 +1022,7 @@ fn recursive_scan(path: &PathBuf) -> Vec<PathBuf> {
 }
 
 // Split the path into it's components.
-fn into_components(path: &PathBuf) -> Vec<OsString> {
+fn into_components(path: &Path) -> Vec<OsString> {
     path.components()
         .filter_map(|c| match c {
             Component::RootDir => Some("/".into()),
