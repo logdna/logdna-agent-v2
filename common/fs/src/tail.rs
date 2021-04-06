@@ -73,7 +73,7 @@ impl Tailer {
         }
     }
 
-    fn get_file_for_path(fs: &FileSystem, next_path: &std::path::PathBuf) -> Option<EntryKey> {
+    fn get_file_for_path(fs: &FileSystem, next_path: &std::path::Path) -> Option<EntryKey> {
         let entries = fs.entries.borrow();
         let mut next_path = next_path;
         loop {

@@ -1,5 +1,5 @@
 use std::fmt::Debug;
-use std::path::PathBuf;
+use std::path::Path;
 use std::str::FromStr;
 
 use globber::{Error as PatternError, Pattern};
@@ -12,7 +12,7 @@ pub type RuleList = Vec<Box<dyn Rule + Send>>;
 /// A trait for implementing a rule, see GlobRule/RegexRule for an example
 pub trait Rule: Debug {
     /// Takes a value and returns true or false based on if it matches
-    fn matches(&self, value: &PathBuf) -> bool;
+    fn matches(&self, value: &Path) -> bool;
 }
 
 /// Used for representing matches on Rules
@@ -49,8 +49,7 @@ impl Rules {
         }
     }
     /// Check if value is included (matches at least one inclusion rule)
-    pub fn included<'a, T: Into<&'a PathBuf>>(&self, value: T) -> Status {
-        let value = value.into();
+    pub fn included(&self, value: &Path) -> Status {
         for rule in &self.inclusion {
             if rule.matches(value) {
                 return Status::Ok;
@@ -59,8 +58,7 @@ impl Rules {
         Status::NotIncluded
     }
     /// Check if value is excluded (matches none of the exclusion rules)
-    pub fn excluded<'a, T: Into<&'a PathBuf>>(&self, value: T) -> Status {
-        let value = value.into();
+    pub fn excluded(&self, value: &Path) -> Status {
         for rule in &self.exclusion {
             if rule.matches(value) {
                 return Status::Excluded;
@@ -69,9 +67,7 @@ impl Rules {
         Status::Ok
     }
     /// Returns true if the value is included but not excluded
-    pub fn passes<'a, T: Into<&'a PathBuf>>(&self, value: T) -> Status {
-        let value = value.into();
-
+    pub fn passes(&self, value: &Path) -> Status {
         if self.included(value) == Status::NotIncluded {
             return Status::NotIncluded;
         }
@@ -118,7 +114,7 @@ impl RegexRule {
 }
 
 impl Rule for RegexRule {
-    fn matches(&self, value: &PathBuf) -> bool {
+    fn matches(&self, value: &Path) -> bool {
         self.inner
             .is_match(value.as_os_str().as_bytes())
             .unwrap_or(false)
@@ -149,7 +145,7 @@ impl GlobRule {
 }
 
 impl Rule for GlobRule {
-    fn matches(&self, value: &PathBuf) -> bool {
+    fn matches(&self, value: &Path) -> bool {
         self.inner.matches(&value.to_string_lossy())
     }
 }

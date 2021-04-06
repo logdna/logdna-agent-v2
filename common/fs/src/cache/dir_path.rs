@@ -55,8 +55,8 @@ impl std::convert::AsRef<Path> for DirPathBuf {
     }
 }
 
-impl std::convert::Into<PathBuf> for DirPathBuf {
-    fn into(self) -> PathBuf {
-        self.inner
+impl From<DirPathBuf> for PathBuf {
+    fn from(d: DirPathBuf) -> PathBuf {
+        d.inner
     }
 }

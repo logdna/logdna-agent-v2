@@ -10,7 +10,7 @@ use crate::types::body::{IngestBody, IngestBodyBuffer, IntoIngestBodyBuffer};
 use crate::Offset;
 use metrics::Metrics;
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use thiserror::Error;
 
@@ -25,7 +25,7 @@ pub enum Error {
     #[error(transparent)]
     Send(#[from] crossbeam::channel::SendError<Box<IngestBodyBuffer>>),
     #[error("{0:?} is not valid utf8")]
-    NonUTF8(std::path::PathBuf),
+    NonUtf8(std::path::PathBuf),
     #[error("{0} is not a valid file name")]
     InvalidFileName(std::string::String),
 }
@@ -101,7 +101,7 @@ impl Retry {
                 .file_name()
                 .and_then(|s| s.to_str())
                 .map(|s| s.to_string())
-                .ok_or_else(|| Error::NonUTF8(path.clone()))?;
+                .ok_or_else(|| Error::NonUtf8(path.clone()))?;
 
             let timestamp: i64 = file_name
                 .split('_')
@@ -121,7 +121,7 @@ impl Retry {
         Ok(())
     }
 
-    fn read_from_disk(path: &PathBuf) -> Result<(Option<Vec<Offset>>, IngestBody), Error> {
+    fn read_from_disk(path: &Path) -> Result<(Option<Vec<Offset>>, IngestBody), Error> {
         let mut file = File::open(path)?;
         let mut data = String::new();
         file.read_to_string(&mut data)?;

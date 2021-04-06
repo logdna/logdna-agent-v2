@@ -370,7 +370,8 @@ fn test_files_other_than_dot_log_should_be_not_included_by_default() {
         let matches_excluded_file = predicate::str::is_match(regex).unwrap();
         assert!(
             !matches_excluded_file.eval(&lines),
-            format!("{} should not been included", file_name)
+            "{} should not been included",
+            file_name
         );
     }
 
