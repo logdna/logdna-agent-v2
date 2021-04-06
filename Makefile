@@ -129,7 +129,7 @@ lint-format: ## Checks for formatting errors
 
 .PHONY:lint-clippy
 lint-clippy: ## Checks for code errors
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo clippy --all-targets -- -D warnings"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo clippy --all-targets -- -D warnings -A clippy::upper-case-acronyms -A clippy::ptr-arg -A clippy::from-over-into"
 
 .PHONY:lint-audit
 lint-audit: ## Audits packages for issues
