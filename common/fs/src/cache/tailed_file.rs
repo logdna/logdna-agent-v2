@@ -1,4 +1,4 @@
-use http::types::body::{KeyValueMap, LineBuilder, LineMeta, LineMetaMut, LineBufferMut};
+use http::types::body::{KeyValueMap, LineBufferMut, LineBuilder, LineMeta, LineMetaMut};
 use http::types::error::LineMetaError;
 use http::types::serialize::{
     IngestLineSerialize, IngestLineSerializeError, SerializeI64, SerializeMap, SerializeStr,
@@ -406,7 +406,7 @@ impl LineBufferMut for LazyLineSerializer {
                 self.line_buffer = Some(file_inner.buf.clone());
                 self.line_buffer.as_deref()
             }
-            None => None
+            None => None,
         }
     }
 

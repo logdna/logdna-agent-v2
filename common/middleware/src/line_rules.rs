@@ -1,6 +1,7 @@
 use crate::{Middleware, Status};
 use http::types::body::LineBufferMut;
 use regex::bytes::Regex;
+use std::cmp;
 use thiserror::Error;
 
 static REDACT_BYTES: &[u8] = "[REDACTED]".as_bytes();
@@ -48,14 +49,66 @@ impl LineRules {
         }
 
         if !self.redact.is_empty() {
-            let mut v = value.to_owned();
-            for r in self.redact.iter() {
-                v = r.replace_all(&v, REDACT_BYTES).to_vec();
-            }
+            return self.redact(value.to_owned(), line);
+        }
 
-            if line.set_line_buffer(v).is_err() {
-                return Status::Skip;
+        Status::Ok(line)
+    }
+
+    fn redact<'a>(
+        &self,
+        value: Vec<u8>,
+        line: &'a mut dyn LineBufferMut,
+    ) -> Status<&'a mut dyn LineBufferMut> {
+        let mut matches: Vec<(usize, usize)> = vec![];
+        for r in self.redact.iter() {
+            for m in r.find_iter(&value) {
+                let mut overlapping_match = None;
+                for (i, existing) in matches.iter().enumerate() {
+                    let overlaps =
+                        // Overlaps when it starts between an existing match
+                        (m.start() >= existing.0 && m.start() <= existing.1)
+                        // or it starts before an existing match
+                        // and ends after the existing match end
+                        || (m.start() <= existing.0 && m.end() >= existing.0);
+
+                    if overlaps {
+                        overlapping_match = Some((
+                            i,
+                            cmp::min(existing.0, m.start()),
+                            cmp::max(existing.1, m.end()),
+                        ));
+                        // Order is guaranteed so there's no need to continue processing
+                        break;
+                    }
+                }
+
+                if let Some(item) = overlapping_match {
+                    matches[item.0] = (item.1, item.2);
+                } else {
+                    matches.push((m.start(), m.end()));
+                }
             }
+        }
+
+        if matches.is_empty() {
+            return Status::Ok(line);
+        }
+
+        let mut redacted = Vec::with_capacity(value.len());
+        let mut index = 0;
+        for item in matches {
+            redacted.extend_from_slice(&value[index..item.0]);
+            redacted.extend_from_slice(REDACT_BYTES);
+            index = item.1;
+        }
+
+        if index < value.len() {
+            redacted.extend_from_slice(&value[index..]);
+        }
+
+        if line.set_line_buffer(redacted).is_err() {
+            return Status::Skip;
         }
 
         Status::Ok(line)
@@ -111,7 +164,10 @@ mod tests {
         ($p: ident, $line: expr, $expected: expr) => {
             match $p.process(&mut LineBuilder::new().line($line)) {
                 Status::Ok(l) => {
-                    assert_eq!(std::str::from_utf8(l.get_line_buffer().unwrap()).unwrap(), $expected);
+                    assert_eq!(
+                        std::str::from_utf8(l.get_line_buffer().unwrap()).unwrap(),
+                        $expected
+                    );
                 }
                 Status::Skip => panic!("should not have been skipped"),
             }
@@ -185,6 +241,7 @@ mod tests {
         let p = LineRules::new(&[], &[], redact).unwrap();
         redact_match!(p, "Hello INFO not redacted", "Hello INFO not redacted");
         redact_match!(p, "my sensitive information", "my [REDACTED] information");
+        redact_match!(p, "Sensitive sentence", "[REDACTED] sentence");
         redact_match!(
             p,
             "my email is support@logdna.com",
@@ -194,6 +251,30 @@ mod tests {
             p,
             "my date of birth is 01-02-1985",
             "my date of birth is [REDACTED]"
+        );
+    }
+
+    #[test]
+    fn should_support_overlapping_redactions() {
+        let redact = &vec![
+            s!(r"(?i:SI)"),
+            s!(r"(?i:SUPERSENSITIVE)"),
+            s!(r"(?i:SENSITIVE)"),
+            s!(r"(?i:TIV)"),
+            s!(r"(?i:S\w+E)"),
+            s!(r"(?i:SENSITIVE information)"),
+        ];
+        let p = LineRules::new(&[], &[], redact).unwrap();
+        redact_match!(p, "Hello INFO not redacted", "Hello INFO not redacted");
+        redact_match!(
+            p,
+            "my SENSITIVE information, in a sentence",
+            "my [REDACTED], in a [REDACTED]"
+        );
+        redact_match!(
+            p,
+            "Si, this is sensitive, supersensitive and sensible.",
+            "[REDACTED], this is [REDACTED], [REDACTED] and [REDACTED]."
         );
     }
 

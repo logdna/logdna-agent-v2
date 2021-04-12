@@ -38,7 +38,10 @@ impl Executor {
         }
     }
 
-    pub fn process<'a>(&self, line: &'a mut dyn LineBufferMut) -> Option<&'a mut dyn LineBufferMut> {
+    pub fn process<'a>(
+        &self,
+        line: &'a mut dyn LineBufferMut,
+    ) -> Option<&'a mut dyn LineBufferMut> {
         self.middlewares
             .iter()
             .try_fold(line, |l, m| match m.process(l) {

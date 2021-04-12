@@ -1377,17 +1377,19 @@ async fn test_line_inclusion() {
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_line_redact() {
-    let redact = Some("(?i:SENSITIVE)");
+    let redact = Some("(?i:SENSITIVE),(?i:SENSITIVE INFORMATION),(?i:VE )");
 
     let to_write = vec![
-        "this is a SENSITIVE value\n",
-        "this is another sensitive value\n",
+        "this is a SENSITIVE information\n",
+        "this is another sensitive  value\n",
+        "Five  messages\n",
         "a message\n",
     ];
 
     let expected = vec![
-        "this is a [REDACTED] value\n",
+        "this is a [REDACTED]\n",
         "this is another [REDACTED] value\n",
+        "Fi[REDACTED] messages\n",
         "a message\n",
     ];
 
