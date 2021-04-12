@@ -1,4 +1,4 @@
-use http::types::body::{KeyValueMap, LineBuilder, LineMeta, LineMetaMut};
+use http::types::body::{KeyValueMap, LineBuilder, LineMeta, LineMetaMut, LineBufferMut};
 use http::types::error::LineMetaError;
 use http::types::serialize::{
     IngestLineSerialize, IngestLineSerializeError, SerializeI64, SerializeMap, SerializeStr,
@@ -391,35 +391,28 @@ impl LineMetaMut for LazyLineSerializer {
         self.meta = Some(meta);
         Ok(())
     }
+}
 
-    fn set_line_text(&mut self, _line: String) -> Result<(), LineMetaError> {
-        Err(LineMetaError::Failed(
-            "text line can not be assigned to LazyLineSerializer",
-        ))
-    }
-
-    fn set_line_buffer(&mut self, line: Vec<u8>) -> Result<(), LineMetaError> {
-        self.line_buffer = Some(line);
-        Ok(())
-    }
-
-    fn get_line(&mut self) -> (Option<&str>, Option<&[u8]>) {
+impl LineBufferMut for LazyLineSerializer {
+    fn get_line_buffer(&mut self) -> Option<&[u8]> {
         if self.line_buffer.as_ref().is_some() {
             // Get the value without locking
-            return (None, self.line_buffer.as_deref());
+            return self.line_buffer.as_deref();
         }
 
         match self.reader.try_lock() {
             Some(file_inner) => {
                 // Cache the value to avoid excessive cloning
                 self.line_buffer = Some(file_inner.buf.clone());
-                (None, self.line_buffer.as_deref())
+                self.line_buffer.as_deref()
             }
-            None => {
-                // This should never happen but should be handled by callers
-                (None, None)
-            }
+            None => None
         }
+    }
+
+    fn set_line_buffer(&mut self, line: Vec<u8>) -> Result<(), LineMetaError> {
+        self.line_buffer = Some(line);
+        Ok(())
     }
 }
 
@@ -721,7 +714,7 @@ mod tests {
             let p = LineRules::new(&[], &[], redact).unwrap();
             match p.process(&mut l) {
                 Status::Ok(_) => assert_eq!(
-                    std::str::from_utf8(l.get_line().1.unwrap()).unwrap(),
+                    std::str::from_utf8(l.get_line_buffer().unwrap()).unwrap(),
                     "my name is [REDACTED] and I was born in the year [REDACTED]"
                 ),
                 _ => panic!("it should have been OK"),

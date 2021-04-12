@@ -2,7 +2,7 @@ use crate::errors::K8sError;
 use crate::middleware::parse_container_path;
 use futures::stream::TryStreamExt;
 use futures::StreamExt;
-use http::types::body::{KeyValueMap, LineMetaMut};
+use http::types::body::{KeyValueMap, LineBufferMut};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{api::ListParams, config::Config, Api, Client};
 
@@ -202,7 +202,7 @@ impl Middleware for K8sMetadata {
         });
     }
 
-    fn process<'a>(&self, line: &'a mut dyn LineMetaMut) -> Status<&'a mut dyn LineMetaMut> {
+    fn process<'a>(&self, line: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
         if let Some(ref file_name) = line.get_file() {
             if let Some(key) = parse_container_path(&file_name) {
                 if let Some(pod_meta_data) = self.metadata.lock().get(&key) {

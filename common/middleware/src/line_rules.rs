@@ -1,7 +1,6 @@
 use crate::{Middleware, Status};
-use http::types::body::LineMetaMut;
+use http::types::body::LineBufferMut;
 use regex::bytes::Regex;
-use std::str::from_utf8;
 use thiserror::Error;
 
 static REDACT_BYTES: &[u8] = "[REDACTED]".as_bytes();
@@ -16,11 +15,6 @@ pub struct LineRules {
 pub enum LineRulesError {
     #[error(transparent)]
     RegexError(regex::Error),
-}
-
-enum LineType {
-    String,
-    Buffer,
 }
 
 impl LineRules {
@@ -39,13 +33,9 @@ impl LineRules {
     /// Applies inclusion and exclusion rules and replaces the redacted values.
     fn process_line<'a>(
         &self,
-        line_type: LineType,
-        line: &'a mut dyn LineMetaMut,
-    ) -> Status<&'a mut dyn LineMetaMut> {
-        let value = match line_type {
-            LineType::Buffer => line.get_line().1.unwrap(),
-            LineType::String => line.get_line().0.unwrap().as_bytes(),
-        };
+        line: &'a mut dyn LineBufferMut,
+    ) -> Status<&'a mut dyn LineBufferMut> {
+        let value = line.get_line_buffer().unwrap();
 
         // If it doesn't match any inclusion rule -> skip
         if !self.inclusion.is_empty() && !self.inclusion.iter().any(|r| r.is_match(value)) {
@@ -63,20 +53,8 @@ impl LineRules {
                 v = r.replace_all(&v, REDACT_BYTES).to_vec();
             }
 
-            match line_type {
-                LineType::Buffer => {
-                    if line.set_line_buffer(v).is_err() {
-                        return Status::Skip;
-                    }
-                }
-                LineType::String => match from_utf8(&v) {
-                    Ok(v) => {
-                        if line.set_line_text(v.to_string()).is_err() {
-                            return Status::Skip;
-                        }
-                    }
-                    _ => return Status::Skip,
-                },
+            if line.set_line_buffer(v).is_err() {
+                return Status::Skip;
             }
         }
 
@@ -87,17 +65,15 @@ impl LineRules {
 impl Middleware for LineRules {
     fn run(&self) {}
 
-    fn process<'a>(&self, line: &'a mut dyn LineMetaMut) -> Status<&'a mut dyn LineMetaMut> {
+    fn process<'a>(&self, line: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
         if self.exclusion.is_empty() && self.inclusion.is_empty() && self.redact.is_empty() {
             // Avoid unnecessary allocations when no rules were defined
             return Status::Ok(line);
         }
 
-        match line.get_line() {
-            (Some(_), None) => self.process_line(LineType::String, line),
-            (None, Some(_)) => self.process_line(LineType::Buffer, line),
-            (None, None) => Status::Skip,
-            (Some(_), Some(_)) => panic!("line represented in both bytes and text"),
+        match line.get_line_buffer() {
+            None => Status::Skip,
+            Some(_) => self.process_line(line),
         }
     }
 }
@@ -135,7 +111,7 @@ mod tests {
         ($p: ident, $line: expr, $expected: expr) => {
             match $p.process(&mut LineBuilder::new().line($line)) {
                 Status::Ok(l) => {
-                    assert_eq!(l.get_line().0.unwrap(), $expected);
+                    assert_eq!(std::str::from_utf8(l.get_line_buffer().unwrap()).unwrap(), $expected);
                 }
                 Status::Skip => panic!("should not have been skipped"),
             }
