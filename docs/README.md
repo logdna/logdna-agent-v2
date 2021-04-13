@@ -148,8 +148,9 @@ The agent accepts configuration from two sources, environment variables and a co
 |`LOGDNA_LOG_K8S_EVENTS`|Whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
 |`LOGDNA_DB_PATH`|The directory the agent will store it's state database. Note that the agent must have write access to the directory and be a persistent volume.||
 
-All regular expressions are [PCRE](https://www.pcre.org/) with case sensitivity by default. If you don't want to
-differentiate between capital and lower-case letters, use non-capturing groups with a flag: `(?flags:exp)`, for example
+All regular expressions are uses [Perl-style syntax][regex-syntax] with case sensitivity by default. If you don't
+want to differentiate between capital and lower-case letters, use non-capturing groups with a flag: `(?flags:exp)`,
+for example:
 
 ```
 (?i:my_case_insensitive_regex)
@@ -209,3 +210,5 @@ To control whether the LogDNA agent collects Kubernetes events, configure the `L
 __Note:__ The default option is `always`.
 
 > :warning: Due to a ["won't fix" bug in the Kubernetes API](https://github.com/kubernetes/kubernetes/issues/41743), the LogDNA agent collects events from the entire cluster, including multiple nodes. To prevent duplicate logs when running multiple pods, the LogDNA agent pods defer responsibilty of capturing events to the oldest pod in the cluster. If that pod is down, the next oldest LogDNA agent pod will take over responsibility and continue from where the previous pod left off.
+
+[regex-syntax]: https://docs.rs/regex/1.4.5/regex/#syntax

@@ -1,14 +1,14 @@
 use crate::{Middleware, Status};
 use http::types::body::LineBufferMut;
-use regex::bytes::Regex;
+use regex::bytes::{Regex, RegexSet};
 use std::cmp;
 use thiserror::Error;
 
 static REDACT_BYTES: &[u8] = "[REDACTED]".as_bytes();
 
 pub struct LineRules {
-    exclusion: Vec<Regex>,
-    inclusion: Vec<Regex>,
+    exclusion: RegexSet,
+    inclusion: RegexSet,
     redact: Vec<Regex>,
 }
 
@@ -24,10 +24,16 @@ impl LineRules {
         inclusion: &[String],
         redact: &[String],
     ) -> Result<LineRules, LineRulesError> {
+        // Use a normal foreach to bubble up parsing errors
+        let mut redact_vec = Vec::with_capacity(redact.len());
+        for s in redact.iter() {
+            redact_vec.push(Regex::new(s).map_err(LineRulesError::RegexError)?);
+        }
+
         Ok(LineRules {
-            exclusion: map_to_regex(exclusion)?,
-            inclusion: map_to_regex(inclusion)?,
-            redact: map_to_regex(redact)?,
+            exclusion: RegexSet::new(exclusion).map_err(LineRulesError::RegexError)?,
+            inclusion: RegexSet::new(inclusion).map_err(LineRulesError::RegexError)?,
+            redact: redact_vec,
         })
     }
 
@@ -39,12 +45,12 @@ impl LineRules {
         let value = line.get_line_buffer().unwrap();
 
         // If it doesn't match any inclusion rule -> skip
-        if !self.inclusion.is_empty() && !self.inclusion.iter().any(|r| r.is_match(value)) {
+        if !self.inclusion.is_empty() && !self.inclusion.is_match(value) {
             return Status::Skip;
         }
 
         // If any exclusion rule matches -> skip
-        if self.exclusion.iter().any(|r| r.is_match(value)) {
+        if self.exclusion.is_match(value) {
             return Status::Skip;
         }
 
@@ -129,15 +135,6 @@ impl Middleware for LineRules {
             Some(_) => self.process_line(line),
         }
     }
-}
-
-fn map_to_regex(rules: &[String]) -> Result<Vec<Regex>, LineRulesError> {
-    let mut result = Vec::with_capacity(rules.len());
-    // Use a normal foreach to bubble up parsing errors
-    for s in rules.iter() {
-        result.push(Regex::new(s).map_err(LineRulesError::RegexError)?);
-    }
-    Ok(result)
 }
 
 #[cfg(test)]

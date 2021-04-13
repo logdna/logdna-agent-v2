@@ -20,6 +20,7 @@ use pin_project_lite::pin_project;
 
 use serde_json::Value;
 
+use bytes::Bytes;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs::OpenOptions;
@@ -165,7 +166,7 @@ pub struct LazyLineSerializer {
     level: Option<String>,
     meta: Option<Value>,
     path: String,
-    line_buffer: Option<Vec<u8>>,
+    line_buffer: Option<Bytes>,
 
     file_offset: (u64, u64),
 
@@ -280,9 +281,8 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         S: SerializeUtf8<bytes::Bytes> + std::marker::Send,
     {
         // Try to use the cached value first
-        let replaced_buf = self.line_buffer.take();
-        let bytes = if let Some(buf) = replaced_buf {
-            bytes::Bytes::from(buf)
+        let bytes = if let Some(buf) = &self.line_buffer {
+            buf.clone()
         } else {
             let borrowed_reader = self.reader.lock().await;
             bytes::Bytes::copy_from_slice(&borrowed_reader.buf[..borrowed_reader.buf.len() - 1])
@@ -402,8 +402,8 @@ impl LineBufferMut for LazyLineSerializer {
 
         match self.reader.try_lock() {
             Some(file_inner) => {
-                // Cache the value to avoid excessive cloning
-                self.line_buffer = Some(file_inner.buf.clone());
+                // Cache the value to avoid further cloning
+                self.line_buffer = Some(Bytes::from(file_inner.buf.clone()));
                 self.line_buffer.as_deref()
             }
             None => None,
@@ -411,7 +411,7 @@ impl LineBufferMut for LazyLineSerializer {
     }
 
     fn set_line_buffer(&mut self, line: Vec<u8>) -> Result<(), LineMetaError> {
-        self.line_buffer = Some(line);
+        self.line_buffer = Some(line.into());
         Ok(())
     }
 }
