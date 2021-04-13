@@ -4,7 +4,7 @@ use regex::bytes::{Regex, RegexSet};
 use std::cmp;
 use thiserror::Error;
 
-static REDACT_BYTES: &[u8] = "[REDACTED]".as_bytes();
+static REDACT_BYTES: &[u8] = b"[REDACTED]";
 
 pub struct LineRules {
     exclusion: RegexSet,
@@ -70,6 +70,7 @@ impl LineRules {
         for r in self.redact.iter() {
             for m in r.find_iter(&value) {
                 let mut overlapping_match = None;
+                let mut insert_index = None;
                 for (i, existing) in matches.iter().enumerate() {
                     let overlaps =
                         // Overlaps when it starts between an existing match
@@ -87,11 +88,20 @@ impl LineRules {
                         // Order is guaranteed so there's no need to continue processing
                         break;
                     }
+
+                    if m.start() < existing.0 {
+                        insert_index = Some(i);
+                    }
                 }
 
                 if let Some(item) = overlapping_match {
+                    // Replace existing
                     matches[item.0] = (item.1, item.2);
+                } else if let Some(index) = insert_index {
+                    // Insert at position and shift all elements after it to the right
+                    matches.insert(index, (m.start(), m.end()));
                 } else {
+                    // Append
                     matches.push((m.start(), m.end()));
                 }
             }
@@ -272,6 +282,34 @@ mod tests {
             p,
             "Si, this is sensitive, supersensitive and sensible.",
             "[REDACTED], this is [REDACTED], [REDACTED] and [REDACTED]."
+        );
+    }
+
+    #[test]
+    fn should_support_unordered_redactions() {
+        let redact = &vec![s!(r"(?i:AB)"), s!(r"(?i:CD)")];
+        let p = LineRules::new(&[], &[], redact).unwrap();
+        redact_match!(p, "AB CD", "[REDACTED] [REDACTED]");
+        redact_match!(
+            p,
+            "first: CD second: AB",
+            "first: [REDACTED] second: [REDACTED]"
+        );
+        redact_match!(
+            p,
+            "CD 1 CD 2 AB 3 CD",
+            "[REDACTED] 1 [REDACTED] 2 [REDACTED] 3 [REDACTED]"
+        );
+    }
+
+    #[test]
+    fn should_support_unordered_overlapping_redactions() {
+        let redact = &vec![s!(r"(?i:AB)"), s!(r"(?i:CD)"), s!(r"\w{2}"), s!(r"\w{3}")];
+        let p = LineRules::new(&[], &[], redact).unwrap();
+        redact_match!(
+            p,
+            "CD 1 CDA 2 AB 3 CD",
+            "[REDACTED] 1 [REDACTED] 2 [REDACTED] 3 [REDACTED]"
         );
     }
 

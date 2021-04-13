@@ -285,7 +285,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
             buf.clone()
         } else {
             let borrowed_reader = self.reader.lock().await;
-            bytes::Bytes::copy_from_slice(&borrowed_reader.buf[..borrowed_reader.buf.len() - 1])
+            line_bytes(&borrowed_reader.buf)
         };
         writer.serialize_utf8(bytes).await?;
 
@@ -403,7 +403,7 @@ impl LineBufferMut for LazyLineSerializer {
         match self.reader.try_lock() {
             Some(file_inner) => {
                 // Cache the value to avoid further cloning
-                self.line_buffer = Some(Bytes::from(file_inner.buf.clone()));
+                self.line_buffer = Some(line_bytes(&file_inner.buf));
                 self.line_buffer.as_deref()
             }
             None => None,
@@ -676,6 +676,12 @@ impl TailedFile<LazyLineSerializer> {
                 .collect(),
         ))
     }
+}
+
+/// Returns a Bytes using a copy of the line without the last char.
+fn line_bytes(buf: &[u8]) -> Bytes {
+    // This method can be removed once we re-implement a line reader
+    Bytes::copy_from_slice(&buf[..buf.len() - 1])
 }
 
 #[cfg(test)]
