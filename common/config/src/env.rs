@@ -74,6 +74,17 @@ pub struct Config {
     #[example("/var/log/.*,/var/data/.*")]
     pub inclusion_regex_rules: Option<EnvList<String>>,
 
+    #[env(LOGDNA_LINE_EXCLUSION_REGEX)]
+    #[example("DEBUG")]
+    pub line_exclusion_regex: Option<EnvList<String>>,
+
+    #[env(LOGDNA_LINE_INCLUSION_REGEX)]
+    pub line_inclusion_regex: Option<EnvList<String>>,
+
+    #[env(LOGDNA_REDACT_REGEX)]
+    #[example(r"\S+@\S+\.\S+")]
+    pub line_redact_regex: Option<EnvList<String>>,
+
     #[env(LOGDNA_JOURNALD_PATHS)]
     #[example("/var/log/journal")]
     pub journald_paths: Option<EnvList<PathBuf>>,
@@ -234,6 +245,18 @@ impl Config {
 
         if self.lookback.is_some() {
             raw.log.lookback = self.lookback;
+        }
+
+        if let Some(list) = self.line_exclusion_regex {
+            raw.log.line_exclusion_regex = Some(list.deref().clone());
+        }
+
+        if let Some(list) = self.line_inclusion_regex {
+            raw.log.line_inclusion_regex = Some(list.deref().clone());
+        }
+
+        if let Some(list) = self.line_redact_regex {
+            raw.log.line_redact_regex = Some(list.deref().clone());
         }
 
         raw

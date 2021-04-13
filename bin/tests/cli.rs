@@ -760,7 +760,6 @@ async fn test_tags() {
     File::create(&file_path).expect("Couldn't create temp log file...");
     let mut settings = AgentSettings::with_mock_ingester(&dir.to_str().unwrap(), &addr);
     settings.tags = Some(tag);
-    settings.exclusion_regex = Some(r"/var\w*");
     let mut agent_handle = common::spawn_agent(settings);
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
     common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
@@ -1249,6 +1248,152 @@ async fn test_symlink_initialization_with_stateful_lookback() {
     );
 
     server_result.unwrap();
+}
+
+async fn test_line_rules(
+    exclusion: Option<&str>,
+    inclusion: Option<&str>,
+    redact: Option<&str>,
+    to_write: Vec<&str>,
+    expected: Vec<&str>,
+) {
+    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+    let file_path = dir.join("test.log");
+    let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
+
+    let mut settings = AgentSettings::with_mock_ingester(&dir.to_str().unwrap(), &addr);
+    settings.line_exclusion_regex = exclusion;
+    settings.line_inclusion_regex = inclusion;
+    settings.line_redact_regex = redact;
+    let mut agent_handle = common::spawn_agent(settings);
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+
+    let (server_result, _) = tokio::join!(server, async move {
+        for item in to_write {
+            write!(file, "{}", item).unwrap();
+
+            if !item.ends_with('\n') {
+                // Add partial lines on purpose
+                file.sync_all().unwrap();
+                common::force_client_to_flush(&dir).await;
+            }
+        }
+
+        file.sync_all().unwrap();
+        common::force_client_to_flush(&dir).await;
+
+        // Wait for the data to be received by the mock ingester
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        let map = received.lock().await;
+        let file_info = map.get(file_path.to_str().unwrap()).unwrap();
+        assert_eq!(file_info.values, expected);
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_line_exclusion_inclusion_redact() {
+    let exclusion = Some("DEBUG,(?i:TRACE)");
+    let inclusion = Some("(?i:ERROR),important");
+    let redact = Some(r"\S+@\S+\.\S+,(?i:SENSITIVE)");
+
+    let to_write = vec![
+        // Included
+        "some error\n",
+        "something important\n",
+        "important email@logdna.com\n",
+        // Included and redacted
+        "ERROR sensitive value\n",
+        "This is an important",
+        " partial line\n",
+        // Excluded
+        "important but trace message\n",
+        "DEBUG message\n",
+        "TRACE\n",
+        "not included\n",
+        "was an important DEBUG message\n",
+        // Finally an included line
+        "another ERROR line\n",
+    ];
+
+    let expected = vec![
+        "some error\n",
+        "something important\n",
+        "important [REDACTED]\n",
+        "ERROR [REDACTED] value\n",
+        "This is an important partial line\n",
+        "another ERROR line\n",
+    ];
+
+    test_line_rules(exclusion, inclusion, redact, to_write, expected).await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_line_exclusion() {
+    let exclusion = Some("VERBOSE");
+
+    let to_write = vec![
+        "some message\n",
+        "some verbose message\n",
+        "another VERBOSE message\n",
+        "a message\n",
+    ];
+
+    let expected = vec![
+        "some message\n",
+        "some verbose message\n", // Case-sensitive
+        "a message\n",
+    ];
+
+    test_line_rules(exclusion, None, None, to_write, expected).await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_line_inclusion() {
+    let inclusion = Some("only,included,message");
+
+    let to_write = vec![
+        "an included line\n",
+        "only included messages\n",
+        "sample\n",
+        "an INCLUDED line? No, it is case-sensitive\n",
+    ];
+
+    let expected = vec!["an included line\n", "only included messages\n"];
+
+    test_line_rules(None, inclusion, None, to_write, expected).await;
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_line_redact() {
+    let redact = Some("(?i:SENSITIVE),(?i:SENSITIVE INFORMATION),(?i:VE )");
+
+    let to_write = vec![
+        "this is a SENSITIVE information\n",
+        "this is another sensitive  value\n",
+        "Five  messages\n",
+        "a message\n",
+    ];
+
+    let expected = vec![
+        "this is a [REDACTED]\n",
+        "this is another [REDACTED] value\n",
+        "Fi[REDACTED] messages\n",
+        "a message\n",
+    ];
+
+    test_line_rules(None, None, redact, to_write, expected).await;
 }
 
 #[test]

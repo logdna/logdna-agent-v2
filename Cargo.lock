@@ -719,6 +719,7 @@ dependencies = [
  "log",
  "memchr",
  "metrics",
+ "middleware",
  "pcre2",
  "pin-project-lite",
  "serde_json",
@@ -1372,7 +1373,7 @@ dependencies = [
 [[package]]
 name = "logdna-client"
 version = "0.5.2"
-source = "git+https://github.com/logdna/logdna-rust.git?branch=0.5.x#fb0d701cca307dfd63b35a83df961889ef42a446"
+source = "git+https://github.com/logdna/logdna-rust.git?branch=0.5.x#d7adef1f5b547a2031e8dfd835834b3011ceacfb"
 dependencies = [
  "async-buf-pool",
  "async-compression",
@@ -1459,6 +1460,8 @@ version = "0.1.0"
 dependencies = [
  "http 0.1.0",
  "memoffset",
+ "regex",
+ "thiserror",
 ]
 
 [[package]]

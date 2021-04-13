@@ -118,6 +118,9 @@ pub struct AgentSettings<'a> {
     pub ingester_key: Option<&'a str>,
     pub tags: Option<&'a str>,
     pub state_db_dir: Option<&'a std::path::Path>,
+    pub line_exclusion_regex: Option<&'a str>,
+    pub line_inclusion_regex: Option<&'a str>,
+    pub line_redact_regex: Option<&'a str>,
 }
 
 impl<'a> AgentSettings<'a> {
@@ -193,6 +196,18 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
 
     if let Some(journald_dirs) = settings.journald_dirs {
         agent.env("LOGDNA_JOURNALD_PATHS", journald_dirs);
+    }
+
+    if let Some(regex_str) = settings.line_exclusion_regex {
+        agent.env("LOGDNA_LINE_EXCLUSION_REGEX", regex_str);
+    }
+
+    if let Some(regex_str) = settings.line_inclusion_regex {
+        agent.env("LOGDNA_LINE_INCLUSION_REGEX", regex_str);
+    }
+
+    if let Some(regex_str) = settings.line_redact_regex {
+        agent.env("LOGDNA_REDACT_REGEX", regex_str);
     }
 
     agent.spawn().expect("Failed to start agent")

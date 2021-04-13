@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
-use http::types::body::LineMetaMut;
+use http::types::body::LineBufferMut;
 use std::thread::spawn;
+
+pub mod line_rules;
 
 pub enum Status<T> {
     Ok(T),
@@ -10,7 +12,7 @@ pub enum Status<T> {
 
 pub trait Middleware: Send + Sync + 'static {
     fn run(&self);
-    fn process<'a>(&self, lines: &'a mut dyn LineMetaMut) -> Status<&'a mut dyn LineMetaMut>;
+    fn process<'a>(&self, lines: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut>;
 }
 
 #[derive(Default)]
@@ -36,7 +38,10 @@ impl Executor {
         }
     }
 
-    pub fn process<'a>(&self, line: &'a mut dyn LineMetaMut) -> Option<&'a mut dyn LineMetaMut> {
+    pub fn process<'a>(
+        &self,
+        line: &'a mut dyn LineBufferMut,
+    ) -> Option<&'a mut dyn LineBufferMut> {
         self.middlewares
             .iter()
             .try_fold(line, |l, m| match m.process(l) {
