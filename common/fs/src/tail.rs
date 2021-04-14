@@ -149,7 +149,7 @@ impl Tailer {
     ) -> Option<impl Stream<Item = LazyLineSerializer>> {
         match event {
             Event::Initialize(entry_ptr) => {
-                debug!("Initialise Event");
+                debug!("Initialize Event");
                 // will initiate a file to it's current length
                 let entries = fs.entries.borrow();
                 let entry = entries.get(entry_ptr)?;
@@ -157,7 +157,7 @@ impl Tailer {
                 match entry {
                     Entry::File { name, data, .. } => {
                         // If the file's passes the rules tail it
-                        info!("Initialise event for entry {:?}, target {:?}", name, path);
+                        info!("initialize event for file {:?}, target {:?}", name, path);
                         let (_, offset) = Tailer::get_initial_offset(
                             &path,
                             &fs,
@@ -178,12 +178,15 @@ impl Tailer {
                     }
                     Entry::Symlink { name, link, .. } => {
                         let sym_path = path;
-                        info!("Initialise event for entry {:?}, target {:?}", name, link);
-                        let entries = &fs.entries.borrow();
-                        let path = fs.resolve_direct_path(
-                            entries.get(Tailer::get_file_for_path(&fs, link)?)?,
-                            &fs.entries.borrow(),
+                        let final_target = Tailer::get_file_for_path(&fs, link)?;
+                        info!(
+                            "initialize event for symlink {:?}, target {:?}, final target {:?}",
+                            name, link, final_target
                         );
+
+                        let entries = &fs.entries.borrow();
+                        let path = fs
+                            .resolve_direct_path(entries.get(final_target)?, &fs.entries.borrow());
 
                         let (entry_key, offset) = Tailer::get_initial_offset(
                             &path,
@@ -195,7 +198,7 @@ impl Tailer {
                         if let Entry::File { data, .. } = &entries.get(entry_key)? {
                             info!(
                                 "initialized symlink {:?} as {:?} with offset {}",
-                                name, link, offset
+                                name, final_target, offset
                             );
                             let mut data = data.borrow_mut();
                             data.deref_mut()
