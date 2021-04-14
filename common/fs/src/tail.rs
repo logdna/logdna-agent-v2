@@ -94,6 +94,15 @@ impl Tailer {
         initial_offsets: Option<HashMap<FileId, u64>>,
         lookback_config: Lookback,
     ) -> Option<(EntryKey, u64)> {
+        fn _lookup_offset(
+            initial_offsets: &HashMap<FileId, u64>,
+            key: &FileId,
+            path: &Path,
+        ) -> u64 {
+            let offset = initial_offsets.get(key).copied().unwrap_or(0);
+            debug!("Got offset {} from state using key {:?}", offset, path);
+            offset
+        }
         let entry_key = fs.lookup(target, &fs.entries.borrow())?;
         let entries = fs.entries.borrow();
         let entry = &entries.get(entry_key)?;
@@ -104,19 +113,13 @@ impl Tailer {
                 entry_key,
                 match lookback_config {
                     Lookback::Start => match initial_offsets.as_ref() {
-                        Some(initial_offsets) => {
-                            let offset = initial_offsets.get(&inode).copied().unwrap_or(0);
-                            debug!("Got offset {} from state using key {:?}", offset, path);
-                            offset
-                        }
+                        Some(initial_offsets) => _lookup_offset(&initial_offsets, &inode, &path),
                         None => 0,
                     },
                     Lookback::SmallFiles => {
                         match initial_offsets.as_ref() {
                             Some(initial_offsets) => {
-                                let offset = initial_offsets.get(&inode).copied().unwrap_or(0);
-                                debug!("Got offset {} from state using key {:?}", offset, path);
-                                offset
+                                _lookup_offset(&initial_offsets, &inode, &path)
                             }
                             None => {
                                 // Check the actual file len
