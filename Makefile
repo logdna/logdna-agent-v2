@@ -249,16 +249,29 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION)
 
-.PHONY:publish-image
-publish-image: ## Publish SemVer compliant releases to our registroies
+define publish_images
 	$(eval TARGET_VERSIONS := $(BUILD_VERSION) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(shell docker images -q $(REPO):$(BUILD_TAG)) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
-	@for image in $(DOCKER_PRIVATE_IMAGE) $(DOCKER_PUBLIC_IMAGE) $(DOCKER_IBM_IMAGE); do \
-		set -e; \
-		for version in $(TARGET_VERSIONS); do \
-			$(DOCKER) tag $(REPO):$(BUILD_TAG) $${image}:$${version}; \
-			$(DOCKER) push $${image}:$${version}; \
-		done; \
+	set -e; \
+	@for version in $(TARGET_VERSIONS); do \
+		$(DOCKER) tag $(REPO):$(BUILD_TAG) $(1):$${version}; \
+		$(DOCKER) push $(1):$${version}; \
 	done;
+endef
+
+.PHONY: publish-image
+publish-image: publish-image-gcr publish-image-docker publish-image-ibm ## Publish SemVer compliant releases to our registries
+
+.PHONY:publish-image-gcr
+publish-image-gcr: ## Publish SemVer compliant releases to gcr
+	$(call publish_images,$(DOCKER_PRIVATE_IMAGE))
+
+.PHONY:publish-image-docker
+publish-image-docker: ## Publish SemVer compliant releases to docker hub
+	$(call publish_images,$(DOCKER_PUBLIC_IMAGE))
+
+.PHONY:publish-image-ibm
+publish-image-ibm: ## Publish SemVer compliant releases to icr
+	$(call publish_images,$(DOCKER_IBM_IMAGE))
 
 .PHONY:run
 run: ## Run the debug version of the agent
