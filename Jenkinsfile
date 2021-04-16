@@ -133,14 +133,22 @@ pipeline {
                         expression { return publishImage == true }
                     }
                     steps {
+                        // Publish to gcr, jenkins is logged into gcr globally
+                        sh 'make publish-image-gcr'
                         script {
-                            withCredentials([[
-                                $class: 'AmazonWebServicesCredentialsBinding',
-                                credentialsId: 'aws',
-                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                            ]]){
-                                sh 'make publish-image'
+                            // Login and publish to dockerhub
+                            docker.withRegistry(
+                                'https://index.docker.io/v1/',
+                                'dockerhub-username-password'
+                            ) {
+                                sh 'make publish-image-docker'
+                            }
+                            // Login and publish to ibm
+                            docker.withRegistry(
+                                'https://icr.io',
+                                'icr-iam-username-password'
+                            ) {
+                                sh 'make publish-image-ibm'
                             }
                         }
                     }
