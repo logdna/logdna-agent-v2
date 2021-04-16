@@ -148,7 +148,7 @@ The agent accepts configuration from two sources, environment variables and a co
 |`LOGDNA_LOG_K8S_EVENTS`|Whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
 |`LOGDNA_DB_PATH`|The directory the agent will store it's state database. Note that the agent must have write access to the directory and be a persistent volume.||
 
-All regular expressions are uses [Perl-style syntax][regex-syntax] with case sensitivity by default. If you don't
+All regular expressions use [Perl-style syntax][regex-syntax] with case sensitivity by default. If you don't
 want to differentiate between capital and lower-case letters, use non-capturing groups with a flag: `(?flags:exp)`,
 for example:
 
