@@ -231,6 +231,7 @@ release: ## Create a new release from the current beta and push to github
 .PHONY:build-image
 build-image: ## Build a docker image as specified in the Dockerfile
 	$(DOCKER) build . -t $(REPO):$(BUILD_TAG) \
+		--pull \
 		--progress=plain \
 		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
 		--rm \
