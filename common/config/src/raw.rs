@@ -40,6 +40,13 @@ pub struct HttpConfig {
     pub params: Option<Params>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body_size: Option<usize>,
+
+    // Mostly for development, these settings are hidden from the user
+    // There's no guarantee that these settings will exist in the future
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_base_delay_ms: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_step_delay_ms: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
@@ -100,6 +107,8 @@ impl Default for HttpConfig {
                 .build()
                 .ok(),
             body_size: Some(2 * 1024 * 1024),
+            retry_base_delay_ms: None,
+            retry_step_delay_ms: None,
         }
     }
 }

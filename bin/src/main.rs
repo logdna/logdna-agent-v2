@@ -97,7 +97,12 @@ fn main() {
     let handles = offset_state
         .as_ref()
         .map(|os| (os.write_handle(), os.flush_handle()));
-    let client = Rc::new(RefCell::new(Client::new(config.http.template, handles)));
+    let client = Rc::new(RefCell::new(Client::new(
+        config.http.template,
+        handles,
+        config.http.retry_base_delay,
+        config.http.retry_step_delay,
+    )));
     client
         .borrow_mut()
         .set_max_buffer_size(config.http.body_size);

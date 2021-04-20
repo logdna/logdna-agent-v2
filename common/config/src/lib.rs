@@ -41,6 +41,10 @@ pub struct HttpConfig {
     pub template: RequestTemplate,
     pub timeout: Duration,
     pub body_size: usize,
+
+    // Development only settings
+    pub retry_base_delay: Duration,
+    pub retry_step_delay: Duration,
 }
 
 #[derive(Debug)]
@@ -181,6 +185,12 @@ impl TryFrom<RawConfig> for Config {
                 .http
                 .body_size
                 .ok_or(ConfigError::MissingField("http.body_size"))?,
+            retry_base_delay: Duration::from_millis(
+                raw.http.retry_base_delay_ms.unwrap_or(15_000) as u64
+            ),
+            retry_step_delay: Duration::from_millis(
+                raw.http.retry_step_delay_ms.unwrap_or(3_000) as u64
+            ),
         };
 
         let mut log = LogConfig {

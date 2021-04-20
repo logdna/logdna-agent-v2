@@ -117,6 +117,7 @@ pub struct AgentSettings<'a> {
     pub use_ssl: bool,
     pub ingester_key: Option<&'a str>,
     pub tags: Option<&'a str>,
+    pub config_file: Option<&'a str>,
     pub state_db_dir: Option<&'a std::path::Path>,
     pub line_exclusion_regex: Option<&'a str>,
     pub line_inclusion_regex: Option<&'a str>,
@@ -190,6 +191,10 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
         agent.env("LOGDNA_EXCLUSION_REGEX_RULES", rules);
     }
 
+    if let Some(config_file) = settings.config_file {
+        agent.env("LOGDNA_CONFIG_FILE", config_file);
+    }
+
     if let Some(tags) = settings.tags {
         agent.env("LOGDNA_TAGS", tags);
     }
@@ -234,6 +239,9 @@ where
     let mut lines_buffer = String::new();
     for _safeguard in 0..100_000 {
         reader.read_line(&mut line).unwrap();
+        if line.is_empty() {
+            continue;
+        }
         debug!("{}", line.trim());
         lines_buffer.push_str(&line);
         lines_buffer.push('\n');
@@ -280,7 +288,7 @@ pub fn open_files_include(id: u32, file: &Path) -> Option<String> {
     }
 }
 
-fn get_available_port() -> Option<u16> {
+pub fn get_available_port() -> Option<u16> {
     let mut rng = rand::thread_rng();
     loop {
         let port = (30025..65535).choose(&mut rng).unwrap();
