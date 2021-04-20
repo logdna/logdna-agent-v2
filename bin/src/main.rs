@@ -145,25 +145,14 @@ fn main() {
 
     let journald_source = create_source(&config.journald.paths);
 
-    let k8s_event_stream = match config.log.log_k8s_events {
-        K8sTrackingConf::Never => None,
-        K8sTrackingConf::Always => Some(
-            K8sEventStream::try_default(
-                std::env::var("POD_NAME").ok(),
-                std::env::var("NAMESPACE").ok(),
-            )
-            .map_err(|e| {
-                warn!("Failed to create kubernetes event stream: {}", e);
-                e
-            }),
-        ),
-    };
     // Create the runtime
     let rt = Runtime::new().unwrap();
 
     if let Some(offset_state) = offset_state {
         rt.spawn(offset_state.run().unwrap());
     }
+
+    let log_k8s_events = config.log.log_k8s_events.clone();
     // Execute the future, blocking the current thread until completion
     rt.block_on(async move {
         let fs_source = fs_source
@@ -172,6 +161,20 @@ fn main() {
             .map(StrictOrLazyLineBuilder::Lazy);
 
         let journald_source = journald_source.map(StrictOrLazyLineBuilder::Strict);
+
+        let k8s_event_stream = match log_k8s_events {
+            K8sTrackingConf::Never => None,
+            K8sTrackingConf::Always => Some(
+                K8sEventStream::try_default(
+                    std::env::var("POD_NAME").ok(),
+                    std::env::var("NAMESPACE").ok(),
+                )
+                .map_err(|e| {
+                    warn!("Failed to create kubernetes event stream: {}", e);
+                    e
+                }),
+            ),
+        };
 
         let k8s_event_source: Option<_> = if let Some(fut) = k8s_event_stream
             .map(|e| e.ok().map(|e| e.event_stream()))
