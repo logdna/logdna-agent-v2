@@ -288,6 +288,19 @@ pub fn open_files_include(id: u32, file: &Path) -> Option<String> {
     }
 }
 
+pub fn is_file_open(file: &Path) -> bool {
+    let child = Command::new("lsof")
+        .args(&[file.to_str().unwrap()])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("failed to execute child");
+
+    let output = child.wait_with_output().expect("failed to wait on child");
+    // lsof will success when file is found
+    output.status.success()
+}
+
 pub fn get_available_port() -> Option<u16> {
     let mut rng = rand::thread_rng();
     loop {
