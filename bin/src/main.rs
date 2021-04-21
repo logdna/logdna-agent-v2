@@ -29,8 +29,7 @@ use pin_utils::pin_mut;
 use state::AgentState;
 use std::cell::RefCell;
 use std::rc::Rc;
-
-use tokio::runtime::Runtime;
+use tokio::signal::*;
 
 const POLL_PERIOD_MS: u64 = 100;
 
@@ -49,7 +48,8 @@ pub static PKG_NAME: &str = env!("CARGO_PKG_NAME");
 #[no_mangle]
 pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-fn main() {
+#[tokio::main(flavor = "multi_thread")]
+async fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
 
@@ -158,93 +158,113 @@ fn main() {
             }),
         ),
     };
-    // Create the runtime
-    let rt = Runtime::new().unwrap();
 
     if let Some(offset_state) = offset_state {
-        rt.spawn(offset_state.run().unwrap());
+        tokio::spawn(offset_state.run().unwrap());
     }
-    // Execute the future, blocking the current thread until completion
-    rt.block_on(async move {
-        let fs_source = fs_source
-            .process(&mut fs_tailer_buf)
-            .expect("except Failed to create FS Tailer")
-            .map(StrictOrLazyLineBuilder::Lazy);
+    let fs_source = fs_source
+        .process(&mut fs_tailer_buf)
+        .expect("except Failed to create FS Tailer")
+        .map(StrictOrLazyLineBuilder::Lazy);
 
-        let journald_source = journald_source.map(StrictOrLazyLineBuilder::Strict);
+    let journald_source = journald_source.map(StrictOrLazyLineBuilder::Strict);
 
-        let k8s_event_source: Option<_> = if let Some(fut) = k8s_event_stream
-            .map(|e| e.ok().map(|e| e.event_stream()))
-            .flatten()
-        {
-            Some(
-                fut.await
-                    .expect("Failed to create stream")
-                    .map(StrictOrLazyLineBuilder::Strict),
-            )
-        } else {
-            None
-        };
+    let k8s_event_source: Option<_> = if let Some(fut) = k8s_event_stream
+        .map(|e| e.ok().map(|e| e.event_stream()))
+        .flatten()
+    {
+        Some(
+            fut.await
+                .expect("Failed to create stream")
+                .map(StrictOrLazyLineBuilder::Strict),
+        )
+    } else {
+        None
+    };
 
-        pin_mut!(fs_source);
-        pin_mut!(journald_source);
-        pin_mut!(k8s_event_source);
+    pin_mut!(fs_source);
+    pin_mut!(journald_source);
+    pin_mut!(k8s_event_source);
 
-        let mut k8s_event_source: Option<std::pin::Pin<&mut _>> = k8s_event_source.as_pin_mut();
+    let mut k8s_event_source: Option<std::pin::Pin<&mut _>> = k8s_event_source.as_pin_mut();
 
-        let mut sources: futures::stream::SelectAll<&mut (dyn Stream<Item = _> + Unpin)> =
-            futures::stream::SelectAll::new();
+    let mut sources: futures::stream::SelectAll<&mut (dyn Stream<Item = _> + Unpin)> =
+        futures::stream::SelectAll::new();
 
-        info!("Enabling filesystem");
-        sources.push(&mut fs_source);
-        sources.push(&mut journald_source);
+    info!("Enabling filesystem");
+    sources.push(&mut fs_source);
+    sources.push(&mut journald_source);
 
-        if let Some(k) = k8s_event_source.as_mut() {
-            info!("Enabling k8s_event_source");
-            sources.push(k)
-        };
+    if let Some(k) = k8s_event_source.as_mut() {
+        info!("Enabling k8s_event_source");
+        sources.push(k)
+    };
 
-        let sources = sources.map(Either::Left);
+    let sources = sources.map(Either::Left);
 
-        let sources = futures::stream::select(
-            sources,
-            tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
-                tokio::time::Duration::from_millis(POLL_PERIOD_MS),
-            ))
-            .map(Either::Right),
-        );
+    let sources = futures::stream::select(
+        sources,
+        tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
+            tokio::time::Duration::from_millis(POLL_PERIOD_MS),
+        ))
+        .map(Either::Right),
+    );
 
-        sources
-            .for_each(|line| async {
-                match line {
-                    Either::Left(line) => match line {
-                        StrictOrLazyLineBuilder::Strict(mut line) => {
-                            if executor.process(&mut line).is_some() {
-                                match line.build() {
-                                    Ok(line) => {
-                                        client
-                                            .borrow_mut()
-                                            .send(StrictOrLazyLines::Strict(&line))
-                                            .await
-                                    }
-                                    Err(e) => {
-                                        error!("Couldn't build line from linebuilder {:?}", e)
-                                    }
-                                }
-                            }
-                        }
-                        StrictOrLazyLineBuilder::Lazy(mut line) => {
-                            if executor.process(&mut line).is_some() {
+    let lines_future = sources.for_each(|line| async {
+        match line {
+            Either::Left(line) => match line {
+                StrictOrLazyLineBuilder::Strict(mut line) => {
+                    if executor.process(&mut line).is_some() {
+                        match line.build() {
+                            Ok(line) => {
                                 client
                                     .borrow_mut()
-                                    .send(StrictOrLazyLines::Lazy(line))
+                                    .send(StrictOrLazyLines::Strict(&line))
                                     .await
                             }
+                            Err(e) => {
+                                error!("Couldn't build line from linebuilder {:?}", e)
+                            }
                         }
-                    },
-                    Either::Right(_) => client.borrow_mut().poll().await,
+                    }
                 }
-            })
-            .await
+                StrictOrLazyLineBuilder::Lazy(mut line) => {
+                    if executor.process(&mut line).is_some() {
+                        client
+                            .borrow_mut()
+                            .send(StrictOrLazyLines::Lazy(line))
+                            .await
+                    }
+                }
+            },
+            Either::Right(_) => client.borrow_mut().poll().await,
+        }
     });
+
+    // Concurrently run the line streams and listen for the `shutdown` signal
+    tokio::select! {
+        _ = lines_future => {}
+        signal_name = get_signal() => {
+            info!("Received {} signal, shutting down", signal_name)
+        }
+    }
+}
+
+#[cfg(unix)]
+async fn get_signal() -> &'static str {
+    let mut interrupt_signal = unix::signal(unix::SignalKind::interrupt()).unwrap();
+    let mut quit_signal = unix::signal(unix::SignalKind::quit()).unwrap();
+    let mut term_signal = unix::signal(unix::SignalKind::terminate()).unwrap();
+
+    return tokio::select! {
+        _ = interrupt_signal.recv() => { "SIGINT" }
+        _ = quit_signal.recv() => { "SIGQUIT"  }
+        _ = term_signal.recv() => { "SIGTERM" }
+    };
+}
+
+#[cfg(windows)]
+async fn get_signal() -> &'static str {
+    ctrl_c().await.unwrap();
+    "CTRL+C"
 }
