@@ -76,6 +76,11 @@ LOGDNA_HOST?=localhost:1337
 
 RUST_LOG?=info
 
+space := $(subst ,, )
+comma := ,
+FEATURES?=
+FEATURES_ARG=$(if $(FEATURES),--features $(subst $(space),$(comma),$(FEATURES)))
+
 _TAC= awk '{line[NR]=$$0} END {for (i=NR; i>=1; i--) print line[i]}'
 TEST_RULES=
 # Dynamically generate test targets for each workspace
@@ -90,11 +95,11 @@ $(foreach _crate, $(CRATES), $(eval $(call TEST_RULE,$(strip $(_crate)))))
 
 .PHONY:build
 build: ## Build the agent
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo build"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo build $(FEATURES_ARG) --manifest-path bin/Cargo.toml"
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo build --release && strip ./target/release/logdna-agent"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo build $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release && strip ./target/release/logdna-agent"
 
 .PHONY:check
 check: ## Run unit tests
@@ -106,7 +111,8 @@ test: test-journald ## Run unit tests
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
-	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --manifest-path bin/Cargo.toml --features integration_tests $(TESTS) -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
+	$(eval FEATURES := $(FEATURES) integration_tests)
+	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
 
 .PHONY:k8s-test
 k8s-test: ## Run integration tests using k8s kind
@@ -114,7 +120,8 @@ k8s-test: ## Run integration tests using k8s kind
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
-	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --manifest-path bin/Cargo.toml -p journald --features journald_tests -- --nocapture"
+	$(eval FEATURES := $(FEATURES) journald_tests)
+	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald -- --nocapture"
 
 .PHONY:clean
 clean: ## Clean all artifacts from the build process
@@ -244,6 +251,7 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
 		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+		--build-arg FEATURES='$(FEATURES_ARG)' \
 		--build-arg REPO=$(REPO) \
 		--build-arg VCS_REF=$(VCS_REF) \
 		--build-arg VCS_URL=$(VCS_URL) \
