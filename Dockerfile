@@ -6,6 +6,8 @@ FROM ${BUILD_IMAGE} as build
 ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 
+ARG FEATURES
+
 ARG SCCACHE_BUCKET
 ENV SCCACHE_BUCKET=${SCCACHE_BUCKET}
 
@@ -21,8 +23,9 @@ COPY . .
 # Rebuild the agent
 RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     if [ -z "$SCCACHE_BUCKET" ]; then unset RUSTC_WRAPPER; fi; \
-    cargo build --release && strip ./target/release/logdna-agent && \
+    cargo build --manifest-path bin/Cargo.toml ${FEATURES} --release && strip ./target/release/logdna-agent && \
     sccache --show-stats
+#${FEATURES}
 
 # Use Red Hat Universal Base Image Minimal as the final base image
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.3

@@ -49,6 +49,7 @@ miniz_oxide = "0.4"
 [features]
 default = []
 integration_tests = []
+profiling = ["jemallocator/profiling"]
 k8s_tests = []
 journald_tests = ["journald/journald_tests"]
 
