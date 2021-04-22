@@ -12,6 +12,7 @@ use metrics::Metrics;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
+use std::time::Duration;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -33,6 +34,7 @@ pub enum Error {
 #[derive(Default)]
 pub struct Retry {
     waiting: SegQueue<PathBuf>,
+    retry_base_delay_secs: i64,
 }
 
 #[derive(Deserialize)]
@@ -42,10 +44,11 @@ struct DiskRead {
 }
 
 impl Retry {
-    pub fn new() -> Retry {
+    pub fn new(retry_base_delay: Duration) -> Retry {
         create_dir_all("/tmp/logdna/").expect("can't create /tmp/logdna");
         Retry {
             waiting: SegQueue::new(),
+            retry_base_delay_secs: retry_base_delay.as_secs() as i64,
         }
     }
 
@@ -111,7 +114,7 @@ impl Retry {
                 .and_then(|s| FromStr::from_str(s).ok())
                 .ok_or_else(|| Error::InvalidFileName(file_name.clone()))?;
 
-            if Utc::now().timestamp() - timestamp < 15 {
+            if Utc::now().timestamp() - timestamp < self.retry_base_delay_secs {
                 continue;
             }
 

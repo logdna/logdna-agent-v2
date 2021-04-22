@@ -35,6 +35,7 @@ pub struct Client {
     last_retry: Instant,
     state_write: Option<FileOffsetWriteHandle>,
     state_flush: Option<FileOffsetFlushHandle>,
+    retry_step_delay: Duration,
 }
 
 impl Client {
@@ -43,6 +44,8 @@ impl Client {
     pub fn new(
         template: RequestTemplate,
         state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
+        retry_base_delay: Duration,
+        retry_step_delay: Duration,
     ) -> Self {
         let buffer_source = Box::pin(body_serializer_source(
             16 * 1024, /* 16 KB segments */
@@ -57,7 +60,7 @@ impl Client {
             inner: HttpClient::new(template),
             buffer_source,
             limiter: RateLimiter::new(10),
-            retry: Arc::new(Retry::new()),
+            retry: Arc::new(Retry::new(retry_base_delay)),
             buffer: None,
             offsets,
             buffer_max_size: 2 * 1024 * 1024,
@@ -66,6 +69,7 @@ impl Client {
             last_retry: Instant::now(),
             state_write,
             state_flush,
+            retry_step_delay,
         }
     }
 
@@ -141,7 +145,7 @@ impl Client {
     }
 
     fn should_retry(&self) -> bool {
-        self.last_retry.elapsed() > Duration::from_secs(3)
+        self.last_retry.elapsed() > self.retry_step_delay
     }
 
     async fn flush(&mut self) {

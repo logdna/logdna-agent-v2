@@ -25,6 +25,7 @@ use tokio_stream::wrappers::TcpListenerStream;
 const ROOT: &str = "/logs/agent";
 
 pub type FileLineCounter = Arc<Mutex<HashMap<String, FileInfo>>>;
+pub type ProcessFn = Box<dyn Fn(&IngestBody) + Send + Sync>;
 
 #[derive(Debug)]
 pub struct FileInfo {
@@ -44,22 +45,23 @@ pub enum IngestError {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct IngestBody {
-    lines: Vec<Line>,
+pub struct IngestBody {
+    pub lines: Vec<Line>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct Line {
-    line: Option<String>,
+pub struct Line {
+    pub line: Option<String>,
     tags: Option<String>,
-    file: Option<String>,
+    pub file: Option<String>,
     annotation: Option<HashMap<String, String>>,
     label: Option<HashMap<String, String>>,
 }
 
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct Svc {
     files: FileLineCounter,
+    process_fn: Arc<ProcessFn>,
 }
 
 impl Unpin for Svc {}
@@ -77,6 +79,7 @@ impl Service<Request<Body>> for Svc {
     fn call(&mut self, req: Request<Body>) -> Self::Future {
         info!("Received {:?}", req);
         let files = self.files.clone();
+        let process_fn = self.process_fn.clone();
         Box::pin(async move {
             let rsp = Response::builder();
 
@@ -121,9 +124,18 @@ impl Service<Request<Body>> for Svc {
                 Ok(lines) => lines,
                 Err(e) => {
                     error!("{}", e);
-                    return Ok(rsp.status(500).body(Body::empty()).unwrap());
+                    return Ok(rsp
+                        .status(500)
+                        .body(Body::from(format!(
+                            "Ingest body could not be parsed: {}\n{}",
+                            e,
+                            std::str::from_utf8(&bytes).unwrap(),
+                        )))
+                        .unwrap());
                 }
             };
+
+            process_fn(&ingest_body);
 
             for line in ingest_body.lines {
                 if let Some(mut raw_line) = line.line {
@@ -161,19 +173,21 @@ impl Service<Request<Body>> for Svc {
 
 pub struct MakeSvc {
     files: FileLineCounter,
+    process_fn: Arc<ProcessFn>,
 }
 
 impl MakeSvc {
-    pub fn new() -> Self {
+    pub fn new(process_fn: ProcessFn) -> Self {
         MakeSvc {
             files: Arc::new(Mutex::new(HashMap::new())),
+            process_fn: Arc::new(process_fn),
         }
     }
 }
 
 impl Default for MakeSvc {
     fn default() -> Self {
-        Self::new()
+        Self::new(Box::new(|_| {}))
     }
 }
 
@@ -189,6 +203,7 @@ impl<T> Service<T> for MakeSvc {
     fn call(&mut self, _: T) -> Self::Future {
         future::ok(Svc {
             files: self.files.clone(),
+            process_fn: self.process_fn.clone(),
         })
     }
 }
@@ -200,8 +215,19 @@ pub fn http_ingester(
     FileLineCounter,
     impl FnOnce(),
 ) {
+    http_ingester_with_processors(addr, Box::new(|_| {}))
+}
+
+pub fn http_ingester_with_processors(
+    addr: SocketAddr,
+    process_fn: ProcessFn,
+) -> (
+    impl Future<Output = std::result::Result<(), IngestError>>,
+    FileLineCounter,
+    impl FnOnce(),
+) {
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-    let mk_svc = MakeSvc::new();
+    let mk_svc = MakeSvc::new(process_fn);
     let received = mk_svc.files.clone();
     (
         async move {
@@ -243,7 +269,7 @@ pub fn https_ingester(
 ) {
     info!("creating https_ingester");
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-    let mk_svc = MakeSvc::new();
+    let mk_svc = MakeSvc::new(Box::new(|_| {}));
     let received = mk_svc.files.clone();
     (
         async move {
