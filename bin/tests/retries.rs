@@ -1,7 +1,7 @@
 use common::AgentSettings;
 pub use common::*;
 use logdna_mock_ingester::{
-    http_ingester_with_processors, FileLineCounter, IngestBody, IngestError,
+    http_ingester_with_processors, FileLineCounter, IngestError, ProcessFn,
 };
 use std::fs::File;
 use std::future::Future;
@@ -176,7 +176,7 @@ journald: {{}}
 }
 
 fn start_ingester(
-    process_fn: Box<dyn Fn(&IngestBody) + Send>,
+    process_fn: ProcessFn,
 ) -> (
     impl Future<Output = std::result::Result<(), IngestError>>,
     FileLineCounter,

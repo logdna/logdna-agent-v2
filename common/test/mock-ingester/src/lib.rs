@@ -25,7 +25,7 @@ use tokio_stream::wrappers::TcpListenerStream;
 const ROOT: &str = "/logs/agent";
 
 pub type FileLineCounter = Arc<Mutex<HashMap<String, FileInfo>>>;
-pub type ProcessFn = Arc<Mutex<Box<dyn Fn(&IngestBody) + Send>>>;
+pub type ProcessFn = Box<dyn Fn(&IngestBody) + Send + Sync>;
 
 #[derive(Debug)]
 pub struct FileInfo {
@@ -61,7 +61,7 @@ pub struct Line {
 // #[derive(Debug)]
 pub struct Svc {
     files: FileLineCounter,
-    process_fn: ProcessFn,
+    process_fn: Arc<ProcessFn>,
 }
 
 impl Unpin for Svc {}
@@ -135,7 +135,6 @@ impl Service<Request<Body>> for Svc {
                 }
             };
 
-            let process_fn = process_fn.lock().await;
             process_fn(&ingest_body);
 
             for line in ingest_body.lines {
@@ -174,14 +173,14 @@ impl Service<Request<Body>> for Svc {
 
 pub struct MakeSvc {
     files: FileLineCounter,
-    process_fn: ProcessFn,
+    process_fn: Arc<ProcessFn>,
 }
 
 impl MakeSvc {
-    pub fn new(process_fn: Box<dyn Fn(&IngestBody) + Send>) -> Self {
+    pub fn new(process_fn: ProcessFn) -> Self {
         MakeSvc {
             files: Arc::new(Mutex::new(HashMap::new())),
-            process_fn: Arc::new(Mutex::new(process_fn)),
+            process_fn: Arc::new(process_fn),
         }
     }
 }
@@ -221,7 +220,7 @@ pub fn http_ingester(
 
 pub fn http_ingester_with_processors(
     addr: SocketAddr,
-    process_fn: Box<dyn Fn(&IngestBody) + Send>,
+    process_fn: ProcessFn,
 ) -> (
     impl Future<Output = std::result::Result<(), IngestError>>,
     FileLineCounter,
