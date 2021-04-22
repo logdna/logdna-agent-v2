@@ -20,7 +20,7 @@ use std::convert::{TryFrom, TryInto};
 use std::env;
 use std::rc::Rc;
 use thiserror::Error;
-use tokio::runtime::{Builder, Runtime};
+use tokio::runtime::Builder;
 
 #[derive(Error, Debug)]
 enum Error {
@@ -35,79 +35,57 @@ enum Error {
 pub struct K8sMetadata {
     metadata: Mutex<HashMap<(String, String), PodMetadata>>,
     api: Api<Pod>,
-    runtime: Mutex<Option<Runtime>>,
 }
 
 // TODO refactor to use kube-rs Reflector instead of manually managing hashmap
 impl K8sMetadata {
-    pub fn new() -> Result<Self, K8sError> {
-        let runtime = match Builder::new_multi_thread()
-            .enable_all()
-            .worker_threads(2)
-            .build()
-        {
+    pub async fn new() -> Result<Self, K8sError> {
+        let config = match Config::from_cluster_env() {
             Ok(v) => v,
             Err(e) => {
                 return Err(K8sError::InitializationError(format!(
-                    "unable to build tokio runtime: {}",
+                    "unable to get cluster configuration info: {}",
                     e
                 )))
             }
         };
-        let this = runtime.block_on(async {
-            let config = match Config::from_cluster_env() {
-                Ok(v) => v,
-                Err(e) => {
-                    return Err(K8sError::InitializationError(format!(
-                        "unable to get cluster configuration info: {}",
-                        e
-                    )))
-                }
-            };
-            let client = Client::new(config.try_into()?);
+        let client = Client::new(config.try_into()?);
 
-            let mut params = ListParams::default();
-            if let Ok(node) = env::var("NODE_NAME") {
-                params = ListParams::default().fields(&format!("spec.nodeName={}", node));
-            }
-
-            let mut metadata = HashMap::new();
-
-            match Api::<Pod>::all(client.clone()).list(&params).await {
-                Ok(pods) => {
-                    for pod in pods {
-                        let pod_meta_data = match PodMetadata::try_from(pod) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                warn!("ignoring pod on initialization: {}", e);
-                                continue;
-                            }
-                        };
-                        metadata.insert(
-                            (pod_meta_data.name.clone(), pod_meta_data.namespace.clone()),
-                            pod_meta_data,
-                        );
-                    }
-                }
-                Err(e) => {
-                    return Err(K8sError::InitializationError(format!(
-                        "unable to poll pods during initialization: {}",
-                        e
-                    )));
-                }
-            }
-
-            Ok(K8sMetadata {
-                metadata: Mutex::new(metadata),
-                api: Api::<Pod>::all(client),
-                runtime: Mutex::new(None),
-            })
-        });
-
-        if let Ok(ref middleware) = this {
-            *middleware.runtime.lock() = Some(runtime);
+        let mut params = ListParams::default();
+        if let Ok(node) = env::var("NODE_NAME") {
+            params = ListParams::default().fields(&format!("spec.nodeName={}", node));
         }
-        this
+
+        let mut metadata = HashMap::new();
+
+        match Api::<Pod>::all(client.clone()).list(&params).await {
+            Ok(pods) => {
+                for pod in pods {
+                    let pod_meta_data = match PodMetadata::try_from(pod) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            warn!("ignoring pod on initialization: {}", e);
+                            continue;
+                        }
+                    };
+                    metadata.insert(
+                        (pod_meta_data.name.clone(), pod_meta_data.namespace.clone()),
+                        pod_meta_data,
+                    );
+                }
+            }
+            Err(e) => {
+                return Err(K8sError::InitializationError(format!(
+                    "unable to poll pods during initialization: {}",
+                    e
+                )));
+            }
+        }
+
+        Ok(K8sMetadata {
+            metadata: Mutex::new(metadata),
+            api: Api::<Pod>::all(client),
+        })
     }
 
     fn handle_pod(&self, event: kube_runtime::watcher::Event<Pod>) -> Result<(), K8sError> {
@@ -166,12 +144,8 @@ impl K8sMetadata {
 
 impl Middleware for K8sMetadata {
     fn run(&self) {
-        let runtime = self
-            .runtime
-            .lock()
-            .take()
-            .expect("tokio runtime not initialized");
-
+        // Start parsing k8s events in the background
+        let runtime = Builder::new_multi_thread().build().unwrap();
         runtime.block_on(async move {
             let backoff = Rc::new(RefCell::new(ExponentialBackoff::default()));
             let watcher = watcher(self.api.clone(), ListParams::default());
@@ -323,7 +297,6 @@ mod tests {
         K8sMetadata {
             metadata: Mutex::new(map),
             api: Api::<Pod>::all(Client::new(config.try_into().unwrap())),
-            runtime: Mutex::new(None),
         }
     }
 

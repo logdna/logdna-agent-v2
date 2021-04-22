@@ -112,7 +112,7 @@ async fn main() {
     if config.log.use_k8s_enrichment == K8sTrackingConf::Always
         && PathBuf::from("/var/log/containers/").exists()
     {
-        match K8sMetadata::new() {
+        match K8sMetadata::new().await {
             Ok(v) => {
                 executor.register(v);
                 info!("Registered k8s metadata middleware");
