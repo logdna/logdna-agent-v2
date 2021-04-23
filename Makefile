@@ -45,6 +45,9 @@ MAJOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f1)
 MINOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f2)
 PATCH_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f3 | cut -d- -f1)
 BETA_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d- -f2 | cut -s -d. -f2)
+
+TARGET_TAG ?= BUILD_VERSION
+
 ifeq ($(BETA_VERSION),)
 	BETA_VERSION := 0
 endif
@@ -259,9 +262,11 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION)
 
 define publish_images
-	$(eval TARGET_VERSIONS := $(BUILD_VERSION) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(shell docker images -q $(REPO):$(BUILD_TAG)) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
-	set -e; \
-	@for version in $(TARGET_VERSIONS); do \
+	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(shell docker images -q $(REPO):$(BUILD_TAG)) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
+	@set -e; \
+	arr=($(TARGET_VERSIONS)); \
+	for version in $${arr[@]}; do \
+		echo $(1):$${version}; \
 		$(DOCKER) tag $(REPO):$(BUILD_TAG) $(1):$${version}; \
 		$(DOCKER) push $(1):$${version}; \
 	done;
