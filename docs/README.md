@@ -29,6 +29,7 @@ The LogDNA agent is a resource-efficient log collection client that forwards log
   * [Configuring Lookback](#configuring-lookback)
   * [Configuring Journald](#configuring-journald)
   * [Configuring Kubernetes Events](#configuring-events)
+  * [Resource Limits](#resource-limits)
 
 ## Managing Deployments
 
@@ -207,8 +208,25 @@ To control whether the LogDNA agent collects Kubernetes events, configure the `L
 
 * `always` - Always capture events
 * `never` - Never capture events
-__Note:__ The default option is `always`.
+__Note:__ The default option is `never`.
 
 > :warning: Due to a ["won't fix" bug in the Kubernetes API](https://github.com/kubernetes/kubernetes/issues/41743), the LogDNA agent collects events from the entire cluster, including multiple nodes. To prevent duplicate logs when running multiple pods, the LogDNA agent pods defer responsibilty of capturing events to the oldest pod in the cluster. If that pod is down, the next oldest LogDNA agent pod will take over responsibility and continue from where the previous pod left off.
 
+### Resource Limits
+
+The agent is deployed as a Kubernetes DaemonSet, creating one pod per node selected. The agent collects logs of all
+the pods in the node. The resource requirements of the agent are in direct relation to the amount of pods per node,
+and the amount of logs producer per pod.
+
+The agent requires at least 128Mib and no more than 512Mib of memory. It requires at least
+[twenty millicpu (`20m`)][k8s-cpu-usage].
+
+Different features can also increase resource utilization. When line exclusion/inclusion or redaction rules
+are specified, you can expect to additional CPU consumption per line and per regex rule defined. When Kubernetes
+event logging is enabled (disabled by default), additional CPU usage will occur on the oldest agent pod.
+
+We do not recommend placing traffic shaping or CPU limits on the agent to ensure data can be sent to our
+log ingestion service.
+
 [regex-syntax]: https://docs.rs/regex/1.4.5/regex/#syntax
+[k8s-cpu-usage]: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#meaning-of-cpu
