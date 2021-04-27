@@ -4,6 +4,7 @@ use std::convert::{Into, TryFrom};
 use std::num::NonZeroI64;
 use std::sync::Arc;
 
+use backoff::ExponentialBackoff;
 use crossbeam::atomic::AtomicCell;
 
 use chrono::Duration;
@@ -353,27 +354,24 @@ impl K8sEventStream {
                                 async move { matched }
                             })
                             .map({
-                                move |e| {
-                                    match e {
-                                        Ok(watcher::Event::Deleted(e)) => {
-                                            info!("previous k8s event logger deleted");
-                                            // We've detected the old one is dead, now what?
-                                            delete_time.store(
-                                                e.metadata
-                                                    .deletion_timestamp
-                                                    .map(|t| {
-                                                        info!(
-                                                            "Ignoring k8s events before {}",
-                                                            t.0 - chrono::Duration::seconds(2)
-                                                        );
-                                                        NonZeroI64::new(t.0.timestamp() - 2)
-                                                    })
-                                                    .flatten(),
-                                            );
-                                            Cont::Break
-                                        }
-                                        _ => Cont::Cont,
+                                move |e| match e {
+                                    Ok(watcher::Event::Deleted(e)) => {
+                                        info!("previous k8s event logger deleted");
+                                        delete_time.store(
+                                            e.metadata
+                                                .deletion_timestamp
+                                                .map(|t| {
+                                                    info!(
+                                                        "Ignoring k8s events before {}",
+                                                        t.0 - chrono::Duration::seconds(2)
+                                                    );
+                                                    NonZeroI64::new(t.0.timestamp() - 2)
+                                                })
+                                                .flatten(),
+                                        );
+                                        Cont::Break
                                     }
+                                    _ => Cont::Cont,
                                 }
                             })
                             .filter_map(|e| async move {
@@ -390,7 +388,17 @@ impl K8sEventStream {
                 }
             }
         };
-        try_unfold((), waiter).map(|r: Result<(), K8sEventStreamError>| match r {
+
+        let waiter = Arc::new(waiter);
+
+        try_unfold((), {
+            let waiter = waiter.clone();
+            move |_| {
+                let waiter = waiter.clone();
+                backoff::future::retry(ExponentialBackoff::default(), move || waiter(()))
+            }
+        })
+        .map(|r: Result<(), K8sEventStreamError>| match r {
             Ok(_) => Ok(StreamElem::Waiting),
             Err(e) => Err(e),
         })
@@ -461,7 +469,7 @@ impl K8sEventStream {
         let previous_event_logger_delete_time: Arc<AtomicCell<Option<NonZeroI64>>> =
             Arc::new(AtomicCell::new(None));
 
-        // Should retry until it gets a successful wait?
+        // Retry is handled internally with exponential backoff
         let waiting_stream = K8sEventStream::waiter_stream(
             pod_name,
             namespace,
