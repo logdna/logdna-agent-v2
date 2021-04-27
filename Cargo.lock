@@ -1156,7 +1156,6 @@ dependencies = [
  "crossbeam",
  "futures",
  "http 0.1.0",
- "itertools",
  "k8s-openapi",
  "kube",
  "kube-runtime",

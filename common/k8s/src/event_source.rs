@@ -17,8 +17,6 @@ use kube::api::ListParams;
 use kube::{Api, Client, Config};
 use kube_runtime::{utils::try_flatten_touched, watcher};
 
-use itertools::Itertools;
-
 use pin_utils::pin_mut;
 
 use serde::Serialize;
@@ -289,14 +287,23 @@ impl K8sEventStream {
                     None
                 }
             })
-            // Sorts into ascending order
-            .sorted_by(|(gen, started_at, name), (o_gen, o_started_at, o_name)| {
-                // For our purposes later generations should sort earlier than later ones
-                Ordering::reverse(Ord::cmp(gen, o_gen))
-                    .then(Ord::cmp(started_at, o_started_at))
-                    .then(Ord::cmp(name, o_name))
-            })
-            .next()
+            // Keeps oldest pod
+            .reduce(
+                move |(gen, started_at, name),
+                      (o_gen, o_started_at, o_name)|
+                      -> (Option<u64>, &Time, &str) {
+                    // For our purposes later generations should sort earlier than later ones
+                    if Ordering::reverse(Ord::cmp(&gen, &o_gen))
+                        .then(Ord::cmp(started_at, o_started_at))
+                        .then(Ord::cmp(name, o_name))
+                        == Ordering::Less
+                    {
+                        (o_gen, o_started_at, o_name)
+                    } else {
+                        (gen, started_at, name)
+                    }
+                },
+            )
             .map(|(_, _, name)| name.to_string());
         Ok(oldest_post)
     }
