@@ -164,21 +164,34 @@ fn main() {
 
         let k8s_event_stream = match log_k8s_events {
             K8sTrackingConf::Never => None,
-            K8sTrackingConf::Always => Some(
-                K8sEventStream::try_default(
-                    std::env::var("POD_NAME").ok(),
-                    std::env::var("NAMESPACE").ok(),
-                )
-                .map_err(|e| {
-                    warn!("Failed to create kubernetes event stream: {}", e);
-                    e
-                }),
-            ),
+            K8sTrackingConf::Always => {
+                let pod_name = std::env::var("POD_NAME").ok();
+                let namespace = std::env::var("NAMESPACE").ok();
+                let pod_label = std::env::var("POD_APP_LABEL").ok();
+                match (pod_name, namespace, pod_label) {
+                    (Some(pod_name), Some(namespace), Some(pod_label)) => {
+                        K8sEventStream::try_default(pod_name, namespace, pod_label)
+                            .map_err(|e|warn!("Error initialising Kubernetes event logging: {}", e)).ok()
+                    },
+                    (pn, n, pl) => {
+                        if pn.is_none() {
+                            warn!("Kubernetes event logging is configured, but POD_NAME env is not set")
+                        }
+                        if n.is_none() {
+                            warn!("Kubernetes event logging is configured, but NAMESPACE env is not set")
+                        }
+                        if pl.is_none() {
+                            warn!("Kubernetes event logging is configured, but POD_APP_LABEL env is not set")
+                        }
+                        warn!("Kubernetes event logging disabled");
+                        None
+                    }
+                }
+            },
         };
 
         let k8s_event_source: Option<_> = if let Some(fut) = k8s_event_stream
-            .map(|e| e.ok().map(|e| e.event_stream()))
-            .flatten()
+            .map(|e| e.event_stream())
         {
             Some(
                 fut.await

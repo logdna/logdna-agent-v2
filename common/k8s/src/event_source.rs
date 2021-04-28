@@ -222,8 +222,9 @@ impl TryFrom<EventLog> for LineBuilder {
 
 pub struct K8sEventStream {
     client: Client,
-    pod_name: Option<String>,
-    namespace: Option<String>,
+    pod_name: String,
+    namespace: String,
+    pod_label: String,
 }
 
 pub enum StreamElem<T> {
@@ -234,19 +235,22 @@ pub enum StreamElem<T> {
 impl K8sEventStream {
     pub fn new(
         config: kube::Config,
-        pod_name: Option<String>,
-        namespace: Option<String>,
+        pod_name: String,
+        namespace: String,
+        pod_label: String,
     ) -> Result<Self, K8sError> {
         Ok(Self {
             client: Client::new(config.try_into()?),
             pod_name,
             namespace,
+            pod_label,
         })
     }
 
     pub fn try_default(
-        pod_name: Option<String>,
-        namespace: Option<String>,
+        pod_name: String,
+        namespace: String,
+        pod_label: String,
     ) -> Result<Self, K8sError> {
         let config = match Config::from_cluster_env() {
             Ok(v) => v,
@@ -257,7 +261,7 @@ impl K8sEventStream {
                 )))
             }
         };
-        Self::new(config, pod_name, namespace)
+        Self::new(config, pod_name, namespace, pod_label)
     }
 
     async fn get_oldest_pod(
@@ -312,22 +316,23 @@ impl K8sEventStream {
     fn waiter_stream<T>(
         pod_name: impl Into<String>,
         namespace: impl Into<String>,
+        pod_label: impl Into<String>,
         client: Arc<Client>,
         delete_time: Arc<AtomicCell<Option<NonZeroI64>>>,
     ) -> impl Stream<Item = Result<StreamElem<T>, K8sEventStreamError>> {
         let pod_name = pod_name.into();
         let namespace = namespace.into();
+        let pod_label = pod_label.into();
 
         let waiter = move |_| {
             let pod_name = pod_name.clone();
             let namespace = namespace.clone();
+            let pod_label = pod_label.clone();
             let client = client.clone();
 
             let delete_time = delete_time.clone();
             let pods: Api<Pod> = Api::namespaced(client.as_ref().clone(), &namespace);
             // subscribe to pod api and filter pods by POD_APP_LABEL
-            let pod_label =
-                std::env::var("POD_APP_LABEL").unwrap_or_else(|_| "logdna-agent".into());
 
             async move {
                 // Find the oldest pod of the latest generation
@@ -343,10 +348,10 @@ impl K8sEventStream {
                         info!("begin logging k8s events");
                         Ok(None)
                     } else {
-                        info!("watching {}", oldest_pod_name);
+                        info!("watching pod {}", oldest_pod_name);
                         let params = ListParams::default()
                             .timeout(30)
-                            .labels(&format!("app.kubernetes.io/name={}", pod_label)) // filter instances by label
+                            .labels(&format!("app.kubernetes.io/name={}", &pod_label)) // filter instances by label
                             .fields(&format!("metadata.name={}", oldest_pod_name)); // filter instances by label
                         let stream = watcher(pods.clone(), params)
                             .skip_while(|e| {
@@ -461,6 +466,7 @@ impl K8sEventStream {
     pub async fn create_stream(
         pod_name: impl Into<String>,
         namespace: impl Into<String>,
+        pod_label: impl Into<String>,
         client: Arc<Client>,
         latest_event_time: Arc<AtomicCell<Option<NonZeroI64>>>,
     ) -> impl Stream<Item = Result<LineBuilder, K8sEventStreamError>> {
@@ -473,6 +479,7 @@ impl K8sEventStream {
         let waiting_stream = K8sEventStream::waiter_stream(
             pod_name,
             namespace,
+            pod_label,
             client.clone(),
             previous_event_logger_delete_time.clone(),
         );
@@ -497,8 +504,9 @@ impl K8sEventStream {
 
         let latest_event_time: Arc<AtomicCell<Option<NonZeroI64>>> =
             Arc::new(AtomicCell::new(None));
-        let pod_name = self.pod_name.ok_or("Pod Name not set")?;
-        let namespace = self.namespace.ok_or("Namespace not set")?;
+        let pod_name = self.pod_name.clone();
+        let namespace = self.namespace.clone();
+        let pod_label = self.pod_label.clone();
 
         let _latest_event_time = latest_event_time.clone();
         let _client = client.clone();
@@ -506,6 +514,7 @@ impl K8sEventStream {
             K8sEventStream::create_stream(
                 pod_name.clone(),
                 namespace.clone(),
+                pod_label.clone(),
                 _client.clone(),
                 _latest_event_time.clone(),
             )
