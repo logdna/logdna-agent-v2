@@ -83,6 +83,7 @@ fn test_command_line_arguments_should_set_config() {
                 .args(&["--use-k8s-enrichment", "never"])
                 .args(&["--log-k8s-events", "always"])
                 .args(&["--db-path", "/var/lib/some-agent/"])
+                .args(&["--metrics-port", "9898"])
                 .args(&["--line-exclusion", "abc"])
                 .args(&["--line-inclusion", "z_inc"])
                 .args(&["--line-redact", "a@b.com"]);
@@ -102,6 +103,7 @@ fn test_command_line_arguments_should_set_config() {
             assert!(contains("mac: 01-23-45-67-89-AB-CD-EF").eval(d));
             assert!(contains("lookback: start").eval(d));
             assert!(contains("db_path: /var/lib/some-agent/").eval(d));
+            assert!(contains("metrics_port: 9898").eval(d));
             assert!(contains("use_k8s_enrichment: never").eval(d));
             assert!(contains("log_k8s_events: always").eval(d));
             assert!(contains("a.*").eval(d));
@@ -125,6 +127,7 @@ fn test_invalid_command_line_arguments_should_exit() {
     cmd_line_invalid_test(&["--use-ssl", "ZZZ"]);
     cmd_line_invalid_test(&["--use-compression", "ZZZ"]);
     cmd_line_invalid_test(&["--gzip-level", "ZZZ"]);
+    cmd_line_invalid_test(&["--metrics-port", "ZZZ"]);
     cmd_line_invalid_test(&["--lookback", "ZZZ"]);
     cmd_line_invalid_test(&["--use-k8s-enrichment", "ZZZ"]);
     cmd_line_invalid_test(&["--log-k8s-events", "ZZZ"]);
@@ -153,6 +156,7 @@ fn test_environment_variables_should_set_config() {
                 .env("LOGDNA_JOURNALD_PATHS", "/j/d")
                 .env("LOGDNA_LOOKBACK", "none")
                 .env("LOGDNA_DB_PATH", "/var/lib/some-other-folder/")
+                .env("LOGDNA_METRICS_PORT", "9097")
                 .env("LOGDNA_USE_K8S_LOG_ENRICHMENT", "always")
                 .env("LOGDNA_LOG_K8S_EVENTS", "never")
                 .env("LOGDNA_LINE_EXCLUSION_REGEX", "exc_re")
@@ -174,6 +178,7 @@ fn test_environment_variables_should_set_config() {
             assert!(contains("mac: 22-23-45-67-89-AB-CD-EF").eval(d));
             assert!(contains("lookback: none").eval(d));
             assert!(contains("db_path: /var/lib/some-other-folder/").eval(d));
+            assert!(contains("metrics_port: 9097").eval(d));
             assert!(contains("j/d").eval(d));
             assert!(contains("use_k8s_enrichment: always").eval(d));
             assert!(contains("log_k8s_events: never").eval(d));

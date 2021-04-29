@@ -11,6 +11,7 @@ use crate::common::{consume_output, AgentSettings};
 
 use assert_cmd::prelude::*;
 use futures::FutureExt;
+use hyper::{Client, StatusCode};
 use log::debug;
 use predicates::prelude::*;
 use proptest::prelude::*;
@@ -381,6 +382,60 @@ fn test_exclusion_rules() {
 
     common::assert_agent_running(&mut agent_handle);
 
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_metrics_endpoint() {
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let included_file = dir.join("file1.log");
+    let port = 9881;
+
+    let mut agent_handle = common::spawn_agent(AgentSettings {
+        log_dirs: &dir.to_str().unwrap(),
+        metrics_port: Some(port),
+        ..Default::default()
+    });
+
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
+    common::wait_for_event("Enabling prometheus endpoint", &mut stderr_reader);
+
+    // Append to a file and wait for the notify event
+    common::append_to_file(&included_file, 100, 5).unwrap();
+    common::wait_for_file_event("tailer sendings lines", &included_file, &mut stderr_reader);
+    let mut body_str = String::new();
+
+    // Wait for all the metrics to be tracked
+    for _ in 0..20 {
+        let client = Client::new();
+        let url = format!("http://127.0.0.1:{}/metrics", port)
+            .parse()
+            .unwrap();
+        if let Ok(response) = client.get(url).await {
+            assert_eq!(response.status(), StatusCode::OK);
+
+            let buf = hyper::body::to_bytes(response).await.unwrap();
+            body_str = std::str::from_utf8(&buf).unwrap().to_string();
+
+            // Request duration metrics are the last ones to appear
+            if body_str.contains("logdna_ingest_request_duration") {
+                break;
+            }
+        }
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    assert!(body_str.contains("# TYPE logdna_fs_bytes counter"));
+    assert!(body_str.contains("# TYPE logdna_fs_lines counter"));
+    assert!(body_str.contains("# TYPE logdna_ingest_request_size histogram"));
+    assert!(body_str.contains("# TYPE logdna_ingest_request_duration_millis histogram"));
+    assert!(body_str.contains("# TYPE logdna_fs_events counter"));
+    // One created file
+    assert!(body_str.contains("logdna_fs_events{event_type=\"create\"} 1"));
+
+    common::assert_agent_running(&mut agent_handle);
     agent_handle.kill().expect("Could not kill process");
 }
 

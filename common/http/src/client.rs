@@ -172,7 +172,6 @@ impl Client {
         self.last_flush = Instant::now();
 
         Metrics::http().add_request_size(buffer_size);
-        Metrics::http().increment_requests();
         let body = buffer.end().expect("Failed to close ingest buffer");
         self.make_request(IngestBodyBuffer::from_buffer(body)).await;
     }
@@ -180,28 +179,36 @@ impl Client {
     async fn make_request(&mut self, body: IngestBodyBuffer) {
         let retry = self.retry.clone();
         let sf = self.state_flush.as_ref();
+        let start = Instant::now();
         match self
             .inner
             .send(self.limiter.get_slot(body).as_ref().clone())
             .await
         {
-            Ok(Response::Failed(_, s, r)) => warn!("bad response {}: {}", s, r),
+            Ok(Response::Failed(_, s, r)) => {
+                Metrics::http().add_request_failure(start);
+                warn!("bad response {}: {}", s, r);
+            }
             Err(HttpError::Send(body, e)) => {
+                Metrics::http().add_request_failure(start);
                 warn!("failed sending http request, retrying: {}", e);
                 if let Err(e) = retry.retry(self.offsets.as_ref(), &body) {
                     error!("failed to retry request: {}", e)
                 }
             }
             Err(HttpError::Timeout(body)) => {
+                Metrics::http().add_request_timeout(start);
                 warn!("failed sending http request, retrying: request timed out!");
                 if let Err(e) = retry.retry(self.offsets.as_ref(), &body) {
                     error!("failed to retry request: {}", e)
                 };
             }
             Err(e) => {
+                Metrics::http().add_request_failure(start);
                 warn!("failed sending http request: {}", e);
             }
             Ok(Response::Sent) => {
+                Metrics::http().add_request_success(start);
                 if let Some(sf) = sf {
                     // Flush the state
                     if let Err(e) = sf.flush().await {

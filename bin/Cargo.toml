@@ -69,6 +69,7 @@ rand = "0.8"
 systemd = "0.7"
 nix = "0.20"
 wait-timeout = "0.2"
+hyper = { version = "0.14", features = ["http1"] }
 
 [build-dependencies]
 auditable-build = "0.1"

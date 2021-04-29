@@ -3,6 +3,7 @@ extern crate log;
 
 pub mod client;
 pub mod limit;
+pub mod metrics_endpoint;
 pub mod retry;
 
 pub mod types {

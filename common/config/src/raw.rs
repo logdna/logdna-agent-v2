@@ -55,6 +55,8 @@ pub struct LogConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub db_path: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics_port: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub include: Option<Rules>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exclude: Option<Rules>,
@@ -127,6 +129,7 @@ impl Default for LogConfig {
         LogConfig {
             dirs: vec!["/var/log/".into()],
             db_path: None,
+            metrics_port: None,
             include: Some(Rules {
                 glob: vec!["*.log".parse().unwrap()],
                 regex: Vec::new(),
