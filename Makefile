@@ -21,7 +21,7 @@ WORKDIR :=/build
 DOCKER := DOCKER_BUILDKIT=1 docker
 DOCKER_DISPATCH := ./docker/dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
 DOCKER_JOURNALD_DISPATCH := ./docker/journald_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
-DOCKER_KIND_DISPATCH := ./docker/kind_dispatch.sh "$(WORKDIR)"
+DOCKER_KIND_DISPATCH := ./docker/kind_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
 DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/logdna-agent-v2
 DOCKER_PUBLIC_IMAGE := docker.io/logdna/logdna-agent
 DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
@@ -146,7 +146,7 @@ integration-test: ## Run integration tests using image with additional tools
 
 .PHONY:k8s-test
 k8s-test: ## Run integration tests using k8s kind
-	$(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER)
+	$(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "cargo test --manifest-path bin/Cargo.toml --features k8s_tests -- --nocapture"
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
