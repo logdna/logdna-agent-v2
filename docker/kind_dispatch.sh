@@ -30,14 +30,21 @@ DOCKER_BUILDKIT=1 docker build $curpath/.. \
   -t "$image" \
   --pull \
   --progress=plain \
-  --secret id=aws,src=$HOME/.aws/credentials \
   --build-arg BUILD_IMAGE=docker.io/logdna/build-images:rust-buster-stable \
   --build-arg SCCACHE_BUCKET=$SCCACHE_BUCKET \
   --build-arg SCCACHE_REGION=$SCCACHE_REGION \
   2> $curpath/../target/.docker_build.log || cat $curpath/../target/.docker_build.log
 
 echo "Loading into kind"
-kind load docker-image $image --name agent-dev-cluster
+
+if [ -z "$BUILD_TAG" ]
+then
+  cluster_name=agent-dev-cluster
+else
+  cluster_name=$(echo $BUILD_TAG | tr '[:upper:]' '[:lower:]' | tail -c 32)
+fi
+
+kind load docker-image $image --name $cluster_name
 
 echo "Creating k8s resources"
 KUBECONFIG=$curpath/.kind_config_host kubectl apply -f $curpath/kind/test-resources.yaml
@@ -45,10 +52,10 @@ KUBECONFIG=$curpath/.kind_config_host kubectl apply -f $curpath/kind/test-resour
 # Run the integration test binary in docker on the same network as the kubernetes cluster
 if [ "$HOST_MACHINE" = "Mac" ]; then
 	# shellcheck disable=SC2086
-	child=$(docker run --network $kind_network -d -w "$1" $extra_args -v "$2" -v $curpath/.kind_config:/root/.kind_config -e KUBECONFIG=/root/.kind_config $5 "$4" /bin/sh -c "$6")
+	child=$(docker run --network $kind_network -d -w "$1" $extra_args -v "$2" -v $curpath/.kind_config:$1/.kind_config -e KUBECONFIG=$1/.kind_config $5 "$4" /bin/sh -c "$6")
 elif [ "$HOST_MACHINE" = "Linux" ]; then
 	# shellcheck disable=SC2086
-	child=$(docker run --network $kind_network -d -u "$(id -u)":"$(id -g)" -w "$1" $extra_args -v "$2" -v $curpath/.kind_config:/root/.kind_config -e KUBECONFIG=/root/.kind_config $5 "$4" /bin/sh -c "$6")
+	child=$(docker run --network $kind_network -d -u "$(id -u)":"$(id -g)" -w "$1" $extra_args -v "$2" -v $curpath/.kind_config:$1/.kind_config -e KUBECONFIG=$1/.kind_config $5 "$4" /bin/sh -c "$6")
 fi
 
 

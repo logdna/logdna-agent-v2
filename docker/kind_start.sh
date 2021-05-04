@@ -10,10 +10,17 @@ create_cluster=${1:-true}
 
 >&2 kind --version || exit 1
 
-export KIND_EXPERIMENTAL_DOCKER_NETWORK=agent-dev-cluster
+if [ -z "$BUILD_TAG" ]
+then
+  cluster_name=agent-dev-cluster
+else
+  cluster_name=$(echo $BUILD_TAG | tr '[:upper:]' '[:lower:]' | tail -c 32)
+fi
+
+export KIND_EXPERIMENTAL_DOCKER_NETWORK=$cluster_name
 if [ "$create_cluster" = "true" ]
 then
-  >&2 kind create cluster --name agent-dev-cluster \
+  >&2 kind create cluster --name $cluster_name \
       --config=$curpath/kind/kind-config.yaml \
       --kubeconfig=$curpath/.kind_config_host
 else
@@ -22,11 +29,15 @@ else
 fi
 
 api_server_node_addr=$(KUBECONFIG=$curpath/.kind_config_host \
-    kubectl cluster-info --context kind-agent-dev-cluster dump | \
+    kubectl cluster-info --context kind-$cluster_name dump | \
     grep kubeadm.kubernetes.io/kube-apiserver.advertise-address.endpoint | \
-    awk '{print $2}' | \
+    awk '{ print length, $2}' | \
+    sort -n | \
+    cut -d" " -f2- | \
+    head -n1 | \
     tr -d ',' | tr -d '"')
 
 sed "s#server: https://.*#server: https://$api_server_node_addr#" $curpath/.kind_config_host > $curpath/.kind_config
+chmod 744 $curpath/.kind_config
 
 echo $KIND_EXPERIMENTAL_DOCKER_NETWORK

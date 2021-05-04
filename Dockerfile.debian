@@ -21,8 +21,7 @@ WORKDIR /opt/logdna-agent-v2
 COPY . .
 
 # Rebuild the agent
-RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
-    --mount=type=cache,target=/opt/rust/cargo/registry  \
+RUN --mount=type=cache,target=/opt/rust/cargo/registry  \
     --mount=type=cache,target=/opt/logdna-agent-v2/target \
     if [ -z "$SCCACHE_BUCKET" ]; then unset RUSTC_WRAPPER; fi; \
     cargo build --manifest-path bin/Cargo.toml ${FEATURES} --release && \
