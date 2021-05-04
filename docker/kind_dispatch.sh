@@ -1,51 +1,78 @@
 #!/usr/bin/env sh
 
-curpath=$(dirname "$0")
-image="logdna-agent-kind:building"
-create_cluster=${2:-true}
+set -e
 
-echo "Starting k8s kind build"
+curpath=$(realpath $(dirname "$0"))
+
+image="logdna-agent-kind:building"
+
+kind_network=$($curpath/kind_start.sh $3)
 
 # shellcheck source=/dev/null
 . "$curpath/lib.sh"
 
-kind --version || exit 1
+extra_args="$(get_volume_mounts "$1" "$4") $(get_sccache_args)"
 
-if [ "$create_cluster" = "true" ]
-then
-  kind create cluster --name agent-dev-cluster --config=docker/kind/kind-config.yaml
-else
-  echo "Reusing existing cluster"
-  kubectl config use-context kind-agent-dev-cluster || exit 1
-fi
+_term() {
+  docker kill "$child"
+  status=$(docker inspect "$child" --format='{{.State.ExitCode}}')
+  docker rm "$child"
+  $curpath/kind_stop.sh
+  exit "$status"
+}
 
-echo "Building image"
-docker build -t "$image" -f "$curpath/kind/Dockerfile" "$curpath/.."
+trap _term TERM
+trap _term INT
+
+echo "Building Agent Image"
+DOCKER_BUILDKIT=1 docker build $curpath/.. \
+  -f Dockerfile.debian \
+  -t "$image" \
+  --pull \
+  --progress=plain \
+  --build-arg BUILD_IMAGE=docker.io/logdna/build-images:rust-buster-stable \
+  --build-arg SCCACHE_BUCKET=$SCCACHE_BUCKET \
+  --build-arg SCCACHE_REGION=$SCCACHE_REGION \
+  2> $curpath/../target/.docker_build.log || cat $curpath/../target/.docker_build.log
 
 echo "Loading into kind"
-kind load docker-image logdna-agent-kind:building --name agent-dev-cluster
+
+if [ -z "$BUILD_TAG" ]
+then
+  cluster_name=agent-dev-cluster
+else
+  cluster_name=$(echo $BUILD_TAG | tr '[:upper:]' '[:lower:]' | tail -c 32)
+fi
+
+kind load docker-image $image --name $cluster_name
 
 echo "Creating k8s resources"
-kubectl apply -f docker/kind/test-resources.yaml
-kubectl create namespace agent-dev
-kubectl apply -f docker/kind/agent-dev-build.yaml --namespace agent-dev
+KUBECONFIG=$curpath/.kind_config_host kubectl apply -f $curpath/kind/test-resources.yaml
 
-kubectl wait --for condition=Ready --timeout=30s -n agent-dev pod/agent-dev-build
-sleep 2
-kubectl logs -n agent-dev agent-dev-build --follow
-
-echo "Getting results..."
-sleep 2
-status=$(kubectl get pod -n agent-dev agent-dev-build --output="jsonpath={.status.containerStatuses[].state.terminated.exitCode}")
-
-echo "Deleting resources"
-if [ "$create_cluster" = "true" ]
-then
-  kind delete cluster --name agent-dev-cluster
-else
-  kubectl delete -f docker/kind/agent-dev-build.yaml --namespace agent-dev
-  kubectl delete -f docker/kind/test-resources.yaml
+# Run the integration test binary in docker on the same network as the kubernetes cluster
+if [ "$HOST_MACHINE" = "Mac" ]; then
+	# shellcheck disable=SC2086
+	child=$(docker run --network $kind_network -d -w "$1" $extra_args -v "$2" -v $curpath/.kind_config:$1/.kind_config -e KUBECONFIG=$1/.kind_config $5 "$4" /bin/sh -c "$6")
+elif [ "$HOST_MACHINE" = "Linux" ]; then
+	# shellcheck disable=SC2086
+	child=$(docker run --network $kind_network -d -u "$(id -u)":"$(id -g)" -w "$1" $extra_args -v "$2" -v $curpath/.kind_config:$1/.kind_config -e KUBECONFIG=$1/.kind_config $5 "$4" /bin/sh -c "$6")
 fi
+
+
+# Allow tailing the logs to fail
+set +e
+# Tail the container til it's done
+docker logs -f "$child"
+set -e
+
+# Get the exit code of completed container
+echo "Getting results..."
+status=$(docker inspect "$child" --format='{{.State.ExitCode}}')
+
+# Clean up the container
+docker rm "$child" > /dev/null
+
+$curpath/kind_stop.sh
 
 echo "Exit status: $status"
 

@@ -21,8 +21,7 @@ WORKDIR /opt/logdna-agent-v2
 COPY . .
 
 # Rebuild the agent
-RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
-    --mount=type=cache,target=/opt/rust/cargo/registry  \
+RUN --mount=type=cache,target=/opt/rust/cargo/registry  \
     --mount=type=cache,target=/opt/logdna-agent-v2/target \
     if [ -z "$SCCACHE_BUCKET" ]; then unset RUSTC_WRAPPER; fi; \
     cargo build --manifest-path bin/Cargo.toml ${FEATURES} --release && \
@@ -30,8 +29,8 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     cp ./target/release/logdna-agent logdna-agent && \
     sccache --show-stats
 
-# Use Red Hat Universal Base Image Minimal as the final base image
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.3
+# Use Debian as agent base image
+FROM debian:buster
 
 ARG REPO
 ARG BUILD_TIMESTAMP
@@ -60,9 +59,12 @@ ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy
 COPY --from=build /opt/logdna-agent-v2/logdna-agent /work/
 WORKDIR /work/
 
-RUN microdnf update -y \
-    && microdnf install ca-certificates libcap shadow-utils.x86_64 -y \
-    && rm -rf /var/cache/yum \
+RUN apt update -y \
+    && apt upgrade -y \
+    && apt auto-remove -y \
+    && apt install ca-certificates libcap2 netcat-openbsd nmap \
+                   dnsutils vim curl -y \
+    && rm -rf /var/cache/apt \
     && chmod -R 777 . \
     && setcap "cap_dac_read_search+eip" /work/logdna-agent \
     && groupadd -g 5000 logdna \

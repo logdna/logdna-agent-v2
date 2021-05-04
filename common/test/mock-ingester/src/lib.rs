@@ -56,6 +56,9 @@ pub struct Line {
     pub file: Option<String>,
     annotation: Option<HashMap<String, String>>,
     label: Option<HashMap<String, String>>,
+    host: Option<String>,
+    app: Option<String>,
+    level: Option<String>,
 }
 
 // #[derive(Debug)]
@@ -134,6 +137,7 @@ impl Service<Request<Body>> for Svc {
                         .unwrap());
                 }
             };
+            debug!("Body: {:#?}", &ingest_body);
 
             process_fn(&ingest_body);
 
