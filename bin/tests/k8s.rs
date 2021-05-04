@@ -857,6 +857,10 @@ async fn test_k8s_events_logged() {
         }
         assert!(found_event);
 
+        let has_dups = (1..unknown_log_lines.values.len())
+            .any(|i| unknown_log_lines.values[i..].contains(&unknown_log_lines.values[i - 1]));
+
+        assert!(!has_dups);
         shutdown_handle();
     });
 
