@@ -30,7 +30,7 @@ The LogDNA agent is a resource-efficient log collection client that forwards log
   * [Configuring Journald](#configuring-journald)
   * [Configuring Kubernetes Events](#configuring-events)
   * [Configuring regex for redaction and exclusion or inclusion](#configuring-regex-for-redaction-and-exclusion-or-inclusion)
-* [Resource Limits](#resource-limits)
+  * [Resource Limits](#resource-limits)
 
 ## Managing Deployments
 
@@ -219,23 +219,25 @@ You can define rules, using regex (regular expressions), to control what log dat
 
 For example, you can identify certain types of logs that are noisy and not needed at all, and then write a regex pattern to match those files and preclude them from collection. Conversely, you can use regex expressions to match the log lines that you do want to include, and collect **only** those log lines.
 
-Additionally, you can use the environment variable LOGDNA_REDACT_REGEX to remove certain parts of a log line. Any redacted data is replaced with [REDACTED]. Redacting information is recommended when logs might contain PII (Personally Identifiable Information).
+Additionally, you can use the environment variable `LOGDNA_REDACT_REGEX` to remove certain parts of a log line. Any redacted data is replaced with [REDACTED]. Redacting information is recommended when logs might contain PII (Personally Identifiable Information).
 
 In general, using Agent-level environment variables to define what log data does not ever leave the data center or environment allows a higher level of control over sensitive data, and can also reduce any potential data egress fees.
 
 You can use regex pattern matching via environment variables to:
- * include *only* specific log lines (with `LOGDNA_LINE_INCLUSION_REGEX`)
- * exclude specific log lines (with `LOGDNA_LINE_EXCLUSION_REGEX`)
- * redact parts of a log line (with `LOGDNA_REDACT_REGEX`)
- * preclude entire log files from being monitored `(LOGDNA_EXCLUSION_REGEX_RULES)`
 
-To access our library of common regex patterns, refer to [our regex library documentation](REGEX.md).
+* include *only* specific log lines (with `LOGDNA_LINE_INCLUSION_REGEX`)
+* exclude specific log lines (with `LOGDNA_LINE_EXCLUSION_REGEX`)
+* redact parts of a log line (with `LOGDNA_REDACT_REGEX`)
+* preclude entire log files from being monitored `(LOGDNA_EXCLUSION_REGEX_RULES)`
+
+To access our library of common regex patterns refer to [our regex library documentation](REGEX.md).
 
 Notes:
-   * Exclusion rules overwrite inclusion rules. That is, for a line to be ingested, it should match all inclusion rules (if any) and **not match** any exclusion rule.
-   * Note that we use commas as separators for environment variable values, making it not possible to use the comma character (,) as a valid value. We are addressing this limitation in upcoming versions. If you need to use the comma character in a regular expression, use the unicode character reference: `\u002C`, for example: `hello\u002C world` matches `hello, world`.
-   * All regular expressions are case sensitive by default. If you don't want to differentiate between upper and lower-case letters, use non-capturing groups with a flag: (?flags:exp), for example: (?i:my_case_insensitive_regex)
-   * LogDNA also provides post-ingestion <a href ="https://docs.logdna.com/docs/excluding-log-lines" target = "_blank">exclusion rules</a>, to control what log data is displayed and stored in LogDNA.
+
+* Exclusion rules overwrite inclusion rules. That is, for a line to be ingested, it should match all inclusion rules (if any) and **not match** any exclusion rule.
+* Note that we use commas as separators for environment variable values, making it not possible to use the comma character (,) as a valid value. We are addressing this limitation in upcoming versions. If you need to use the comma character in a regular expression, use the unicode character reference: `\u002C`, for example: `hello\u002C world` matches `hello, world`.
+* All regular expressions are case-sensitive by default. If you don't want to differentiate between upper and lower-case letters, use non-capturing groups with a flag: `(?flags:exp)`, for example: `(?i:my_case_insensitive_regex)`
+* LogDNA also provides post-ingestion <a href="https://docs.logdna.com/docs/excluding-log-lines" target="_blank">exclusion rules</a> to control what log data is displayed and stored in LogDNA.
 
 ### Resource Limits
 
