@@ -289,10 +289,7 @@ mod tests {
 
     #[test]
     fn should_support_redactions_changing_length() {
-        let redact = &vec![
-            s!(r"(?:123)"),
-            s!(r"(?:def)"),
-        ];
+        let redact = &vec![s!(r"(?:123)"), s!(r"(?:def)")];
         let p = LineRules::new(&[], &[], redact).unwrap();
         redact_match!(p, "Hello INFO not redacted", "Hello INFO not redacted");
         redact_match!(
