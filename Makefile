@@ -204,7 +204,7 @@ bump-minor-dev: ## Create a new minor beta release and push to github
 	git add bin/Cargo.toml
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
-	#git push
+	git push
 
 .PHONY:release-minor
 release-minor: ## Create a new minor beta release and push to github
