@@ -91,6 +91,8 @@ impl LineRules {
 
                     if m.start() < existing.0 {
                         insert_index = Some(i);
+                        // Order is guaranteed so there's no need to continue processing
+                        break;
                     }
                 }
 
@@ -282,6 +284,18 @@ mod tests {
             p,
             "Si, this is sensitive, supersensitive and sensible.",
             "[REDACTED], this is [REDACTED], [REDACTED] and [REDACTED]."
+        );
+    }
+
+    #[test]
+    fn should_support_redactions_changing_length() {
+        let redact = &vec![s!(r"(?:123)"), s!(r"(?:def)")];
+        let p = LineRules::new(&[], &[], redact).unwrap();
+        redact_match!(p, "Hello INFO not redacted", "Hello INFO not redacted");
+        redact_match!(
+            p,
+            "count def 123 hello hello hello hello 123 def def",
+            "count [REDACTED] [REDACTED] hello hello hello hello [REDACTED] [REDACTED] [REDACTED]"
         );
     }
 
