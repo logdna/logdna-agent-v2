@@ -230,7 +230,7 @@ impl TryFrom<RawConfig> for Config {
         };
 
         if log.use_k8s_enrichment == K8sTrackingConf::Never
-            || log.log_k8s_events == K8sTrackingConf::Always
+            && log.log_k8s_events == K8sTrackingConf::Always
         {
             // It's unlikely that a user will want to disable k8s metadata enrichment
             // but log k8s resource events, warn the user and continue
