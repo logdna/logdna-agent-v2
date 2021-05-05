@@ -164,6 +164,19 @@ lint-shell: ## Lint the Dockerfile for issues
 .PHONY:lint
 lint: lint-docker lint-shell lint-format lint-clippy lint-audit ## Runs all the linters
 
+.PHONY:bump-major-dev
+bump-major-dev: ## Create a new minor beta release and push to github
+	$(eval TARGET_BRANCH := $(shell expr $(MINOR_VERSION) + 1).0)
+	$(eval NEW_VERSION := $(TARGET_BRANCH).0-dev)
+	@if [ ! "$(REMOTE_BRANCH)" = "master" ]; then echo "Can't create the minor beta release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"master\""; exit 1; fi
+	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
+	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
+	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
+	git add bin/Cargo.toml
+	git add -u k8s/
+	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
+	git push
+
 .PHONY:release-major
 release-major: ## Create a new major beta release and push to github
 	$(eval TARGET_BRANCH := $(shell expr $(MAJOR_VERSION) + 1).0)
@@ -179,6 +192,19 @@ release-major: ## Create a new major beta release and push to github
 	git tag -s -a $(NEW_VERSION) -m ""
 	git push --follow-tags
 	git checkout $(TARGET_BRANCH) || git checkout -b $(TARGET_BRANCH)
+
+.PHONY:bump-minor-dev
+bump-minor-dev: ## Create a new minor beta release and push to github
+	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(shell expr $(MINOR_VERSION) + 1))
+	$(eval NEW_VERSION := $(TARGET_BRANCH).0-dev)
+	@if [ ! "$(REMOTE_BRANCH)" = "master" ]; then echo "Can't create the minor beta release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"master\""; exit 1; fi
+	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
+	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
+	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
+	git add bin/Cargo.toml
+	git add -u k8s/
+	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
+	#git push
 
 .PHONY:release-minor
 release-minor: ## Create a new minor beta release and push to github
