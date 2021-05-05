@@ -1,4 +1,4 @@
-git branch# LogDNA Agent
+# LogDNA Agent
 
 [![Rustc Version 1.46+]][rustc]
 [Join us at the LogDNA community forum]: https://community.logdna.com
