@@ -46,7 +46,7 @@ MINOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f2)
 PATCH_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f3 | cut -d- -f1)
 BETA_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d- -f2 | cut -s -d. -f2)
 
-TARGET_TAG ?= BUILD_VERSION
+TARGET_TAG ?= $(BUILD_VERSION)
 
 ifeq ($(BETA_VERSION),)
 	BETA_VERSION := 0
