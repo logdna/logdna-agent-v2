@@ -128,13 +128,34 @@ pipeline {
                         }
                     }
                 }
-                stage('Publish Images') {
+                stage('Publish GCR images') {
                     when {
                         expression { return publishImage == true }
                     }
                     steps {
                         // Publish to gcr, jenkins is logged into gcr globally
                         sh 'make publish-image-gcr'
+                    }
+                }
+                stage('Check Publish Image or Timeout') {
+                    steps {
+                        script {
+                            publishImages = true
+                            try {
+                                timeout(time: 5, unit: 'MINUTES') {
+                                    input(message: 'Should we publish the versioned images to dockerhub/icr?')
+                                }
+                            } catch (err) {
+                                publishImages = false
+                            }
+                        }
+                    }
+                }
+                stage('Publish Dockerhub and ICR images') {
+                    when {
+                        expression { return publishImages == true }
+                    }
+                    steps {
                         script {
                             // Login and publish to dockerhub
                             docker.withRegistry(
