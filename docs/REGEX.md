@@ -1,7 +1,7 @@
 # Common regex patterns for log redaction and exclusion
 
 You can use `LOGDNA_REDACT_REGEX` environment variable to redact parts of the log line, replacing matches with
-[REDACTED]. Additionally, you can use `LOGDNA_LINE_EXCLUSION_REGEX` variable to define lines to exclude.
+[REDACTED]. Additionally, you can use `LOGDNA_LINE_EXCLUSION_REGEX` variable to define entire lines to exclude.
 
 Note that:
 
@@ -36,7 +36,7 @@ Redact Visa, MasterCard, American Express, Diners Club, Discover, and JCB credit
 
 ## Social Security numbers
 
-Redact social security numbers with dashes, spaces or all the digits together.
+Redact Social Security Numbers with dashes, spaces or all the digits together.
 
 ```yaml
     - env:
@@ -66,7 +66,7 @@ Redact phone numbers as formatted in US & Canada.
 
 ## Exclude noisy messages or sensitive information
 
-Exclude noisy messages or sensitive information from logs.
+Exclude entire log lines with noisy messages or sensitive information.
 
 ```yaml
     - env:
