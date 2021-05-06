@@ -24,11 +24,14 @@ fn test_command_line_arguments_help() {
     let stdout = from_utf8(&output.stdout).unwrap();
 
     vec![
+        // Check the version is printed in the help
+        "LogDNA Agent 3.",
         "A resource-efficient log collection agent that forwards logs to LogDNA",
         "The config filename",
         "The endpoint to forward logs to",
         "The host to forward logs to",
         "Adds log directories to scan, in addition to the default",
+        // Verify short options
         "-k, --key",
         "The ingestion key associated with your LogDNA account",
         "-d, --logdir",
@@ -40,6 +43,19 @@ fn test_command_line_arguments_help() {
     .for_each(|m| {
         assert!(contains(*m).eval(stdout));
     });
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_version_is_included() {
+    let mut cmd = get_bin_command();
+    let output = cmd.env_clear().arg("--version").unwrap();
+    assert!(output.status.success());
+    let stdout = from_utf8(&output.stdout).unwrap();
+    assert_eq!(
+        stdout,
+        format!("LogDNA Agent {}\n", env!("CARGO_PKG_VERSION"))
+    );
 }
 
 #[test]
@@ -263,7 +279,6 @@ journald: {{}}
                 .args(&["--include", "file.zlog"]);
         },
         |d| {
-            eprintln!("--{}", d);
             assert!(
                 is_match(r"log:\s+dirs:\s+\- /var/log1/\s+\- /var/log2/\s+\- /var/log3/")
                     .unwrap()
