@@ -5,6 +5,7 @@ use std::os::unix::fs::MetadataExt;
 use std::process::Command;
 use std::thread::{self, sleep};
 use std::time::Duration;
+use wait_timeout::ChildExt;
 
 use crate::common::{consume_output, AgentSettings};
 
@@ -228,7 +229,7 @@ fn test_delete_does_not_leave_file_descriptor() {
     common::assert_agent_running(&mut agent_handle);
 
     // Wait for the file descriptor to be released
-    thread::sleep(std::time::Duration::from_millis(200));
+    thread::sleep(Duration::from_millis(200));
 
     // Verify that it doesn't appear any more, otherwise include it in the assert panic message
     assert_eq!(
@@ -238,6 +239,54 @@ fn test_delete_does_not_leave_file_descriptor() {
     );
 
     agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(unix)]
+fn test_send_sigterm_does_not_leave_file_descriptor() {
+    // k8s uses SIGTERM
+    test_signals(nix::sys::signal::Signal::SIGTERM);
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(unix)]
+fn test_send_sigint_does_not_leave_file_descriptor() {
+    // k8s uses SIGTERM
+    test_signals(nix::sys::signal::Signal::SIGINT);
+}
+
+#[cfg(unix)]
+fn test_signals(signal: nix::sys::signal::Signal) {
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let file_path = dir.join("file1.log");
+    File::create(&file_path).expect("Could not create file");
+
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(&dir.to_str().unwrap()));
+
+    let process_id = agent_handle.id();
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+    common::append_to_file(&file_path, 100, 50).expect("Could not append");
+
+    // Verify that the file is shown in the open files
+    assert_eq!(common::is_file_open(&file_path), true);
+
+    nix::sys::signal::kill(nix::unistd::Pid::from_raw(process_id as i32), signal).unwrap();
+
+    // Verify that it should exit with 0
+    assert_eq!(
+        agent_handle
+            .wait_timeout(Duration::from_secs(1))
+            .unwrap()
+            .map(|e| e.success()),
+        Some(true)
+    );
+
+    //Verify that file descriptor doesn't appear any more
+    assert_eq!(common::is_file_open(&file_path), false);
 }
 
 #[test]
