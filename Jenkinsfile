@@ -1,7 +1,8 @@
 library 'magic-butler-catalogue'
 def PROJECT_NAME = 'logdna-agent-v2'
 def TRIGGER_PATTERN = '.*@logdnabot.*'
-def publishImage = false
+def publishGCRImage = false
+def publishDockerhubICRImages = false
 
 pipeline {
     agent any
@@ -114,27 +115,48 @@ pipeline {
                 branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
             }
             stages {
-                stage('Check Publish Image or Timeout') {
+                stage('Check Publish GCR Image or Timeout') {
                     steps {
                         script {
-                            publishImage = true
+                            publishGCRImage = true
                             try {
                                 timeout(time: 5, unit: 'MINUTES') {
                                     input(message: 'Should we publish the versioned image?')
                                 }
                             } catch (err) {
-                                publishImage = false
+                                publishGCRImage = false
                             }
                         }
                     }
                 }
-                stage('Publish Images') {
+                stage('Publish GCR images') {
                     when {
-                        expression { return publishImage == true }
+                        expression { return publishGCRImage == true }
                     }
                     steps {
                         // Publish to gcr, jenkins is logged into gcr globally
                         sh 'make publish-image-gcr'
+                    }
+                }
+                stage('Check Publish Dockerhub and ICR Image or Timeout') {
+                    steps {
+                        script {
+                            publishDockerhubICRImages = true
+                            try {
+                                timeout(time: 5, unit: 'MINUTES') {
+                                    input(message: 'Should we publish the versioned images to dockerhub/icr?')
+                                }
+                            } catch (err) {
+                                publishDockerhubICRImages = false
+                            }
+                        }
+                    }
+                }
+                stage('Publish Dockerhub and ICR images') {
+                    when {
+                        expression { return publishDockerhubICRImages == true }
+                    }
+                    steps {
                         script {
                             // Login and publish to dockerhub
                             docker.withRegistry(

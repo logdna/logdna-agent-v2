@@ -2,7 +2,6 @@
 members = [
     "bin",
     "common/config",
-    "common/config-macro",
     "common/fs",
     "common/http",
     "common/k8s",

@@ -1,23 +1,22 @@
 use core::cmp::{Ord, Ordering};
-use std::convert::TryFrom;
 use std::convert::TryInto;
+use std::convert::{Into, TryFrom};
 use std::num::NonZeroI64;
 use std::sync::Arc;
 
+use backoff::ExponentialBackoff;
 use crossbeam::atomic::AtomicCell;
 
 use chrono::Duration;
 use chrono_humanize::HumanTime;
 
-use futures::{stream::unfold, Stream, StreamExt, TryStreamExt};
+use futures::{stream::try_unfold, Stream, StreamExt, TryStreamExt};
 
 use k8s_openapi::api::core::v1::{Event, ObjectReference, Pod};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::api::ListParams;
 use kube::{Api, Client, Config};
 use kube_runtime::{utils::try_flatten_touched, watcher};
-
-use itertools::Itertools;
 
 use pin_utils::pin_mut;
 
@@ -223,8 +222,9 @@ impl TryFrom<EventLog> for LineBuilder {
 
 pub struct K8sEventStream {
     client: Client,
-    pod_name: Option<String>,
-    namespace: Option<String>,
+    pod_name: String,
+    namespace: String,
+    pod_label: String,
 }
 
 pub enum StreamElem<T> {
@@ -235,19 +235,22 @@ pub enum StreamElem<T> {
 impl K8sEventStream {
     pub fn new(
         config: kube::Config,
-        pod_name: Option<String>,
-        namespace: Option<String>,
+        pod_name: String,
+        namespace: String,
+        pod_label: String,
     ) -> Result<Self, K8sError> {
         Ok(Self {
             client: Client::new(config.try_into()?),
             pod_name,
             namespace,
+            pod_label,
         })
     }
 
     pub fn try_default(
-        pod_name: Option<String>,
-        namespace: Option<String>,
+        pod_name: String,
+        namespace: String,
+        pod_label: String,
     ) -> Result<Self, K8sError> {
         let config = match Config::from_cluster_env() {
             Ok(v) => v,
@@ -258,7 +261,242 @@ impl K8sEventStream {
                 )))
             }
         };
-        Self::new(config, pod_name, namespace)
+        Self::new(config, pod_name, namespace, pod_label)
+    }
+
+    async fn get_oldest_pod(
+        api: Api<Pod>,
+        label: &str,
+    ) -> Result<Option<String>, K8sEventStreamError> {
+        let lp = ListParams::default().labels(&format!("app.kubernetes.io/name={}", label)); // filter instances by label
+        let pod_list = api.list(&lp).await.map_err(K8sEventStreamError::K8sError)?;
+        let oldest_post = pod_list
+            .iter()
+            .filter_map(|p| -> Option<(Option<u64>, &Time, &str)> {
+                if let (pod_gen, Some(pod_started_at), Some(pod_name)) =
+                    // get pod generation, it will be there if there is an update strategy
+                    (
+                    p.metadata
+                        .labels
+                        .as_ref()
+                        .map(|l| {
+                            l.get("pod-template-generation")
+                                .and_then(|g| g.parse::<u64>().ok())
+                        })
+                        .flatten(),
+                    get_pod_started_at(p),
+                    p.metadata.name.as_ref(),
+                ) {
+                    Some((pod_gen, pod_started_at, pod_name))
+                } else {
+                    None
+                }
+            })
+            // Keeps oldest pod
+            .reduce(
+                move |(gen, started_at, name),
+                      (o_gen, o_started_at, o_name)|
+                      -> (Option<u64>, &Time, &str) {
+                    // For our purposes later generations should sort earlier than later ones
+                    if Ordering::reverse(Ord::cmp(&gen, &o_gen))
+                        .then(Ord::cmp(started_at, o_started_at))
+                        .then(Ord::cmp(name, o_name))
+                        == Ordering::Less
+                    {
+                        (o_gen, o_started_at, o_name)
+                    } else {
+                        (gen, started_at, name)
+                    }
+                },
+            )
+            .map(|(_, _, name)| name.to_string());
+        Ok(oldest_post)
+    }
+
+    fn waiter_stream<T>(
+        pod_name: impl Into<String>,
+        namespace: impl Into<String>,
+        pod_label: impl Into<String>,
+        client: Arc<Client>,
+        delete_time: Arc<AtomicCell<Option<NonZeroI64>>>,
+    ) -> impl Stream<Item = Result<StreamElem<T>, K8sEventStreamError>> {
+        let pod_name = pod_name.into();
+        let namespace = namespace.into();
+        let pod_label = pod_label.into();
+
+        let waiter = move |_| {
+            let pod_name = pod_name.clone();
+            let namespace = namespace.clone();
+            let pod_label = pod_label.clone();
+            let client = client.clone();
+
+            let delete_time = delete_time.clone();
+            let pods: Api<Pod> = Api::namespaced(client.as_ref().clone(), &namespace);
+            // subscribe to pod api and filter pods by POD_APP_LABEL
+
+            async move {
+                // Find the oldest pod of the latest generation
+                enum Cont {
+                    Cont,
+                    Break,
+                }
+
+                if let Some(oldest_pod_name) =
+                    K8sEventStream::get_oldest_pod(pods.clone(), &pod_label).await?
+                {
+                    if oldest_pod_name == pod_name {
+                        info!("begin logging k8s events");
+                        Ok(None)
+                    } else {
+                        info!("watching pod {}", oldest_pod_name);
+                        let params = ListParams::default()
+                            .timeout(30)
+                            .labels(&format!("app.kubernetes.io/name={}", &pod_label)) // filter instances by label
+                            .fields(&format!("metadata.name={}", oldest_pod_name)); // filter instances by label
+                        let stream = watcher(pods.clone(), params)
+                            .skip_while(|e| {
+                                let matched = matches!(e, Ok(watcher::Event::<Pod>::Restarted(_)));
+                                async move { matched }
+                            })
+                            .map({
+                                move |e| match e {
+                                    Ok(watcher::Event::Deleted(e)) => {
+                                        info!("previous k8s event logger deleted");
+                                        delete_time.store(
+                                            e.metadata
+                                                .deletion_timestamp
+                                                .map(|t| {
+                                                    info!(
+                                                        "Ignoring k8s events before {}",
+                                                        t.0 - chrono::Duration::seconds(2)
+                                                    );
+                                                    NonZeroI64::new(t.0.timestamp() - 2)
+                                                })
+                                                .flatten(),
+                                        );
+                                        Cont::Break
+                                    }
+                                    _ => Cont::Cont,
+                                }
+                            })
+                            .filter_map(|e| async move {
+                                match e {
+                                    Cont::Cont => None,
+                                    Cont::Break => Some(((), ())),
+                                }
+                            });
+                        pin_mut!(stream);
+                        Ok(stream.next().await)
+                    }
+                } else {
+                    Ok(Some(((), ())))
+                }
+            }
+        };
+
+        let waiter = Arc::new(waiter);
+
+        try_unfold((), {
+            let waiter = waiter.clone();
+            move |_| {
+                let waiter = waiter.clone();
+                backoff::future::retry(ExponentialBackoff::default(), move || waiter(()))
+            }
+        })
+        .map(|r: Result<(), K8sEventStreamError>| match r {
+            Ok(_) => Ok(StreamElem::Waiting),
+            Err(e) => Err(e),
+        })
+    }
+
+    pub fn active_stream(
+        client: Arc<Client>,
+        latest_event_time: Arc<AtomicCell<Option<NonZeroI64>>>,
+        previous_event_logger_delete_time: Arc<AtomicCell<Option<NonZeroI64>>>,
+    ) -> impl Stream<Item = Result<StreamElem<LineBuilder>, K8sEventStreamError>> {
+        let events: Api<Event> = Api::all(client.as_ref().clone());
+        let params = ListParams::default();
+
+        let latest_event_time_w = latest_event_time.clone();
+        try_flatten_touched(watcher(events, params))
+            .map_err(K8sEventStreamError::WatcherError)
+            .filter({
+                move |ref event| {
+                    let latest_event_time = latest_event_time.clone();
+                    let earliest = previous_event_logger_delete_time.clone();
+                    let ret = latest_event_time
+                        .load()
+                        .or_else(|| earliest.load())
+                        .and_then(|earliest| {
+                            let earliest =
+                                chrono::NaiveDateTime::from_timestamp(earliest.into(), 0);
+                            event.as_ref().ok().and_then(|e| {
+                                e.last_timestamp
+                                    .as_ref()
+                                    .map(|l| earliest < l.0.naive_utc())
+                            })
+                        });
+                    async move { ret.unwrap_or(true) }
+                }
+            })
+            .map(move |event| {
+                match event.map(|e| {
+                    let latest_event_time = latest_event_time_w.clone();
+                    let this_event_time = e
+                        .last_timestamp
+                        .as_ref()
+                        .and_then(|t| NonZeroI64::new(t.0.timestamp() - 2));
+
+                    let ret = LineBuilder::try_from(EventLog::from(e)).map(|l| {
+                        Metrics::k8s().increment_lines();
+                        l
+                    });
+                    if ret.is_ok() {
+                        latest_event_time.store(this_event_time)
+                    };
+                    ret
+                }) {
+                    Ok(Ok(l)) => Ok(StreamElem::Event(l)),
+                    Ok(Err(e)) => Err(e),
+                    Err(e) => Err(e),
+                }
+            })
+    }
+
+    pub async fn create_stream(
+        pod_name: impl Into<String>,
+        namespace: impl Into<String>,
+        pod_label: impl Into<String>,
+        client: Arc<Client>,
+        latest_event_time: Arc<AtomicCell<Option<NonZeroI64>>>,
+    ) -> impl Stream<Item = Result<LineBuilder, K8sEventStreamError>> {
+        let pod_name = pod_name.into();
+        let namespace = namespace.into();
+        let previous_event_logger_delete_time: Arc<AtomicCell<Option<NonZeroI64>>> =
+            Arc::new(AtomicCell::new(None));
+
+        // Retry is handled internally with exponential backoff
+        let waiting_stream = K8sEventStream::waiter_stream(
+            pod_name,
+            namespace,
+            pod_label,
+            client.clone(),
+            previous_event_logger_delete_time.clone(),
+        );
+
+        let event_stream = K8sEventStream::active_stream(
+            client,
+            latest_event_time,
+            previous_event_logger_delete_time,
+        );
+
+        waiting_stream.chain(event_stream).filter_map(|e| async {
+            match e {
+                Ok(StreamElem::Event(l)) => Some(Ok(l)),
+                Ok(StreamElem::Waiting) => None,
+                Err(e) => Some(Err(e)),
+            }
+        })
     }
 
     pub async fn event_stream(self) -> Result<impl Stream<Item = LineBuilder> + Send, String> {
@@ -266,193 +504,20 @@ impl K8sEventStream {
 
         let latest_event_time: Arc<AtomicCell<Option<NonZeroI64>>> =
             Arc::new(AtomicCell::new(None));
-        let start_stream = {
-            let pod_name = self.pod_name.ok_or("Pod Name not set")?;
-            let namespace = self.namespace.ok_or("Namespace not set")?;
-            let a_client = client.clone();
-            let latest_event_time = latest_event_time.clone();
-            move || {
-                let pod_name = pod_name.clone();
-                let namespace = namespace.clone();
-                let a_client = a_client.clone();
-                let latest_event_time = latest_event_time.clone();
-                async move {
-                    let latest_event_time = latest_event_time.clone();
-                    let previous_event_logger_delete_time: Arc<AtomicCell<Option<NonZeroI64>>> =
-                        Arc::new(AtomicCell::new(None));
-                    let b_client = a_client.clone();
+        let pod_name = self.pod_name.clone();
+        let namespace = self.namespace.clone();
+        let pod_label = self.pod_label.clone();
 
-                    let delete_time = previous_event_logger_delete_time.clone();
-                    let waiter = move |_| {
-                        let pod_name = pod_name.clone();
-                        let namespace = namespace.clone();
-                        let b_client = b_client.clone();
-
-                        let delete_time = delete_time.clone();
-
-                        async move {
-                            let pods: Api<Pod> =
-                                Api::namespaced(b_client.as_ref().clone(), &namespace);
-                            // subscribe to pod api and filter pods by POD_APP_LABEL
-                            let pod_label = std::env::var("POD_APP_LABEL")
-                                .unwrap_or_else(|_| "logdna-agent".into());
-                            let lp = ListParams::default()
-                                .labels(&format!("app.kubernetes.io/name={}", pod_label)); // filter instances by label
-
-                            // Find the oldest pod of the latest generation
-                            let pod_list = pods.clone().list(&lp).await.expect("FIXME");
-                            let oldest_pod_name: Option<(_, _, _)> = pod_list
-                                .iter()
-                                .filter_map(|p| -> Option<(Option<u64>, &Time, &str)> {
-                                    if let (pod_gen, Some(pod_started_at), Some(pod_name)) =
-                                        // get pod generation, it will be there if there is an update strategy
-                                        (
-                                        p.metadata
-                                            .labels
-                                            .as_ref()
-                                            .map(|l| {
-                                                l.get("pod-template-generation")
-                                                    .and_then(|g| g.parse::<u64>().ok())
-                                            })
-                                            .flatten(),
-                                        get_pod_started_at(p),
-                                        p.metadata.name.as_ref(),
-                                    ) {
-                                        Some((pod_gen, pod_started_at, pod_name))
-                                    } else {
-                                        None
-                                    }
-                                })
-                                // Sorts into ascending order
-                                .sorted_by(
-                                    |(gen, started_at, name), (o_gen, o_started_at, o_name)| {
-                                        // For our purposes later generations should sort earlier than later ones
-                                        Ordering::reverse(Ord::cmp(gen, o_gen))
-                                            .then(Ord::cmp(started_at, o_started_at))
-                                            .then(Ord::cmp(name, o_name))
-                                    },
-                                )
-                                .next();
-
-                            enum Cont {
-                                Cont,
-                                Break,
-                            }
-
-                            if let Some((_, _, oldest_pod_name)) = oldest_pod_name {
-                                if oldest_pod_name == pod_name {
-                                    info!("begin logging k8s events");
-                                    None
-                                } else {
-                                    info!("watching {}", oldest_pod_name);
-                                    let params = ListParams::default()
-                                        .timeout(30)
-                                        .labels(&format!("app.kubernetes.io/name={}", pod_label)) // filter instances by label
-                                        .fields(&format!("metadata.name={}", oldest_pod_name)); // filter instances by label
-                                    let stream = watcher(pods.clone(), params)
-                                        .skip_while(|e| {
-                                            let matched = matches!(
-                                                e,
-                                                Ok(watcher::Event::<Pod>::Restarted(_))
-                                            );
-                                            async move { matched }
-                                        })
-                                        .map({
-                                            move |e| {
-                                                match e {
-                                                    Ok(watcher::Event::Deleted(e)) => {
-                                                        info!("previous k8s event logger deleted");
-                                                        // We've detected the old one is dead, now what?
-                                                        delete_time.store(
-                                                            e.metadata
-                                                                .deletion_timestamp
-                                                                .map(|t| {
-                                                                    info!("Ignoring k8s events before {}", t.0 - chrono::Duration::seconds(2));
-                                                                    NonZeroI64::new(t.0.timestamp() - 2)
-                                                                })
-                                                                .flatten(),
-                                                        );
-                                                        Cont::Break
-                                                    }
-                                                    _ => Cont::Cont,
-                                                }
-                                            }
-                                        })
-                                        .filter_map(|e| async move {
-                                            match e {
-                                                Cont::Cont => None,
-                                                Cont::Break => Some(((), ())),
-                                            }
-                                        });
-                                    pin_mut!(stream);
-                                    stream.next().await
-                                }
-                            } else {
-                                Some(((), ()))
-                            }
-                        }
-                    };
-                    let waiting_stream = unfold((), waiter).map(|_| Ok(StreamElem::Waiting));
-
-                    let events: Api<Event> = Api::all(a_client.as_ref().clone());
-                    let params = ListParams::default();
-
-                    let latest_event_time_w = latest_event_time.clone();
-                    let event_stream = try_flatten_touched(watcher(events, params))
-                        .map_err(K8sEventStreamError::WatcherError)
-                        .filter({
-                            move |ref event| {
-                                let latest_event_time = latest_event_time.clone();
-                                let earliest = previous_event_logger_delete_time.clone();
-                                let ret = latest_event_time
-                                    .load()
-                                    .or_else(|| earliest.load())
-                                    .and_then(|earliest| {
-                                        let earliest = chrono::NaiveDateTime::from_timestamp(
-                                            earliest.into(),
-                                            0,
-                                        );
-                                        event.as_ref().ok().and_then(|e| {
-                                            e.last_timestamp
-                                                .as_ref()
-                                                .map(|l| earliest < l.0.naive_utc())
-                                        })
-                                    });
-                                async move { ret.unwrap_or(true) }
-                            }
-                        })
-                        .map(move |event| {
-                            match event.map(|e| {
-                                let latest_event_time = latest_event_time_w.clone();
-                                let this_event_time = e
-                                    .last_timestamp
-                                    .as_ref()
-                                    .and_then(|t| NonZeroI64::new(t.0.timestamp() - 2));
-
-                                let ret = LineBuilder::try_from(EventLog::from(e)).map(|l| {
-                                    Metrics::k8s().increment_lines();
-                                    l
-                                });
-                                if ret.is_ok() {
-                                    latest_event_time.store(this_event_time)
-                                };
-                                ret
-                            }) {
-                                Ok(Ok(l)) => Ok(StreamElem::Event(l)),
-                                Ok(Err(e)) => Err(e),
-                                Err(e) => Err(e),
-                            }
-                        });
-
-                    waiting_stream.chain(event_stream).filter_map(|e| async {
-                        match e {
-                            Ok(StreamElem::Event(l)) => Some(Ok(l)),
-                            Ok(StreamElem::Waiting) => None,
-                            Err(e) => Some(Err(e)),
-                        }
-                    })
-                }
-            }
+        let _latest_event_time = latest_event_time.clone();
+        let _client = client.clone();
+        let start_stream = move || {
+            K8sEventStream::create_stream(
+                pod_name.clone(),
+                namespace.clone(),
+                pod_label.clone(),
+                _client.clone(),
+                _latest_event_time.clone(),
+            )
         };
 
         let restarting_stream = RestartingStream::new(start_stream, |e| match e {

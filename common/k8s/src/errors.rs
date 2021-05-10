@@ -16,4 +16,6 @@ pub enum K8sEventStreamError {
     WatcherError(kube_runtime::watcher::Error),
     #[error(transparent)]
     SerializationError(#[from] serde_json::Error),
+    #[error(transparent)]
+    K8sError(#[from] kube::Error),
 }

@@ -4,7 +4,7 @@ use std::{fmt, io};
 #[derive(Debug)]
 pub enum ConfigError {
     MissingField(&'static str),
-    MissingFieldOrEnvVar(&'static str, Vec<String>),
+    MissingFieldOrEnvVar(&'static str, &'static str),
     Io(io::Error),
     Serde(serde_yaml::Error),
     Template(http::types::error::TemplateError),
@@ -19,10 +19,10 @@ impl Display for ConfigError {
         match self {
             ConfigError::MissingField(field) => write!(f, "{} is a required field", field),
             ConfigError::MissingFieldOrEnvVar(field, vars) => {
-                let vars = vars.join(",");
                 write!(
                     f,
-                    "{} is missing either set it in the config or set one of the env vars {} ",
+                    "{} is missing, use command line arguments, env var ({}) or \
+                    the config file to set it",
                     field, vars
                 )
             }

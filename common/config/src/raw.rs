@@ -82,6 +82,15 @@ pub struct Rules {
     pub regex: Vec<String>,
 }
 
+impl Default for Rules {
+    fn default() -> Self {
+        Rules {
+            glob: Vec::new(),
+            regex: Vec::new(),
+        }
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Config {

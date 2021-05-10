@@ -29,6 +29,8 @@ The LogDNA agent is a resource-efficient log collection client that forwards log
   * [Configuring Lookback](#configuring-lookback)
   * [Configuring Journald](#configuring-journald)
   * [Configuring Kubernetes Events](#configuring-events)
+  * [Configuring regex for redaction and exclusion or inclusion](#configuring-regex-for-redaction-and-exclusion-or-inclusion)
+  * [Resource Limits](#resource-limits)
 
 ## Managing Deployments
 
@@ -119,10 +121,12 @@ The compiled binary will be built to `./target/release/logdna-agent`.
 
 ### Options
 
-The agent accepts configuration from two sources, environment variables and a configuration YAML file. The default configuration yaml file is located at `/etc/logdna/config.yaml`. The following options are available:
+The agent accepts configuration from three different sources: environment variables, command line arguments and/or a
+configuration YAML file. The default configuration yaml file is located at `/etc/logdna/config.yaml`. The following
+options are available:
 
 | Variable Name(s) | Description | Default |
-|-|-|-|
+| ---|---|---|
 |`LOGDNA_INGESTION_KEY`<br>**Deprecated**: `LOGDNA_AGENT_KEY`|**Required**: The ingestion key associated with your LogDNA account||
 |`LOGDNA_CONFIG_FILE`<br>**Deprecated**: `DEFAULT_CONF_FILE`|Path to the configuration yaml|`/etc/logdna/config.yaml`|
 |`LOGDNA_HOST`<br>**Deprecated**: `LDLOGHOST`|The host to forward logs to|`logs.logdna.com`|
@@ -135,10 +139,10 @@ The agent accepts configuration from two sources, environment variables and a co
 |`LOGDNA_TAGS`|Comma separated list of tags metadata to attach to lines forwarded from this agent||
 |`LOGDNA_MAC`|The MAC metadata to attach to lines forwarded from this agent||
 |`LOGDNA_LOG_DIRS`<br>**Deprecated**: `LOG_DIRS`|Comma separated list of folders to recursively monitor for log events|`/var/log/`|
-|`LOGDNA_EXCLUSION_RULES`<br>**Deprecated**: `LOGDNA_EXCLUDE`|Comma separated list of glob patterns to exclude files from monitoring <sup>1</sup>|`/var/log/wtmp,/var/log/btmp,/var/log/utmp,/var/log/wtmpx,/var/log/btmpx,/var/log/utmpx,/var/log/asl/**,/var/log/sa/**,/var/log/sar*,/var/log/tallylog,/var/log/fluentd-buffers/**/*,/var/log/pods/**/*`|
+|`LOGDNA_EXCLUSION_RULES`<br>**Deprecated**: `LOGDNA_EXCLUDE`|Comma separated list of glob patterns to exclude files from monitoring <sup>1</sup>|`/var/log/wtmp,/var/log/btmp,/var/log/utmp,` <br>`/var/log/wtmpx,/var/log/btmpx,/var/log/utmpx,` <br>`/var/log/asl/**,/var/log/sa/**,/var/log/sar*,` <br>`/var/log/tallylog,/var/log/fluentd-buffers/**/*,` <br>`/var/log/pods/**/*`|
 |`LOGDNA_EXCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_EXCLUDE_REGEX`|Comma separated list of regex patterns to exclude files from monitoring||
 |`LOGDNA_INCLUSION_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE`|Comma separated list of glob patterns to includes files for monitoring <sup>1</sup>|`*.log,!(*.*)`|
-|`LOGDNA_INCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE_REGEX`|Comma separated list of regex patterns to exclude files from monitoring||
+|`LOGDNA_INCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE_REGEX`|Comma separated list of regex patterns to include files from monitoring||
 |`LOGDNA_LINE_EXCLUSION_REGEX`|Comma separated list of regex patterns to exclude log lines. When set, the Agent will NOT send log lines that match any of these patterns.||
 |`LOGDNA_LINE_INCLUSION_REGEX`|Comma separated list of regex patterns to include log lines. When set, the Agent will ONLY send log lines that match any of these patterns.||
 |`LOGDNA_REDACT_REGEX`|Comma separated list of regex patterns used to mask matching sensitive information before sending it the log line.||
@@ -207,8 +211,42 @@ To control whether the LogDNA agent collects Kubernetes events, configure the `L
 
 * `always` - Always capture events
 * `never` - Never capture events
-__Note:__ The default option is `always`.
+__Note:__ The default option is `never`.
 
 > :warning: Due to a ["won't fix" bug in the Kubernetes API](https://github.com/kubernetes/kubernetes/issues/41743), the LogDNA agent collects events from the entire cluster, including multiple nodes. To prevent duplicate logs when running multiple pods, the LogDNA agent pods defer responsibilty of capturing events to the oldest pod in the cluster. If that pod is down, the next oldest LogDNA agent pod will take over responsibility and continue from where the previous pod left off.
 
+### Configuring regex for redaction and exclusion or inclusion
+
+You can define rules, using **regex** (regular expressions), to control what log data is ingested:
+ * include *only* specific log lines (with `LOGDNA_LINE_INCLUSION_REGEX`)
+ * exclude specific log lines (with `LOGDNA_LINE_EXCLUSION_REGEX`)
+ * redact parts of a log line (with `LOGDNA_REDACT_REGEX`)
+
+For example, you can identify certain types of logs that are noisy and not needed at all, and then write a regex pattern to match those files and preclude them from ingestion. Conversely, you can use regex expressions to match the log lines that you DO want in to include, and ingest only those log lines. Additionally, you can use the environment variable `LOGDNA_REDACT_REGEX` to remove certain parts of a log line. Any redacted data is replaced with [REDACTED].
+
+To access our library of common regex patterns, refer to [our regex library documentation](REGEX.md).
+
+Notes:
+   * Exclusion rules overwrite inclusion rules. That is, for a line to be ingested, it should match all inclusion rules (if any) and **not match** any exclusion rule.
+   * To preclude entire log files from being monitored, use the `LOGDNA_EXCLUSION_RULES` or the `LOGDNA_EXCLUSION_REGEX_RULES` environment variable.
+   * Note that we use commas as separators for environment variable values, making it not possible to use the comma character (,) as a valid value. We are addressing this limitation in upcoming versions. If you need to use the comma character in a regular expression, use the unicode character reference: `\u002C`, for example: `hello\u002C world` matches `hello, world`.
+   * All regular expressions are case sensitive by default. If you don't want to differentiate between upper and lower-case letters, use non-capturing groups with a flag: (?flags:exp), for example: (?i:my_case_insensitive_regex)
+
+### Resource Limits
+
+The agent is deployed as a Kubernetes DaemonSet, creating one pod per node selected. The agent collects logs of all
+the pods in the node. The resource requirements of the agent are in direct relation to the amount of pods per node,
+and the amount of logs producer per pod.
+
+The agent requires at least 128Mib and no more than 512Mib of memory. It requires at least
+[twenty millicpu (`20m`)][k8s-cpu-usage].
+
+Different features can also increase resource utilization. When line exclusion/inclusion or redaction rules
+are specified, you can expect to additional CPU consumption per line and per regex rule defined. When Kubernetes
+event logging is enabled (disabled by default), additional CPU usage will occur on the oldest agent pod.
+
+We do not recommend placing traffic shaping or CPU limits on the agent to ensure data can be sent to our
+log ingestion service.
+
 [regex-syntax]: https://docs.rs/regex/1.4.5/regex/#syntax
+[k8s-cpu-usage]: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#meaning-of-cpu

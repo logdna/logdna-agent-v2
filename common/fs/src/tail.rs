@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex};
 
 use futures::{Stream, StreamExt};
 
+use std::fmt;
 use thiserror::Error;
 
 #[derive(Clone, std::fmt::Debug, PartialEq)]
@@ -43,6 +44,20 @@ impl std::str::FromStr for Lookback {
             "none" => Ok(Lookback::None),
             _ => Err(ParseLookbackError::Unknown(s.into())),
         }
+    }
+}
+
+impl fmt::Display for Lookback {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Lookback::Start => "start",
+                Lookback::SmallFiles => "smallfiles",
+                Lookback::None => "none",
+            }
+        )
     }
 }
 
