@@ -10,7 +10,7 @@ name = "https_ingester"
 path = "src/bin/https_ingester.rs"
 
 [dependencies]
-async-compression = { version ="0.3", features = ["stream", "gzip"]}
+async-compression = { version ="=0.3.7", features = ["stream", "gzip"]}
 hyper = "0.13"
 bytes = "0.5"
 futures = "0.3"
