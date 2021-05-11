@@ -229,7 +229,7 @@ You can use regex pattern matching via environment variables to:
  * redact parts of a log line (with `LOGDNA_REDACT_REGEX`)
  * preclude entire log files from being monitored `(LOGDNA_EXCLUSION_REGEX_RULES)`
 
-To access our library of common regex patterns, refer to [our regex library documentation](REGEX.md).
+To access our library of common regex patterns refer to [our regex library documentation](REGEX.md).
 
 Notes:
    * Exclusion rules overwrite inclusion rules. That is, for a line to be ingested, it should match all inclusion rules (if any) and **not match** any exclusion rule.
