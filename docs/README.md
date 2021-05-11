@@ -235,7 +235,7 @@ Notes:
    * Exclusion rules overwrite inclusion rules. That is, for a line to be ingested, it should match all inclusion rules (if any) and **not match** any exclusion rule.
    * Note that we use commas as separators for environment variable values, making it not possible to use the comma character (,) as a valid value. We are addressing this limitation in upcoming versions. If you need to use the comma character in a regular expression, use the unicode character reference: `\u002C`, for example: `hello\u002C world` matches `hello, world`.
    * All regular expressions are case sensitive by default. If you don't want to differentiate between upper and lower-case letters, use non-capturing groups with a flag: (?flags:exp), for example: (?i:my_case_insensitive_regex)
-   * LogDNA also provides post-ingestion <a href ="https://docs.logdna.com/docs/excluding-log-lines" target = "_blank">exclusion rules</a>, to control what log data is displayed and stored in LogDNA.
+   * LogDNA also provides post-ingestion <a href ="https://docs.logdna.com/docs/excluding-log-lines" target = "_blank">exclusion rules</a> to control what log data is displayed and stored in LogDNA.
 
 ### Resource Limits
 
