@@ -217,7 +217,7 @@ __Note:__ The default option is `never`.
 
 You can define rules, using regex (regular expressions), to control what log data is collected by the agent and forwarded to LogDNA.
 
-For example, you can identify certain types of logs that are noisy and not needed at all, and then write a regex pattern to match those files and preclude them from collection. Conversely, you can use regex expressions to match the log lines that you do want to include, and collect **only** those log lines.
+For example, you can identify certain types of logs that are noisy and not needed at all, and then write a regex pattern to match those lines and preclude them from collection. Conversely, you can use regex expressions to match the log lines that you do want to include, and collect **only** those log lines.
 
 Additionally, you can use the environment variable `LOGDNA_REDACT_REGEX` to remove certain parts of a log line. Any redacted data is replaced with [REDACTED]. Redacting information is recommended when logs might contain PII (Personally Identifiable Information).
 
@@ -228,7 +228,6 @@ You can use regex pattern matching via environment variables to:
 * include *only* specific log lines (with `LOGDNA_LINE_INCLUSION_REGEX`)
 * exclude specific log lines (with `LOGDNA_LINE_EXCLUSION_REGEX`)
 * redact parts of a log line (with `LOGDNA_REDACT_REGEX`)
-* preclude entire log files from being monitored `(LOGDNA_EXCLUSION_REGEX_RULES)`
 
 To access our library of common regex patterns refer to [our regex library documentation](REGEX.md).
 
