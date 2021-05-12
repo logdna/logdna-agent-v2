@@ -3,9 +3,9 @@
 You can use `LOGDNA_REDACT_REGEX` environment variable to redact parts of the log line, replacing matches with
 [REDACTED]. Additionally, you can use `LOGDNA_LINE_EXCLUSION_REGEX` variable to define entire lines to exclude.
 
-Note that:
+Important considerations:
 
-- It's recommended to avoid producing logs with PII.
+- It is recommended to avoid producing logs with PII.
 - All regular expressions use [Perl-style syntax][regex-syntax] with case sensitivity by default. You can disable
 case-sensitivity using the `i` flag in a non-capturing group, e.g., `(?i:my_case_insensitive_regex)`.
 - You can use comma to separate multiple regex in an environment variable value, e.g., `(?:first),(?:second)`. If
@@ -13,6 +13,8 @@ you need to match the comma character in a pattern, use the unicode character re
 
 Here is a summary of regex patterns commonly used for log line redaction and exclusion to add to your agent DaemonSet
 yaml file.
+
+**Note**: we recommend that you test and verify these regex patterns with your log data; LogDNA did not create these regex patterns and does not provide support for their use.
 
 ## Email addresses
 
