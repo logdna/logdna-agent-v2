@@ -56,7 +56,7 @@ pub enum Error {
     #[error("parent should be a directory")]
     ParentNotValid,
     #[error("path is not valid")]
-    PathNotValid,
+    PathNotValid(PathBuf),
     #[error("encountered errors when inserting recursively: {0:?}")]
     InsertRecursively(Vec<Error>),
     #[error("error reading file: {0:?}")]
@@ -260,7 +260,10 @@ impl FileSystem {
                 } else if is_from_path_ok {
                     self.process_delete(&from_wd, from_name, events, &mut _entries)
                 } else {
-                    Err(Error::PathNotValid)
+                    // Most likely parent was removed, dropping all child watch descriptors
+                    // and we've got the child watch event already queued up
+                    debug!("Move event received from targets that are not watched anymore");
+                    Ok(())
                 }
             }
             // Files are being updated too often for inotify to catch up
@@ -272,6 +275,9 @@ impl FileSystem {
                 Error::WatchOverflow => {
                     error!("{}", e);
                     panic!("overflowed kernel queue");
+                }
+                Error::PathNotValid(path) => {
+                    debug!("Path is not longer valid: {:?}", path);
                 }
                 _ => {
                     warn!("Processing inotify event resulted in error: {}", e);
@@ -484,7 +490,9 @@ impl FileSystem {
         let parent_ref = parent_ref.unwrap();
 
         // We only need the last component, the parents are already inserted.
-        let component = into_components(path).pop().ok_or(Error::PathNotValid)?;
+        let component = into_components(path)
+            .pop()
+            .ok_or_else(|| Error::PathNotValid(path.into()))?;
 
         // If the path is a dir, we can use create_dir to do the insert
         if path.is_dir() {
@@ -634,9 +642,13 @@ impl FileSystem {
         events: &mut Vec<Event>,
         _entries: &mut EntryMap,
     ) -> FsResult<()> {
-        let parent = path.parent().ok_or(Error::PathNotValid)?;
+        let parent = path
+            .parent()
+            .ok_or_else(|| Error::PathNotValid(path.into()))?;
         let parent = self.lookup(parent, _entries).ok_or(Error::ParentLookup)?;
-        let component = into_components(path).pop().ok_or(Error::PathNotValid)?;
+        let component = into_components(path)
+            .pop()
+            .ok_or_else(|| Error::PathNotValid(path.into()))?;
 
         let to_drop = _entries
             .get_mut(parent)
@@ -710,7 +722,9 @@ impl FileSystem {
         match self.lookup(from, _entries) {
             Some(entry_key) => {
                 let entry = _entries.get_mut(entry_key).ok_or(Error::Lookup)?;
-                let new_name = into_components(to).pop().ok_or(Error::PathNotValid)?;
+                let new_name = into_components(to)
+                    .pop()
+                    .ok_or_else(|| Error::PathNotValid(to.into()))?;
                 let old_name = entry.name().clone();
                 if let Some(parent) = entry.parent() {
                     _entries
