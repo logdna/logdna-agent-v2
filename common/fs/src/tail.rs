@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex};
 use futures::{Stream, StreamExt};
 
 use std::fmt;
+use std::time::Duration;
 use thiserror::Error;
 
 #[derive(Clone, std::fmt::Debug, PartialEq)]
@@ -81,10 +82,15 @@ impl Tailer {
         rules: Rules,
         lookback_config: Lookback,
         initial_offsets: Option<HashMap<FileId, u64>>,
+        event_delay: Duration,
     ) -> Self {
         Self {
             lookback_config,
-            fs_cache: Arc::new(Mutex::new(FileSystem::new(watched_dirs, rules))),
+            fs_cache: Arc::new(Mutex::new(FileSystem::new(
+                watched_dirs,
+                rules,
+                event_delay,
+            ))),
             initial_offsets,
         }
     }
@@ -115,13 +121,13 @@ impl Tailer {
             path: &Path,
         ) -> u64 {
             let offset = initial_offsets.get(key).copied().unwrap_or(0);
-            debug!("Got offset {} from state using key {:?}", offset, path);
+            debug!("Got offset {} from state for {}", offset, path.display());
             offset
         }
         let entry_key = fs.lookup(target, &fs.entries.borrow())?;
         let entries = fs.entries.borrow();
         let entry = &entries.get(entry_key)?;
-        let path = fs.resolve_direct_path(entry, &fs.entries.borrow());
+        let path = entry.path();
         if let Entry::File { data, .. } = entry {
             let inode: FileId = { (&data.borrow().deref().get_inode().await).into() };
             Some((
@@ -168,11 +174,12 @@ impl Tailer {
                 // will initiate a file to it's current length
                 let entries = fs.entries.borrow();
                 let entry = entries.get(entry_ptr)?;
-                let path = fs.resolve_direct_path(&entry, &fs.entries.borrow());
+                let path = entry.path().to_path_buf();
                 match entry {
-                    Entry::File { name, data, .. } => {
+                    Entry::File { data, .. } => {
+                        let path_display = entry.path().display();
                         // If the file's passes the rules tail it
-                        info!("initialize event for file {:?}, target {:?}", name, path);
+                        info!("initialize event for file {}", path_display);
                         let (_, offset) = Tailer::get_initial_offset(
                             &path,
                             &fs,
@@ -185,23 +192,24 @@ impl Tailer {
                             .seek(offset)
                             .await
                             .unwrap_or_else(|e| error!("error seeking {:?}", e));
-                        info!("initialized {:?} with offset {}", name, offset);
+                        info!("initialized {} with offset {}", path_display, offset);
 
                         if fs.is_initial_dir_target(&path) {
                             return data.borrow_mut().tail(vec![path]).await;
                         }
                     }
-                    Entry::Symlink { name, link, .. } => {
+                    Entry::Symlink { link, .. } => {
                         let sym_path = path;
                         let final_target = Tailer::get_file_for_path(&fs, link)?;
-                        info!(
-                            "initialize event for symlink {:?}, target {:?}, final target {:?}",
-                            name, link, final_target
-                        );
 
                         let entries = &fs.entries.borrow();
-                        let path = fs
-                            .resolve_direct_path(entries.get(final_target)?, &fs.entries.borrow());
+                        let path = entries.get(final_target)?.path();
+
+                        info!(
+                            "initialize event for symlink {}, final target {}",
+                            sym_path.display(),
+                            path.display()
+                        );
 
                         let (entry_key, offset) = Tailer::get_initial_offset(
                             &path,
@@ -212,8 +220,10 @@ impl Tailer {
                         .await?;
                         if let Entry::File { data, .. } = &entries.get(entry_key)? {
                             info!(
-                                "initialized symlink {:?} as {:?} with offset {}",
-                                name, final_target, offset
+                                "initialized symlink {:?} as {} with offset {}",
+                                sym_path.file_name(),
+                                path.display(),
+                                offset
                             );
                             let mut data = data.borrow_mut();
                             data.deref_mut()
@@ -232,13 +242,10 @@ impl Tailer {
                 // similar to initiate but sets the offset to 0
                 let entries = fs.entries.borrow();
                 let entry = entries.get(entry_ptr)?;
-                let paths = fs.resolve_valid_paths(&entry, &entries);
-                if paths.is_empty() {
-                    return None;
-                }
+                let path = entry.path().to_path_buf();
                 if let Entry::File { data, .. } = entry {
-                    info!("added {:?}", paths[0]);
-                    return data.borrow_mut().tail(paths.clone()).await;
+                    info!("added {:?}", path);
+                    return data.borrow_mut().tail(vec![path]).await;
                 }
             }
             Event::Write(entry_ptr) => {
@@ -246,13 +253,10 @@ impl Tailer {
                 debug!("Write Event");
                 let entries = fs.entries.borrow();
                 let entry = entries.get(entry_ptr)?;
-                let paths = fs.resolve_valid_paths(&entry, &entries);
-                if paths.is_empty() {
-                    return None;
-                }
+                let path = entry.path().to_path_buf();
 
                 if let Entry::File { data, .. } = entry {
-                    return data.borrow_mut().deref_mut().tail(paths).await;
+                    return data.borrow_mut().deref_mut().tail(vec![path]).await;
                 }
             }
             Event::Delete(entry_ptr) => {
@@ -261,25 +265,22 @@ impl Tailer {
                 let ret = {
                     let entries = fs.entries.borrow();
                     let mut entry = entries.get(entry_ptr)?;
-                    let paths = fs.resolve_valid_paths(&entry, &entries);
-                    if paths.is_empty() {
-                        None
-                    } else {
-                        if let Entry::Symlink { link, .. } = entry {
-                            if let Some(real_entry) = fs.lookup(link, &entries) {
-                                if let Some(r_entry) = entries.get(real_entry) {
-                                    entry = r_entry
-                                }
-                            } else {
-                                info!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths[0]);
-                            }
-                        }
+                    let path = entry.path().to_path_buf();
 
-                        if let Entry::File { data, .. } = entry {
-                            data.borrow_mut().deref_mut().tail(paths).await
+                    if let Entry::Symlink { link, .. } = entry {
+                        if let Some(real_entry) = fs.lookup(link, &entries) {
+                            if let Some(r_entry) = entries.get(real_entry) {
+                                entry = r_entry
+                            }
                         } else {
-                            None
+                            info!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", path);
                         }
+                    }
+
+                    if let Entry::File { data, .. } = entry {
+                        data.borrow_mut().deref_mut().tail(vec![path]).await
+                    } else {
+                        None
                     }
                 };
                 {
@@ -303,22 +304,11 @@ impl Tailer {
     }
 
     /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
-    pub fn process<'a>(
-        &mut self,
-        buf: &'a mut [u8],
-    ) -> Result<impl Stream<Item = LazyLineSerializer> + 'a, std::io::Error> {
-        let events = {
-            match FileSystem::stream_events(self.fs_cache.clone(), buf) {
-                Ok(event) => event,
-                Err(e) => {
-                    warn!("tailer stream raised exception: {:?}", e);
-                    return Err(e);
-                }
-            }
-        };
+    pub fn process<'a>(&mut self) -> impl Stream<Item = LazyLineSerializer> + 'a {
+        let events = FileSystem::stream_events(self.fs_cache.clone());
 
         debug!("Tailer starting with lookback: {:?}", self.lookback_config);
-        Ok(events
+        events
             .then({
                 let fs = self.fs_cache.clone();
                 let lookback_config = self.lookback_config.clone();
@@ -339,7 +329,7 @@ impl Tailer {
                 }
             })
             .filter_map(|x| async move { x })
-            .flatten())
+            .flatten()
     }
 }
 
@@ -347,7 +337,7 @@ impl Tailer {
 mod test {
     use super::*;
     use crate::rule::{GlobRule, Rules};
-    use crate::test::LOGGER;
+    use pin_utils::pin_mut;
     use std::convert::TryInto;
     use std::fs::File;
     use std::io::Write;
@@ -355,17 +345,29 @@ mod test {
     use tempfile::tempdir;
     use tokio_stream::StreamExt;
 
+    static DELAY: Duration = Duration::from_millis(200);
+
     macro_rules! take_events {
-        ( $x:expr, $y: expr ) => {{
-            {
-                futures::StreamExt::collect::<Vec<_>>(futures::StreamExt::take($x, $y))
+        ($x: expr) => {{
+            tokio::time::sleep(DELAY * 2).await;
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            let mut events = Vec::new();
+            loop {
+                tokio::select! {
+                    Some(item) = $x.next() => {
+                        events.push(item);
+                    }
+                    _ = tokio::time::sleep(Duration::from_millis(300)) => {
+                        break;
+                    }
+                }
             }
+            events
         }};
     }
 
     fn run_test<T: FnOnce() + panic::UnwindSafe>(test: T) {
-        #![allow(unused_must_use, clippy::clone_on_copy)]
-        LOGGER.clone();
+        let _ = env_logger::Builder::from_default_env().try_init();
         let result = panic::catch_unwind(|| {
             test();
         });
@@ -388,7 +390,7 @@ mod test {
 
                 let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
-                let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 2;
+                let line_write_count = (400 / (log_lines.as_bytes().len() + 1)) + 2;
                 (0..line_write_count).for_each(|_| {
                     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...")
                 });
@@ -402,24 +404,21 @@ mod test {
                     rules,
                     Lookback::None,
                     None,
+                    DELAY,
                 );
-                let mut buf = [0u8; 4096];
 
-                let stream = tailer
-                    .process(&mut buf)
-                    .expect("failed to read events")
-                    .timeout(std::time::Duration::from_millis(500));
+                let stream = tailer.process();
+                pin_mut!(stream);
 
-                let write_files = async move {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
-                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
-                    file.sync_all().expect("Failed to sync file");
-                };
-                let (_, events) =
-                    futures::join!(tokio::spawn(write_files), take_events!(stream, 2));
-                let events = events.iter().flatten().collect::<Vec<_>>();
+                let events = take_events!(stream);
+                assert_eq!(events.len(), 0);
+
+                tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+                writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                file.sync_all().expect("Failed to sync file");
+
+                let events = take_events!(stream);
                 assert_eq!(events.len(), 1);
-                debug!("{:?}, {:?}", events.len(), &events);
             });
         });
     }
@@ -452,26 +451,23 @@ mod test {
                     rules,
                     Lookback::SmallFiles,
                     None,
+                    DELAY,
                 );
-                let mut buf = [0u8; 4096];
 
-                let stream = tailer
-                    .process(&mut buf)
-                    .expect("failed to read events")
-                    .timeout(std::time::Duration::from_millis(500));
+                let stream = tailer.process();
+                pin_mut!(stream);
 
-                let write_files = async move {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+                let events = take_events!(stream);
+                assert_eq!(events.len(), 0);
 
-                    let log_lines2 = "This is a test log line2";
-                    writeln!(file, "{}", log_lines2).expect("Couldn't write to temp log file...");
-                    file.sync_all().expect("Failed to sync file");
-                };
-                let (_, events) =
-                    futures::join!(tokio::spawn(write_files), take_events!(stream, 2));
-                let events = events.iter().flatten().collect::<Vec<_>>();
+                tokio::time::sleep(Duration::from_millis(500)).await;
+
+                let log_lines2 = "This is a test log line2";
+                writeln!(file, "{}", log_lines2).expect("Couldn't write to temp log file...");
+                file.sync_all().expect("Failed to sync file");
+
+                let events = take_events!(stream);
                 assert_eq!(events.len(), 1);
-                debug!("{:?}, {:?}", events.len(), &events);
             });
         });
     }
@@ -503,31 +499,22 @@ mod test {
                     rules,
                     Lookback::Start,
                     None,
+                    DELAY,
                 );
 
-                let mut buf = [0u8; 4096];
+                let stream = tailer.process();
+                pin_mut!(stream);
 
-                let stream = tailer
-                    .process(&mut buf)
-                    .expect("failed to read events")
-                    .timeout(std::time::Duration::from_millis(500));
+                let events = take_events!(stream);
+                assert!(events.len() >= line_write_count);
 
-                let write_files = async move {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
-                    (0..5).for_each(|_| {
-                        writeln!(file, "{}", log_lines)
-                            .expect("Couldn't write to temp log file...");
-                        file.sync_all().expect("Failed to sync file");
-                    });
-                };
-                let (_, events) = futures::join!(
-                    tokio::spawn(write_files),
-                    take_events!(stream, line_write_count + 4 + 1)
-                );
-                let events = events.iter().flatten().collect::<Vec<_>>();
-                debug!("{:?}, {:?}", events.len(), &events);
-                assert_eq!(events.len(), line_write_count + 5);
-                debug!("{:?}, {:?}", events.len(), &events);
+                (0..5).for_each(|_| {
+                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                    file.sync_all().expect("Failed to sync file");
+                });
+
+                let events = take_events!(stream);
+                assert_eq!(events.len(), 5);
             })
         })
     }
