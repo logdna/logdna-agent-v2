@@ -9,9 +9,7 @@ edition = "2018"
 http = { package = "http", path = "../http" }
 metrics = { package = "metrics", path = "../metrics" }
 state = { package = "state", path = "../state" }
-
-#i
-inotify = "0.10"
+notify_stream = { package = "notify_stream", path = "../notify_stream" }
 
 #error
 thiserror = "1.0"
@@ -47,3 +45,4 @@ tempfile = "3"
 tokio-test = "0.4"
 tokio = {version= "1", features= ["fs", "io-util", "time", "macros"]}
 middleware = { package = "middleware", path = "../middleware" }
+pin-utils = "0.1"

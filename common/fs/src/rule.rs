@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 use std::path::Path;
 
+use core::fmt;
 use globber::{Error as PatternError, Pattern};
 use pcre2::{bytes::Regex, Error as RegexError};
 use std::os::unix::ffi::OsStrExt;
