@@ -1,66 +1,43 @@
 use std::cell::RefCell;
-use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use inotify::WatchDescriptor;
-
+use crate::cache::Children;
 use crate::cache::TailedFile;
-use crate::cache::{Children, EntryKey};
-use crate::rule::Rules;
 
 use crate::cache::tailed_file::LazyLineSerializer;
 
 #[derive(Debug)]
 pub enum Entry {
     File {
-        name: OsString,
-        parent: EntryKey,
-        wd: WatchDescriptor,
+        path: PathBuf,
         data: RefCell<TailedFile<LazyLineSerializer>>,
     },
     Dir {
-        name: OsString,
-        parent: Option<EntryKey>,
+        /// A map of entry keys by file name
         children: Children,
-        wd: WatchDescriptor,
+        path: PathBuf,
     },
     Symlink {
-        name: OsString,
-        parent: EntryKey,
+        /// The target of the symlink
         link: PathBuf,
-        wd: WatchDescriptor,
-        rules: Rules,
+        path: PathBuf,
     },
 }
 
 impl Entry {
-    pub fn name(&self) -> &OsString {
+    pub fn path(&self) -> &Path {
         match self {
-            Entry::File { name, .. } | Entry::Dir { name, .. } | Entry::Symlink { name, .. } => {
-                name
-            }
+            Entry::Dir { path: wd, .. }
+            | Entry::Symlink { path: wd, .. }
+            | Entry::File { path: wd, .. } => wd,
         }
     }
 
-    pub fn parent(&self) -> Option<EntryKey> {
+    pub fn set_path(&mut self, path: PathBuf) {
         match self {
-            Entry::File { parent, .. } | Entry::Symlink { parent, .. } => Some(*parent),
-            Entry::Dir { parent, .. } => *parent,
-        }
-    }
-
-    pub fn set_parent(&mut self, new_parent: EntryKey) {
-        match self {
-            Entry::File { parent, .. } | Entry::Symlink { parent, .. } => *parent = new_parent,
-            Entry::Dir { parent, .. } => *parent = Some(new_parent),
-        }
-    }
-
-    pub fn set_name(&mut self, new_name: OsString) {
-        match self {
-            Entry::File { name, .. } | Entry::Dir { name, .. } | Entry::Symlink { name, .. } => {
-                *name = new_name
-            }
+            Entry::File { path: wd, .. }
+            | Entry::Dir { path: wd, .. }
+            | Entry::Symlink { path: wd, .. } => *wd = path,
         }
     }
 
@@ -71,23 +48,11 @@ impl Entry {
         }
     }
 
-    pub fn children(&self) -> Option<&Children> {
+    /// Gets a mutable reference to the children
+    pub fn children(&mut self) -> Option<&mut Children> {
         match self {
             Entry::Dir { children, .. } => Some(children),
             _ => None,
-        }
-    }
-
-    pub fn children_mut(&mut self) -> Option<&mut Children> {
-        match self {
-            Entry::Dir { children, .. } => Some(children),
-            _ => None,
-        }
-    }
-
-    pub fn watch_descriptor(&self) -> &WatchDescriptor {
-        match self {
-            Entry::Dir { wd, .. } | Entry::Symlink { wd, .. } | Entry::File { wd, .. } => wd,
         }
     }
 }

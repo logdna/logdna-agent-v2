@@ -9,6 +9,7 @@ members = [
     "common/middleware",
     "common/journald",
     "common/state",
+    "common/notify_stream",
 ]
 
 [profile.release]

@@ -2,6 +2,7 @@ use std::fmt::Debug;
 use std::path::Path;
 use std::str::FromStr;
 
+use core::fmt;
 use globber::{Error as PatternError, Pattern};
 use pcre2::{bytes::Regex, Error as RegexError};
 use std::os::unix::ffi::OsStrExt;
@@ -130,16 +131,26 @@ impl FromStr for RegexRule {
 }
 
 /// A rule the matches it's input based on a Glob pattern, note extended glob is not supported
-#[derive(Debug)]
 pub struct GlobRule {
     inner: Pattern,
+    str_value: String,
+}
+
+impl fmt::Debug for GlobRule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GlobRule")
+            .field("inner", &self.str_value)
+            .finish()
+    }
 }
 
 impl GlobRule {
     /// Creates a new GlobRule from a pattern
     pub fn new<'a, T: Into<&'a str>>(pattern: T) -> Result<Self, PatternError> {
+        let str_value = pattern.into().to_string();
         Ok(Self {
-            inner: Pattern::new(pattern.into())?,
+            inner: Pattern::new(&str_value)?,
+            str_value,
         })
     }
 }
