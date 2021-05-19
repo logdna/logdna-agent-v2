@@ -3,6 +3,7 @@ use futures::{channel::oneshot, stream::Stream as FutureStream};
 use http::types::body::LineBuilder;
 use log::{info, warn};
 use metrics::Metrics;
+use std::time::Instant;
 use std::{
     mem::drop,
     path::PathBuf,
@@ -22,6 +23,8 @@ const KEY_SYSTEMD_UNIT: &str = "_SYSTEMD_UNIT";
 const KEY_SYSLOG_IDENTIFIER: &str = "SYSLOG_IDENTIFIER";
 const KEY_CONTAINER_NAME: &str = "CONTAINER_NAME";
 const DEFAULT_APP: &str = "UNKNOWN_SYSTEMD_APP";
+
+static WARN_INTERVAL: Duration = Duration::from_secs(300);
 
 #[derive(Clone)]
 pub enum Path {
@@ -181,6 +184,7 @@ impl Drop for Stream {
 
 struct Reader {
     reader: Journal,
+    last_warn: Instant,
 }
 
 impl Reader {
@@ -197,7 +201,10 @@ impl Reader {
             .seek(JournalSeek::Tail)
             .expect("Could not seek to tail of journald logs");
 
-        Self { reader }
+        Self {
+            reader,
+            last_warn: Instant::now(),
+        }
     }
 
     fn process_next_record(&mut self) -> Result<Option<LineBuilder>, JournalError> {
@@ -217,10 +224,15 @@ impl Reader {
             Some(duration) => {
                 // Reject any records with a timestamp older than 30 seconds
                 if duration >= Duration::from_secs(30) {
-                    info!("Received a stale journald record, reseeking pointer");
+                    if self.last_warn.elapsed() > WARN_INTERVAL {
+                        self.last_warn = Instant::now();
+                        info!("Received a stale journald record, reseeking pointer");
+                    }
                     if let Err(e) = self.reader.seek(JournalSeek::Tail) {
                         return Err(JournalError::BadRead(e));
                     }
+                    // Skip old records
+                    return Ok(None);
                 }
             }
             None => {
