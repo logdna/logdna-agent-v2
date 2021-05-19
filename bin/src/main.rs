@@ -31,12 +31,16 @@ use pin_utils::pin_mut;
 use state::AgentState;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 use tokio::signal::*;
 
 const POLL_PERIOD_MS: u64 = 100;
 
 mod dep_audit;
 mod stream_adapter;
+
+/// Debounce filesystem event with a delay of hundreds of milliseconds
+static FS_EVENT_DELAY: Duration = Duration::from_millis(500);
 
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
@@ -142,12 +146,12 @@ async fn main() {
 
     executor.init();
 
-    let mut fs_tailer_buf = [0u8; 4096];
     let mut fs_source = FSSource::new(
         config.log.dirs,
         config.log.rules,
         config.log.lookback,
         initial_offsets,
+        FS_EVENT_DELAY,
     );
 
     #[cfg(feature = "libjournald")]
@@ -176,10 +180,7 @@ async fn main() {
         tokio::spawn(offset_state.run().unwrap());
     }
 
-    let fs_source = fs_source
-        .process(&mut fs_tailer_buf)
-        .expect("except Failed to create FS Tailer")
-        .map(StrictOrLazyLineBuilder::Lazy);
+    let fs_source = fs_source.process().map(StrictOrLazyLineBuilder::Lazy);
 
     let k8s_event_stream = match config.log.log_k8s_events {
         K8sTrackingConf::Never => None,

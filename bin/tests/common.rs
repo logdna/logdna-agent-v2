@@ -142,6 +142,7 @@ impl<'a> AgentSettings<'a> {
             host: Some(server_address),
             use_ssl: false,
             ingester_key: Some("mock_key"),
+            exclusion: Some("/var/log/**"),
             ..Default::default()
         }
     }
