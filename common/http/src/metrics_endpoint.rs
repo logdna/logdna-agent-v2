@@ -5,6 +5,7 @@ use hyper::{
     Body, Request, Response, Server,
 };
 use prometheus::{Encoder, TextEncoder};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -13,8 +14,8 @@ pub enum Error {
     Server(#[from] hyper::Error),
 }
 
-pub async fn serve(port: &u32) -> Result<(), Error> {
-    let address = format!("0.0.0.0:{}", port).parse().unwrap();
+pub async fn serve(port: &u16) -> Result<(), Error> {
+    let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), *port);
     let serve_future = Server::bind(&address).serve(make_service_fn(|_| async {
         Ok::<_, hyper::Error>(service_fn(serve_req))
     }));

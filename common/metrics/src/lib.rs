@@ -14,38 +14,38 @@ use tokio::time::sleep;
 lazy_static! {
     static ref METRICS: Metrics = Metrics::new();
     static ref FS_EVENTS: IntCounterVec = register_int_counter_vec!(
-        "logdna_fs_events",
+        "logdna_agent_fs_events",
         "Filesystem events received",
         &["event_type"]
     )
     .unwrap();
     static ref FS_LINES: IntCounter =
-        register_int_counter!("logdna_fs_lines", "Number of lines parsed by the Filesystem module").unwrap();
+        register_int_counter!("logdna_agent_fs_lines", "Number of lines parsed by the Filesystem module").unwrap();
     static ref FS_FILES: IntGauge =
-        register_int_gauge!("logdna_fs_files", "Number of open files").unwrap();
+        register_int_gauge!("logdna_agent_fs_files", "Number of open files").unwrap();
     static ref FS_BYTES: IntCounter =
-        register_int_counter!("logdna_fs_bytes", "Number of bytes read by the Filesystem module").unwrap();
+        register_int_counter!("logdna_agent_fs_bytes", "Number of bytes read by the Filesystem module").unwrap();
     static ref FS_PARTIAL_READS: IntCounter =
-        register_int_counter!("logdna_fs_partial_reads", "Filesystem partial reads").unwrap();
+        register_int_counter!("logdna_agent_fs_partial_reads", "Filesystem partial reads").unwrap();
     static ref INGEST_RETRIES: IntCounter = register_int_counter!(
-        "logdna_ingest_retries",
+        "logdna_agent_ingest_retries",
         "Retry attempts made to the http ingestion service"
     )
     .unwrap();
     static ref INGEST_RATE_LIMIT_HITS: IntCounter = register_int_counter!(
-        "logdna_ingest_rate_limit_hits",
+        "logdna_agent_ingest_rate_limit_hits",
         "Number of times the http request was delayed due to the rate limiter"
     )
     .unwrap();
     static ref INGEST_REQUEST_SIZE: Histogram = register_histogram!(
-        "logdna_ingest_request_size",
+        "logdna_agent_ingest_request_size",
         "Size in bytes of the requests made to http ingestion service",
         // Buckets ranging from 500 bytes to 2Mb
         exponential_buckets(500.0, 2.0, 13).unwrap()
     )
     .unwrap();
     static ref INGEST_REQUEST_DURATION: HistogramVec = register_histogram_vec!(
-        "logdna_ingest_request_duration_millis",
+        "logdna_agent_ingest_request_duration_millis",
         "Latency of the requests made to http ingestion service",
         &["outcome"],
         // Buckets ranging from 0.1ms to 26s
@@ -53,15 +53,15 @@ lazy_static! {
     )
     .unwrap();
     static ref K8S_EVENTS: IntCounterVec = register_int_counter_vec!(
-        "logdna_k8s_events",
+        "logdna_agent_k8s_events",
         "Kubernetes events received",
         &["event_type"]
     )
     .unwrap();
     static ref K8S_LINES: IntCounter =
-        register_int_counter!("logdna_k8s_lines", "Kubernetes event lines read").unwrap();
+        register_int_counter!("logdna_agent_k8s_lines", "Kubernetes event lines read").unwrap();
     static ref JOURNAL_RECORDS: Histogram = register_histogram!(
-        "logdna_journald_records",
+        "logdna_agent_journald_records",
         "Size of the Journald log entries read"
     )
     .unwrap();

@@ -158,7 +158,7 @@ pub struct ArgumentOptions {
 
     /// The port number to expose a Prometheus endpoint target with the agent metrics.
     #[structopt(long, env = env::METRICS_PORT)]
-    metrics_port: Option<u32>,
+    metrics_port: Option<u16>,
 
     /// List of regex patterns to exclude log lines.
     /// When set, the Agent will NOT send log lines that match any of these patterns.

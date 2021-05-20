@@ -119,7 +119,7 @@ pub struct AgentSettings<'a> {
     pub tags: Option<&'a str>,
     pub config_file: Option<&'a str>,
     pub state_db_dir: Option<&'a std::path::Path>,
-    pub metrics_port: Option<u32>,
+    pub metrics_port: Option<u16>,
     pub line_exclusion_regex: Option<&'a str>,
     pub line_inclusion_regex: Option<&'a str>,
     pub line_redact_regex: Option<&'a str>,

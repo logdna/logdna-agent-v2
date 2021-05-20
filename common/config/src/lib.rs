@@ -51,7 +51,7 @@ pub struct HttpConfig {
 pub struct LogConfig {
     pub dirs: Vec<DirPathBuf>,
     pub db_path: Option<PathBuf>,
-    pub metrics_port: Option<u32>,
+    pub metrics_port: Option<u16>,
     pub rules: Rules,
     pub line_exclusion_regex: Vec<String>,
     pub line_inclusion_regex: Vec<String>,

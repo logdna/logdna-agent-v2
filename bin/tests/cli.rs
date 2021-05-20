@@ -419,7 +419,7 @@ async fn test_metrics_endpoint() {
             body_str = std::str::from_utf8(&buf).unwrap().to_string();
 
             // Request duration metrics are the last ones to appear
-            if body_str.contains("logdna_ingest_request_duration") {
+            if body_str.contains("logdna_agent_ingest_request_duration") {
                 break;
             }
         }
@@ -427,13 +427,13 @@ async fn test_metrics_endpoint() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
 
-    assert!(body_str.contains("# TYPE logdna_fs_bytes counter"));
-    assert!(body_str.contains("# TYPE logdna_fs_lines counter"));
-    assert!(body_str.contains("# TYPE logdna_ingest_request_size histogram"));
-    assert!(body_str.contains("# TYPE logdna_ingest_request_duration_millis histogram"));
-    assert!(body_str.contains("# TYPE logdna_fs_events counter"));
+    assert!(body_str.contains("# TYPE logdna_agent_fs_bytes counter"));
+    assert!(body_str.contains("# TYPE logdna_agent_fs_lines counter"));
+    assert!(body_str.contains("# TYPE logdna_agent_ingest_request_size histogram"));
+    assert!(body_str.contains("# TYPE logdna_agent_ingest_request_duration_millis histogram"));
+    assert!(body_str.contains("# TYPE logdna_agent_fs_events counter"));
     // One created file
-    assert!(body_str.contains("logdna_fs_events{event_type=\"create\"} 1"));
+    assert!(body_str.contains("logdna_agent_fs_events{event_type=\"create\"} 1"));
 
     common::assert_agent_running(&mut agent_handle);
     agent_handle.kill().expect("Could not kill process");

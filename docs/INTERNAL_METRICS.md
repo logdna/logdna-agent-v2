@@ -14,8 +14,8 @@ by setting the `LOGDNA_METRICS_PORT` environment variable to an available port n
           value: "9881"
 ```
 
-Metrics related to the agent are exposed using the prefix `logdna_` and process status information, like memory and
-cpu usage, are exposed with the prefix `process_`.
+Metrics related to the agent are exposed using the prefix `logdna_agent_` and process status information, like memory
+and cpu usage, are exposed with the prefix `process_`.
 
 ## Enabling Prometheus target discovery on Kubernetes
 

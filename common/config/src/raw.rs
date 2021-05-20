@@ -55,7 +55,7 @@ pub struct LogConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub db_path: Option<PathBuf>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub metrics_port: Option<u32>,
+    pub metrics_port: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub include: Option<Rules>,
     #[serde(skip_serializing_if = "Option::is_none")]
