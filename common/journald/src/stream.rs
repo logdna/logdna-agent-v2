@@ -262,8 +262,7 @@ impl Reader {
             .or_else(|| record.get(KEY_SYSLOG_IDENTIFIER))
             .unwrap_or(&default_app);
 
-        Metrics::journald().increment_lines();
-        Metrics::journald().add_bytes(message.len() as u64);
+        Metrics::journald().add_bytes(message.len());
         Ok(Some(LineBuilder::new().line(message).file(app)))
     }
 }

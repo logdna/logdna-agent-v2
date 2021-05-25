@@ -16,7 +16,6 @@ use std::{fmt, io};
 
 use futures::{Stream, StreamExt};
 use inotify::WatchDescriptor;
-use metrics::Metrics;
 use slotmap::{DefaultKey, SlotMap};
 use std::collections::hash_map::Entry as HashMapEntry;
 use std::collections::HashMap;
@@ -27,6 +26,7 @@ pub mod entry;
 pub mod event;
 pub mod tailed_file;
 pub use dir_path::{DirPathBuf, DirPathBufError};
+use metrics::Metrics;
 
 mod watch;
 
@@ -223,7 +223,6 @@ impl FileSystem {
     fn process(&mut self, watch_event: WatchEvent, events: &mut Vec<Event>) {
         let _entries = self.entries.clone();
         let mut _entries = _entries.borrow_mut();
-        Metrics::fs().increment_events();
 
         debug!("handling inotify event {:#?}", watch_event);
 
@@ -533,6 +532,8 @@ impl FileSystem {
                     data: RefCell::new(TailedFile::new(path).map_err(Error::File)?),
                 };
 
+                Metrics::fs().increment_tracked_files();
+
                 let new_key = self.register_as_child(parent_ref, new_entry, _entries)?;
                 events.push(Event::New(new_key));
                 Ok(Some(new_key))
@@ -691,6 +692,7 @@ impl FileSystem {
                     events.push(Event::Delete(entry_key));
                 }
                 Entry::File { .. } => {
+                    Metrics::fs().decrement_tracked_files();
                     events.push(Event::Delete(entry_key));
                 }
             }

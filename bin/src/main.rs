@@ -2,7 +2,6 @@
 extern crate log;
 
 use std::path::PathBuf;
-use std::thread::spawn;
 
 use futures::Stream;
 
@@ -65,8 +64,6 @@ async fn main() {
             std::process::exit(1);
         }
     };
-
-    spawn(Metrics::start);
 
     let mut _agent_state = None;
     let mut offset_state = None;
@@ -256,6 +253,20 @@ async fn main() {
             Either::Right(_) => client.borrow_mut().poll().await,
         }
     });
+
+    tokio::spawn(async {
+        Metrics::log_periodically().await;
+    });
+
+    if let Some(port) = config.log.metrics_port {
+        info!("Enabling prometheus endpoint with agent metrics");
+        tokio::spawn(async move {
+            // Should panic when server exits
+            http::metrics_endpoint::serve(&port)
+                .await
+                .expect("metrics server error");
+        });
+    }
 
     // Concurrently run the line streams and listen for the `shutdown` signal
     tokio::select! {

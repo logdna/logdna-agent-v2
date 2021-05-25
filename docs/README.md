@@ -31,6 +31,7 @@ The LogDNA agent is a resource-efficient log collection client that forwards log
   * [Configuring Kubernetes Events](#configuring-events)
   * [Configuring regex for redaction and exclusion or inclusion](#configuring-regex-for-redaction-and-exclusion-or-inclusion)
   * [Resource Limits](#resource-limits)
+  * [Exposing Agent Metrics](#exposing-agent-metrics)
 
 ## Managing Deployments
 
@@ -151,6 +152,7 @@ options are available:
 |`LOGDNA_USE_K8S_LOG_ENRICHMENT`|Determines whether the agent should query the K8s API to enrich log lines from other pods.|`always`|
 |`LOGDNA_LOG_K8S_EVENTS`|Whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
 |`LOGDNA_DB_PATH`|The directory the agent will store it's state database. Note that the agent must have write access to the directory and be a persistent volume.||
+|`LOGDNA_METRICS_PORT`|The port number to expose a Prometheus endpoint target with the [agent internal metrics](INTERNAL_METRICS.md).||
 
 All regular expressions use [Perl-style syntax][regex-syntax] with case sensitivity by default. If you don't
 want to differentiate between capital and lower-case letters, use non-capturing groups with a flag: `(?flags:exp)`,
@@ -247,6 +249,12 @@ event logging is enabled (disabled by default), additional CPU usage will occur 
 
 We do not recommend placing traffic shaping or CPU limits on the agent to ensure data can be sent to our
 log ingestion service.
+
+### Exposing Agent Metrics
+
+The LogDNA agent records internal metrics that can be relevant for monitoring and alerting, such as number log
+files currently tracked or number of bytes parsed, along with process status information. Check out the 
+[documentation for internal metrics](INTERNAL_METRICS.md) for more information.
 
 [regex-syntax]: https://docs.rs/regex/1.4.5/regex/#syntax
 [k8s-cpu-usage]: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/#meaning-of-cpu

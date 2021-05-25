@@ -51,6 +51,7 @@ pub struct HttpConfig {
 pub struct LogConfig {
     pub dirs: Vec<DirPathBuf>,
     pub db_path: Option<PathBuf>,
+    pub metrics_port: Option<u16>,
     pub rules: Rules,
     pub line_exclusion_regex: Vec<String>,
     pub line_inclusion_regex: Vec<String>,
@@ -206,6 +207,7 @@ impl TryFrom<RawConfig> for Config {
                 })
                 .collect(),
             db_path: raw.log.db_path,
+            metrics_port: raw.log.metrics_port,
             rules: Rules::new(),
             line_exclusion_regex: raw.log.line_exclusion_regex.unwrap_or_default(),
             line_inclusion_regex: raw.log.line_inclusion_regex.unwrap_or_default(),

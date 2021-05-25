@@ -859,6 +859,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "hex"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
 name = "http"
 version = "0.1.0"
 dependencies = [
@@ -866,10 +872,12 @@ dependencies = [
  "chrono",
  "crossbeam",
  "futures",
+ "hyper",
  "log",
  "logdna-client",
  "metrics",
  "num_cpus",
+ "prometheus",
  "rand",
  "serde",
  "serde_json",
@@ -1331,6 +1339,7 @@ dependencies = [
  "fs",
  "futures",
  "http 0.1.0",
+ "hyper",
  "itertools",
  "jemallocator",
  "journald",
@@ -1441,6 +1450,8 @@ dependencies = [
  "json",
  "lazy_static",
  "log",
+ "prometheus",
+ "tokio",
 ]
 
 [[package]]
@@ -1846,6 +1857,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "procfs"
+version = "0.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab8809e0c18450a2db0f236d2a44ec0b4c1412d0eb936233579f0990faa5d5cd"
+dependencies = [
+ "bitflags",
+ "byteorder",
+ "flate2",
+ "hex",
+ "lazy_static",
+ "libc",
+]
+
+[[package]]
+name = "prometheus"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5986aa8d62380092d2f50f8b1cdba9cb9b6731ffd4b25b51fd126b6c3e05b99c"
+dependencies = [
+ "cfg-if 1.0.0",
+ "fnv",
+ "lazy_static",
+ "libc",
+ "memchr",
+ "parking_lot",
+ "procfs",
+ "protobuf",
+ "thiserror",
+]
+
+[[package]]
 name = "proptest"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1864,6 +1906,12 @@ dependencies = [
  "rusty-fork",
  "tempfile",
 ]
+
+[[package]]
+name = "protobuf"
+version = "2.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45604fc7a88158e7d514d8e22e14ac746081e7a70d7690074dd0029ee37458d6"
 
 [[package]]
 name = "quick-error"

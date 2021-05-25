@@ -119,6 +119,7 @@ pub struct AgentSettings<'a> {
     pub tags: Option<&'a str>,
     pub config_file: Option<&'a str>,
     pub state_db_dir: Option<&'a std::path::Path>,
+    pub metrics_port: Option<u16>,
     pub line_exclusion_regex: Option<&'a str>,
     pub line_inclusion_regex: Option<&'a str>,
     pub line_redact_regex: Option<&'a str>,
@@ -185,6 +186,10 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
 
     if let Some(state_db_dir) = settings.state_db_dir {
         agent.env("LOGDNA_DB_PATH", state_db_dir);
+    }
+
+    if let Some(port) = settings.metrics_port {
+        agent.env("LOGDNA_METRICS_PORT", format!("{}", port));
     }
 
     if let Some(rules) = settings.exclusion_regex {

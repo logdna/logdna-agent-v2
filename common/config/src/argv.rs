@@ -31,6 +31,7 @@ pub mod env {
     pub const JOURNALD_PATHS: &str = "LOGDNA_JOURNALD_PATHS";
     pub const LOOKBACK: &str = "LOGDNA_LOOKBACK";
     pub const DB_PATH: &str = "LOGDNA_DB_PATH";
+    pub const METRICS_PORT: &str = "LOGDNA_METRICS_PORT";
     pub const USE_K8S_LOG_ENRICHMENT: &str = "LOGDNA_USE_K8S_LOG_ENRICHMENT";
     pub const LOG_K8S_EVENTS: &str = "LOGDNA_LOG_K8S_EVENTS";
     pub const LINE_EXCLUSION: &str = "LOGDNA_LINE_EXCLUSION_REGEX";
@@ -155,6 +156,10 @@ pub struct ArgumentOptions {
     #[structopt(long, env = env::DB_PATH)]
     db_path: Option<String>,
 
+    /// The port number to expose a Prometheus endpoint target with the agent metrics.
+    #[structopt(long, env = env::METRICS_PORT)]
+    metrics_port: Option<u16>,
+
     /// List of regex patterns to exclude log lines.
     /// When set, the Agent will NOT send log lines that match any of these patterns.
     #[structopt(long, env = env::LINE_EXCLUSION)]
@@ -239,6 +244,10 @@ impl ArgumentOptions {
 
         if let Some(ref p) = self.db_path {
             raw.log.db_path = Some(p.into())
+        }
+
+        if let Some(port) = self.metrics_port {
+            raw.log.metrics_port = Some(port)
         }
 
         set_rules(
@@ -552,6 +561,7 @@ mod test {
         assert_eq!(config.log.use_k8s_enrichment, None);
         assert_eq!(config.log.log_k8s_events, None);
         assert_eq!(config.log.db_path, None);
+        assert_eq!(config.log.metrics_port, None);
     }
 
     #[test]
@@ -567,6 +577,7 @@ mod test {
             ip: some_string!("1.2.3.4"),
             mac: some_string!("ac::dc"),
             db_path: some_string!("a/b/c"),
+            metrics_port: Some(9089),
             tags: vec_strings!("a", "b"),
             lookback: Some(Lookback::Start),
             use_k8s_enrichment: Some(K8sTrackingConf::Always),
@@ -593,6 +604,7 @@ mod test {
         assert_eq!(config.log.use_k8s_enrichment, some_string!("always"));
         assert_eq!(config.log.log_k8s_events, some_string!("never"));
         assert_eq!(config.log.db_path, Some(PathBuf::from("a/b/c")));
+        assert_eq!(config.log.metrics_port, Some(9089));
         assert_eq!(config.journald.paths, Some(vec_paths!["/a"]));
     }
 

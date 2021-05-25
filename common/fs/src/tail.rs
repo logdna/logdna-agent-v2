@@ -291,7 +291,7 @@ impl Tailer {
                     let mut entries = fs.entries.borrow_mut();
                     if entries.remove(entry_ptr).is_some() {
                         info!(
-                            "Removed file information, currently tracking {} files",
+                            "Removed file information, currently tracking {} files and directories",
                             entries.len()
                         );
                     }
