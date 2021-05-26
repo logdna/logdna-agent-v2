@@ -14,7 +14,8 @@ use futures::future::Either;
 use futures::StreamExt;
 use http::client::Client;
 
-use journald::source::create_source;
+#[cfg(feature = "libjournald")]
+use journald::libjournald::source::create_source;
 
 use k8s::event_source::K8sEventStream;
 
@@ -140,6 +141,7 @@ async fn main() {
         initial_offsets,
     );
 
+    #[cfg(feature = "libjournald")]
     let journald_source = create_source(&config.journald.paths);
 
     if let Some(offset_state) = offset_state {
@@ -151,6 +153,7 @@ async fn main() {
         .expect("except Failed to create FS Tailer")
         .map(StrictOrLazyLineBuilder::Lazy);
 
+    #[cfg(feature = "libjournald")]
     let journald_source = journald_source.map(StrictOrLazyLineBuilder::Strict);
 
     let k8s_event_stream = match config.log.log_k8s_events {
@@ -196,6 +199,7 @@ async fn main() {
     };
 
     pin_mut!(fs_source);
+    #[cfg(feature = "libjournald")]
     pin_mut!(journald_source);
     pin_mut!(k8s_event_source);
 
@@ -206,6 +210,8 @@ async fn main() {
 
     info!("Enabling filesystem");
     sources.push(&mut fs_source);
+
+    #[cfg(feature = "libjournald")]
     sources.push(&mut journald_source);
 
     if let Some(k) = k8s_event_source.as_mut() {

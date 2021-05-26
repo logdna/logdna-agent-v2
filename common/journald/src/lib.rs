@@ -1,3 +1,2 @@
-pub mod error;
-pub mod source;
-pub mod stream;
+#[cfg(feature = "libjournald")]
+pub mod libjournald;
