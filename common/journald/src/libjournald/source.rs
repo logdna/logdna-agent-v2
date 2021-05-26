@@ -1,4 +1,4 @@
-use crate::stream::{Path, Stream};
+use crate::libjournald::stream::{Path, Stream};
 use futures::stream::{select_all, SelectAll, Stream as FutureStream};
 use http::types::body::LineBuilder;
 use log::{info, warn};
