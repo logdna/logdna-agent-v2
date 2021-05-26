@@ -8,15 +8,16 @@ edition = "2018"
 http = { package = "http", path = "../http" }
 metrics = { package = "metrics", path = "../metrics" }
 
-systemd = "0.7"
 tokio = { package = "tokio", version = "1", features = ["macros", "rt-multi-thread", "time"] }
 futures = "0.3"
 log = "0.4"
 mio = "0.7"
 chrono = "0.4"
+systemd = { package = "systemd", version = "0.7", optional = true }
 
 serial_test = { version = "0.5", optional = true }
 
 [features]
 default = []
-journald_tests = ["serial_test"]
+libjournald = ["systemd"]
+journald_tests = ["libjournald", "serial_test"]

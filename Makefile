@@ -81,7 +81,7 @@ RUST_LOG?=info
 
 space := $(subst ,, )
 comma := ,
-FEATURES?=
+FEATURES?=libjournald
 FEATURES_ARG=$(if $(FEATURES),--features $(subst $(space),$(comma),$(FEATURES)))
 
 _TAC= awk '{line[NR]=$$0} END {for (i=NR; i>=1; i--) print line[i]}'

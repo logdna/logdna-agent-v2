@@ -1,4 +1,4 @@
-use crate::error::JournalError;
+use crate::libjournald::error::JournalError;
 use futures::{channel::oneshot, stream::Stream as FutureStream};
 use http::types::body::LineBuilder;
 use log::{info, warn};
