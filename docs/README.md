@@ -205,7 +205,7 @@ A Kubernetes event is exactly what it sounds like: a resource type that is autom
 
 By default, the LogDNA agent captures Kubernetes events (and OpenShift events, as well, since OpenShift is built on top of Kubernetes clusters).
 
-To control whether the LogDNA agent collects Kubernetes events, configure the `LOGDNA_LOG_K8s_EVENTS` environment variable using on of these two values:
+To control whether the LogDNA agent collects Kubernetes events, configure the `LOGDNA_LOG_K8S_EVENTS` environment variable using on of these two values:
 
 * `always` - Always capture events
 * `never` - Never capture events
