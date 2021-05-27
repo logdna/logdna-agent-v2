@@ -441,6 +441,50 @@ async fn test_metrics_endpoint() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_include_only_rules() {
+    let dir = tempdir().unwrap().into_path();
+    let included = dir.join("my_app.log");
+    let excluded1 = dir.join("other_file.log");
+    let excluded2 = dir.join("another_file.log");
+    common::append_to_file(&included, 100, 50).expect("Could not append");
+    common::append_to_file(&excluded1, 100, 50).expect("Could not append");
+    common::append_to_file(&excluded2, 100, 50).expect("Could not append");
+
+    let mut agent_handle = common::spawn_agent(AgentSettings {
+        log_dirs: &dir.to_str().unwrap(),
+        exclusion: Some("!(*my_app*)"),
+        ..Default::default()
+    });
+
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    let lines = common::wait_for_file_event("initialized", &included, &mut stderr_reader);
+
+    let matches_excluded1 = predicate::str::is_match(format!(
+        r"initialized [^\n]*{}",
+        excluded1.file_stem().unwrap().to_str().unwrap()
+    ))
+    .unwrap();
+    let matches_excluded2 = predicate::str::is_match(format!(
+        r"initialized [^\n]*{}",
+        excluded2.file_stem().unwrap().to_str().unwrap()
+    ))
+    .unwrap();
+    assert!(!matches_excluded1.eval(&lines));
+    assert!(!matches_excluded2.eval(&lines));
+
+    // Continue appending
+    common::append_to_file(&included, 100, 5).expect("Could not append");
+    common::append_to_file(&excluded1, 100, 5).expect("Could not append");
+    let lines = common::wait_for_file_event("tailer sendings lines", &included, &mut stderr_reader);
+    assert!(!matches_excluded1.eval(&lines));
+    assert!(!matches_excluded2.eval(&lines));
+
+    common::assert_agent_running(&mut agent_handle);
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_files_other_than_dot_log_should_be_not_included_by_default() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let included_file = dir.join("file1.log");
