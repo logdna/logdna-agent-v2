@@ -19,8 +19,13 @@ use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::env;
 use std::rc::Rc;
+use std::time::Duration;
 use thiserror::Error;
 use tokio::runtime::Builder;
+
+/// The maximum elapsed time to query and retry for the initial query to kube api
+/// before error out.
+static MAX_INIT_TIME: Duration = Duration::from_millis(20_000);
 
 #[derive(Error, Debug)]
 enum Error {
@@ -50,42 +55,66 @@ impl K8sMetadata {
             }
         };
         let client = Client::new(config.try_into()?);
-
-        let mut params = ListParams::default();
-        if let Ok(node) = env::var("NODE_NAME") {
-            params = ListParams::default().fields(&format!("spec.nodeName={}", node));
-        }
-
-        let mut metadata = HashMap::new();
-
-        match Api::<Pod>::all(client.clone()).list(&params).await {
-            Ok(pods) => {
-                for pod in pods {
-                    let pod_meta_data = match PodMetadata::try_from(pod) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            warn!("ignoring pod on initialization: {}", e);
-                            continue;
-                        }
-                    };
-                    metadata.insert(
-                        (pod_meta_data.name.clone(), pod_meta_data.namespace.clone()),
-                        pod_meta_data,
-                    );
-                }
-            }
-            Err(e) => {
-                return Err(K8sError::InitializationError(format!(
-                    "unable to poll pods during initialization: {}",
-                    e
-                )));
-            }
-        }
+        let metadata = K8sMetadata::initialize(&client, MAX_INIT_TIME).await?;
 
         Ok(K8sMetadata {
             metadata: Mutex::new(metadata),
             api: Api::<Pod>::all(client),
         })
+    }
+
+    async fn initialize(
+        client: &Client,
+        max_elapsed_time: Duration,
+    ) -> Result<HashMap<(String, String), PodMetadata>, K8sError> {
+        let mut metadata = HashMap::new();
+        let mut backoff = ExponentialBackoff {
+            current_interval: Duration::from_millis(500),
+            initial_interval: Duration::from_millis(500),
+            randomization_factor: 0.2,
+            multiplier: 1.5, // Equivalent to 50% increases every time
+            max_interval: Duration::from_millis(2_000),
+            max_elapsed_time: Some(max_elapsed_time),
+            ..ExponentialBackoff::default()
+        };
+        let mut params = ListParams::default();
+        if let Ok(node) = env::var("NODE_NAME") {
+            params = ListParams::default().fields(&format!("spec.nodeName={}", node));
+        }
+
+        loop {
+            match Api::<Pod>::all(client.clone()).list(&params).await {
+                Ok(pods) => {
+                    for pod in pods {
+                        let pod_meta_data = match PodMetadata::try_from(pod) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                warn!("ignoring pod on initialization: {}", e);
+                                continue;
+                            }
+                        };
+                        metadata.insert(
+                            (pod_meta_data.name.clone(), pod_meta_data.namespace.clone()),
+                            pod_meta_data,
+                        );
+                    }
+                    // There was a successful response, exit retry loop
+                    break;
+                }
+                Err(e) => {
+                    if let Some(next) = backoff.next_backoff() {
+                        tokio::time::sleep(next).await;
+                        continue;
+                    }
+                    return Err(K8sError::InitializationError(format!(
+                        "unable to poll pods during initialization: {}",
+                        e
+                    )));
+                }
+            }
+        }
+
+        Ok(metadata)
     }
 
     fn handle_pod(&self, event: kube_runtime::watcher::Event<Pod>) -> Result<(), K8sError> {
@@ -240,6 +269,7 @@ struct PodMetadata {
 mod tests {
     use super::*;
     use http::types::body::{LineBuilder, LineMeta};
+    use std::time::Instant;
     use url::Url;
 
     #[tokio::test]
@@ -290,6 +320,24 @@ mod tests {
                 panic!("Unexpected status");
             }
         }
+    }
+
+    #[tokio::test]
+    async fn test_init_max_elapsed_time() {
+        let config = Config::new(Url::parse("https://127.0.0.10/").unwrap());
+        let client = Client::new(config.try_into().unwrap());
+        let start = Instant::now();
+        let max_time = Duration::from_millis(2000);
+
+        // It error out
+        assert!(matches!(
+            K8sMetadata::initialize(&client, max_time).await,
+            Err(_)
+        ));
+
+        // Some time passed
+        assert!(start.elapsed() > Duration::from_millis(1000));
+        assert!(start.elapsed() < max_time * 2);
     }
 
     fn get_instance(map: HashMap<(String, String), PodMetadata>) -> K8sMetadata {

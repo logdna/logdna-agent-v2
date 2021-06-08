@@ -115,7 +115,14 @@ async fn main() {
                 executor.register(v);
                 info!("Registered k8s metadata middleware");
             }
-            Err(e) => warn!("{}", e),
+            Err(e) => {
+                let message = format!(
+                    "The agent could not access k8s api after several attempts: {}",
+                    e
+                );
+                error!("{}", message);
+                panic!("{}", message);
+            }
         };
     }
 
