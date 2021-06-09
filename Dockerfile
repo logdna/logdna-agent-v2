@@ -1,5 +1,6 @@
 # syntax = docker/dockerfile:1.0-experimental
 ARG BUILD_IMAGE
+ARG TARGET
 
 FROM ${BUILD_IMAGE} as build
 
@@ -14,16 +15,30 @@ ENV SCCACHE_BUCKET=${SCCACHE_BUCKET}
 ARG SCCACHE_REGION
 ENV SCCACHE_REGION=${SCCACHE_REGION}
 
+ARG BUILD_ENVS
+
+ARG TARGET
+
+ARG RUSTFLAGS
+ENV RUSTFLAGS=${RUSTFLAGS}
+
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-Clink-self-contained=yes -Clinker=rust-lld ${RUSTFLAGS}"
+
+ENV RUST_LOG=rustc_codegen_ssa::back::link=info
+
 # Create the directory for agent repo
 WORKDIR /opt/logdna-agent-v2
 
 # Add the actual agent source files
 COPY . .
 
+RUN env
 # Rebuild the agent
 RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     if [ -z "$SCCACHE_BUCKET" ]; then unset RUSTC_WRAPPER; fi; \
-    cargo build --manifest-path bin/Cargo.toml ${FEATURES} --release && strip ./target/release/logdna-agent && \
+    export ${BUILD_ENVS}; cargo build --manifest-path bin/Cargo.toml ${FEATURES} --release --target ${TARGET} && \
+    strip ./target/${TARGET}/release/logdna-agent && \
+    cp ./target/${TARGET}/release/logdna-agent /logdna-agent && \
     sccache --show-stats
 #${FEATURES}
 
@@ -54,7 +69,7 @@ ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 
 # Copy the agent binary from the build stage
-COPY --from=build /opt/logdna-agent-v2/target/release/logdna-agent /work/
+COPY --from=build /logdna-agent /work/
 WORKDIR /work/
 
 RUN microdnf update -y \

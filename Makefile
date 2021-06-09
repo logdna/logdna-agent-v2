@@ -65,6 +65,17 @@ else
 	PULL_OPTS :=
 endif
 
+STATIC ?= 0
+ifeq ($(STATIC), 1)
+	RUSTFLAGS:='$(RUSTFLAGS) -C link-self-contained=yes -Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc -L /usr/local/x86_64-linux-musl/lib/ -l static=stdc++'
+	TARGET=x86_64-unknown-linux-musl
+	BUILD_ENVS="ROCKSDB_LIB_DIR=/usr/local/rocksdb/lib ROCKSDB_INCLUDE_DIR=/usr/local/rocksdb/include ROCKSDB_STATIC=1"
+else
+	RUSTFLAGS:=
+	TARGET=x86_64-unknown-linux-gnu
+	BUILD_ENVS="ROCKSDB_LIB_DIR= ROCKSDB_INCLUDE_DIR="
+endif
+
 CHANGE_BIN_VERSION = awk '{sub(/^version = ".+"$$/, "version = \"$(1)\"")}1' bin/Cargo.toml >> bin/Cargo.toml.tmp && mv bin/Cargo.toml.tmp bin/Cargo.toml
 
 CHANGE_K8S_VERSION = sed 's/\(.*\)app\.kubernetes\.io\/version\(.\).*$$/\1app.kubernetes.io\/version\2 $(1)/g' $(2) >> $(2).tmp && mv $(2).tmp $(2)
@@ -273,11 +284,14 @@ release: ## Create a new release from the current beta and push to github
 .PHONY:build-image
 build-image: ## Build a docker image as specified in the Dockerfile
 	$(DOCKER) build . -t $(REPO):$(BUILD_TAG) \
-		--pull \
+		$(PULL_OPTS) \
 		--progress=plain \
 		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
 		--rm \
+		--build-arg BUILD_ENVS=$(BUILD_ENVS) \
 		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
+		--build-arg TARGET=$(TARGET) \
+		--build-arg RUSTFLAGS=$(RUSTFLAGS) \
 		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
 		--build-arg FEATURES='$(FEATURES_ARG)' \

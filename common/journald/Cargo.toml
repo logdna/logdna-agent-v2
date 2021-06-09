@@ -30,5 +30,6 @@ partial_io = { package = "partial-io", version = "0.5", features = ["tokio1"]}
 tokio-test = "0.4"
 
 [features]
+default = []
 libjournald = ["systemd", "mio"]
 journald_tests = ["libjournald", "serial_test"]
