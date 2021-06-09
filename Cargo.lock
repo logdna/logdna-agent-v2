@@ -356,6 +356,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "combine"
+version = "4.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc4369b5e4c0cddf64ad8981c0111e7df4f7078f4d6ba98fb31f2e17c4c57b7e"
+dependencies = [
+ "bytes",
+ "memchr",
+]
+
+[[package]]
 name = "concurrent-queue"
 version = "1.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1113,15 +1123,20 @@ dependencies = [
 name = "journald"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "chrono",
+ "combine",
  "futures",
  "http 0.1.0",
  "log",
  "metrics",
  "mio",
+ "partial-io",
  "serial_test",
  "systemd",
  "tokio",
+ "tokio-test",
+ "tokio-util",
 ]
 
 [[package]]
@@ -1651,6 +1666,17 @@ dependencies = [
  "redox_syscall",
  "smallvec",
  "winapi",
+]
+
+[[package]]
+name = "partial-io"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a680198b5cc0a556d2aa20001fefcf41288a60a71fc7c80b25ce68c5ed4e039f"
+dependencies = [
+ "futures",
+ "pin-project 1.0.7",
+ "tokio",
 ]
 
 [[package]]
