@@ -154,7 +154,10 @@ async fn main() {
     let (journalctl_source, journald_source) = if config.journald.paths.is_empty() {
         let journalctl_source = create_journalctl_source()
             .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
-            .map_err(|e| warn!("Error initializing journalctl source: {}", e));
+            .map_err(|e| {
+                info!("Journalctl source was not initialized");
+                debug!("Journalctl source initialization error: {}", e);
+            });
         (journalctl_source.ok(), None)
     } else {
         (
