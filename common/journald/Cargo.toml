@@ -8,16 +8,27 @@ edition = "2018"
 http = { package = "http", path = "../http" }
 metrics = { package = "metrics", path = "../metrics" }
 
-tokio = { package = "tokio", version = "1", features = ["macros", "rt-multi-thread", "time"] }
+tokio = { package = "tokio", version = "1", features = ["macros", "process", "rt-multi-thread", "time"] }
 futures = "0.3"
 log = "0.4"
-mio = "0.7"
 chrono = "0.4"
+
+# journalctl
+combine = { package = "combine", version = "4" }
+bytes = { package = "bytes", version = "1" }
+tokio_util = { package = "tokio-util", version = "0.6", features = ["codec"] }
+
+# libjournald
+mio = { package = "mio" , version = "0.7", optional = true }
 systemd = { package = "systemd", version = "0.7", optional = true }
 
+# tests
 serial_test = { version = "0.5", optional = true }
 
+[dev-dependencies]
+partial_io = { package = "partial-io", version = "0.5", features = ["tokio1"]}
+tokio-test = "0.4"
+
 [features]
-default = []
-libjournald = ["systemd"]
+libjournald = ["systemd", "mio"]
 journald_tests = ["libjournald", "serial_test"]

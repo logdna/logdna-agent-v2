@@ -676,6 +676,45 @@ async fn test_journald_support() {
     agent_handle.kill().expect("Could not kill process");
 }
 
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg_attr(not(target_os = "linux"), ignore)]
+async fn test_journalctl_support() {
+    assert_eq!(journal::print(6, "Sample info"), 0);
+    sleep(Duration::from_millis(1000));
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+    let mut settings = AgentSettings::with_mock_ingester("/var/log/journal", &addr);
+    settings.journald_dirs = None;
+    settings.exclusion_regex = Some(r"^(?!/var/log/journal).*$");
+    let mut agent_handle = common::spawn_agent(settings);
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+
+    common::wait_for_event("Listening to journalctl", &mut stderr_reader);
+
+    let (server_result, _) = tokio::join!(server, async {
+        for _ in 0..10 {
+            journal::print(1, "Sample alert");
+            journal::print(6, "Sample info");
+        }
+
+        // Wait for the data to be received by the mock ingester
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
+        let map = received.lock().await;
+        let file_info = map.values().next().unwrap();
+
+        let predicate_fn = predicate::in_iter(file_info.values.iter().map(|s| s.trim_end()));
+        assert!(predicate_fn.eval(&"Sample alert"));
+        assert!(predicate_fn.eval(&"Sample info"));
+
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
+    common::assert_agent_running(&mut agent_handle);
+    agent_handle.kill().expect("Could not kill process");
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(1))]
     #[test]

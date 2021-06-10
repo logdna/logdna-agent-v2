@@ -17,6 +17,8 @@ use http::client::Client;
 #[cfg(feature = "libjournald")]
 use journald::libjournald::source::create_source;
 
+use journald::journalctl::create_journalctl_source;
+
 use k8s::event_source::K8sEventStream;
 
 use k8s::middleware::K8sMetadata;
@@ -149,7 +151,26 @@ async fn main() {
     );
 
     #[cfg(feature = "libjournald")]
-    let journald_source = create_source(&config.journald.paths);
+    let (journalctl_source, journald_source) = if config.journald.paths.is_empty() {
+        let journalctl_source = create_journalctl_source()
+            .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
+            .map_err(|e| {
+                info!("Journalctl source was not initialized");
+                debug!("Journalctl source initialization error: {}", e);
+            });
+        (journalctl_source.ok(), None)
+    } else {
+        (
+            None,
+            Some(create_source(&config.journald.paths).map(StrictOrLazyLineBuilder::Strict)),
+        )
+    };
+
+    #[cfg(not(feature = "libjournald"))]
+    let journalctl_source = create_journalctl_source()
+        .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
+        .map_err(|e| warn!("Error initializing journalctl source: {}", e))
+        .ok();
 
     if let Some(offset_state) = offset_state {
         tokio::spawn(offset_state.run().unwrap());
@@ -159,9 +180,6 @@ async fn main() {
         .process(&mut fs_tailer_buf)
         .expect("except Failed to create FS Tailer")
         .map(StrictOrLazyLineBuilder::Lazy);
-
-    #[cfg(feature = "libjournald")]
-    let journald_source = journald_source.map(StrictOrLazyLineBuilder::Strict);
 
     let k8s_event_stream = match config.log.log_k8s_events {
         K8sTrackingConf::Never => None,
@@ -206,11 +224,17 @@ async fn main() {
     };
 
     pin_mut!(fs_source);
+    pin_mut!(k8s_event_source);
+    pin_mut!(journalctl_source);
+
     #[cfg(feature = "libjournald")]
     pin_mut!(journald_source);
-    pin_mut!(k8s_event_source);
 
     let mut k8s_event_source: Option<std::pin::Pin<&mut _>> = k8s_event_source.as_pin_mut();
+    let mut journalctl_source: Option<std::pin::Pin<&mut _>> = journalctl_source.as_pin_mut();
+
+    #[cfg(feature = "libjournald")]
+    let mut journald_source: Option<std::pin::Pin<&mut _>> = journald_source.as_pin_mut();
 
     let mut sources: futures::stream::SelectAll<&mut (dyn Stream<Item = _> + Unpin)> =
         futures::stream::SelectAll::new();
@@ -219,7 +243,18 @@ async fn main() {
     sources.push(&mut fs_source);
 
     #[cfg(feature = "libjournald")]
-    sources.push(&mut journald_source);
+    if let Some(s) = journald_source.as_mut() {
+        info!("Enabling journald event source");
+        sources.push(s)
+    } else if let Some(s) = journalctl_source.as_mut() {
+        info!("Enabling journalctl event source");
+        sources.push(s)
+    }
+    #[cfg(not(feature = "libjournald"))]
+    if let Some(s) = journalctl_source.as_mut() {
+        info!("Enabling journalctl event source");
+        sources.push(s)
+    }
 
     if let Some(k) = k8s_event_source.as_mut() {
         info!("Enabling k8s_event_source");
