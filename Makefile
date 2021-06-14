@@ -73,7 +73,6 @@ ifeq ($(STATIC), 1)
 else
 	RUSTFLAGS:=
 	TARGET=x86_64-unknown-linux-gnu
-	BUILD_ENVS="ROCKSDB_LIB_DIR= ROCKSDB_INCLUDE_DIR="
 endif
 
 CHANGE_BIN_VERSION = awk '{sub(/^version = ".+"$$/, "version = \"$(1)\"")}1' bin/Cargo.toml >> bin/Cargo.toml.tmp && mv bin/Cargo.toml.tmp bin/Cargo.toml

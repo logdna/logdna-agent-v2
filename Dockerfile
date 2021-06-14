@@ -40,7 +40,6 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     strip ./target/${TARGET}/release/logdna-agent && \
     cp ./target/${TARGET}/release/logdna-agent /logdna-agent && \
     sccache --show-stats
-#${FEATURES}
 
 # Use Red Hat Universal Base Image Minimal as the final base image
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.3
