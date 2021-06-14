@@ -111,7 +111,7 @@ spec:
               drop:
                 - all
           env:
-            - name: LOGDNA_AGENT_KEY
+            - name: LOGDNA_INGESTION_KEY
               valueFrom:
                 secretKeyRef:
                   name: logdna-agent-key

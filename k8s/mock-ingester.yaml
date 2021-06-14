@@ -114,7 +114,7 @@ spec:
           image: logdna/logdna-agent:3.3.0-dev
           imagePullPolicy: Always
           env:
-            - name: LOGDNA_AGENT_KEY
+            - name: LOGDNA_INGESTION_KEY
               valueFrom:
                 secretKeyRef:
                   name: logdna-agent-key
