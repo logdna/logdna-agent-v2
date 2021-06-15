@@ -67,9 +67,9 @@ endif
 
 STATIC ?= 0
 ifeq ($(STATIC), 1)
-	RUSTFLAGS:='$(RUSTFLAGS) -C link-self-contained=yes -Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc -L /usr/local/x86_64-linux-musl/lib/ -l static=stdc++'
+	RUSTFLAGS:=-C link-self-contained=yes -Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc -L /usr/local/x86_64-linux-musl/lib/ -l static=stdc++ $(RUSTFLAGS)
 	TARGET=x86_64-unknown-linux-musl
-	BUILD_ENVS="ROCKSDB_LIB_DIR=/usr/local/rocksdb/lib ROCKSDB_INCLUDE_DIR=/usr/local/rocksdb/include ROCKSDB_STATIC=1"
+	BUILD_ENVS=ROCKSDB_LIB_DIR=/usr/local/rocksdb/lib ROCKSDB_INCLUDE_DIR=/usr/local/rocksdb/include ROCKSDB_STATIC=1
 else
 	RUSTFLAGS:=
 	TARGET=x86_64-unknown-linux-gnu
@@ -94,8 +94,11 @@ comma := ,
 FEATURES?=libjournald
 FEATURES_ARG=$(if $(FEATURES),--features $(subst $(space),$(comma),$(FEATURES)))
 
+join-with = $(subst $(space),$1,$(strip $2))
+
 _TAC= awk '{line[NR]=$$0} END {for (i=NR; i>=1; i--) print line[i]}'
 TEST_RULES=
+
 # Dynamically generate test targets for each workspace
 define TEST_RULE
 TEST_RULES=$(TEST_RULES)test-$(1): <> Run unit tests for $(1) crate\\n
@@ -108,11 +111,11 @@ $(foreach _crate, $(CRATES), $(eval $(call TEST_RULE,$(strip $(_crate)))))
 
 .PHONY:build
 build: ## Build the agent
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo build $(FEATURES_ARG) --manifest-path bin/Cargo.toml"
+	$(RUST_COMMAND) "--env $(call join-with, --env ,$(BUILD_ENVS)) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml --target=$(TARGET)"
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo build $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release && strip ./target/release/logdna-agent"
+	$(RUST_COMMAND) "--env $(call join-with, --env ,$(BUILD_ENVS)) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release --target=$(TARGET) && strip ./target/release/logdna-agent"
 
 .PHONY:check
 check: ## Run unit tests
@@ -287,10 +290,10 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--progress=plain \
 		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
 		--rm \
-		--build-arg BUILD_ENVS=$(BUILD_ENVS) \
+		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
 		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
 		--build-arg TARGET=$(TARGET) \
-		--build-arg RUSTFLAGS=$(RUSTFLAGS) \
+		--build-arg RUSTFLAGS='$(RUSTFLAGS)' \
 		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
 		--build-arg FEATURES='$(FEATURES_ARG)' \
