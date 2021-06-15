@@ -36,7 +36,7 @@ RUN env
 # Rebuild the agent
 RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     if [ -z "$SCCACHE_BUCKET" ]; then unset RUSTC_WRAPPER; fi; \
-    export ${BUILD_ENVS}; cargo build --manifest-path bin/Cargo.toml ${FEATURES} --release --target ${TARGET} && \
+    export ${BUILD_ENVS?}; cargo build --manifest-path bin/Cargo.toml ${FEATURES} --release --target ${TARGET} && \
     strip ./target/${TARGET}/release/logdna-agent && \
     cp ./target/${TARGET}/release/logdna-agent /logdna-agent && \
     sccache --show-stats
