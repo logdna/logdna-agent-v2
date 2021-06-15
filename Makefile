@@ -72,7 +72,7 @@ ifeq ($(STATIC), 1)
 	BUILD_ENVS=ROCKSDB_LIB_DIR=/usr/local/rocksdb/lib ROCKSDB_INCLUDE_DIR=/usr/local/rocksdb/include ROCKSDB_STATIC=1
 else
 	RUSTFLAGS:=
-	TARGET=x86_64-unknown-linux-gnu
+	TARGET=
 endif
 
 CHANGE_BIN_VERSION = awk '{sub(/^version = ".+"$$/, "version = \"$(1)\"")}1' bin/Cargo.toml >> bin/Cargo.toml.tmp && mv bin/Cargo.toml.tmp bin/Cargo.toml
@@ -109,13 +109,23 @@ endef
 CRATES=$(shell sed -e '/members/,/]/!d' Cargo.toml | tail -n +2 | $(_TAC) | tail -n +2 | $(_TAC) | sed 's/,//' | xargs -n1 -I{} sh -c 'grep -E "^name *=" {}/Cargo.toml | tail -n1' | sed 's/name *= *"\([A-Za-z0-9_\-]*\)"/\1/' | awk '!/journald/{print $0}')
 $(foreach _crate, $(CRATES), $(eval $(call TEST_RULE,$(strip $(_crate)))))
 
+BUILD_ENV_DOCKER_ARGS=$(call join-with, --env ,$(BUILD_ENVS))
+ifneq ($(BUILD_ENV_DOCKER_ARGS),)
+	BUILD_ENV_DOCKER_ARGS= --env $(BUILD_ENV_DOCKER_ARGS)
+endif
+
+TARGET_DOCKER_ARG=$(TARGET)
+ifneq ($(TARGET_DOCKER_ARG),)
+	TARGET_DOCKER_ARG= --target $(TARGET_DOCKER_ARG)
+endif
+
 .PHONY:build
 build: ## Build the agent
-	$(RUST_COMMAND) "--env $(call join-with, --env ,$(BUILD_ENVS)) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml --target=$(TARGET)"
+	$(RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG)"
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
-	$(RUST_COMMAND) "--env $(call join-with, --env ,$(BUILD_ENVS)) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release --target=$(TARGET) && strip ./target/release/logdna-agent"
+	$(RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && strip ./target/$(TARGET)/release/logdna-agent"
 
 .PHONY:check
 check: ## Run unit tests
