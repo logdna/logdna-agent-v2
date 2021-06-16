@@ -28,6 +28,7 @@ DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
 
 export CARGO_CACHE ?= $(shell pwd)/.cargo_cache
 RUST_COMMAND := $(DOCKER_DISPATCH) $(RUST_IMAGE)
+UNCACHED_RUST_COMMAND := CACHE_TARGET="false" $(DOCKER_DISPATCH) $(RUST_IMAGE)
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
@@ -65,6 +66,16 @@ else
 	PULL_OPTS :=
 endif
 
+STATIC ?= 0
+ifeq ($(STATIC), 1)
+	RUSTFLAGS:=-C link-self-contained=yes -Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc -L /usr/local/x86_64-linux-musl/lib/ -l static=stdc++ $(RUSTFLAGS)
+	TARGET=x86_64-unknown-linux-musl
+	BUILD_ENVS=ROCKSDB_LIB_DIR=/usr/local/rocksdb/lib ROCKSDB_INCLUDE_DIR=/usr/local/rocksdb/include ROCKSDB_STATIC=1
+else
+	RUSTFLAGS:=
+	TARGET=
+endif
+
 CHANGE_BIN_VERSION = awk '{sub(/^version = ".+"$$/, "version = \"$(1)\"")}1' bin/Cargo.toml >> bin/Cargo.toml.tmp && mv bin/Cargo.toml.tmp bin/Cargo.toml
 
 CHANGE_K8S_VERSION = sed 's/\(.*\)app\.kubernetes\.io\/version\(.\).*$$/\1app.kubernetes.io\/version\2 $(1)/g' $(2) >> $(2).tmp && mv $(2).tmp $(2)
@@ -84,8 +95,11 @@ comma := ,
 FEATURES?=libjournald
 FEATURES_ARG=$(if $(FEATURES),--features $(subst $(space),$(comma),$(FEATURES)))
 
+join-with = $(subst $(space),$1,$(strip $2))
+
 _TAC= awk '{line[NR]=$$0} END {for (i=NR; i>=1; i--) print line[i]}'
 TEST_RULES=
+
 # Dynamically generate test targets for each workspace
 define TEST_RULE
 TEST_RULES=$(TEST_RULES)test-$(1): <> Run unit tests for $(1) crate\\n
@@ -96,13 +110,22 @@ endef
 CRATES=$(shell sed -e '/members/,/]/!d' Cargo.toml | tail -n +2 | $(_TAC) | tail -n +2 | $(_TAC) | sed 's/,//' | xargs -n1 -I{} sh -c 'grep -E "^name *=" {}/Cargo.toml | tail -n1' | sed 's/name *= *"\([A-Za-z0-9_\-]*\)"/\1/' | awk '!/journald/{print $0}')
 $(foreach _crate, $(CRATES), $(eval $(call TEST_RULE,$(strip $(_crate)))))
 
+BUILD_ENV_DOCKER_ARGS=
+ifneq ($(BUILD_ENVS),)
+	BUILD_ENV_DOCKER_ARGS= --env $(call join-with, --env ,$(BUILD_ENVS))
+endif
+
+ifneq ($(TARGET),)
+	TARGET_DOCKER_ARG= --target $(TARGET)
+endif
+
 .PHONY:build
 build: ## Build the agent
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo build $(FEATURES_ARG) --manifest-path bin/Cargo.toml"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG)"
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo build $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release && strip ./target/release/logdna-agent"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && strip ./target/$(TARGET)/release/logdna-agent"
 
 .PHONY:check
 check: ## Run unit tests
@@ -153,7 +176,7 @@ lint-audit: ## Audits packages for issues
 
 .PHONY:lint-docker
 lint-docker: ## Lint the Dockerfile for issues
-	$(HADOLINT_COMMAND) "" "hadolint Dockerfile --ignore DL3006"
+	$(HADOLINT_COMMAND) "" "hadolint Dockerfile --ignore DL3006 --ignore SC2086"
 
 .PHONY:lint-shell
 lint-shell: ## Lint the Dockerfile for issues
@@ -273,11 +296,14 @@ release: ## Create a new release from the current beta and push to github
 .PHONY:build-image
 build-image: ## Build a docker image as specified in the Dockerfile
 	$(DOCKER) build . -t $(REPO):$(BUILD_TAG) \
-		--pull \
+		$(PULL_OPTS) \
 		--progress=plain \
 		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
 		--rm \
+		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
 		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
+		--build-arg TARGET=$(TARGET) \
+		--build-arg RUSTFLAGS='$(RUSTFLAGS)' \
 		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
 		--build-arg FEATURES='$(FEATURES_ARG)' \
@@ -286,6 +312,10 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg VCS_URL=$(VCS_URL) \
 		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION)
+
+.PHONY: publish-s3-binary
+publish-s3-binary:
+	aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent
 
 define publish_images
 	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(shell docker images -q $(REPO):$(BUILD_TAG)) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))

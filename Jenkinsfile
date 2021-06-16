@@ -88,26 +88,53 @@ pipeline {
                 }
             }
         }
-        stage('Build Release Image') {
-            steps {
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding',
-                    credentialsId: 'aws',
-                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                ]]){
-                    sh """
-                        echo "[default]" > ${PWD}/.aws_creds
-                        echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds
-                        echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds
-                        make build-image AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds
-                    """
-                }
+        stage('Build Release Binaries') {
+            environment {
+                CREDS_FILE = credentials('pipeline-e2e-creds')
+                LOGDNA_HOST = "logs.use.stage.logdna.net"
             }
-            post {
-                always {
-                    sh "rm ${PWD}/.aws_creds"
+            parallel {
+                stage('Build Release Image') {
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]){
+                            sh """
+                                echo "[default]" > ${PWD}/.aws_creds
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds
+                                make build-image AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds
+                            """
+                        }
+                    }
+                    post {
+                        always {
+                            sh "rm ${PWD}/.aws_creds"
+                        }
+                    }
                 }
+                stage('Build static release binary') {
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh '''
+                                echo "[default]" > ${PWD}/.aws_creds_static
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static
+                                STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
+                                rm ${PWD}/.aws_creds_static
+                            '''
+                        }
+                    }
+                }
+
             }
         }
         stage('Check Publish Images') {
@@ -115,6 +142,24 @@ pipeline {
                 branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
             }
             stages {
+                stage('Publish static binary') {
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh '''
+                                echo "[default]" > ${PWD}/.aws_creds_static
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static
+                                STATIC=1 make publish-s3-binary
+                                rm ${PWD}/.aws_creds_static
+                            '''
+                        }
+                    }
+                }
                 stage('Check Publish GCR Image or Timeout') {
                     steps {
                         script {
