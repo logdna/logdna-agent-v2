@@ -202,7 +202,7 @@ bump-major-dev: ## Create a new minor beta release and push to github
 
 .PHONY:release-major
 release-major: ## Create a new major beta release and push to github
-	$(eval TARGET_BRANCH := $(shell expr $(MAJOR_VERSION) + 1).0)
+	$(eval TARGET_BRANCH := $(MAJOR_VERSION).0)
 	$(eval NEW_VERSION := $(TARGET_BRANCH).0-beta.1)
 	@if [ ! "$(REMOTE_BRANCH)" = "master" ]; then echo "Can't create the major beta release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"master\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
@@ -231,7 +231,7 @@ bump-minor-dev: ## Create a new minor beta release and push to github
 
 .PHONY:release-minor
 release-minor: ## Create a new minor beta release and push to github
-	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(shell expr $(MINOR_VERSION) + 1))
+	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(MINOR_VERSION))
 	$(eval NEW_VERSION := $(TARGET_BRANCH).0-beta.1)
 	@if [ ! "$(REMOTE_BRANCH)" = "master" ]; then echo "Can't create the minor beta release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"master\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
