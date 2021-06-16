@@ -13,12 +13,14 @@ get_volume_mounts() {
 	if [ -z "$cargo_home" ]; then
 		cargo_home="/usr/local/cargo"
 	fi
-
+	if [ "$HOST_MACHINE" = "Mac" ] && [ "$CACHE_TARGET" != "false" ]; then
+		docker volume create agent-v2-cache > /dev/null
+		echo " -v agent-v2-cache:$1/target"
+	fi
 	if [ "$HOST_MACHINE" = "Mac" ]; then
 		# host mounts are hideously slow on Mac, create docker volumes instead
 		docker volume create cargo_cache > /dev/null
-		docker volume create agent-v2-cache > /dev/null
-		echo "-v cargo_cache:$cargo_home/registry -v agent-v2-cache:$1/target"
+		echo "-v cargo_cache:$cargo_home/registry"
 	elif [ "$HOST_MACHINE" = "Linux" ]; then
 		mkdir -p "$CARGO_CACHE/git" "$CARGO_CACHE/registry"
 		echo "-v $CARGO_CACHE/git:$cargo_home/git:Z -v $CARGO_CACHE/registry:$cargo_home/registry:Z"
