@@ -119,11 +119,11 @@ pipeline {
                 stage('Build static release binary') {
                     steps {
                         withCredentials([[
-                                                 $class: 'AmazonWebServicesCredentialsBinding',
-                                                 credentialsId: 'aws',
-                                                 accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                                 secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                         ]]) {
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
                             sh '''
                                 echo "[default]" > ${PWD}/.aws_creds_static
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static
@@ -131,7 +131,7 @@ pipeline {
                                 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
                             '''
                         }
-                   }
+                    }
                     post {
                         always {
                             sh "rm ${PWD}/.aws_creds_static"
@@ -150,11 +150,11 @@ pipeline {
                 stage('Publish static binary') {
                     steps {
                         withCredentials([[
-                                            $class: 'AmazonWebServicesCredentialsBinding',
-                                            credentialsId: 'aws',
-                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                         ]]) {
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
                             sh '''
                                 echo "[default]" > ${PWD}/.aws_creds_static
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static
