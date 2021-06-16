@@ -159,13 +159,9 @@ pipeline {
                                 echo "[default]" > ${PWD}/.aws_creds_static
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static
-                                STATIC=1 sh 'make publish-s3-binary'
+                                STATIC=1 make publish-s3-binary
+                                rm ${PWD}/.aws_creds_static
                             '''
-                        }
-                    }
-                    post {
-                        always {
-                            sh "rm ${PWD}/.aws_creds_static"
                         }
                     }
                 }
