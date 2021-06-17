@@ -15,7 +15,7 @@ agent your logs may not be collected.
 To install a specific version you should ensure that you check out the exact tag for that
 version before applying any YAML files from the current tree.
 
-For example, to install a specific version, say a particular build of a beta, you would run the following command (with the 
+For example, to install a specific version, say a particular build of a beta, you would run the following command (with the
 specific tag's version number) in the repo's root directory before following the install instructions relevant for your cluster.
 
 ```bash
@@ -165,7 +165,7 @@ kubectl delete secret -n <NAMESPACE> logdna-agent-key
 
 By default the agent is configured to run as root; however, the DaemonSet can be modified to run the agent as a non-root user.
 
-This is accomplished through Linux capabilities and turning the agent binary into a "capability-dumb binary." The binary is given `CAP_DAC_READ_SEARCH` to read all files on the file system. The image already comes with this change and the necessary user and group. The only required step is configuring the agent DaemonSet to run as the user and group `5000:5000`.
+This is accomplished through Linux capabilities and turning the agent binary into a "capability-dumb binary." The binary is given `CAP_DAC_READ_SEARCH` to read all files on the file system. The image already comes with this change and the necessary user and group. The only required step is configuring the agent DaemonSet to run as the user and group `5000:5000`. Note that if your UID (User Identifier) and GID (Group Identifier) values are something other than 5000, use your local values.
 
 Add two new fields, `runAsUser` and `runAsGroup`, to the `securityContext` section found in the `logdna-agent` container in the `logdna-agent` DaemonSet inside of `k8s/agent-resources.yaml` [`spec.template.spec.containers.0.securityContext`]:
 
