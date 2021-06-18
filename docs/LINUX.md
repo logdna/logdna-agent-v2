@@ -34,7 +34,7 @@ You can start sending logs by setting the [ingestion key][ingestion-key]:
 logdna-agent -k <YOUR INGESTION KEY>
 ```
 
-The agent expose short argument abbreviations for commonly used options (`-k`, `-t`, `-d` and `-c`).
+The LogDNA Agent exposes short argument abbreviations for commonly used options (`-k`, `-t`, `-d` and `-c`).
 
 You can use `--help` flag to list all the command and environment variable options. For example with agent
 version `3.3.0`:
@@ -56,14 +56,15 @@ OPTIONS:
             The config filename [env: LOGDNA_CONFIG_FILE=]  [default: /etc/logdna/config.yaml]
 
         --db-path <db-path>
-            The directory the agent will store it's state database. Note that the agent must have write access to the
-            directory and be a persistent volume. Defaults to "/var/lib/logdna-agent/" [env: LOGDNA_DB_PATH=]
+            The directory in which the agent will store its state database. Note that the agent must have write access
+            to the directory and be a persistent volume. Defaults to "/var/lib/logdna-agent/" [env: LOGDNA_DB_PATH=]
         --endpoint-path <endpoint-path>
             The endpoint to forward logs to. Defaults to "/logs/agent" [env: LOGDNA_ENDPOINT=]
         --exclude-regex <exclusion-regex>...
             List of regex patterns to exclude files from monitoring [env: LOGDNA_EXCLUSION_REGEX_RULES=]
         --exclude <exclusion-rules>...
-            List of glob patterns to exclude files from monitoring, to add to the default [env: LOGDNA_EXCLUSION_RULES=]
+            List of glob patterns to exclude files from monitoring, to add to the default default set of
+            exclusion rules [env: LOGDNA_EXCLUSION_RULES=]
         --gzip-level <gzip-level>
             If compression is enabled, this is the gzip compression level to use. Defaults to 2 [env:
             LOGDNA_GZIP_LEVEL=]
@@ -85,18 +86,18 @@ OPTIONS:
             List of regex patterns to exclude log lines. When set, the Agent will NOT send log lines that match any of
             these patterns [env: LOGDNA_LINE_EXCLUSION_REGEX=]
         --line-inclusion <line-inclusion>...
-            List of regex patterns to include log lines. When set, the Agent will ONLY send log lines that match any of
+            List of regex patterns to include log lines. When set, the Agent will send ONLY log lines that match any of
             these patterns [env: LOGDNA_LINE_INCLUSION_REGEX=]
         --line-redact <line-redact>...
-            List of regex patterns used to mask matching sensitive information before sending it the log line [env:
-            LOGDNA_REDACT_REGEX=]
+            List of regex patterns used to mask matching sensitive information (such as PII) before sending it
+            in the log line [env: LOGDNA_REDACT_REGEX=]
     -d, --logdir <log-dirs>...
             Adds log directories to scan, in addition to the default (/var/log) [env: LOGDNA_LOG_DIRS=]
         --log-k8s-events <log-k8s-events>
-            Whether the agent should log Kubernetes resource events. This setting only affects tracking and logging
-            Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log
-            lines from other pods depending on the value of `use_k8s_enrichment` setting value ("always" or "never").
-            Defaults to "never" [env: LOGDNA_LOG_K8S_EVENTS=]
+            Determines whether the agent should log Kubernetes resource events. This setting only affects tracking
+            and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata
+            to enrich log lines from other pods depending on the value of `use_k8s_enrichment` setting value ("always"
+            or "never"). Defaults to "never" [env: LOGDNA_LOG_K8S_EVENTS=]
         --lookback <lookback>
             The lookback strategy on startup ("smallfiles", "start" or "none"). Defaults to "smallfiles" [env:
             LOGDNA_LOOKBACK=]
@@ -110,12 +111,12 @@ OPTIONS:
     -t, --tags <tags>...
             List of tags metadata to attach to lines forwarded from this agent [env: LOGDNA_TAGS=]
         --use-compression <use-compression>
-            Whether to compress logs before sending. Defaults to "true" [env: LOGDNA_USE_COMPRESSION=]
+            Determines whether to compress logs before sending. Defaults to "true" [env: LOGDNA_USE_COMPRESSION=]
         --use-k8s-enrichment <use-k8s-enrichment>
             Determines whether the agent should query the K8s API to enrich log lines from other pods ("always" or
             "never").  Defaults to "always" [env: LOGDNA_USE_K8S_LOG_ENRICHMENT=]
         --use-ssl <use-ssl>
-            Whether to use TLS for sending logs. Defaults to "true" [env: LOGDNA_USE_SSL=]
+            Determines whether to use TLS for sending logs. Defaults to "true" [env: LOGDNA_USE_SSL=]
 ```
 
 [ingestion-key]: https://docs.logdna.com/docs/ingestion-key
