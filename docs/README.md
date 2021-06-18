@@ -145,13 +145,13 @@ options are available:
 |`LOGDNA_INCLUSION_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE`|Comma separated list of glob patterns to includes files for monitoring <sup>1</sup>|`*.log,!(*.*)`|
 |`LOGDNA_INCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE_REGEX`|Comma separated list of regex patterns to include files from monitoring||
 |`LOGDNA_LINE_EXCLUSION_REGEX`|Comma separated list of regex patterns to exclude log lines. When set, the Agent will NOT send log lines that match any of these patterns.||
-|`LOGDNA_LINE_INCLUSION_REGEX`|Comma separated list of regex patterns to include log lines. When set, the Agent will ONLY send log lines that match any of these patterns.||
-|`LOGDNA_REDACT_REGEX`|Comma separated list of regex patterns used to mask matching sensitive information before sending it the log line.||
+|`LOGDNA_LINE_INCLUSION_REGEX`|Comma separated list of regex patterns to include log lines. When set, the Agent will send ONLY log lines that match any of these patterns.||
+|`LOGDNA_REDACT_REGEX`|Comma separated list of regex patterns used to mask matching sensitive information (such as PII) before sending it in the log line.||
 |`LOGDNA_JOURNALD_PATHS`|Comma separated list of paths (directories or files) of journald paths to monitor||
 |`LOGDNA_LOOKBACK`|The lookback strategy on startup|`smallfiles`|
 |`LOGDNA_USE_K8S_LOG_ENRICHMENT`|Determines whether the agent should query the K8s API to enrich log lines from other pods.|`always`|
-|`LOGDNA_LOG_K8S_EVENTS`|Whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
-|`LOGDNA_DB_PATH`|The directory the agent will store it's state database. Note that the agent must have write access to the directory and be a persistent volume.||
+|`LOGDNA_LOG_K8S_EVENTS`|Determines whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
+|`LOGDNA_DB_PATH`|The directory in which the agent will store its state database. Note that the agent must have write access to the directory and be a persistent volume.||
 |`LOGDNA_METRICS_PORT`|The port number to expose a Prometheus endpoint target with the [agent internal metrics](INTERNAL_METRICS.md).||
 
 All regular expressions use [Perl-style syntax][regex-syntax] with case sensitivity by default. If you don't
