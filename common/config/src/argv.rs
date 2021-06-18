@@ -79,11 +79,11 @@ pub struct ArgumentOptions {
     #[structopt(long, env = env::ENDPOINT)]
     endpoint_path: Option<String>,
 
-    /// Whether to use TLS for sending logs. Defaults to "true".
+    /// Determines whether to use TLS for sending logs. Defaults to "true".
     #[structopt(long, env = env::USE_SSL)]
     use_ssl: Option<bool>,
 
-    /// Whether to compress logs before sending. Defaults to "true".
+    /// Determines whether to compress logs before sending. Defaults to "true".
     #[structopt(long, env = env::USE_COMPRESSION)]
     use_compression: Option<bool>,
 
@@ -108,7 +108,8 @@ pub struct ArgumentOptions {
     #[structopt(long = "logdir", short = "d", env = env::LOG_DIRS)]
     log_dirs: Vec<String>,
 
-    /// List of glob patterns to exclude files from monitoring, to add to the default.
+    /// List of glob patterns to exclude files from monitoring, to add to the default set of
+    /// exclusion rules.
     #[structopt(long = "exclude", env = env::EXCLUSION_RULES)]
     exclusion_rules: Vec<String>,
 
@@ -116,7 +117,8 @@ pub struct ArgumentOptions {
     #[structopt(long = "exclude-regex", env = env::EXCLUSION_REGEX_RULES)]
     exclusion_regex: Vec<String>,
 
-    /// List of glob patterns to includes files for monitoring, to add to the default (*.log)
+    /// List of glob patterns to includes files for monitoring, to add to the default set of
+    /// inclusion rules (*.log)
     #[structopt(long = "include", env = env::INCLUSION_RULES)]
     inclusion_rules: Vec<String>,
 
@@ -143,15 +145,15 @@ pub struct ArgumentOptions {
     #[structopt(long, env = env::USE_K8S_LOG_ENRICHMENT)]
     use_k8s_enrichment: Option<K8sTrackingConf>,
 
-    /// Whether the agent should log Kubernetes resource events. This setting only affects
-    /// tracking and logging Kubernetes resource changes via watches. When disabled,
+    /// Determines whether  the agent should log Kubernetes resource events. This setting only
+    /// affects tracking and logging Kubernetes resource changes via watches. When disabled,
     /// the agent may still query k8s metadata to enrich log lines from other pods depending on
     /// the value of `use_k8s_enrichment` setting value ("always" or "never"). Defaults to "never".
     #[structopt(long, env = env::LOG_K8S_EVENTS)]
     log_k8s_events: Option<K8sTrackingConf>,
 
-    /// The directory the agent will store it's state database. Note that the agent must have
-    /// write access to the directory and be a persistent volume.
+    /// The directory in which the agent will store its state database. Note that the agent must
+    /// have write access to the directory and be a persistent volume.
     /// Defaults to "/var/lib/logdna-agent/"
     #[structopt(long, env = env::DB_PATH)]
     db_path: Option<String>,
@@ -166,12 +168,12 @@ pub struct ArgumentOptions {
     line_exclusion: Vec<String>,
 
     /// List of regex patterns to include log lines.
-    /// When set, the Agent will ONLY send log lines that match any of these patterns.
+    /// When set, the Agent will send ONLY log lines that match any of these patterns.
     #[structopt(long, env = env::LINE_INCLUSION)]
     line_inclusion: Vec<String>,
 
-    /// List of regex patterns used to mask matching sensitive information
-    /// before sending it the log line.
+    /// List of regex patterns used to mask matching sensitive information (such as PII) before
+    /// sending it in the log line.
     #[structopt(long, env = env::REDACT)]
     line_redact: Vec<String>,
 }
