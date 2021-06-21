@@ -12,9 +12,6 @@ cache:
   - C:\Users\appveyor\.cargo
   - target
 
-before_build:
-  - echo SSL on %OPENSSL_DIR%
-
 install:
   - echo Installing with SSL on %OPENSSL_DIR%
   - appveyor-retry appveyor DownloadFile https://win.rustup.rs/ -FileName rustup-init.exe
@@ -25,4 +22,4 @@ install:
   - cargo -vV
 
 test_script:
-  - cargo check --no-default-features
+  - cargo build --no-default-features
