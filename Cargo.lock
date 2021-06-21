@@ -787,6 +787,7 @@ dependencies = [
  "metrics",
  "middleware",
  "notify_stream",
+ "os_str_bytes",
  "pcre2",
  "pin-project-lite",
  "pin-utils",
@@ -1871,6 +1872,12 @@ checksum = "f100fcfb41e5385e0991f74981732049f9b896821542a219420491046baafdc2"
 dependencies = [
  "num-traits",
 ]
+
+[[package]]
+name = "os_str_bytes"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6acbef58a60fe69ab50510a55bc8cdd4d6cf2283d27ad338f54cb52747a9cf2d"
 
 [[package]]
 name = "parking_lot"

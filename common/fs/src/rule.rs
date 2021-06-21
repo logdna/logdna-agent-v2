@@ -5,7 +5,9 @@ use std::str::FromStr;
 use core::fmt;
 use globber::{Error as PatternError, Pattern};
 use pcre2::{bytes::Regex, Error as RegexError};
+#[cfg(target_os = "linux")]
 use std::os::unix::ffi::OsStrExt;
+use os_str_bytes::OsStrBytes;
 
 /// A list of rules
 pub type RuleList = Vec<Box<dyn Rule + Send>>;
@@ -117,7 +119,7 @@ impl RegexRule {
 impl Rule for RegexRule {
     fn matches(&self, value: &Path) -> bool {
         self.inner
-            .is_match(value.as_os_str().as_bytes())
+            .is_match(value.as_os_str().to_raw_bytes().as_ref())
             .unwrap_or(false)
     }
 }
