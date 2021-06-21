@@ -266,6 +266,27 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    #[cfg(target_os = "linux")]
+    async fn test_init_max_elapsed_time() {
+        let config = Config::new("https://127.0.0.10/".parse::<Uri>().unwrap());
+        let client = Client::try_from(config).unwrap();
+        let start = Instant::now();
+        let max_time = Duration::from_millis(2000);
+
+        // It error out
+        assert!(matches!(
+            K8sMetadata::initialize(&client, max_time).await,
+            Err(_)
+        ));
+
+        // Some time passed
+        assert!(start.elapsed() > Duration::from_millis(1000));
+        assert!(start.elapsed() < max_time * 2);
+    }
+
+
+
     fn get_pod_metadata(name: impl Into<String>, namespace: impl Into<String>) -> PodMetadata {
         PodMetadata {
             name: name.into(),

@@ -10,7 +10,7 @@ members = [
     "common/journald",
     "common/state",
     "common/notify_stream",
-    "utils/metrics-recorder"
+    "utils/metrics-recorder",
     "bench",
 ]
 
