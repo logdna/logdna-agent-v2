@@ -148,12 +148,17 @@ async fn main() {
 
     executor.init();
 
+    // Use an internal env var to support running integration test w/o additional delays
+    let event_delay = std::env::var("LOGDNA_INTERNAL_FS_DELAY")
+        .map(|s| Duration::from_millis(s.parse().unwrap()))
+        .unwrap_or(FS_EVENT_DELAY);
+
     let mut fs_source = FSSource::new(
         config.log.dirs,
         config.log.rules,
         config.log.lookback,
         initial_offsets,
-        FS_EVENT_DELAY,
+        event_delay,
     );
 
     #[cfg(feature = "libjournald")]

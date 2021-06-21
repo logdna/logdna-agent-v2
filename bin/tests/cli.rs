@@ -677,7 +677,7 @@ async fn test_journald_support() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
-#[cfg_attr(not(target_os = "linux"), ignore)]
+#[cfg(target_os = "linux")]
 async fn test_journalctl_support() {
     assert_eq!(journal::print(6, "Sample info"), 0);
     sleep(Duration::from_millis(1000));
