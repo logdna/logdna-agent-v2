@@ -1065,8 +1065,8 @@ mod tests {
                 .as_path()
                 .try_into()
                 .unwrap_or_else(|_| panic!("{:?} is not a directory!", path))],
-            HashMap::new(),
             Lookback::Start,
+            HashMap::new(),
             rules,
             DELAY,
         )

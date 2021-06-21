@@ -12,6 +12,7 @@ install:
   - cargo -vV
 
 test_script:
+  - cargo check -p metrics --no-default-features
   - cargo check -p http:0.1.0 --no-default-features
   - cargo check -p fs --no-default-features
   - cargo check --no-default-features

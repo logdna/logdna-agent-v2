@@ -5,6 +5,7 @@ use notify::{DebouncedEvent, Error as NotifyError, Watcher as NotifyWatcher};
 use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
+use time::OffsetDateTime;
 
 type PathId = std::path::PathBuf;
 
@@ -132,7 +133,7 @@ impl Watcher {
     }
 
     /// Starts receiving the watcher events
-    pub fn receive(&self) -> impl Stream<Item = (Event, chrono::DateTime<chrono::Utc>)> {
+    pub fn receive(&self) -> impl Stream<Item = (Event, OffsetDateTime)> {
         let rx = Rc::clone(&self.rx);
         stream::unfold(rx, |rx| async move {
             loop {
@@ -152,7 +153,7 @@ impl Watcher {
                     // Ignore attribute changes
                     DebouncedEvent::Chmod(_) => None,
                 } {
-                    return Some(((mapped_event, chrono::offset::Utc::now()), rx));
+                    return Some(((mapped_event, OffsetDateTime::now_utc()), rx));
                 }
             }
         })
