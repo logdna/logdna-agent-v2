@@ -37,7 +37,6 @@ log = "0.4"
 env_logger = "0.8"
 anyhow = "1"
 serde_yaml = "0.8"
-jemallocator = "0.3"
 futures = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "signal"] }
 tokio-stream = "0.1"
@@ -49,6 +48,9 @@ miniz_oxide = "0.4"
 # Dependency for linux integration tests
 [target.'cfg(target_os="linux")'.dependencies]
 systemd = { package = "systemd", version = "0.7" }
+
+[target.'cfg(unix)'.dependencies]
+jemallocator = "0.3"
 
 [features]
 default = ["libjournald"]

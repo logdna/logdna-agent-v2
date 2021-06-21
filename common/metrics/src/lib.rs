@@ -153,7 +153,6 @@ impl Metrics {
             // CPU and memory metrics are exported to Prometheus by default only on linux.
             // We still rely on jemalloc stats for this periodic printing the memory metrics
             // as it supports more platforms
-
             "memory" => {
                 #[cfg(unix)]
                 {
