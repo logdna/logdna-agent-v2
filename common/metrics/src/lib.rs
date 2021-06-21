@@ -1,5 +1,8 @@
+#[cfg(unix)]
 use jemalloc_ctl::stats::{active, active_mib, allocated, allocated_mib, resident, resident_mib};
+#[cfg(unix)]
 use jemalloc_ctl::{epoch, epoch_mib};
+
 use json::object;
 use lazy_static::lazy_static;
 use log::info;
@@ -78,6 +81,7 @@ mod labels {
 
 pub struct Metrics {
     fs: Fs,
+    #[cfg(unix)]
     memory: Memory,
     http: Http,
     k8s: K8s,
@@ -88,6 +92,7 @@ impl Metrics {
     fn new() -> Self {
         Self {
             fs: Fs::new(),
+            #[cfg(unix)]
             memory: Memory::new(),
             http: Http::new(),
             k8s: K8s::new(),
@@ -106,6 +111,7 @@ impl Metrics {
         &METRICS.fs
     }
 
+    #[cfg(unix)]
     pub fn memory() -> &'static Memory {
         &METRICS.memory
     }
@@ -123,7 +129,6 @@ impl Metrics {
     }
 
     pub fn print() -> String {
-        let memory = Metrics::memory();
 
         let fs_create = FS_EVENTS.with_label_values(&[labels::CREATE]).get();
         let fs_delete = FS_EVENTS.with_label_values(&[labels::DELETE]).get();
@@ -148,10 +153,19 @@ impl Metrics {
             // CPU and memory metrics are exported to Prometheus by default only on linux.
             // We still rely on jemalloc stats for this periodic printing the memory metrics
             // as it supports more platforms
-            "memory" => object!{
-                "active" => memory.read_active(),
-                "allocated" => memory.read_allocated(),
-                "resident" => memory.read_resident(),
+
+            "memory" => {
+                #[cfg(unix)]
+                {
+                    let memory = Metrics::memory();
+                    object!{
+                        "active" => memory.read_active(),
+                        "allocated" => memory.read_allocated(),
+                        "resident" => memory.read_resident(),
+                    }
+                }
+                #[cfg(not(unix))]
+                object!{}
             },
             "ingest" => object!{
                 "requests" => INGEST_REQUEST_SIZE.get_sample_count(),
@@ -222,6 +236,7 @@ impl Fs {
     }
 }
 
+#[cfg(unix)]
 pub struct Memory {
     epoch_mib: epoch_mib,
     active_mib: active_mib,
@@ -229,6 +244,7 @@ pub struct Memory {
     resident_mib: resident_mib,
 }
 
+#[cfg(unix)]
 impl Memory {
     pub fn new() -> Self {
         Self {
@@ -255,6 +271,7 @@ impl Memory {
     }
 }
 
+#[cfg(unix)]
 impl Default for Memory {
     fn default() -> Self {
         Self::new()
