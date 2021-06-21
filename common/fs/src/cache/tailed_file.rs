@@ -334,12 +334,43 @@ impl<T> TailedFile<T> {
                 buf: Vec::new(),
                 offset: 0,
                 initial_offsets,
-                inode: path.metadata()?.ino(),
+                inode: get_inode(path.metadata()?),
             })),
             resume_events_sender,
             _phantom: std::marker::PhantomData::<T>,
         })
     }
+
+    pub(crate) async fn seek(&mut self, offset: u64) -> Result<(), std::io::Error> {
+        let mut inner = self.inner.lock().await;
+        inner.offset = offset;
+        inner
+            .reader
+            .get_mut()
+            .get_mut()
+            .seek(SeekFrom::Start(offset))
+            .await?;
+        Ok(())
+    }
+    pub(crate) async fn get_inode(&self) -> u64 {
+        let inner = self.inner.lock().await;
+        inner.inode
+    }
+}
+
+#[cfg(unix)]
+fn get_inode(meta: std::fs::Metadata) -> u64 {
+    use std::os::unix::fs::MetadataExt;
+
+    return meta.ino();
+}
+
+#[cfg(windows)]
+fn get_inode(meta: std::fs::Metadata) -> u64 {
+    use std::os::windows::fs::MetadataExt;
+
+    // file_index() will always contain a value in any windows platform except uwp
+    return meta.file_index().unwrap();
 }
 
 impl TailedFile<LineBuilder> {

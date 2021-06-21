@@ -4,6 +4,7 @@ use std::path::Path;
 use core::fmt;
 use globber::{Error as PatternError, Pattern};
 use pcre2::{bytes::Regex, Error as RegexError};
+#[cfg(target_os = "linux")]
 use std::os::unix::ffi::OsStrExt;
 
 /// A trait for implementing a rule, see GlobRule/RegexRule for an example
