@@ -28,7 +28,6 @@ use std::io;
 use std::mem;
 use std::num::NonZeroUsize;
 use std::ops::DerefMut;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -515,11 +514,12 @@ impl<T> TailedFile<T> {
                 buf: Vec::new(),
                 offset: 0,
                 file_path: path.into(),
-                inode: path.metadata()?.ino(),
+                inode: get_inode(path.metadata()?),
             })),
             _phantom: std::marker::PhantomData::<T>,
         })
     }
+
     pub(crate) async fn seek(&mut self, offset: u64) -> Result<(), std::io::Error> {
         let mut inner = self.inner.lock().await;
         inner.offset = offset;
@@ -535,6 +535,21 @@ impl<T> TailedFile<T> {
         let inner = self.inner.lock().await;
         inner.inode
     }
+}
+
+#[cfg(unix)]
+fn get_inode(meta: std::fs::Metadata) -> u64 {
+    use std::os::unix::fs::MetadataExt;
+
+    return meta.ino();
+}
+
+#[cfg(windows)]
+fn get_inode(meta: std::fs::Metadata) -> u64 {
+    use std::os::windows::fs::MetadataExt;
+
+    // file_index() will always contain a value in any windows platform except uwp
+    return meta.file_index().unwrap();
 }
 
 impl TailedFile<LineBuilder> {

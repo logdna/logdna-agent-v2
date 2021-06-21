@@ -23,6 +23,7 @@ slotmap = "1"
 smallvec = "1"
 memchr = "2"
 serde_json = "1"
+os_str_bytes = "3"
 
 #logging
 log = "0.4"
