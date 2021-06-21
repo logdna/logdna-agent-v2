@@ -39,6 +39,8 @@ futures-core = "0.3"
 futures-util = "0.3"
 pin-project-lite = "0.2"
 
+winapi-util = { version = "0.1" }
+
 [dev-dependencies]
 env_logger = "0.8"
 tempfile = "3"
