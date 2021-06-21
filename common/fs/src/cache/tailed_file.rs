@@ -325,6 +325,8 @@ impl<T> TailedFile<T> {
         initial_offsets: SpanVec,
         resume_events_sender: Option<Sender<(u64, OffsetDateTime)>>,
     ) -> Result<Self, std::io::Error> {
+        let file = OpenOptions::new().read(true).open(path)?;
+        let inode = get_inode(path, &file)?;
         Ok(Self {
             inner: Arc::new(Mutex::new(TailedFileInner {
                 reader: BufReader::new(tokio::fs::File::from_std(
@@ -334,7 +336,7 @@ impl<T> TailedFile<T> {
                 buf: Vec::new(),
                 offset: 0,
                 initial_offsets,
-                inode: get_inode(path.metadata()?),
+                inode,
             })),
             resume_events_sender,
             _phantom: std::marker::PhantomData::<T>,
@@ -352,6 +354,7 @@ impl<T> TailedFile<T> {
             .await?;
         Ok(())
     }
+
     pub(crate) async fn get_inode(&self) -> u64 {
         let inner = self.inner.lock().await;
         inner.inode
@@ -359,18 +362,18 @@ impl<T> TailedFile<T> {
 }
 
 #[cfg(unix)]
-fn get_inode(meta: std::fs::Metadata) -> u64 {
+fn get_inode(path: &Path, _file: &std::fs::File) -> std::io::Result<u64> {
     use std::os::unix::fs::MetadataExt;
 
-    return meta.ino();
+    return Ok(path.metadata()?.ino());
 }
 
 #[cfg(windows)]
-fn get_inode(meta: std::fs::Metadata) -> u64 {
-    use std::os::windows::fs::MetadataExt;
+fn get_inode(_path: &Path, file: &std::fs::File) -> std::io::Result<u64> {
+    use winapi_util::AsHandleRef;
 
-    // file_index() will always contain a value in any windows platform except uwp
-    return meta.file_index().unwrap();
+    let h = file.as_handle_ref();
+    return Ok(winapi_util::file::information(h)?.file_index());
 }
 
 impl TailedFile<LineBuilder> {

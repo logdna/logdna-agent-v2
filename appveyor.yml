@@ -3,6 +3,10 @@ os: Visual Studio 2019
 # Disable msbuild
 build: false
 
+cache:
+  - C:\Users\appveyor\.cargo
+  - target
+
 install:
   - appveyor-retry appveyor DownloadFile https://win.rustup.rs/ -FileName rustup-init.exe
   - rustup-init.exe -y --default-host=x86_64-pc-windows-msvc
