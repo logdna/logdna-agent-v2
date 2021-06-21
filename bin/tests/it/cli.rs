@@ -627,7 +627,7 @@ async fn test_z_journald_support() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
-#[cfg_attr(not(target_os = "linux"), ignore)]
+#[cfg(target_os = "linux")]
 async fn test_journalctl_support() {
     let _ = env_logger::Builder::from_default_env().try_init();
     assert_eq!(systemd::journal::print(6, "Sample info"), 0);
