@@ -269,7 +269,6 @@ struct PodMetadata {
 mod tests {
     use super::*;
     use http::types::body::{LineBuilder, LineMeta};
-    use std::time::Instant;
     use url::Url;
 
     #[tokio::test]
@@ -323,10 +322,11 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(target_os = "linux")]
     async fn test_init_max_elapsed_time() {
         let config = Config::new(Url::parse("https://127.0.0.10/").unwrap());
         let client = Client::new(config.try_into().unwrap());
-        let start = Instant::now();
+        let start = std::time::Instant::now();
         let max_time = Duration::from_millis(2000);
 
         // It error out
