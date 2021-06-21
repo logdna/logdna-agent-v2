@@ -1709,6 +1709,7 @@ dependencies = [
 name = "metrics"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "json",
  "lazy_static",
  "log",

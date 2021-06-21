@@ -43,6 +43,7 @@ mod stream_adapter;
 /// Debounce filesystem event with a delay of hundreds of milliseconds
 static FS_EVENT_DELAY: Duration = Duration::from_millis(500);
 
+#[cfg(unix)]
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 

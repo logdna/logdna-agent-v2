@@ -152,7 +152,6 @@ impl Metrics {
     }
 
     pub fn print() -> String {
-
         let fs_create = FS_EVENTS.with_label_values(&[labels::CREATE]).get();
         let fs_delete = FS_EVENTS.with_label_values(&[labels::DELETE]).get();
         let fs_write = FS_EVENTS.with_label_values(&[labels::WRITE]).get();
@@ -175,7 +174,6 @@ impl Metrics {
             // CPU and memory metrics are exported to Prometheus by default only on linux.
             // We still rely on jemalloc stats for this periodic printing the memory metrics
             // as it supports more platforms
-
             "memory" => {
                 #[cfg(unix)]
                 {
