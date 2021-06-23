@@ -121,7 +121,7 @@ endif
 
 .PHONY:build
 build: ## Build the agent
-	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG)"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG) && ./target/debug/logdna-agent --help"
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
@@ -134,6 +134,10 @@ check: ## Run unit tests
 .PHONY:test
 test: test-journald ## Run unit tests
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --no-run && cargo test $(TESTS)"
+
+.PHONY:dev-test
+dev-test: ## Run unit tests on dev environment
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TESTS)"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools

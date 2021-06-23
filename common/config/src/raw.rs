@@ -1,11 +1,9 @@
 use crate::error::ConfigError;
-use crate::{argv, get_hostname};
-use http::types::params::{Params, Tags};
-use java_properties::PropertiesIter;
+use crate::{argv, get_hostname, properties};
+use http::types::params::Params;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufReader, Seek, SeekFrom};
+use std::io::{Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
@@ -18,23 +16,31 @@ pub struct Config {
 impl Config {
     /// Tries to parse from java properties format and then using
     pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
-        let mut file = File::open(path)?;
+        let is_default_path = path.as_ref().to_string_lossy() == argv::DEFAULT_YAML_FILE;
+        let mut file = match File::open(path) {
+            Ok(f) => f,
+            Err(e) => {
+                if !is_default_path {
+                    // A path was configured but the file was NOT found
+                    return Err(e.into());
+                }
+
+                if let Ok(f) = File::open(argv::DEFAULT_CONF_FILE) {
+                    f
+                } else {
+                    // A conf file was not found in the default legacy location
+                    return Err(e.into());
+                }
+            }
+        };
 
         // Everything is a yaml, so validation usually passes with java properties
         // We have to validate first that is a java properties file
-        let mut prop_map = HashMap::new();
-        debug!("loading config file as java properties");
-        match PropertiesIter::new(BufReader::new(&file)).read_into(|k, v| {
-            prop_map.insert(k, v);
-        }) {
-            Ok(_) => match from_property_map(&prop_map) {
-                Ok(c) => {
-                    return Ok(c);
-                }
-                Err(e) => {
-                    debug!("config properties file mapping error: {:?}", e);
-                }
-            },
+
+        match properties::read_file(&file) {
+            Ok(c) => {
+                return Ok(c);
+            }
             Err(e) => {
                 debug!("config file is not a valid properties file: {:?}", e);
             }
@@ -44,56 +50,6 @@ impl Config {
         file.seek(SeekFrom::Start(0))?;
         Ok(serde_yaml::from_reader(&file)?)
     }
-}
-
-fn from_property_map(map: &HashMap<String, String>) -> Result<Config, ConfigError> {
-    if map.is_empty() {
-        return Err(ConfigError::MissingField("not implemented"));
-    }
-    let mut result = Config {
-        http: Default::default(),
-        log: Default::default(),
-        journald: Default::default(),
-    };
-    result.http.ingestion_key = map.get("key").map(|s| s.to_string());
-    let mut params = Params::builder()
-        .hostname(get_hostname().unwrap_or_default())
-        .build()
-        .unwrap();
-    params.tags = map.get("tags").map(|s| Tags::from(argv::split_by_comma(s)));
-
-    if let Some(hostname) = map.get("hostname") {
-        params.hostname = hostname.to_string();
-    }
-
-    result.http.params = Some(params);
-
-    if let Some(log_dirs) = map.get("logdir") {
-        // To support the legacy agent behaviour, we override the default (/var/log)
-        // This results in a different behaviour depending on the format:
-        //   yaml -> append to default
-        //   conf -> override default when set
-        result.log.dirs = argv::split_by_comma(log_dirs)
-            .iter()
-            .map(PathBuf::from)
-            .collect();
-    }
-
-    if let Some(exclude) = map.get("exclude") {
-        let rules = result.log.exclude.get_or_insert(Rules::default());
-        argv::split_by_comma(exclude)
-            .iter()
-            .for_each(|v| rules.glob.push(v.to_string()));
-    }
-
-    if let Some(exclude_regex) = map.get("exclude_regex") {
-        let rules = result.log.exclude.get_or_insert(Rules::default());
-        argv::split_by_comma(exclude_regex)
-            .iter()
-            .for_each(|v| rules.regex.push(v.to_string()));
-    }
-
-    Ok(result)
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
@@ -246,6 +202,7 @@ impl Default for JournaldConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use http::types::params::Tags;
     use std::fs;
     use std::io;
     use tempfile::tempdir;
@@ -339,8 +296,8 @@ exclude = /path/to/exclude/**",
 
     #[test]
     fn test_properties_all_legacy_agent() -> io::Result<()> {
-        let dir = tempdir().unwrap().into_path();
-        let file_name = dir.join("test.conf");
+        let dir = tempdir()?;
+        let file_name = dir.path().join("test.conf");
         fs::write(
             &file_name,
             "
@@ -386,13 +343,32 @@ hostname = jorge's-laptop
         Ok(())
     }
 
-    // #[test]
-    // fn test_comments() -> io::Result<()> {
-    //     Ok(())
-    // }
-    //
-    // #[test]
-    // fn test_should_read_default_conf_path() -> io::Result<()> {
-    //     Ok(())
-    // }
+    #[test]
+    fn test_comments() -> io::Result<()> {
+        let dir = tempdir()?;
+        let file_name = dir.path().join("test.conf");
+        fs::write(
+            &file_name,
+            "
+# My comment
+key = abcdef01
+# My second comment
+# tags = production
+",
+        )?;
+        let config = Config::parse(&file_name).unwrap();
+        // Defaults to /var/log
+        assert_eq!(config.log.dirs, vec![PathBuf::from("/var/log")]);
+        assert_eq!(config.http.ingestion_key, some_string!("abcdef01"));
+        assert_eq!(config.http.params.unwrap().tags, None);
+        Ok(())
+    }
+
+    #[test]
+    fn test_file_not_found() {
+        assert!(matches!(
+            Config::parse("/non/existent/path.conf"),
+            Err(ConfigError::Io(_))
+        ));
+    }
 }

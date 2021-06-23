@@ -52,8 +52,11 @@ pub mod env {
     pub const INCLUSION_REGEX_RULES_DEPRECATED: &str = "LOGDNA_INCLUDE_REGEX";
 }
 
+pub const DEFAULT_YAML_FILE: &str = "/etc/logdna/config.yaml";
+pub const DEFAULT_CONF_FILE: &str = "/etc/logdna.conf";
+
 /// Contains the command and env var options.
-#[derive(StructOpt, Debug, Default)]
+#[derive(StructOpt, Debug, Default, PartialEq)]
 // Using PKG_VERSION as a workaround while we centralize version management of packages
 #[structopt(name = "LogDNA Agent", about = "A resource-efficient log collection agent that forwards logs to LogDNA.", version = unsafe { PKG_VERSION })]
 pub struct ArgumentOptions {
@@ -64,12 +67,14 @@ pub struct ArgumentOptions {
     /// The config filename.
     /// When defined, it will try to parse in java properties format and in yaml format for
     /// backward compatibility.
+    ///
+    /// By default will look in the paths: /etc/logdna/config.yaml and /etc/logdna.conf
     #[structopt(
         short,
         long,
         parse(from_os_str),
         env = env::CONFIG_FILE,
-        default_value = "/etc/logdna/config.yaml"
+        default_value = DEFAULT_YAML_FILE
     )]
     pub config: PathBuf,
 
@@ -735,5 +740,28 @@ mod test {
         assert_eq!(options.exclusion_regex, vec_strings!["jkl", "b"]);
         assert_eq!(options.inclusion_rules, vec_strings!["mno", "c"]);
         assert_eq!(options.inclusion_regex, vec_strings!["pqr", "d"]);
+    }
+
+    #[test]
+    fn argument_options_equality() {
+        let empty = ArgumentOptions {
+            ..ArgumentOptions::default()
+        };
+        let with_key1 = ArgumentOptions {
+            key: some_string!("123"),
+            ..ArgumentOptions::default()
+        };
+        let with_key2 = ArgumentOptions {
+            key: some_string!("123"),
+            ..ArgumentOptions::default()
+        };
+        let with_key3 = ArgumentOptions {
+            key: some_string!("00"),
+            ..ArgumentOptions::default()
+        };
+        assert_eq!(empty, ArgumentOptions::default());
+        assert_ne!(empty, with_key1);
+        assert_eq!(with_key1, with_key2);
+        assert_ne!(with_key1, with_key3);
     }
 }

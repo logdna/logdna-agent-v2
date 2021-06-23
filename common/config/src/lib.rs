@@ -21,6 +21,7 @@ use crate::raw::Config as RawConfig;
 
 mod argv;
 pub mod error;
+mod properties;
 pub mod raw;
 
 // Symbols that will be populated in the main.rs file
