@@ -61,7 +61,9 @@ pub struct ArgumentOptions {
     #[structopt(long, short, env = env::INGESTION_KEY)]
     key: Option<String>,
 
-    /// The config filename
+    /// The config filename.
+    /// When defined, it will try to parse in java properties format and in yaml format for
+    /// backward compatibility.
     #[structopt(
         short,
         long,
@@ -375,6 +377,10 @@ fn set_rules(existing: &mut Option<Rules>, glob: Vec<String>, regex: Vec<String>
     let rules = existing.get_or_insert(Rules::default());
     rules.glob.append(&mut with_csv(glob));
     rules.regex.append(&mut with_csv(regex));
+}
+
+pub fn split_by_comma(v: &str) -> Vec<String> {
+    with_csv(vec![v.to_string()])
 }
 
 fn with_csv(mut values: Vec<String>) -> Vec<String> {
