@@ -70,12 +70,25 @@ impl<'a> Map {
 }
 
 pub fn read_file(file: &File) -> Result<Config, ConfigError> {
-    let mut prop_map = HashMap::new();
     debug!("loading config file as java properties");
-    match PropertiesIter::new(BufReader::new(file)).read_into(|k, v| {
-        prop_map.insert(k, v);
-    }) {
-        Ok(_) => from_property_map(prop_map),
+    let mut list = Vec::new();
+    match PropertiesIter::new(BufReader::new(file)).read_into(|k, v| list.push((k, v))) {
+        Ok(_) => {
+            let mut prop_map = HashMap::new();
+            for item in list {
+                // properties format is permissive, so we have to look for clues that its a
+                // yaml file by looking at invalid keys.
+                // "http", "log" and "journald" are parent yaml keys
+                if item.0 == "-" || item.0 == "http" || item.0 == "log" || item.0 == "log" {
+                    return Err(ConfigError::PropertyInvalid("key is invalid".into()));
+                }
+
+                if prop_map.insert(item.0, item.1).is_some() {
+                    return Err(ConfigError::PropertyInvalid("duplicated property".into()));
+                }
+            }
+            from_property_map(prop_map)
+        }
         Err(e) => Err(ConfigError::SerdeProperties(e)),
     }
 }

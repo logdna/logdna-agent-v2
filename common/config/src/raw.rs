@@ -39,6 +39,7 @@ impl Config {
 
         match properties::read_file(&file) {
             Ok(c) => {
+                debug!("config is a valid properties file");
                 return Ok(c);
             }
             Err(e) => {
@@ -389,8 +390,10 @@ key = abcdef01
         let dir = tempdir()?;
         let file_name = dir.path().join("test.yaml");
         fs::write(&file_name, "SOMEPROPERTY::: AZSZ")?;
-        eprintln!("--ERROR: {:?}", Config::parse(&file_name));
-        assert!(matches!(Config::parse(&file_name), Err(ConfigError::Serde(_))));
+        assert!(matches!(
+            Config::parse(&file_name),
+            Err(ConfigError::Serde(_))
+        ));
         Ok(())
     }
 
@@ -417,17 +420,21 @@ http:
   host: logs.logdna.prod
   endpoint: /path/to/endpoint1
   use_ssl: false
+  timeout: 12000
   use_compression: true
   gzip_level: 1
   params:
     hostname: abc
     tags: tag1,tag2
+    now: 0
   body_size: 2097152
 log:
   dirs:
     - /var/log1/
     - /var/log2/
-")?;
+journald: {}
+",
+        )?;
 
         let config = Config::parse(&file_name).unwrap();
         assert_eq!(config.http.use_ssl, Some(false));
@@ -435,9 +442,13 @@ log:
         assert_eq!(config.http.host, some_string!("logs.logdna.prod"));
         assert_eq!(config.http.endpoint, some_string!("/path/to/endpoint1"));
         assert_eq!(config.http.use_compression, Some(true));
+        assert_eq!(config.http.timeout, Some(12000));
         let params = config.http.params.unwrap();
         assert_eq!(params.tags, Some(Tags::from("tag1,tag2")));
-        assert_eq!(config.log.dirs, vec![PathBuf::from("/var/log1/"), PathBuf::from("/var/log2/")]);
+        assert_eq!(
+            config.log.dirs,
+            vec![PathBuf::from("/var/log1/"), PathBuf::from("/var/log2/")]
+        );
         Ok(())
     }
 
@@ -465,7 +476,8 @@ inclusion_rules = /a/glob/include/**/*
 inclusion_regex_rules = /a/regex/include/.*
 line_exclusion_regex = a.*, b.*
 line_inclusion_regex = c.+
-redact_regex = (?:zeta)",
+# needs escaping in java properties
+redact_regex = \\\\S+@\\\\S+\\\\.\\\\S+",
         )?;
         let config = Config::parse(&file_name).unwrap();
 
@@ -482,7 +494,13 @@ redact_regex = (?:zeta)",
         assert_eq!(config.log.metrics_port, Some(8901));
         assert_eq!(config.log.use_k8s_enrichment, some_string!("never"));
         assert_eq!(config.log.log_k8s_events, some_string!("always"));
-        assert_eq!(config.journald.paths, Some(vec![PathBuf::from("/first-j"), PathBuf::from("/second-j/a")]));
+        assert_eq!(
+            config.journald.paths,
+            Some(vec![
+                PathBuf::from("/first-j"),
+                PathBuf::from("/second-j/a")
+            ])
+        );
 
         let expected_include = LogConfig::default()
             .include
@@ -504,7 +522,7 @@ redact_regex = (?:zeta)",
             Some(vec_strings!["a.*", "b.*"])
         );
         assert_eq!(config.log.line_inclusion_regex, Some(vec_strings!["c.+"]));
-        assert_eq!(config.log.line_redact_regex, Some(vec_strings!["(?:zeta)"]));
+        assert_eq!(config.log.line_redact_regex, Some(vec_strings![r"\S+@\S+\.\S+"]));
         Ok(())
     }
 }
