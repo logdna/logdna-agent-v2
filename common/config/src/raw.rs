@@ -371,4 +371,140 @@ key = abcdef01
             Err(ConfigError::Io(_))
         ));
     }
+
+    #[test]
+    fn test_empty() -> io::Result<()> {
+        let dir = tempdir()?;
+        let file_name = dir.path().join("test.conf");
+        fs::write(&file_name, "")?;
+        assert!(matches!(
+            Config::parse(&file_name),
+            Err(ConfigError::Serde(_))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn test_invalid_yaml_format() -> io::Result<()> {
+        let dir = tempdir()?;
+        let file_name = dir.path().join("test.yaml");
+        fs::write(&file_name, "SOMEPROPERTY::: AZSZ")?;
+        eprintln!("--ERROR: {:?}", Config::parse(&file_name));
+        assert!(matches!(Config::parse(&file_name), Err(ConfigError::Serde(_))));
+        Ok(())
+    }
+
+    #[test]
+    fn test_invalid_yaml() -> io::Result<()> {
+        let dir = tempdir()?;
+        let file_name = dir.path().join("test.yaml");
+        fs::write(&file_name, "http: true")?;
+        assert!(matches!(
+            Config::parse(&file_name),
+            Err(ConfigError::Serde(_))
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn test_yaml_file_properties() -> io::Result<()> {
+        let dir = tempdir()?;
+        let file_name = dir.path().join("test.yml");
+        fs::write(
+            &file_name,
+            "
+http:
+  host: logs.logdna.prod
+  endpoint: /path/to/endpoint1
+  use_ssl: false
+  use_compression: true
+  gzip_level: 1
+  params:
+    hostname: abc
+    tags: tag1,tag2
+  body_size: 2097152
+log:
+  dirs:
+    - /var/log1/
+    - /var/log2/
+")?;
+
+        let config = Config::parse(&file_name).unwrap();
+        assert_eq!(config.http.use_ssl, Some(false));
+        assert_eq!(config.http.use_compression, Some(true));
+        assert_eq!(config.http.host, some_string!("logs.logdna.prod"));
+        assert_eq!(config.http.endpoint, some_string!("/path/to/endpoint1"));
+        assert_eq!(config.http.use_compression, Some(true));
+        let params = config.http.params.unwrap();
+        assert_eq!(params.tags, Some(Tags::from("tag1,tag2")));
+        assert_eq!(config.log.dirs, vec![PathBuf::from("/var/log1/"), PathBuf::from("/var/log2/")]);
+        Ok(())
+    }
+
+    #[test]
+    fn test_all_new() -> io::Result<()> {
+        let dir = tempdir()?;
+        let file_name = dir.path().join("test.conf");
+        fs::write(
+            &file_name,
+            "key = 1234567890
+endpoint = /endpoint
+host = my-host
+use_ssl = true
+use_compression = false
+gzip_level = 4
+ip = 10.10.10.8
+mac = 00:A0:C9:14:C8:29
+lookback = start
+db_path = /var/lib/my-dir
+metrics_port = 8901
+use_k8s_log_enrichment = never
+log_k8s_events = always
+journald_paths = /first-j, /second-j/a
+inclusion_rules = /a/glob/include/**/*
+inclusion_regex_rules = /a/regex/include/.*
+line_exclusion_regex = a.*, b.*
+line_inclusion_regex = c.+
+redact_regex = (?:zeta)",
+        )?;
+        let config = Config::parse(&file_name).unwrap();
+
+        assert_eq!(config.http.use_compression, Some(false));
+        assert_eq!(config.http.use_ssl, Some(true));
+        assert_eq!(config.http.gzip_level, Some(4));
+
+        let params = config.http.params.unwrap();
+        assert_eq!(params.ip, some_string!("10.10.10.8"));
+        assert_eq!(params.mac, some_string!("00:A0:C9:14:C8:29"));
+
+        assert_eq!(config.log.lookback, some_string!("start"));
+        assert_eq!(config.log.db_path, Some(PathBuf::from("/var/lib/my-dir")));
+        assert_eq!(config.log.metrics_port, Some(8901));
+        assert_eq!(config.log.use_k8s_enrichment, some_string!("never"));
+        assert_eq!(config.log.log_k8s_events, some_string!("always"));
+        assert_eq!(config.journald.paths, Some(vec![PathBuf::from("/first-j"), PathBuf::from("/second-j/a")]));
+
+        let expected_include = LogConfig::default()
+            .include
+            .unwrap()
+            .glob
+            .iter()
+            .map(|x| x.to_string())
+            .chain(vec_strings!["/a/glob/include/**/*"])
+            .collect::<Vec<String>>();
+        assert_eq!(
+            config.log.include,
+            Some(Rules {
+                glob: expected_include,
+                regex: vec_strings!["/a/regex/include/.*"]
+            })
+        );
+        assert_eq!(
+            config.log.line_exclusion_regex,
+            Some(vec_strings!["a.*", "b.*"])
+        );
+        assert_eq!(config.log.line_inclusion_regex, Some(vec_strings!["c.+"]));
+        assert_eq!(config.log.line_redact_regex, Some(vec_strings!["(?:zeta)"]));
+        Ok(())
+    }
 }
