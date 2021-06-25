@@ -79,7 +79,7 @@ pub fn read_file(file: &File) -> Result<Config, ConfigError> {
                 // properties format is permissive, so we have to look for clues that its a
                 // yaml file by looking at invalid keys.
                 // "http", "log" and "journald" are parent yaml keys
-                if item.0 == "-" || item.0 == "http" || item.0 == "log" || item.0 == "log" {
+                if !(item.0 != "-" && item.0 != "http" && item.0 != "log") {
                     return Err(ConfigError::PropertyInvalid("key is invalid".into()));
                 }
 

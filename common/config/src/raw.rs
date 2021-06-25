@@ -522,7 +522,10 @@ redact_regex = \\\\S+@\\\\S+\\\\.\\\\S+",
             Some(vec_strings!["a.*", "b.*"])
         );
         assert_eq!(config.log.line_inclusion_regex, Some(vec_strings!["c.+"]));
-        assert_eq!(config.log.line_redact_regex, Some(vec_strings![r"\S+@\S+\.\S+"]));
+        assert_eq!(
+            config.log.line_redact_regex,
+            Some(vec_strings![r"\S+@\S+\.\S+"])
+        );
         Ok(())
     }
 }

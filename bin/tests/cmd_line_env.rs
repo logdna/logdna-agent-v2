@@ -3,10 +3,12 @@ pub use common::*; // workaround for unused functions
 use predicate::str::{contains, is_match};
 use predicates::prelude::predicate;
 use predicates::Predicate;
-use std::fs::File;
+use std::fs::{self, File};
+use std::io;
 use std::io::BufRead;
 use std::io::Write;
 use std::ops::Deref;
+use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::str::from_utf8;
 use std::sync::{Arc, Mutex};
@@ -305,6 +307,168 @@ journald: {{}}
             assert!(contains("tags: \"tag1,tag2,tag3\"").eval(d));
         },
     );
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_properties_config_min() -> io::Result<()> {
+    let config_dir = tempdir()?;
+    let config_file_path = config_dir.path().join("sample.conf");
+    let mut file = File::create(&config_file_path)?;
+    write!(file, "key = 1234567890")?;
+
+    test_command(
+        |cmd| {
+            cmd.args(&["-c", &config_file_path.to_str().unwrap()]);
+        },
+        |d| {
+            // Verify that it starts thanks to having the key is good enough
+            assert!(is_match(r"log:\s+dirs:\s+\- /var/log/").unwrap().eval(d));
+            assert!(contains("use_ssl: true").eval(d));
+            assert!(contains("Enabling filesystem").eval(d));
+        },
+    );
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_properties_config_legacy() -> io::Result<()> {
+    let config_dir = tempdir()?;
+    let config_file_path = config_dir.path().join("sample.conf");
+    let mut file = File::create(&config_file_path)?;
+    write!(
+        file,
+        "
+key = 1234567890
+logdir = /var/my_log,/var/my_log2
+tags = production, stable
+exclude = /path/to/exclude/**, /second/path/to/exclude/**
+exclude_regex = /a/regex/exclude
+hostname = some-linux-instance"
+    )?;
+
+    test_command(
+        |cmd| {
+            cmd.args(&["-c", &config_file_path.to_str().unwrap()]);
+        },
+        |d| {
+            assert!(is_match(r"log:\s+dirs:\s+\- /var/my_log\s+\- /var/my_log2")
+                .unwrap()
+                .eval(d));
+            assert!(contains("tags: \"production,stable\"").eval(d));
+            assert!(contains("hostname: some-linux-instance").eval(d));
+            assert!(is_match(
+                r"exclude:\s+glob:[^:]+- /path/to/exclude/\*\*\s+- /second/path/to/exclude/\*\*"
+            )
+            .unwrap()
+            .eval(d));
+            assert!(
+                is_match(r"exclude:\s+glob:[^:]+regex:\s+- /a/regex/exclude")
+                    .unwrap()
+                    .eval(d)
+            );
+        },
+    );
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_properties_config_common() -> io::Result<()> {
+    let config_dir = tempdir()?;
+    let config_file_path = config_dir.path().join("sample.conf");
+    let mut file = File::create(&config_file_path)?;
+    write!(
+        file,
+        "
+key = 1234567890
+logdir = /var/log,/var/my_log2
+tags = abc
+exclude = /var/log/noisy/**/*, !(*sample*)
+line_exclusion_regex = (?i:debug),(?i:trace)"
+    )?;
+
+    test_command(
+        |cmd| {
+            cmd.args(&["-c", &config_file_path.to_str().unwrap()]);
+        },
+        |d| {
+            assert!(is_match(r"log:\s+dirs:\s+\- /var/log\s+\- /var/my_log2")
+                .unwrap()
+                .eval(d));
+            assert!(contains("tags: abc").eval(d));
+            assert!(is_match(r"exclude:\s+glob:[^:]+- /var/log/noisy/\*\*/\*")
+                .unwrap()
+                .eval(d));
+            assert!(is_match("line_exclusion_regex:\\s+- \"\\(\\?i:debug\\)\"")
+                .unwrap()
+                .eval(d));
+        },
+    );
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(target_os = "linux")]
+fn test_properties_default_conf() -> io::Result<()> {
+    let file_path = Path::new("/etc/logdna.conf");
+    fs::write(file_path, "key = 1234\ntags = sample_tag")?;
+
+    test_command(
+        |_| {
+            // No command argument
+        },
+        |d| {
+            fs::remove_file(&file_path).unwrap();
+            assert!(is_match(r"log:\s+dirs:\s+\- /var/log/").unwrap().eval(d));
+            assert!(contains("tags: sample_tag").eval(d));
+        },
+    );
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(target_os = "linux")]
+fn test_properties_default_yaml() -> io::Result<()> {
+    let dir = Path::new("/etc/logdna/");
+    fs::create_dir(dir)?;
+    let file_path = dir.join("config.yaml");
+    fs::write(
+        &file_path,
+        "
+http:
+  ingestion_key: 0001020304
+  host: logs.logdna.prod
+  endpoint: /path/to/endpoint
+  use_ssl: true
+  timeout: 10000
+  use_compression: true
+  gzip_level: 2
+  body_size: 2097152
+  params:
+    hostname: abc
+    tags: tag1
+    now: 0
+log:
+  dirs:
+    - /var/log1/
+journald: {}",
+    )?;
+
+    test_command(
+        |_| {
+            // No command argument
+        },
+        |d| {
+            fs::remove_file(&file_path).unwrap();
+            assert!(is_match("hostname: abc").unwrap().eval(d));
+            assert!(contains("tags: tag1").eval(d));
+        },
+    );
+    Ok(())
 }
 
 fn cmd_line_invalid_test(args: &[&str]) {

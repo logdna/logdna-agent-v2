@@ -200,9 +200,10 @@ impl TryFrom<RawConfig> for Config {
                 .into_iter()
                 // Filter off paths that are not directories and warn about them
                 .filter_map(|d| {
-                    d.try_into()
+                    d.clone()
+                        .try_into()
                         .map_err(|e| {
-                            warn!("{}", e);
+                            warn!("{} is not a valid directory {}", d.display(), e);
                         })
                         .ok()
                 })
