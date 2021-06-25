@@ -434,7 +434,7 @@ fn test_properties_default_conf() -> io::Result<()> {
 #[cfg(target_os = "linux")]
 fn test_properties_default_yaml() -> io::Result<()> {
     let dir = Path::new("/etc/logdna/");
-    fs::create_dir(dir)?;
+    fs::create_dir_all(dir)?;
     let file_path = dir.join("config.yaml");
     fs::write(
         &file_path,
