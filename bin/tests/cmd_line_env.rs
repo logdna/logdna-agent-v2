@@ -62,6 +62,92 @@ fn test_version_is_included() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_list_config_from_conf() -> io::Result<()> {
+    let config_dir = tempdir()?;
+    let config_file_path = config_dir.path().join("sample.conf");
+    let mut file = File::create(&config_file_path)?;
+    write!(file, "key = 1234567890\ntags = production")?;
+
+    let mut cmd = get_bin_command();
+
+    let output: Output = cmd
+        .env_clear()
+        .args(&["-c", &config_file_path.to_str().unwrap()])
+        .arg("-l")
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = from_utf8(&output.stdout).unwrap();
+
+    vec![
+        "Listing current settings from config",
+        ", environment variables and command line options in yaml format",
+        "ingestion_key: REDACTED",
+        "tags: production",
+        config_file_path.to_string_lossy().as_ref(),
+    ]
+    .iter()
+    .for_each(|m| {
+        assert!(contains(*m).eval(stdout));
+    });
+
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_list_config_from_env() -> io::Result<()> {
+    let mut cmd = get_bin_command();
+    let output: Output = cmd
+        .env_clear()
+        .env("LOGDNA_INGESTION_KEY", "abc")
+        .env("LOGDNA_TAGS", "sample_env_tag")
+        .arg("-l")
+        .unwrap();
+    assert!(output.status.success());
+    let stdout = from_utf8(&output.stdout).unwrap();
+    assert!(contains("Listing current settings from environment variables and command line options in yaml format").eval(stdout));
+    assert!(contains("ingestion_key: REDACTED").eval(stdout));
+    assert!(contains("tags: sample_env_tag").eval(stdout));
+
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_list_config_no_options() -> io::Result<()> {
+    let mut cmd = get_bin_command();
+    let output: Output = cmd.env_clear().arg("-l").unwrap();
+    assert!(output.status.success());
+    let stdout = from_utf8(&output.stdout).unwrap();
+    assert!(contains("Listing current settings from environment variables and command line options in yaml format").eval(stdout));
+
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(target_os = "linux")]
+fn test_list_default_conf() -> io::Result<()> {
+    let file_path = Path::new("/etc/logdna.conf");
+    fs::write(file_path, "key = 1234\ntags = sample_tag_on_conf")?;
+
+    let mut cmd = get_bin_command();
+    let output: Output = cmd.env_clear().arg("-l").unwrap();
+
+    // Remove file before any assert
+    fs::remove_file(&file_path)?;
+
+    assert!(output.status.success());
+    let stdout = from_utf8(&output.stdout).unwrap();
+    assert!(contains("Listing current settings from default conf, environment variables and command line options in yaml format").eval(stdout));
+    assert!(contains("ingestion_key: REDACTED").eval(stdout));
+    assert!(contains("tags: sample_tag_on_conf").eval(stdout));
+
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_command_line_arguments_should_set_config() {
     test_command(
         |cmd| {

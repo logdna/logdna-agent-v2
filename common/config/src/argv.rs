@@ -183,6 +183,11 @@ pub struct ArgumentOptions {
     /// sending it in the log line.
     #[structopt(long, env = env::REDACT)]
     line_redact: Vec<String>,
+
+    /// Show the current agent settings from the configuration sources (default config file
+    /// and environment variables).
+    #[structopt(short = "l", long = "list")]
+    pub list_settings: bool,
 }
 
 impl ArgumentOptions {
