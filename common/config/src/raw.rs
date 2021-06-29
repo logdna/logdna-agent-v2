@@ -16,27 +16,23 @@ pub struct Config {
 impl Config {
     /// Tries to parse from java properties format and then using
     pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
-        let is_default_path = path.as_ref().to_string_lossy() == argv::DEFAULT_YAML_FILE;
-        let mut file = match File::open(path) {
-            Ok(f) => f,
-            Err(e) => {
-                if !is_default_path {
-                    // A path was configured but the file was NOT found
-                    return Err(e.into());
-                }
-
-                if let Ok(f) = File::open(argv::DEFAULT_CONF_FILE) {
-                    f
-                } else {
-                    // A conf file was not found in the default legacy location
-                    return Err(e.into());
-                }
+        let path = path.as_ref();
+        let is_default_path = path.to_string_lossy() == argv::DEFAULT_YAML_FILE;
+        let mut file = File::open(path).or_else(|e| {
+            if !is_default_path {
+                // A path was configured but the file was NOT found
+                error!(
+                    "config file was configured in {} but it could not be opened",
+                    path.display()
+                );
+                Err(e)
+            } else {
+                File::open(argv::DEFAULT_CONF_FILE)
             }
-        };
+        })?;
 
         // Everything is a yaml, so validation usually passes with java properties
         // We have to validate first that is a java properties file
-
         match properties::read_file(&file) {
             Ok(c) => {
                 debug!("config is a valid properties file");
