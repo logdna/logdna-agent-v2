@@ -7,6 +7,8 @@ pub enum ConfigError {
     MissingFieldOrEnvVar(&'static str, &'static str),
     Io(io::Error),
     Serde(serde_yaml::Error),
+    SerdeProperties(java_properties::PropertiesError),
+    PropertyInvalid(String),
     Template(http::types::error::TemplateError),
     Glob(globber::Error),
     Regex(pcre2::Error),
@@ -28,6 +30,8 @@ impl Display for ConfigError {
             }
             ConfigError::Io(e) => write!(f, "{}", e),
             ConfigError::Serde(e) => write!(f, "{}", e),
+            ConfigError::SerdeProperties(e) => write!(f, "{}", e),
+            ConfigError::PropertyInvalid(e) => write!(f, "{}", e),
             ConfigError::Template(e) => write!(f, "{}", e),
             ConfigError::Glob(e) => write!(f, "{}", e),
             ConfigError::Regex(e) => write!(f, "{}", e),
