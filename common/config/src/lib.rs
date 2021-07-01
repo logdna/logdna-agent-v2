@@ -4,7 +4,7 @@ extern crate log;
 use std::convert::{TryFrom, TryInto};
 use std::fs::File;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 use sysinfo::{RefreshKind, System, SystemExt};
 
@@ -70,7 +70,9 @@ pub struct JournaldConfig {
 impl Config {
     pub fn new() -> Result<Self, ConfigError> {
         let argv_options = ArgumentOptions::from_args_with_all_env_vars();
-        let raw_config = match RawConfig::parse(&argv_options.config) {
+        let list_settings = argv_options.list_settings;
+        let config_path = argv_options.config.clone();
+        let raw_config = match RawConfig::parse(&config_path) {
             Ok(v) => {
                 info!("using settings defined in config file, env vars and command line options");
                 v
@@ -82,15 +84,27 @@ impl Config {
             }
         };
 
+        // Merge with cmd line and env options
         let raw_config = argv_options.merge(raw_config);
 
+        // Get a copy of the yaml with the merge values
         let mut tmp_config = raw_config.clone();
         if let Some(ref mut key) = tmp_config.http.ingestion_key {
             *key = "REDACTED".to_string();
         }
-        if let Ok(yaml) = serde_yaml::to_string(&tmp_config) {
-            info!("starting with the following options: \n{}", yaml)
+
+        let yaml_str = match serde_yaml::to_string(&tmp_config) {
+            Ok(v) => v,
+            Err(e) => {
+                return Err(ConfigError::Serde(e));
+            }
+        };
+
+        if list_settings {
+            print_settings(&yaml_str, &config_path);
         }
+
+        info!("starting with the following options: \n{}", yaml_str);
 
         Config::try_from(raw_config)
     }
@@ -296,6 +310,25 @@ pub fn get_hostname() -> Option<String> {
     }
 
     System::new_with_specifics(RefreshKind::new()).get_host_name()
+}
+
+fn print_settings(yaml: &str, config_path: &Path) {
+    print!("Listing current settings ");
+
+    let is_default_path = config_path.to_string_lossy() == argv::DEFAULT_YAML_FILE;
+
+    if config_path.exists() {
+        print!("from config ({}), ", config_path.display());
+    } else if is_default_path && Path::new(argv::DEFAULT_CONF_FILE).exists() {
+        print!("from default conf, ");
+    } else {
+        print!("from ")
+    }
+
+    println!("environment variables and command line options in yaml format");
+
+    println!("{}", yaml);
+    std::process::exit(0);
 }
 
 fn parse_k8s_tracking_or_warn(
