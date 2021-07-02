@@ -33,22 +33,24 @@ The agent uses [systemd](https://systemd.io/) to run as a Linux daemon.
 After installing the package, you should enable it on systemd and set the ingestion key:
 
 ```shell script
-systemctl daemon-reload
-systemctl enable logdna-agent
-systemctl edit logdna-agent
+sudo systemctl daemon-reload
+sudo systemctl enable logdna-agent
+sudo systemctl edit logdna-agent
 ```
 
-The command `systemctl edit logdna-agent` will start your default text editor with an empty systemd configuration file
-for the LogDNA Agent. You can specify the [ingestion key][ingestion-key] by setting the `LOGDNA_INGESTION_KEY`
-environment variable:
+The last command above, `systemctl edit logdna-agent`, will start your default text editor with an empty systemd
+configuration file for the LogDNA Agent.
+
+Specify the [ingestion key][ingestion-key] by setting the `LOGDNA_INGESTION_KEY` environment variable:
 
 ```unit file (systemd)
 [Service]
 Environment="LOGDNA_INGESTION_KEY=<YOUR INGESTION KEY HERE>"
 ```
 
-You can see all the available environment variables using `logdna-agent --help`. For example, you can set the tags to
-attach to each line using `LOGDNA_TAGS` variable:
+The ingestion key is the only required setting, you can see all the available options using `logdna-agent --help`.
+
+For example, you can set the tags to attach to each log line using `LOGDNA_TAGS` variable:
 
 ```unit file (systemd)
 [Service]
@@ -56,10 +58,10 @@ Environment="LOGDNA_INGESTION_KEY=<YOUR INGESTION KEY HERE>"
 Environment="LOGDNA_TAGS=production"
 ```
 
-After saving the configuration, you can start the service:
+After saving the configuration, start the `logdna-agent` service using the following command:
 
 ```shell script
-systemctl start logdna-agent
+sudo systemctl start logdna-agent
 ```
 
 You can check the status of the agent using `systemctl status`:
@@ -68,12 +70,12 @@ You can check the status of the agent using `systemctl status`:
 systemctl status logdna-agent
 ```
 
-## Upgrading from LogDNA Agent v1/v2 for Linux
+## Upgrading from the legacy LogDNA Agent for Linux
 
-LogDNA Agent v1/v2 for Linux used initd to start as a daemon and `.conf` files to define the settings.
+The legacy LogDNA Agent for Linux used initd to start as a daemon and `.conf` files to define the settings.
 
-To upgrade, make sure you use the new repository on `https://assets.logdna.com` and run the upgrade command
-of your package manager:
+To upgrade, make sure you use the new repository on `https://assets.logdna.com` and run the appropriate upgrade command
+for your specific package manager.
 
 ### On Debian-based distributions
 
@@ -106,17 +108,18 @@ sudo yum update logdna-agent
 The agent will uninstall the previous version and reuse the existing configuration file, by default
 located in `/etc/logdna.conf`.
 
-If you defined a configuration file on a different location, you can specify it on your systemd unit file:
+If you defined a `logdna-agent.conf` configuration file on a different location, and want to use it instead, you
+can specify it on your systemd unit file:
 
 ```unit file (systemd)
 [Service]
 Environment="LOGDNA_CONFIG_FILE=/your/path/to/logdna.conf"
 ```
 
-Followed by a restart:
+"Next, restart the agent:
 
 ```shell script
-systemctl restart logdna-agent
+sudo systemctl restart logdna-agent
 ```
 
 [ingestion-key]: https://docs.logdna.com/docs/ingestion-key
