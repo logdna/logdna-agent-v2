@@ -26,97 +26,100 @@ gpgkey=https://assets.logdna.com/logdna.gpg" | sudo tee /etc/yum.repos.d/logdna.
 sudo yum -y install logdna-agent
 ```
 
-# Usage
+## Usage
 
-You can start sending logs by setting the [ingestion key][ingestion-key]:
+The agent uses [systemd](https://systemd.io/) to run as a Linux daemon.
+
+After installing the package, you should enable it on systemd and set the ingestion key:
 
 ```shell script
-logdna-agent -k <YOUR INGESTION KEY>
+sudo systemctl daemon-reload
+sudo systemctl enable logdna-agent
+sudo systemctl edit logdna-agent
 ```
 
-The LogDNA Agent exposes short argument abbreviations for commonly used options (`-k`, `-t`, `-d` and `-c`).
+The last command above, `systemctl edit logdna-agent`, will start your default text editor with an empty systemd
+configuration file for the LogDNA Agent.
 
-You can use `--help` flag to list all the command and environment variable options. For example with agent
-version `3.3.0`:
+Specify the [ingestion key][ingestion-key] by setting the `LOGDNA_INGESTION_KEY` environment variable:
+
+```unit file (systemd)
+[Service]
+Environment="LOGDNA_INGESTION_KEY=<YOUR INGESTION KEY HERE>"
+```
+
+The ingestion key is the only required setting, you can see all the available options using `logdna-agent --help`.
+
+For example, you can set the tags to attach to each log line using `LOGDNA_TAGS` variable:
+
+```unit file (systemd)
+[Service]
+Environment="LOGDNA_INGESTION_KEY=<YOUR INGESTION KEY HERE>"
+Environment="LOGDNA_TAGS=production"
+```
+
+After saving the configuration, start the `logdna-agent` service using the following command:
 
 ```shell script
-$ logdna-agent --help
-LogDNA Agent 3.3.0
-A resource-efficient log collection agent that forwards logs to LogDNA.
+sudo systemctl start logdna-agent
+```
 
-USAGE:
-    logdna-agent [OPTIONS]
+You can check the status of the agent using `systemctl status`:
 
-FLAGS:
-    -h, --help       Prints help information
-    -V, --version    Prints version information
+```shell script
+systemctl status logdna-agent
+```
 
-OPTIONS:
-    -c, --config <config>
-            The config filename [env: LOGDNA_CONFIG_FILE=]  [default: /etc/logdna/config.yaml]
+## Upgrading from the legacy LogDNA Agent for Linux
 
-        --db-path <db-path>
-            The directory in which the agent will store its state database. Note that the agent must have write access
-            to the directory and be a persistent volume. Defaults to "/var/lib/logdna-agent/" [env: LOGDNA_DB_PATH=]
-        --endpoint-path <endpoint-path>
-            The endpoint to forward logs to. Defaults to "/logs/agent" [env: LOGDNA_ENDPOINT=]
-        --exclude-regex <exclusion-regex>...
-            List of regex patterns to exclude files from monitoring [env: LOGDNA_EXCLUSION_REGEX_RULES=]
-        --exclude <exclusion-rules>...
-            List of glob patterns to exclude files from monitoring, to add to the default default set of
-            exclusion rules [env: LOGDNA_EXCLUSION_RULES=]
-        --gzip-level <gzip-level>
-            If compression is enabled, this is the gzip compression level to use. Defaults to 2 [env:
-            LOGDNA_GZIP_LEVEL=]
-        --host <host>
-            The host to forward logs to. Defaults to "logs.logdna.com" [env: LOGDNA_HOST=]
-        --include-regex <inclusion-regex>...
-            List of regex patterns to include files from monitoring [env: LOGDNA_INCLUSION_REGEX_RULES=]
-        --include <inclusion-rules>...
-            List of glob patterns to includes files for monitoring, to add to the default (*.log) [env:
-            LOGDNA_INCLUSION_RULES=]
-        --ip <ip>
-            The IP metadata to attach to lines forwarded from this agent [env: LOGDNA_IP=]
-        --journald-paths <journald-paths>...
-            List of paths (directories or files) of journald paths to monitor, for example: /var/log/journal or
-            /run/systemd/journal [env: LOGDNA_JOURNALD_PATHS=]
-    -k, --key <key>
-            The ingestion key associated with your LogDNA account [env: LOGDNA_INGESTION_KEY=]
-        --line-exclusion <line-exclusion>...
-            List of regex patterns to exclude log lines. When set, the Agent will NOT send log lines that match any of
-            these patterns [env: LOGDNA_LINE_EXCLUSION_REGEX=]
-        --line-inclusion <line-inclusion>...
-            List of regex patterns to include log lines. When set, the Agent will send ONLY log lines that match any of
-            these patterns [env: LOGDNA_LINE_INCLUSION_REGEX=]
-        --line-redact <line-redact>...
-            List of regex patterns used to mask matching sensitive information (such as PII) before sending it
-            in the log line [env: LOGDNA_REDACT_REGEX=]
-    -d, --logdir <log-dirs>...
-            Adds log directories to scan, in addition to the default (/var/log) [env: LOGDNA_LOG_DIRS=]
-        --log-k8s-events <log-k8s-events>
-            Determines whether the agent should log Kubernetes resource events. This setting only affects tracking
-            and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata
-            to enrich log lines from other pods depending on the value of `use_k8s_enrichment` setting value ("always"
-            or "never"). Defaults to "never" [env: LOGDNA_LOG_K8S_EVENTS=]
-        --lookback <lookback>
-            The lookback strategy on startup ("smallfiles", "start" or "none"). Defaults to "smallfiles" [env:
-            LOGDNA_LOOKBACK=]
-        --mac-address <mac>
-            The MAC metadata to attach to lines forwarded from this agent [env: LOGDNA_MAC=]
-        --metrics-port <metrics-port>
-            The port number to expose a Prometheus endpoint target with the agent metrics [env: LOGDNA_METRICS_PORT=]
-        --os-hostname <os-hostname>
-            The hostname metadata to attach to lines forwarded from this agent (defaults to os.hostname()) [env:
-            LOGDNA_HOSTNAME=]
-    -t, --tags <tags>...
-            List of tags metadata to attach to lines forwarded from this agent [env: LOGDNA_TAGS=]
-        --use-compression <use-compression>
-            Determines whether to compress logs before sending. Defaults to "true" [env: LOGDNA_USE_COMPRESSION=]
-        --use-k8s-enrichment <use-k8s-enrichment>
-            Determines whether the agent should query the K8s API to enrich log lines from other pods ("always" or
-            "never").  Defaults to "always" [env: LOGDNA_USE_K8S_LOG_ENRICHMENT=]
-        --use-ssl <use-ssl>
-            Determines whether to use TLS for sending logs. Defaults to "true" [env: LOGDNA_USE_SSL=]
+The legacy LogDNA Agent for Linux used initd to start as a daemon and `.conf` files to define the settings.
+
+To upgrade, make sure you use the new repository on `https://assets.logdna.com` and run the appropriate upgrade command
+for your specific package manager.
+
+### On Debian-based distributions
+
+```shell script
+# Add the new repository
+echo "deb https://assets.logdna.com stable main" | sudo tee /etc/apt/sources.list.d/logdna.list
+wget -qO - https://assets.logdna.com/logdna.gpg | sudo apt-key add -
+sudo apt-get update
+
+# Update the package
+sudo apt-get upgrade logdna-agent
+```
+
+### On RPM-based distributions
+
+```shell script
+# Add the new repository
+sudo rpm --import https://assets.logdna.com/logdna.gpg
+echo "[logdna]
+name=LogDNA packages
+baseurl=https://assets.logdna.com/el6/
+enabled=1
+gpgcheck=1
+gpgkey=https://assets.logdna.com/logdna.gpg" | sudo tee /etc/yum.repos.d/logdna.repo
+
+# Update the package
+sudo yum update logdna-agent
+```
+
+The agent will uninstall the previous version and reuse the existing configuration file, by default
+located in `/etc/logdna.conf`.
+
+If you defined a `logdna-agent.conf` configuration file on a different location, and want to use it instead, you
+can specify it on your systemd unit file:
+
+```unit file (systemd)
+[Service]
+Environment="LOGDNA_CONFIG_FILE=/your/path/to/logdna.conf"
+```
+
+"Next, restart the agent:
+
+```shell script
+sudo systemctl restart logdna-agent
 ```
 
 [ingestion-key]: https://docs.logdna.com/docs/ingestion-key
