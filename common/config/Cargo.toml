@@ -11,7 +11,8 @@ http = { package = "http", path = "../http" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
-globber = "0.1"
+glob = "0.3"
+pcre2 = "0.2"
 lazy_static = "1.0"
 async-compression = "0.3"
 thiserror = "1.0"

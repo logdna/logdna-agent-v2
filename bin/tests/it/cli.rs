@@ -476,8 +476,7 @@ fn test_files_other_than_dot_log_should_be_not_included_by_default() {
 }
 
 #[test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
-#[cfg_attr(not(target_os = "linux"), ignore)]
+#[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
 fn test_dangling_symlinks() {
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
     let data_dir = tempdir().expect("Could not create temp dir").into_path();

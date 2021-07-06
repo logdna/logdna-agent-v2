@@ -158,6 +158,28 @@ pub struct FileSystem {
     resume_events_send: async_channel::Sender<(u64, EventTimestamp)>,
 }
 
+#[cfg(unix)]
+fn add_initial_dir_rules(rules: &mut Rules, path: &DirPathBuf) {
+    // Include one for self and the rest of its children
+    rules.add_inclusion(
+        RuleDef::glob_rule(path.join(r"**").to_str().expect("invalid unicode in path"))
+            .expect("invalid glob rule format"),
+    );
+    rules.add_inclusion(
+        RuleDef::glob_rule(path.to_str().expect("invalid unicode in path"))
+            .expect("invalid glob rule format"),
+    );
+}
+
+#[cfg(windows)]
+fn add_initial_dir_rules(rules: &mut Rules, path: &DirPathBuf) {
+    // Include one for self and the rest of its children
+    rules.add_inclusion(
+        RuleDef::glob_rule(format!("{}*", path.to_str().expect("invalid unicode in path")).as_str())
+            .expect("invalid glob rule format"),
+    );
+}
+
 impl FileSystem {
     pub fn new(
         initial_dirs: Vec<DirPathBuf>,
@@ -176,16 +198,9 @@ impl FileSystem {
         let entries = SlotMap::new();
 
         let mut initial_dir_rules = Rules::new();
+
         for path in initial_dirs.iter() {
-            // Include one for self and the rest of its children
-            initial_dir_rules.add_inclusion(
-                RuleDef::glob_rule(path.join(r"**").to_str().expect("invalid unicode in path"))
-                    .expect("invalid glob rule format"),
-            );
-            initial_dir_rules.add_inclusion(
-                RuleDef::glob_rule(path.to_str().expect("invalid unicode in path"))
-                    .expect("invalid glob rule format"),
-            );
+            add_initial_dir_rules(&mut initial_dir_rules, path);
         }
 
         let mut fs = Self {
@@ -989,7 +1004,6 @@ mod tests {
     use pin_utils::pin_mut;
     use std::convert::TryInto;
     use std::fs::{copy, create_dir, hard_link, remove_dir_all, remove_file, rename, File};
-    use std::os::unix::fs::symlink;
     use std::{io, panic};
     use tempfile::{tempdir, TempDir};
 
@@ -1049,6 +1063,16 @@ mod tests {
                 ));
             }
         };
+    }
+
+    #[cfg(target_os = "windows")]
+    fn symlink_file<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> io::Result<()> {
+        std::os::windows::fs::symlink_file(original, link)
+    }
+
+    #[cfg(unix)]
+    fn symlink_file<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> io::Result<()> {
+        std::os::unix::fs::symlink(original, link)
     }
 
     fn new_fs<T: Default + Clone + std::fmt::Debug>(
@@ -1227,7 +1251,7 @@ mod tests {
         let a = path.join("a");
         let b = path.join("b");
         create_dir(&a)?;
-        symlink(&a, &b)?;
+        symlink_file(&a, &b)?;
 
         take_events!(fs);
 
@@ -1286,7 +1310,7 @@ mod tests {
         let sym_path = path.join("sym.log");
         let hard_path = path.join("hard.log");
         File::create(file_path.clone())?;
-        symlink(&file_path, &sym_path)?;
+        symlink_file(&file_path, &sym_path)?;
         hard_link(&file_path, &hard_path)?;
 
         let fs = create_fs(&path);
@@ -1322,7 +1346,7 @@ mod tests {
         let sym_path = path.join("sym.log");
         let hard_path = path.join("hard.log");
         File::create(file_path.clone())?;
-        symlink(&file_path, &sym_path)?;
+        symlink_file(&file_path, &sym_path)?;
         hard_link(&file_path, &hard_path)?;
 
         let fs = create_fs(&rootpath);
@@ -1373,7 +1397,7 @@ mod tests {
         let a = path.join("a");
         let b = path.join("b");
         create_dir(&a).unwrap();
-        symlink(&a, &b).unwrap();
+        symlink_file(&a, &b).unwrap();
 
         let fs = create_fs(&path);
 
@@ -1394,7 +1418,7 @@ mod tests {
         let real_dir_path = tempdir2.join("real_dir_sample");
         let symlink_path = path.join("symlink_sample");
         create_dir(&real_dir_path)?;
-        symlink(&real_dir_path, &symlink_path)?;
+        symlink_file(&real_dir_path, &symlink_path)?;
 
         let fs = create_fs(&path);
         assert!(lookup!(fs, symlink_path).is_some());
@@ -1418,7 +1442,7 @@ mod tests {
         let a = path.join("a");
         let b = path.join("b");
         File::create(&a)?;
-        symlink(&a, &b)?;
+        symlink_file(&a, &b)?;
 
         let fs = create_fs(&path);
 
@@ -1489,7 +1513,7 @@ mod tests {
         let hard_path = old_dir_path.join("hard.log");
         create_dir(&old_dir_path)?;
         File::create(file_path.clone())?;
-        symlink(&file_path, &sym_path)?;
+        symlink_file(&file_path, &sym_path)?;
         hard_link(&file_path, &hard_path)?;
 
         let fs = create_fs(&path);
@@ -1556,7 +1580,7 @@ mod tests {
         let hard_path = old_dir_path.join("hard.log");
         create_dir(&old_dir_path)?;
         File::create(file_path.clone())?;
-        symlink(&file_path, &sym_path)?;
+        symlink_file(&file_path, &sym_path)?;
         hard_link(&file_path, &hard_path)?;
 
         let fs = Arc::new(Mutex::new(new_fs::<()>(old_dir_path.clone(), None)));
@@ -1587,7 +1611,7 @@ mod tests {
         let hard_path = old_dir_path.join("hard.log");
         create_dir(&old_dir_path)?;
         File::create(file_path.clone())?;
-        symlink(&file_path, &sym_path)?;
+        symlink_file(&file_path, &sym_path)?;
         hard_link(&file_path, &hard_path)?;
 
         let fs = Arc::new(Mutex::new(new_fs::<()>(new_path, None)));
@@ -1753,7 +1777,7 @@ mod tests {
         let move_path = other_path.join("outside.tmp");
         let sym_path = watch_path.join("sym.log");
         File::create(file_path.clone())?;
-        symlink(&file_path, &sym_path)?;
+        symlink_file(&file_path, &sym_path)?;
 
         let fs = Arc::new(Mutex::new(new_fs::<()>(watch_path, None)));
 
@@ -1805,7 +1829,7 @@ mod tests {
         let entry = lookup!(fs, file_path);
         assert!(entry.is_none());
 
-        symlink(&file_path, &sym_path)?;
+        symlink_file(&file_path, &sym_path)?;
 
         take_events!(fs);
         let entry = lookup!(fs, sym_path);

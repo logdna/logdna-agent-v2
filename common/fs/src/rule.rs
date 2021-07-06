@@ -2,7 +2,7 @@ use std::fmt::Debug;
 use std::path::Path;
 
 use core::fmt;
-use globber::{Error as PatternError, Pattern};
+use glob::{Pattern, PatternError};
 use pcre2::{bytes::Regex, Error as RegexError};
 #[cfg(target_os = "linux")]
 use std::os::unix::ffi::OsStrExt;

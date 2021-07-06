@@ -330,10 +330,7 @@ impl<T> TailedFile<T> {
         let inode = get_inode(path, &file)?;
         Ok(Self {
             inner: Arc::new(Mutex::new(TailedFileInner {
-                reader: BufReader::new(tokio::fs::File::from_std(
-                    std::fs::OpenOptions::new().read(true).open(path)?,
-                ))
-                .compat(),
+                reader: BufReader::new(tokio::fs::File::from_std(file)).compat(),
                 buf: Vec::new(),
                 offset: 0,
                 initial_offsets,
