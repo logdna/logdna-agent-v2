@@ -129,7 +129,6 @@ impl Metrics {
     }
 
     pub fn print() -> String {
-
         let fs_create = FS_EVENTS.with_label_values(&[labels::CREATE]).get();
         let fs_delete = FS_EVENTS.with_label_values(&[labels::DELETE]).get();
         let fs_write = FS_EVENTS.with_label_values(&[labels::WRITE]).get();

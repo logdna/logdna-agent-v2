@@ -21,4 +21,5 @@ install:
   - cargo -vV
 
 test_script:
+  - cargo test -p fs
   - cargo build --no-default-features
