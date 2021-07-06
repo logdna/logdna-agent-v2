@@ -3,11 +3,11 @@ use std::path::Path;
 use std::str::FromStr;
 
 use core::fmt;
-use globber::{Error as PatternError, Pattern};
+use glob::{Pattern, PatternError};
+use os_str_bytes::OsStrBytes;
 use pcre2::{bytes::Regex, Error as RegexError};
 #[cfg(target_os = "linux")]
 use std::os::unix::ffi::OsStrExt;
-use os_str_bytes::OsStrBytes;
 
 /// A list of rules
 pub type RuleList = Vec<Box<dyn Rule + Send>>;

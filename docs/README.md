@@ -162,7 +162,7 @@ for example:
 (?i:my_case_insensitive_regex)
 ```
 
-1. We support [this flavor of globber syntax](https://github.com/CJP10/globber).
+1. We support [this flavor of globber syntax](https://docs.rs/glob/*/glob/).
 
 ### Configuring the Environment
 
