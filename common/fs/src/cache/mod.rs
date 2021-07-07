@@ -1386,7 +1386,7 @@ mod tests {
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
 
-        let file_path = path.join("file");
+        let file_path = path.join("file.log");
         File::create(file_path.clone())?;
 
         let fs = create_fs(&path);
