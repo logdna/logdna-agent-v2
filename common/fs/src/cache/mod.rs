@@ -1005,6 +1005,7 @@ mod tests {
     use std::convert::TryInto;
     use std::fs::{copy, create_dir, hard_link, remove_dir_all, remove_file, rename, File};
     use std::{io, panic};
+    use std::io::Write;
     use tempfile::{tempdir, TempDir};
 
     static DELAY: Duration = Duration::from_millis(200);
@@ -1515,7 +1516,11 @@ mod tests {
         Ok(())
     }
 
-    // Moves a directory within the watched directory
+    /// Moves a directory within the watched directory
+    ///
+    /// Only run on unix-like systems as moving a directory on Windows with file handles open is
+    /// not supported.
+    #[cfg(unix)]
     #[tokio::test]
     async fn filesystem_move_dir_internal() -> io::Result<()> {
         let tempdir = TempDir::new()?.into_path();
@@ -1582,7 +1587,11 @@ mod tests {
         Ok(())
     }
 
-    // Moves a directory out
+    /// Moves a directory out
+    ///
+    /// Only run on unix-like systems as moving a directory on Windows with file handles open is
+    /// not supported.
+    #[cfg(unix)]
     #[tokio::test]
     async fn filesystem_move_dir_out() -> io::Result<()> {
         let tempdir = TempDir::new()?;
@@ -1610,7 +1619,11 @@ mod tests {
         Ok(())
     }
 
-    // Moves a directory in
+    /// Moves a directory in
+    ///
+    /// Only run on unix-like systems as moving a directory on Windows with file handles open is
+    /// not supported.
+    #[cfg(unix)]
     #[tokio::test]
     async fn filesystem_move_dir_in() -> io::Result<()> {
         let old_tempdir = TempDir::new()?;
@@ -1776,7 +1789,11 @@ mod tests {
         Ok(())
     }
 
-    // Moves a file out of the watched directory
+    /// Moves a file out of the watched directory
+    ///
+    /// Only run on unix-like systems as moving stuff on Windows when being read is not handled
+    /// correctly.
+    #[cfg(unix)]
     #[tokio::test]
     async fn filesystem_move_symlink_file_out() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
@@ -1849,6 +1866,56 @@ mod tests {
         take_events!(fs);
         let entry = lookup!(fs, sym_path);
         assert!(entry.is_some());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn filesystem_test_basic_ops_per_platform() -> io::Result<()> {
+        let tempdir = TempDir::new()?;
+        let tempdir2 = TempDir::new()?;
+        let path = tempdir.path().to_path_buf();
+
+        let file1_path = path.join("test_file.log");
+        let file2_path = path.join("another_file.log");
+        let sym_path = path.join("test_symlink.log");
+        let sub_dir_path = path.join("test_dir");
+        let empty_sub_dir_path = path.join("empty_test_dir");
+        let sub_dir_file_path = sub_dir_path.join("test_sub_file.log");
+
+        create_dir(&sub_dir_path)?;
+        create_dir(&empty_sub_dir_path)?;
+        let mut file1 = File::create(&file1_path)?;
+        let mut file2 = File::create(&file2_path)?;
+        let mut file3 = File::create(&sub_dir_file_path)?;
+        symlink_file(&file1_path, &sym_path)?;
+
+        let fs = Arc::new(Mutex::new(new_fs::<()>(path, None)));
+
+        let entry = lookup!(fs, file1_path);
+        assert!(entry.is_some());
+
+        writeln!(file1, "hello")?;
+        writeln!(file2, "hello")?;
+        writeln!(file3, "hello")?;
+
+        drop(file1);
+        drop(file2);
+        drop(file3);
+
+        take_events!(fs);
+
+        remove_file(&file1_path).unwrap();
+        remove_file(&sym_path).unwrap();
+
+        // Move file out of directory
+        rename(&file2_path, tempdir2.path().join("another_file.log")).unwrap();
+
+        // Rename empty directory
+        rename(&empty_sub_dir_path, tempdir2.path().join("new")).unwrap();
+
+        // Remove dir with contents
+        remove_dir_all(&sub_dir_path).unwrap();
+
         Ok(())
     }
 }
