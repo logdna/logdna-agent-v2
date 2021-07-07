@@ -362,6 +362,12 @@ mod tests {
     #[no_mangle]
     pub static PKG_VERSION: &str = "test";
 
+
+    #[cfg(unix)]
+    static DEFAULT_LOG_DIR: &str = "/var/log";
+    #[cfg(windows)]
+    static DEFAULT_LOG_DIR: &str = r"C:\ProgramData\logs";
+
     use std::env;
     use std::fs::{remove_file, OpenOptions};
 
@@ -403,10 +409,11 @@ mod tests {
                 .iter()
                 .map(|p| p.to_str().unwrap())
                 .collect::<Vec<_>>(),
-            vec!["/var/log/"]
+            vec![DEFAULT_LOG_DIR]
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn test_default_rules() {
         let config = get_default_config();
