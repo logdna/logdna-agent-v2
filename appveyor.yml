@@ -7,6 +7,7 @@ environment:
   PATH: c:\OpenSSL-v111-Win64\bin;%PATH%
   OPENSSL_ROOT_DIR: c:\OpenSSL-v111-Win64
   OPENSSL_DIR: c:\OpenSSL-v111-Win64
+  RUST_LOG: info
 
 cache:
   - C:\Users\appveyor\.cargo
@@ -21,5 +22,5 @@ install:
   - cargo -vV
 
 test_script:
-  - cargo test -p fs
+  - cargo test -p fs -- --nocapture --test-threads=1
   - cargo build --no-default-features
