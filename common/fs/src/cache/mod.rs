@@ -1180,7 +1180,9 @@ mod tests {
         // Copy and remove
         let old = path.join("a.old");
         copy(&a, &old)?;
-        remove_file(&a)?;
+        take_events!(fs);
+
+        remove_file(&a).unwrap();
 
         take_events!(fs);
         let entry_key = lookup!(fs, a);
@@ -1189,7 +1191,7 @@ mod tests {
         assert_is_file!(fs, entry_key);
 
         // Recreate original file back
-        File::create(&a)?;
+        File::create(&a).unwrap();
         take_events!(fs);
         let entry_key = lookup!(fs, a);
         assert_is_file!(fs, entry_key);

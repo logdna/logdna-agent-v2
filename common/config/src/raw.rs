@@ -386,16 +386,29 @@ impl Merge for HttpConfig {
     }
 }
 
+#[cfg(unix)]
+fn default_log_dirs() -> Vec<PathBuf> {
+    vec!["/var/log/".into()]
+}
+
+#[cfg(windows)]
+fn default_log_dirs() -> Vec<PathBuf> {
+    let default_str = std::env::var("ALLUSERSPROFILE").unwrap_or(r"C:\ProgramData".into());
+    let default_os_str: std::ffi::OsString = default_str.into();
+    vec![Path::new(&default_os_str).join("logs")]
+}
+
 impl Default for LogConfig {
     fn default() -> Self {
         LogConfig {
-            dirs: vec!["/var/log/".into()],
+            dirs: default_log_dirs(),
             db_path: None,
             metrics_port: None,
             include: Some(Rules {
                 glob: vec!["*.log".parse().unwrap()],
                 regex: Vec::new(),
             }),
+            #[cfg(unix)]
             exclude: Some(Rules {
                 glob: vec![
                     "/var/log/wtmp".parse().unwrap(),
@@ -413,6 +426,8 @@ impl Default for LogConfig {
                 ],
                 regex: Vec::new(),
             }),
+            #[cfg(windows)]
+            exclude: None,
             line_exclusion_regex: None,
             line_inclusion_regex: None,
             line_redact_regex: None,
