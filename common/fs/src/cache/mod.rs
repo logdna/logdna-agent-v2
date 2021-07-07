@@ -1382,6 +1382,7 @@ mod tests {
     // Deletes a file
     #[tokio::test]
     async fn filesystem_delete_file() -> io::Result<()> {
+        let _ = env_logger::Builder::from_default_env().try_init();
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
 
@@ -1393,6 +1394,9 @@ mod tests {
         assert!(lookup!(fs, file_path).is_some());
 
         remove_file(&file_path)?;
+        take_events!(fs);
+
+        take_events!(fs);
         take_events!(fs);
 
         assert!(lookup!(fs, file_path).is_none());
