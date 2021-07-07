@@ -1070,9 +1070,20 @@ mod tests {
         std::os::windows::fs::symlink_file(original, link)
     }
 
+    #[cfg(target_os = "windows")]
+    fn symlink_dir<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> io::Result<()> {
+        std::os::windows::fs::symlink_dir(original, link)
+    }
+
     #[cfg(unix)]
     fn symlink_file<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> io::Result<()> {
         std::os::unix::fs::symlink(original, link)
+    }
+
+    #[cfg(unix)]
+    fn symlink_dir<P: AsRef<Path>, Q: AsRef<Path>>(original: P, link: Q) -> io::Result<()> {
+        // No difference in unix between a symlink of a file and a dir
+        symlink_file(original, link)
     }
 
     fn new_fs<T: Default + Clone + std::fmt::Debug>(
@@ -1251,7 +1262,7 @@ mod tests {
         let a = path.join("a");
         let b = path.join("b");
         create_dir(&a)?;
-        symlink_file(&a, &b)?;
+        symlink_dir(&a, &b)?;
 
         take_events!(fs);
 
@@ -1397,7 +1408,7 @@ mod tests {
         let a = path.join("a");
         let b = path.join("b");
         create_dir(&a).unwrap();
-        symlink_file(&a, &b).unwrap();
+        symlink_dir(&a, &b).unwrap();
 
         let fs = create_fs(&path);
 
@@ -1418,7 +1429,7 @@ mod tests {
         let real_dir_path = tempdir2.join("real_dir_sample");
         let symlink_path = path.join("symlink_sample");
         create_dir(&real_dir_path)?;
-        symlink_file(&real_dir_path, &symlink_path)?;
+        symlink_dir(&real_dir_path, &symlink_path)?;
 
         let fs = create_fs(&path);
         assert!(lookup!(fs, symlink_path).is_some());
@@ -1450,7 +1461,11 @@ mod tests {
         take_events!(fs);
 
         assert!(lookup!(fs, a).is_none());
+
+        // Windows watcher might have dangling links and it's ok
+        #[cfg(not(windows))]
         assert!(lookup!(fs, b).is_none());
+
         Ok(())
     }
 
