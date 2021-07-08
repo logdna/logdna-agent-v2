@@ -319,7 +319,7 @@ fn print_settings(yaml: &str, config_path: &Path) {
 
     if config_path.exists() {
         print!("from config ({}), ", config_path.display());
-    } else if is_default_path && Path::new(argv::DEFAULT_CONF_FILE).exists() {
+    } else if is_default_path && argv::default_conf_file().exists() {
         print!("from default conf, ");
     } else {
         print!("from ")
