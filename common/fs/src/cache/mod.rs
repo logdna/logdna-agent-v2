@@ -10,9 +10,8 @@ use state::{FileId, Span, SpanVec};
 use std::cell::RefCell;
 use std::collections::hash_map::Entry as HashMapEntry;
 use std::collections::HashMap;
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::fs::read_dir;
-use std::iter::FromIterator;
 use std::ops::Deref;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
@@ -175,8 +174,10 @@ fn add_initial_dir_rules(rules: &mut Rules, path: &DirPathBuf) {
 fn add_initial_dir_rules(rules: &mut Rules, path: &DirPathBuf) {
     // Include one for self and the rest of its children
     rules.add_inclusion(
-        RuleDef::glob_rule(format!("{}*", path.to_str().expect("invalid unicode in path")).as_str())
-            .expect("invalid glob rule format"),
+        RuleDef::glob_rule(
+            format!("{}*", path.to_str().expect("invalid unicode in path")).as_str(),
+        )
+        .expect("invalid glob rule format"),
     );
 }
 
@@ -459,7 +460,7 @@ impl FileSystem {
         }
 
         let link_path = path.read_link();
-        if !path.exists() && !link_path.is_ok() {
+        if !path.exists() && link_path.is_err() {
             warn!("attempted to insert non existent path {:?}", path);
             return Ok(None);
         }
@@ -473,7 +474,7 @@ impl FileSystem {
         let is_dir = match fs::metadata(path) {
             Ok(m) => m.is_dir(),
             Err(_) => {
-                if !link_path.is_ok() {
+                if link_path.is_err() {
                     return Err(Error::PathNotValid(path.into()));
                 }
                 // Dangling symlinks have no accessible metadata
@@ -1004,8 +1005,8 @@ mod tests {
     use pin_utils::pin_mut;
     use std::convert::TryInto;
     use std::fs::{copy, create_dir, hard_link, remove_dir_all, remove_file, rename, File};
-    use std::{io, panic};
     use std::io::Write;
+    use std::{io, panic};
     use tempfile::{tempdir, TempDir};
 
     static DELAY: Duration = Duration::from_millis(200);
@@ -1030,25 +1031,9 @@ mod tests {
     macro_rules! lookup {
         ( $x:expr, $y: expr ) => {{
             let fs = $x.lock().await;
-            let entry_keys = fs.watch_descriptors.get(&$y);
-            if entry_keys.is_none() {
-                None
-            } else {
-                Some(entry_keys.unwrap()[0])
-            }
-        }};
-    }
-
-    macro_rules! lookup_entry {
-        ( $x:expr, $y: expr ) => {{
-            let fs = loop {
-                if let Ok(fs) = $x.try_lock() {
-                    break fs;
-                }
-            };
-            let entries = fs.entries.clone();
-            let entries = entries.borrow();
-            fs.lookup(&$y, &entries)
+            fs.watch_descriptors
+                .get(&$y)
+                .map(|entry_keys| entry_keys[0])
         }};
     }
 

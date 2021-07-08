@@ -75,7 +75,9 @@ pub fn default_conf_file() -> PathBuf {
 #[cfg(windows)]
 pub fn default_conf_file() -> PathBuf {
     let default_str = std::env::var("ALLUSERSPROFILE").unwrap_or(r"C:\ProgramData".into());
-    PathBuf::from(default_str).join("logdna").join("logdna.conf")
+    PathBuf::from(default_str)
+        .join("logdna")
+        .join("logdna.conf")
 }
 
 /// Contains the command and env var options.
@@ -762,10 +764,7 @@ mod test {
         #[cfg(windows)]
         let expected_exclusion = vec_strings!["/my/path", "/other"];
 
-        assert_eq!(
-            exclusion.glob,
-            expected_exclusion
-        );
+        assert_eq!(exclusion.glob, expected_exclusion);
         assert_eq!(exclusion.regex, vec_strings!["a", "b"]);
 
         assert_eq!(

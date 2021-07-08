@@ -1,13 +1,11 @@
 use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
-use std::os::unix::fs::MetadataExt;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-
 use wait_timeout::ChildExt;
 
 use crate::common::{self, consume_output, AgentSettings};
@@ -258,6 +256,8 @@ fn test_send_sigint_does_not_leave_file_descriptor() {
 
 #[cfg(unix)]
 fn test_signals(signal: nix::sys::signal::Signal) {
+    use wait_timeout::ChildExt;
+
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file_path = dir.join("file1.log");
     File::create(&file_path).expect("Could not create file");
@@ -477,6 +477,7 @@ fn test_files_other_than_dot_log_should_be_not_included_by_default() {
 
 #[test]
 #[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
+#[cfg(unix)]
 fn test_dangling_symlinks() {
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
     let data_dir = tempdir().expect("Could not create temp dir").into_path();
@@ -506,8 +507,8 @@ fn test_dangling_symlinks() {
 }
 
 #[test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
-#[cfg_attr(not(target_os = "linux"), ignore)]
+#[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
+#[cfg(unix)]
 fn test_append_after_symlinks_delete() {
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
     let data_dir = tempdir().expect("Could not create temp dir").into_path();
@@ -537,8 +538,8 @@ fn test_append_after_symlinks_delete() {
 }
 
 #[test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
-#[cfg_attr(not(target_os = "linux"), ignore)]
+#[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
+#[cfg(unix)]
 fn test_directory_symlinks_delete() {
     let _ = env_logger::Builder::from_default_env().try_init();
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
@@ -625,7 +626,7 @@ async fn test_z_journald_support() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg_attr(all(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 async fn test_journalctl_support() {
     let _ = env_logger::Builder::from_default_env().try_init();
@@ -1091,8 +1092,8 @@ async fn test_symlink_initialization_both_included() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
-#[cfg_attr(not(target_os = "linux"), ignore)]
+#[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
+#[cfg(unix)]
 async fn test_symlink_initialization_excluded_file() {
     let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let excluded_dir = tempdir().expect("Couldn't create temp dir...").into_path();
@@ -1141,8 +1142,8 @@ async fn test_symlink_initialization_excluded_file() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
-#[cfg_attr(not(target_os = "linux"), ignore)]
+#[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
+#[cfg(unix)]
 async fn test_symlink_to_symlink_initialization_excluded_file() {
     let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let excluded_dir = tempdir().expect("Couldn't create temp dir...").into_path();
@@ -1192,8 +1193,8 @@ async fn test_symlink_to_symlink_initialization_excluded_file() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
-#[cfg_attr(not(target_os = "linux"), ignore)]
+#[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
+#[cfg(unix)]
 async fn test_symlink_to_hardlink_initialization_excluded_file() {
     let _ = env_logger::Builder::from_default_env().try_init();
 
@@ -1223,27 +1224,6 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
     file.sync_all().unwrap();
     std::os::unix::fs::symlink(&file_path, &excluded_symlink_path).unwrap();
     std::os::unix::fs::symlink(&excluded_symlink_path, &symlink_path).unwrap();
-
-    debug!(
-        "----{:?}: {}",
-        file_path,
-        file_path.metadata().unwrap().ino()
-    );
-    debug!(
-        "----{:?}: {}",
-        excluded_hardlink_path,
-        excluded_hardlink_path.metadata().unwrap().ino()
-    );
-    debug!(
-        "----{:?}: {}",
-        excluded_symlink_path,
-        excluded_symlink_path.metadata().unwrap().ino()
-    );
-    debug!(
-        "----{:?}: {}",
-        symlink_path,
-        symlink_path.metadata().unwrap().ino()
-    );
 
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -1287,27 +1267,6 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
         std::fs::remove_file(&excluded_symlink_path).unwrap();
         std::os::unix::fs::symlink(&excluded_hardlink_path, &excluded_symlink_path).unwrap();
 
-        debug!(
-            "----{:?}: {}",
-            file_path,
-            file_path.metadata().unwrap().ino()
-        );
-        debug!(
-            "----{:?}: {}",
-            excluded_hardlink_path,
-            excluded_hardlink_path.metadata().unwrap().ino()
-        );
-        debug!(
-            "----{:?}: {}",
-            excluded_symlink_path,
-            excluded_symlink_path.metadata().unwrap().ino()
-        );
-        debug!(
-            "----{:?}: {}",
-            symlink_path,
-            symlink_path.metadata().unwrap().ino()
-        );
-
         let mut agent_handle = common::spawn_agent(settings);
         let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
         // Consume output
@@ -1339,8 +1298,8 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
-#[cfg_attr(not(target_os = "linux"), ignore)]
+#[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
+#[cfg(unix)]
 async fn test_symlink_initialization_with_stateful_lookback() {
     let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let excluded_dir = tempdir().expect("Couldn't create temp dir...").into_path();

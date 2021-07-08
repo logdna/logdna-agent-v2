@@ -4,9 +4,9 @@ use std::path::Path;
 use core::fmt;
 use glob::{Pattern, PatternError};
 use pcre2::{bytes::Regex, Error as RegexError};
-#[cfg(target_os = "linux")]
-use std::os::unix::ffi::OsStrExt;
 
+#[cfg(unix)]
+use std::os::unix::ffi::OsStrExt;
 /// A trait for implementing a rule, see GlobRule/RegexRule for an example
 pub trait Rule {
     /// Takes a value and returns true or false based on if it matches

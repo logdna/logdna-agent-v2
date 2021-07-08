@@ -11,9 +11,6 @@ type PathId = std::path::PathBuf;
 
 #[cfg(target_os = "linux")]
 type OsWatcher = notify::INotifyWatcher;
-// #[cfg(target_os = "windows")]
-// type OsWatcher = notify::ReadDirectoryChangesWatcher;
-// #[cfg(not(any(target_os = "linux", target_os = "windows")))]
 #[cfg(not(any(target_os = "linux")))]
 type OsWatcher = notify::PollWatcher;
 

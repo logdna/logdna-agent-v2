@@ -1809,13 +1809,13 @@ dependencies = [
 name = "metrics"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "json",
  "lazy_static",
  "log",
  "num",
  "prometheus",
  "tikv-jemalloc-ctl",
+ "time 0.3.6",
  "tokio",
 ]
 

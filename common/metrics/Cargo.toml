@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 lazy_static = "1.0"
-chrono = "0.4"
+time = "0.3"
 json = "0.12"
 log = "0.4"
 prometheus = { version = "0.13", features = ["process"] }

@@ -3,7 +3,7 @@ use std::convert::{TryFrom, TryInto};
 use std::fs::OpenOptions;
 use std::ops::DerefMut;
 use std::os::unix::fs::MetadataExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -363,7 +363,7 @@ impl<T> TailedFile<T> {
 fn get_inode(path: &Path, _file: &std::fs::File) -> std::io::Result<u64> {
     use std::os::unix::fs::MetadataExt;
 
-    return Ok(path.metadata()?.ino());
+    Ok(path.metadata()?.ino())
 }
 
 #[cfg(windows)]
