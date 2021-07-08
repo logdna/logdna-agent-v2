@@ -364,7 +364,7 @@ mod tests {
 
 
     #[cfg(unix)]
-    static DEFAULT_LOG_DIR: &str = "/var/log";
+    static DEFAULT_LOG_DIR: &str = "/var/log/";
     #[cfg(windows)]
     static DEFAULT_LOG_DIR: &str = r"C:\ProgramData\logs";
 
