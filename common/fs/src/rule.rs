@@ -6,8 +6,6 @@ use core::fmt;
 use glob::{Pattern, PatternError};
 use os_str_bytes::OsStrBytes;
 use pcre2::{bytes::Regex, Error as RegexError};
-#[cfg(target_os = "linux")]
-use std::os::unix::ffi::OsStrExt;
 
 /// A list of rules
 pub type RuleList = Vec<Box<dyn Rule + Send>>;

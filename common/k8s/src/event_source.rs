@@ -273,21 +273,19 @@ impl K8sEventStream {
         let oldest_post = pod_list
             .iter()
             .filter_map(|p| -> Option<(Option<u64>, &Time, &str)> {
-                if let (pod_gen, Some(pod_started_at), Some(pod_name)) =
+                if let (pod_gen, Some(pod_started_at), Some(pod_name)) = (
                     // get pod generation, it will be there if there is an update strategy
-                    (
-                        p.metadata
-                            .labels
-                            .as_ref()
-                            .map(|l| {
-                                l.get("pod-template-generation")
-                                    .and_then(|g| g.parse::<u64>().ok())
-                            })
-                            .flatten(),
-                        get_pod_started_at(p),
-                        p.metadata.name.as_ref(),
-                    )
-                {
+                    p.metadata
+                        .labels
+                        .as_ref()
+                        .map(|l| {
+                            l.get("pod-template-generation")
+                                .and_then(|g| g.parse::<u64>().ok())
+                        })
+                        .flatten(),
+                    get_pod_started_at(p),
+                    p.metadata.name.as_ref(),
+                ) {
                     Some((pod_gen, pod_started_at, pod_name))
                 } else {
                     None

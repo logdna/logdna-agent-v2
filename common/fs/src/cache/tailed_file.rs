@@ -541,7 +541,7 @@ impl<T> TailedFile<T> {
 fn get_inode(path: &Path, _file: &std::fs::File) -> io::Result<u64> {
     use std::os::unix::fs::MetadataExt;
 
-    return Ok(path.metadata()?.ino());
+    Ok(path.metadata()?.ino())
 }
 
 #[cfg(windows)]

@@ -335,7 +335,7 @@ impl FileSystem {
         }
 
         let link_path = path.read_link();
-        if !path.exists() && !link_path.is_ok() {
+        if !path.exists() && link_path.is_err() {
             warn!("attempted to insert non existent path {:?}", path);
             return Ok(None);
         }
@@ -349,7 +349,7 @@ impl FileSystem {
         let is_dir = match fs::metadata(path) {
             Ok(m) => m.is_dir(),
             Err(_) => {
-                if !link_path.is_ok() {
+                if link_path.is_err() {
                     return Err(Error::PathNotValid(path.into()));
                 }
                 // Dangling symlinks have no accessible metadata
@@ -797,8 +797,8 @@ mod tests {
     use pin_utils::pin_mut;
     use std::convert::TryInto;
     use std::fs::{copy, create_dir, hard_link, remove_dir_all, remove_file, rename, File};
-    use std::{io, panic};
     use std::io::Write;
+    use std::{io, panic};
     use tempfile::{tempdir, TempDir};
 
     static DELAY: Duration = Duration::from_millis(200);
@@ -823,12 +823,9 @@ mod tests {
     macro_rules! lookup {
         ( $x:expr, $y: expr ) => {{
             let fs = $x.lock().expect("failed to lock fs");
-            let entry_keys = fs.watch_descriptors.get(&$y);
-            if entry_keys.is_none() {
-                None
-            } else {
-                Some(entry_keys.unwrap()[0])
-            }
+            fs.watch_descriptors
+                .get(&$y)
+                .map(|entry_keys| entry_keys[0])
         }};
     }
 
