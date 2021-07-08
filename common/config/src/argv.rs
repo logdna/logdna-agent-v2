@@ -14,8 +14,69 @@ extern "Rust" {
     static PKG_VERSION: &'static str;
 }
 
+pub mod env {
+    pub const INGESTION_KEY: &str = "LOGDNA_INGESTION_KEY";
+    pub const CONFIG_FILE: &str = "LOGDNA_CONFIG_FILE";
+    pub const LOG_DIRS: &str = "LOGDNA_LOG_DIRS";
+    pub const TAGS: &str = "LOGDNA_TAGS";
+    pub const HOST: &str = "LOGDNA_HOST";
+    pub const ENDPOINT: &str = "LOGDNA_ENDPOINT";
+    pub const USE_SSL: &str = "LOGDNA_USE_SSL";
+    pub const USE_COMPRESSION: &str = "LOGDNA_USE_COMPRESSION";
+    pub const GZIP_LEVEL: &str = "LOGDNA_GZIP_LEVEL";
+    pub const EXCLUSION_RULES: &str = "LOGDNA_EXCLUSION_RULES";
+    pub const EXCLUSION_REGEX_RULES: &str = "LOGDNA_EXCLUSION_REGEX_RULES";
+    pub const INCLUSION_RULES: &str = "LOGDNA_INCLUSION_RULES";
+    pub const INCLUSION_REGEX_RULES: &str = "LOGDNA_INCLUSION_REGEX_RULES";
+    pub const HOSTNAME: &str = "LOGDNA_HOSTNAME";
+    pub const IP: &str = "LOGDNA_IP";
+    pub const MAC: &str = "LOGDNA_MAC";
+    pub const JOURNALD_PATHS: &str = "LOGDNA_JOURNALD_PATHS";
+    pub const LOOKBACK: &str = "LOGDNA_LOOKBACK";
+    pub const DB_PATH: &str = "LOGDNA_DB_PATH";
+    pub const METRICS_PORT: &str = "LOGDNA_METRICS_PORT";
+    pub const USE_K8S_LOG_ENRICHMENT: &str = "LOGDNA_USE_K8S_LOG_ENRICHMENT";
+    pub const LOG_K8S_EVENTS: &str = "LOGDNA_LOG_K8S_EVENTS";
+    pub const K8S_STARTUP_LEASE: &str = "LOGDNA_K8S_STARTUP_LEASE";
+    pub const LINE_EXCLUSION: &str = "LOGDNA_LINE_EXCLUSION_REGEX";
+    pub const LINE_INCLUSION: &str = "LOGDNA_LINE_INCLUSION_REGEX";
+    pub const REDACT: &str = "LOGDNA_REDACT_REGEX";
+    pub const INGEST_TIMEOUT: &str = "LOGDNA_INGEST_TIMEOUT";
+    pub const INGEST_BUFFER_SIZE: &str = "LOGDNA_INGEST_BUFFER_SIZE";
+    pub const RETRY_DIR: &str = "LOGDNA_RETRY_DIR";
+    pub const RETRY_DISK_LIMIT: &str = "LOGDNA_RETRY_DISK_LIMIT";
+
+    pub const INGESTION_KEY_ALTERNATE: &str = "LOGDNA_AGENT_KEY";
+    pub const CONFIG_FILE_DEPRECATED: &str = "DEFAULT_CONF_FILE";
+    pub const HOST_DEPRECATED: &str = "LDLOGHOST";
+    pub const IBM_HOST_DEPRECATED: &str = "LOGDNA_LOGHOST";
+    pub const ENDPOINT_DEPRECATED: &str = "LDLOGPATH";
+    pub const USE_SSL_DEPRECATED: &str = "LDLOGSSL";
+    pub const USE_COMPRESSION_DEPRECATED: &str = "COMPRESS";
+    pub const GZIP_LEVEL_DEPRECATED: &str = "GZIP_COMPRESS_LEVEL";
+    pub const LOG_DIRS_DEPRECATED: &str = "LOG_DIRS";
+    pub const EXCLUSION_RULES_DEPRECATED: &str = "LOGDNA_EXCLUDE";
+    pub const EXCLUSION_REGEX_RULES_DEPRECATED: &str = "LOGDNA_EXCLUDE_REGEX";
+    pub const INCLUSION_RULES_DEPRECATED: &str = "LOGDNA_INCLUDE";
+    pub const INCLUSION_REGEX_RULES_DEPRECATED: &str = "LOGDNA_INCLUDE_REGEX";
+}
+
+#[cfg(unix)]
 pub const DEFAULT_YAML_FILE: &str = "/etc/logdna/config.yaml";
-pub const DEFAULT_CONF_FILE: &str = "/etc/logdna.conf";
+
+#[cfg(windows)]
+pub const DEFAULT_YAML_FILE: &str = r"C:\ProgramData\logdna\config.yaml";
+
+#[cfg(unix)]
+pub fn default_conf_file() -> PathBuf {
+    PathBuf::from("/etc/logdna.conf")
+}
+
+#[cfg(windows)]
+pub fn default_conf_file() -> PathBuf {
+    let default_str = std::env::var("ALLUSERSPROFILE").unwrap_or(r"C:\ProgramData".into());
+    PathBuf::from(default_str).join("logdna").join("logdna.conf")
+}
 
 /// Contains the command and env var options.
 #[derive(StructOpt, Debug, Default, PartialEq)]

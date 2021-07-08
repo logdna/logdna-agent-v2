@@ -434,9 +434,9 @@ fn print_settings(yaml: &str, config_path: &Path) {
 
     let config_path_str = config_path.to_string_lossy();
     let is_default_path =
-        config_path_str == argv::DEFAULT_YAML_FILE || config_path_str == argv::DEFAULT_CONF_FILE;
+        config_path_str == argv::DEFAULT_YAML_FILE || config_path == argv::default_conf_file();
     let does_default_exist =
-        Path::new(argv::DEFAULT_YAML_FILE).exists() || Path::new(argv::DEFAULT_CONF_FILE).exists();
+        Path::new(argv::DEFAULT_YAML_FILE).exists() || argv::default_conf_file().exists();
 
     if is_default_path && does_default_exist {
         print!("from default conf, ");
