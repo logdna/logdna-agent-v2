@@ -27,7 +27,7 @@ impl Config {
                 );
                 Err(e)
             } else {
-                File::open(argv::DEFAULT_CONF_FILE)
+                File::open(argv::default_conf_file())
             }
         })?;
 
@@ -258,15 +258,16 @@ exclude = /path/to/exclude/**",
         )?;
         let config = Config::parse(&file_name).unwrap();
         // Defaults to /var/log
-        assert_eq!(config.log.dirs, vec![PathBuf::from("/var/log")]);
+        assert_eq!(config.log.dirs, default_log_dirs());
         assert_eq!(config.http.ingestion_key, some_string!("123"));
         assert_eq!(
             config.http.params.unwrap().tags,
             Some(Tags::from(vec_strings!["production", "2ndtag"]))
         );
+
         let expected_exclude = LogConfig::default()
             .exclude
-            .unwrap()
+            .unwrap_or_default()
             .glob
             .iter()
             .map(|x| x.to_string())
@@ -301,7 +302,7 @@ exclude = /path/to/exclude/**",
         fs::write(&file_name, "key = 890")?;
         let config = Config::parse(&file_name).unwrap();
         // Defaults to /var/log
-        assert_eq!(config.log.dirs, vec![PathBuf::from("/var/log")]);
+        assert_eq!(config.log.dirs, default_log_dirs());
         assert_eq!(config.http.ingestion_key, some_string!("890"));
         Ok(())
     }
@@ -336,7 +337,7 @@ hostname = jorge's-laptop
         assert_eq!(params.hostname, "jorge's-laptop");
         let expected_exclude = LogConfig::default()
             .exclude
-            .unwrap()
+            .unwrap_or_default()
             .glob
             .iter()
             .map(|x| x.to_string())
@@ -370,7 +371,7 @@ key = abcdef01
         )?;
         let config = Config::parse(&file_name).unwrap();
         // Defaults to /var/log
-        assert_eq!(config.log.dirs, vec![PathBuf::from("/var/log")]);
+        assert_eq!(config.log.dirs, default_log_dirs());
         assert_eq!(config.http.ingestion_key, some_string!("abcdef01"));
         assert_eq!(config.http.params.unwrap().tags, None);
         Ok(())

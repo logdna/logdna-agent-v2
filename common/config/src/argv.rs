@@ -52,8 +52,22 @@ pub mod env {
     pub const INCLUSION_REGEX_RULES_DEPRECATED: &str = "LOGDNA_INCLUDE_REGEX";
 }
 
+#[cfg(unix)]
 pub const DEFAULT_YAML_FILE: &str = "/etc/logdna/config.yaml";
-pub const DEFAULT_CONF_FILE: &str = "/etc/logdna.conf";
+
+#[cfg(windows)]
+pub const DEFAULT_YAML_FILE: &str = r"C:\ProgramData\logdna\config.yaml";
+
+#[cfg(unix)]
+pub fn default_conf_file() -> PathBuf {
+    PathBuf::from("/etc/logdna.conf")
+}
+
+#[cfg(windows)]
+pub fn default_conf_file() -> PathBuf {
+    let default_str = std::env::var("ALLUSERSPROFILE").unwrap_or(r"C:\ProgramData".into());
+    PathBuf::from(default_str).join("logdna").join("logdna.conf")
+}
 
 /// Contains the command and env var options.
 #[derive(StructOpt, Debug, Default, PartialEq)]
