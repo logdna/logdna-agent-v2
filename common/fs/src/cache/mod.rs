@@ -1885,11 +1885,9 @@ mod tests {
         let file2_path = path.join("another_file.log");
         let sym_path = path.join("test_symlink.log");
         let sub_dir_path = path.join("test_dir");
-        let empty_sub_dir_path = path.join("empty_test_dir");
         let sub_dir_file_path = sub_dir_path.join("test_sub_file.log");
 
         create_dir(&sub_dir_path)?;
-        create_dir(&empty_sub_dir_path)?;
         let mut file1 = File::create(&file1_path)?;
         let mut file2 = File::create(&file2_path)?;
         let mut file3 = File::create(&sub_dir_file_path)?;
@@ -1915,9 +1913,6 @@ mod tests {
 
         // Move file out of directory
         rename(&file2_path, tempdir2.path().join("another_file.log")).unwrap();
-
-        // Rename empty directory
-        rename(&empty_sub_dir_path, tempdir2.path().join("new")).unwrap();
 
         // Remove dir with contents
         remove_dir_all(&sub_dir_path).unwrap();
