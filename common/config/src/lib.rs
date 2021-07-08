@@ -362,7 +362,6 @@ mod tests {
     #[no_mangle]
     pub static PKG_VERSION: &str = "test";
 
-
     #[cfg(unix)]
     static DEFAULT_LOG_DIR: &str = "/var/log/";
     #[cfg(windows)]
