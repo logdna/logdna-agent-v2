@@ -100,12 +100,6 @@ fn add_initial_dir_rules(rules: &mut Rules, path: &DirPathBuf) {
 
 impl FileSystem {
     pub fn new(initial_dirs: Vec<DirPathBuf>, rules: Rules, delay: Duration) -> Self {
-        initial_dirs.iter().for_each(|path| {
-            if !path.is_dir() {
-                panic!("initial dirs must be dirs")
-            }
-        });
-
         let watcher = Watcher::new(delay);
         let entries = SlotMap::new();
 
