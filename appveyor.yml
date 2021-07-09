@@ -23,6 +23,6 @@ install:
   - cargo -vV
 
 test_script:
-  - cargo test --no-run --no-default-features
+  - cargo test --no-default-features --features integration_tests --test cmd_line_env test_command_line_arguments_help -- --nocapture
   - cargo test -p fs -- --nocapture --test-threads=1
 
