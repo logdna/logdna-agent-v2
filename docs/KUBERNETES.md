@@ -29,7 +29,7 @@ For a quick installation without cloning the GitHub repo, you can run the follow
 ```bash
 kubectl apply -f https://assets.logdna.com/clients/agent-namespace.yaml
 kubectl create secret generic logdna-agent-key -n logdna-agent --from-literal=logdna-agent-key=<your ingestion key> # this is your unique Ingestion Key
-kubectl apply -f https://assets.logdna.com/clients/logdna-agent/3.2.0/agent-resources.yaml`
+kubectl apply -f https://assets.logdna.com/clients/logdna-agent/3.2.0/agent-resources.yaml
 ```
 
 ## Table of Contents
