@@ -12,7 +12,7 @@ pipeline {
     }
     triggers {
         issueCommentTrigger(TRIGGER_PATTERN)
-        cron(env.BRANCH_NAME ==~ /\d\.\d/ ? 'H H 1,15 * *' : '')
+        cron(env.BRANCH_NAME ==~ /\d\.\d/ ? 'H 8 * * 1' : '')
     }
     environment {
         RUST_IMAGE_REPO = 'us.gcr.io/logdna-k8s/rust'
@@ -101,12 +101,17 @@ pipeline {
                     steps {
                         script {
                             publishGCRImage = true
-                            try {
-                                timeout(time: 5, unit: 'MINUTES') {
-                                    input(message: 'Should we publish the versioned image?')
+                            if (currentBuild.getBuildCauses('hudson.triggers.TimerTrigger$TimerTriggerCause')) {
+                                echo "started by timer, publishing"
+                            } else {
+                                echo "not started by timer"
+                                try {
+                                    timeout(time: 5, unit: 'MINUTES') {
+                                        input(message: 'Should we publish the versioned image?')
+                                    }
+                                } catch (err) {
+                                    publishGCRImage = false
                                 }
-                            } catch (err) {
-                                publishGCRImage = false
                             }
                         }
                     }
@@ -124,12 +129,17 @@ pipeline {
                     steps {
                         script {
                             publishDockerhubICRImages = true
-                            try {
-                                timeout(time: 5, unit: 'MINUTES') {
-                                    input(message: 'Should we publish the versioned images to dockerhub/icr?')
+                            if (currentBuild.getBuildCauses('hudson.triggers.TimerTrigger$TimerTriggerCause')) {
+                                echo "started by timer, publishing"
+                            } else {
+                                echo "not started by timer"
+                                try {
+                                    timeout(time: 5, unit: 'MINUTES') {
+                                        input(message: 'Should we publish the versioned images to dockerhub/icr?')
+                                    }
+                                } catch (err) {
+                                    publishDockerhubICRImages = false
                                 }
-                            } catch (err) {
-                                publishDockerhubICRImages = false
                             }
                         }
                     }
