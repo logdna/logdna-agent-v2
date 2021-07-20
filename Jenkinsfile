@@ -11,7 +11,7 @@ pipeline {
     }
     triggers {
         issueCommentTrigger(TRIGGER_PATTERN)
-        cron(env.BRANCH_NAME ==~ /\d\.\d/ ? 'H H 1,15 * *' : '')
+        cron(env.BRANCH_NAME ==~ /\d\.\d/ ? 'H 8 * * 1' : '')
     }
     environment {
         RUST_IMAGE_REPO = 'us.gcr.io/logdna-k8s/rust'
@@ -100,12 +100,17 @@ pipeline {
                     steps {
                         script {
                             publishImage = true
-                            try {
-                                timeout(time: 5, unit: 'MINUTES') {
-                                    input(message: 'Should we publish the versioned image?')
+                            if (currentBuild.getBuildCauses('hudson.triggers.TimerTrigger$TimerTriggerCause')) {
+                                echo "started by timer, publishing"
+                            } else {
+                                echo "not started by timer"
+                                try {
+                                    timeout(time: 5, unit: 'MINUTES') {
+                                        input(message: 'Should we publish the versioned image?')
+                                    }
+                                } catch (err) {
+                                    publishImage = false
                                 }
-                            } catch (err) {
-                                publishImage = false
                             }
                         }
                     }
