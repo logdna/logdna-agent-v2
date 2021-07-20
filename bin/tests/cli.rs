@@ -3,7 +3,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::fs::MetadataExt;
 use std::process::Command;
-use std::thread::{self, sleep};
+use std::thread;
 use std::time::Duration;
 use wait_timeout::ChildExt;
 
@@ -15,7 +15,6 @@ use hyper::{Client, StatusCode};
 use log::debug;
 use predicates::prelude::*;
 use proptest::prelude::*;
-use systemd::journal;
 use tempfile::tempdir;
 use test_types::random_line_string_vec;
 use tokio::task;
@@ -637,11 +636,11 @@ fn test_directory_symlinks_delete() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
-#[cfg_attr(not(target_os = "linux"), ignore)]
+#[cfg(feature = "integration_tests")]
+#[cfg(target_os = "linux")]
 async fn test_journald_support() {
-    assert_eq!(journal::print(6, "Sample info"), 0);
-    sleep(Duration::from_millis(1000));
+    assert_eq!(systemd::journal::print(6, "Sample info"), 0);
+    tokio::time::sleep(Duration::from_millis(500)).await;
     let dir = "/var/log/journal";
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let mut settings = AgentSettings::with_mock_ingester("/var/log/journal", &addr);
@@ -654,12 +653,12 @@ async fn test_journald_support() {
 
     let (server_result, _) = tokio::join!(server, async {
         for _ in 0..10 {
-            journal::print(1, "Sample alert");
-            journal::print(6, "Sample info");
+            systemd::journal::print(1, "Sample alert");
+            systemd::journal::print(6, "Sample info");
         }
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
 
         let map = received.lock().await;
         let file_info = map.values().next().unwrap();
@@ -891,8 +890,7 @@ async fn test_partial_fsynced_lines() {
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let file_path = dir.join("test.log");
     File::create(&file_path).expect("Couldn't create temp log file...");
-    let mut settings = AgentSettings::with_mock_ingester(&dir.to_str().unwrap(), &addr);
-    settings.exclusion_regex = Some(r"/var\w*");
+    let settings = AgentSettings::with_mock_ingester(&dir.to_str().unwrap(), &addr);
     let mut agent_handle = common::spawn_agent(settings);
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
     common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
@@ -908,7 +906,7 @@ async fn test_partial_fsynced_lines() {
 
         file.sync_all().unwrap();
         common::force_client_to_flush(&dir).await;
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
         {
             let map = received.lock().await;
@@ -959,7 +957,7 @@ async fn test_tags() {
         common::force_client_to_flush(&dir).await;
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(Duration::from_millis(1000)).await;
 
         let map = received.lock().await;
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();
