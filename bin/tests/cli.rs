@@ -823,7 +823,7 @@ async fn test_lookback_restarting_agent() {
                 }
 
                 if i % 20 == 0 {
-                    std::thread::sleep(core::time::Duration::from_millis(1));
+                    std::thread::sleep(core::time::Duration::from_millis(20));
                 }
             }
         });
@@ -832,7 +832,7 @@ async fn test_lookback_restarting_agent() {
         let mut agent_handle = common::spawn_agent(settings.clone());
         let agent_stderr = agent_handle.stderr.take().unwrap();
         consume_output(agent_stderr);
-        tokio::time::sleep(tokio::time::Duration::from_millis(1_000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2_000)).await;
 
         while line_count.load(Ordering::SeqCst) < line_count_target {
             tokio::time::sleep(tokio::time::Duration::from_millis(1_000)).await;
@@ -846,10 +846,14 @@ async fn test_lookback_restarting_agent() {
 
         // Block til writing is definitely done
 
+        debug!("Waiting a bit");
         task::spawn_blocking(move || writer_thread.join().unwrap())
             // Give the agent a chance to catch up
-            .then(|_| tokio::time::sleep(tokio::time::Duration::from_millis(5000)))
+            .then(|_| tokio::time::sleep(tokio::time::Duration::from_millis(10000)))
             .await;
+
+        // Sleep a bit more to give the agent a chance to process
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
         let map = received.lock().await;
         assert!(map.len() > 0);
