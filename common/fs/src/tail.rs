@@ -113,10 +113,13 @@ impl Tailer {
             initial_offsets: &HashMap<FileId, u64>,
             key: &FileId,
             path: &Path,
-        ) -> u64 {
-            let offset = initial_offsets.get(key).copied().unwrap_or(0);
-            debug!("Got offset {} from state using key {:?}", offset, path);
-            offset
+        ) -> Option<u64> {
+            if let Some(offset) = initial_offsets.get(key).copied() {
+                debug!("Got offset {} from state using key {:?}", offset, path);
+                Some(offset)
+            } else {
+                None
+            }
         }
         let entry_key = fs.lookup(target, &fs.entries.borrow())?;
         let entries = fs.entries.borrow();
@@ -128,23 +131,27 @@ impl Tailer {
                 entry_key,
                 match lookback_config {
                     Lookback::Start => match initial_offsets.as_ref() {
-                        Some(initial_offsets) => _lookup_offset(&initial_offsets, &inode, &path),
+                        Some(initial_offsets) => {
+                            _lookup_offset(&initial_offsets, &inode, &path).unwrap_or(0)
+                        }
                         None => 0,
                     },
                     Lookback::SmallFiles => {
+                        // Check the actual file len
+                        let file_len = path.metadata().map(|m| m.len()).unwrap_or(0);
+                        let smallfiles_offset = if file_len < 8192 { 0 } else { file_len };
+
                         match initial_offsets.as_ref() {
                             Some(initial_offsets) => {
                                 _lookup_offset(&initial_offsets, &inode, &path)
+                                    .unwrap_or(smallfiles_offset)
                             }
                             None => {
-                                // Check the actual file len
-                                let len = path.metadata().map(|m| m.len()).unwrap_or(0);
-                                debug!("Smallfiles lookback {} from len using key {:?}", len, path);
-                                if len < 8192 {
-                                    0
-                                } else {
-                                    len
-                                }
+                                debug!(
+                                    "Smallfiles lookback {} from len using key {:?}",
+                                    file_len, path
+                                );
+                                smallfiles_offset
                             }
                         }
                     }
