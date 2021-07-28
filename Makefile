@@ -275,6 +275,9 @@ run: ## Run the debug version of the agent
 run-release: ## Run the release version of the agent
 	./target/release/logdna-agent
 
+sysdig_secure_images: ## Create sysdig_secure_images config
+	echo $(REPO):$(BUILD_TAG) > sysdig_secure_images
+
 .PHONY:help
 help: ## Prints out a helpful description of each possible target
 	@awk 'BEGIN {FS = ":.*?## "}; /^.+: .*?## / && !/awk/ {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
