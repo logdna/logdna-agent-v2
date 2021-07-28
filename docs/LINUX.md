@@ -75,7 +75,7 @@ are still valid. If this is applicable to you and there are no changes
 that need to be made, you can skip this section and start the service
 using your existing configuration.
 
-1.  Create the agent's configuration file (`logdna.env`) in the ``/etc` directory, using the following command:
+1.  Create the agent's configuration file (`logdna.env`) in the `/etc` directory, using the following command:
 
     ```bash
     sudo touch /etc/logdna.env # it can initialized as an empty file, you will be adding to it in the steps below
