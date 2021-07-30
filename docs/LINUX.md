@@ -14,13 +14,13 @@ The LogDNA Agent for Linux collects log data from your Linux environment. The ag
 
 1. To download the agent and resources package, open a host terminal and run the appropriate commands based on the Linux distribution.
 
-* Debian-based distributions
+* **Debian-based distributions**
 ```bash
 echo "deb https://assets.logdna.com stable main" | sudo tee /etc/apt/sources.list.d/logdna.list
 wget -qO - https://assets.logdna.com/logdna.gpg | sudo apt-key add -
 sudo apt-get update
 ```
-* RPM/Red Hat-based distributions
+* **RPM/Red Hat-based distributions**
 ```bash
 sudo rpm --import https://assets.logdna.com/logdna.gpg
 echo "[logdna]
@@ -33,11 +33,11 @@ gpgkey=https://assets.logdna.com/logdna.gpg" | sudo tee /etc/yum.repos.d/logdna.
 
 2. To upgrade the agent, use the commands below, based on the distro:
 
-* Debian-base distributions:
+* **Debian-based distributions:**
 ```bash
 sudo apt-get install logdna-agent
 ```
-* RPM/Red Hat-based distributions:
+* **RPM/Red Hat-based distributions:**
 ```bash
 sudo yum -y install logdna-agent
 ```
@@ -48,14 +48,14 @@ sudo yum -y install logdna-agent
 
 1.  To download the agent and resources package, open a host terminal and run the appropriate commands based on the Linux distribution.
 
-* Debian-base distributions:
+* **Debian-based distributions:**
 ```bash
 echo "deb https://assets.logdna.com stable main" | sudo tee /etc/apt/sources.list.d/logdna.list
 wget -qO - https://assets.logdna.com/logdna.gpg | sudo apt-key add -
 sudo apt-get update
 ```
 
-* RPM/Red Hat-based distributions:
+* **RPM/Red Hat-based distributions:**
 ```bash
 sudo rpm --import https://assets.logdna.com/logdna.gpg
 echo "[logdna]
@@ -68,11 +68,11 @@ gpgkey=https://assets.logdna.com/logdna.gpg" | sudo tee /etc/yum.repos.d/logdna.
 
 2. To upgrade the agent, use the commands below, based on the distro:
 
-* Debian-base distributions:
+* **Debian-based distributions:**
 ```bash
 sudo apt-get upgrade logdna-agent
 ```
-* RPM/Red Hat-based distributions:
+* **RPM/Red Hat-based distributions:**
 ```bash
 sudo yum update logdna-agent
 ```
