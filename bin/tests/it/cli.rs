@@ -19,6 +19,7 @@ use tempfile::tempdir;
 use test_types::strategies::random_line_string_vec;
 use tokio::io::BufWriter;
 use tokio::task;
+use logdna_mock_ingester::FileInfo;
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
@@ -914,20 +915,35 @@ async fn test_tags() {
     let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &addr);
     settings.tags = Some(tag);
     let mut agent_handle = common::spawn_agent(settings);
-    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
-    common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+
+    let agent_stderr = agent_handle.stderr.take().unwrap();
+    consume_output(agent_stderr);
 
     let (server_result, _) = tokio::join!(server, async {
-        common::append_to_file(&file_path, 10, 5).unwrap();
+        let total_lines: usize = 10;
+        common::append_to_file(&file_path, total_lines as i32, 5).unwrap();
         common::force_client_to_flush(&dir).await;
 
-        // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(Duration::from_millis(1000)).await;
+        let mut file_info = FileInfo::default();
+        let map_key = file_path.to_str().unwrap();
 
-        let map = received.lock().await;
-        let file_info = map.get(file_path.to_str().unwrap()).unwrap();
-        assert_eq!(file_info.lines, 10);
-        assert_eq!(file_info.values, vec![common::LINE.to_owned() + "\n"; 10]);
+        for _ in 0..10 {
+            let map = received.lock().await;
+            file_info = map.get(map_key).unwrap_or(&file_info).clone();
+            // Avoid awaiting while holding the lock
+            drop(map);
+
+            if file_info.lines < total_lines {
+                // Wait for the data to be received by the mock ingester
+                tokio::time::sleep(Duration::from_millis(200)).await;
+                continue;
+            }
+
+            break;
+        }
+
+        assert_eq!(file_info.lines, total_lines);
+        assert_eq!(file_info.values, vec![common::LINE.to_owned() + "\n"; total_lines]);
         assert_eq!(file_info.tags, Some(tag.to_string()));
         shutdown_handle();
     });

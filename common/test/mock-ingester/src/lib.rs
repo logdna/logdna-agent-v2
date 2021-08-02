@@ -41,7 +41,7 @@ pub type ReqFn = Box<
         + Sync,
 >;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct FileInfo {
     pub tags: Option<String>,
     pub values: Vec<String>,
