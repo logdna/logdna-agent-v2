@@ -99,9 +99,11 @@ The agent uses [**systemd**](https://systemd.io/) to run as a Linux daemon. The 
 
 ### _Configure the agent_
 
-└ Note \[for users upgrading /migrating from the [legacy LogDNA
-Agent](https://github.com/logdna/logdna-agent)\]: Many users will likely already have a configuration file `/etc/logdna.conf` from prior installations. The LogDNA Agent 3.3 does support the legacy `/etc/logdna.conf` file by default, and additionally uses a **systemd** unit file `/etc/logdna.env`.
+---
+**NOTE** for users upgrading /migrating from the [legacy LogDNA
+Agent](https://github.com/logdna/logdna-agent)\: Many users will likely already have a configuration file `/etc/logdna.conf` from prior installations. The LogDNA Agent 3.3 does support the legacy `/etc/logdna.conf` file by default, and additionally uses a **systemd** unit file `/etc/logdna.env`.
 
+---
 
 1.  Create the agent's configuration file (`logdna.env`) in the `/etc` directory, using the following command:
 
@@ -124,7 +126,7 @@ Agent](https://github.com/logdna/logdna-agent)\]: Many users will likely already
     ```bash
     LOGDNA_TAGS=production
     ```
-You can see all the available variable options by running the command `logdna-agent --help` or refer to them in our [README](https://github.com/logdna/logdna-agent-v2/blob/eb06d4f3f7c1033b494f1f0439957f96533f9225/docs/README.md#options). If you're migrating from the legacy agent, take note of the variables that have are changed, updated, and deprecated when compared to the [legacy LogDNA
+   You can see all the available variable options by running the command `logdna-agent --help` or refer to them in our [README](https://github.com/logdna/logdna-agent-v2/blob/eb06d4f3f7c1033b494f1f0439957f96533f9225/docs/README.md#options). If you're migrating from the legacy agent, take note of the variables that have are changed, updated, and deprecated when compared to the [legacy LogDNA
 Agent](https://github.com/logdna/logdna-agent).
 
 
