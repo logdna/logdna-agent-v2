@@ -4,7 +4,7 @@ The LogDNA Agent for Linux collects log data from your Linux environment. The ag
 
 ## Table of Contents
   * [Installation: fresh installs](#Installation)
-  * [Upgrading: migrating from legacy Linux agent](#upgrade-migration)
+  * [Upgrading: migrating from legacy Linux agent](#upgrademigration)
   * [Usage](#usage)
     * [Enable the agent](#enable-the-agent)
     * [Configure the agent](#configure-the-agent)
@@ -20,7 +20,7 @@ echo "deb https://assets.logdna.com stable main" | sudo tee /etc/apt/sources.lis
 wget -qO - https://assets.logdna.com/logdna.gpg | sudo apt-key add -
 sudo apt-get update
 ```
-* **RPM/Red Hat-based distributions**
+* **RPM-based distributions**
 ```bash
 sudo rpm --import https://assets.logdna.com/logdna.gpg
 echo "[logdna]
@@ -31,20 +31,24 @@ gpgcheck=1
 gpgkey=https://assets.logdna.com/logdna.gpg" | sudo tee /etc/yum.repos.d/logdna.repo
 ```
 
-2. To upgrade the agent, use the commands below, based on the distro:
+2. To install the agent, use the commands below, based on the Linux distribution:
 
 * **Debian-based distributions:**
 ```bash
 sudo apt-get install logdna-agent
 ```
-* **RPM/Red Hat-based distributions:**
+* **RPM-based distributions:**
 ```bash
-sudo yum -y install logdna-agent
+sudo yum install logdna-agent
 ```
 
 ## Upgrade/migration
-└ **Note** [for users migrating from the [legacy LogDNA Agent](https://github.com/logdna/logdna-agent)]:
-> If you have previously installed the `logdna-agent` Linux package and have an existing `/etc/logdna.conf` file, it is _still_ recommended to follow the instructions below to ensure that all users are retrieving the latest version of the package from the correct source repository.
+
+---
+**NOTE**
+for users migrating from the [legacy LogDNA Agent](https://github.com/logdna/logdna-agent): If you have previously installed the `logdna-agent` Linux package and have an existing `/etc/logdna.conf` file, it is _still_ recommended to follow the instructions below to ensure that all users are retrieving the latest version of the package from the correct source repository.
+
+---
 
 1.  To download the agent and resources package, open a host terminal and run the appropriate commands based on the Linux distribution.
 
@@ -55,7 +59,7 @@ wget -qO - https://assets.logdna.com/logdna.gpg | sudo apt-key add -
 sudo apt-get update
 ```
 
-* **RPM/Red Hat-based distributions:**
+* **RPM-based distributions:**
 ```bash
 sudo rpm --import https://assets.logdna.com/logdna.gpg
 echo "[logdna]
@@ -72,7 +76,7 @@ gpgkey=https://assets.logdna.com/logdna.gpg" | sudo tee /etc/yum.repos.d/logdna.
 ```bash
 sudo apt-get upgrade logdna-agent
 ```
-* **RPM/Red Hat-based distributions:**
+* **RPM-based distributions:**
 ```bash
 sudo yum update logdna-agent
 ```
@@ -96,7 +100,7 @@ The agent uses [**systemd**](https://systemd.io/) to run as a Linux daemon. The 
 ### _Configure the agent_
 
 └ Note \[for users upgrading /migrating from the [legacy LogDNA
-Agent](https://github.com/logdna/logdna-agent)\]: Many users will likely already have a configuration file `/etc/logdna.conf` from prior installations. The LogDNA Agent 3.3 does not utilize the legacy `/etc/logdna.conf` file, but instead uses a **systemd** unit file `/etc/logdna.env`.
+Agent](https://github.com/logdna/logdna-agent)\]: Many users will likely already have a configuration file `/etc/logdna.conf` from prior installations. The LogDNA Agent 3.3 does support the legacy `/etc/logdna.conf` file by default, and additionally uses a **systemd** unit file `/etc/logdna.env`.
 
 
 1.  Create the agent's configuration file (`logdna.env`) in the `/etc` directory, using the following command:
