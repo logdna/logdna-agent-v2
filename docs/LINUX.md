@@ -1,6 +1,6 @@
 # LogDNA Agent on Linux distributions
 
-The LogDNA Agent for Linux collects log data from your Linux environment. The agent is available as a Linux package for Debian-based distributions using `apt` and Red Hat-based distributions using `yum`. If you use a different package manager that does not support `.deb` or `.rpm` files, you can still use the agent by [manually compiling the binary](https://github.com/logdna/logdna-agent-v2/blob/eb06d4f3f7c1033b494f1f0439957f96533f9225/docs/README.md#building-agent-binary-on-linux).
+The LogDNA Agent for Linux collects log data from your Linux environment. The agent is available as a Linux package for Debian-based distributions using `apt` and Red Hat-based distributions using `yum`. If you use a different package manager that does not support `.deb` or `.rpm` files, you can still use the agent by [manually compiling the binary](README.md#building-agent-binary-on-linux).
 
 ## Table of Contents
   * [Installation: fresh installs](#Installation)
