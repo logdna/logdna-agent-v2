@@ -27,7 +27,7 @@ const ROOT: &str = "/logs/agent";
 pub type FileLineCounter = Arc<Mutex<HashMap<String, FileInfo>>>;
 pub type ProcessFn = Box<dyn Fn(&IngestBody) + Send + Sync>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct FileInfo {
     pub tags: Option<String>,
     pub values: Vec<String>,
