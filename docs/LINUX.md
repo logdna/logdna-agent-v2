@@ -1,98 +1,66 @@
 # LogDNA Agent on Linux distributions
 
-The agent supports 64-bit (`x86_64`) Linux distributions and provides rpm and deb packages.
+The LogDNA Agent for Linux collects log data from your Linux environment. The agent is available as a Linux package for Debian-based distributions using `apt` and Red Hat-based distributions using `yum`. If you use a different package manager that does not support `.deb` or `.rpm` files, you can still use the agent by [manually compiling the binary](README.md#building-agent-binary-on-linux).
 
-## Installing
+## Table of Contents
+  * [Installation: fresh installs](#Installation)
+  * [Upgrading: migrating from legacy Linux agent](#upgrademigration)
+  * [Usage](#usage)
+    * [Enable the agent](#enable-the-agent)
+    * [Configure the agent](#configure-the-agent)
+    * [Run the agent](#run-the-agent)
 
-### On Debian-based distributions
+## Installation
 
-```shell script
+1. To download the agent and resources package, open a host terminal and run the appropriate commands based on the Linux distribution.
+
+* **Debian-based distributions**
+```bash
 echo "deb https://assets.logdna.com stable main" | sudo tee /etc/apt/sources.list.d/logdna.list
 wget -qO - https://assets.logdna.com/logdna.gpg | sudo apt-key add -
 sudo apt-get update
+```
+* **RPM-based distributions**
+```bash
+sudo rpm --import https://assets.logdna.com/logdna.gpg
+echo "[logdna]
+name=LogDNA packages
+baseurl=https://assets.logdna.com/el6/
+enabled=1
+gpgcheck=1
+gpgkey=https://assets.logdna.com/logdna.gpg" | sudo tee /etc/yum.repos.d/logdna.repo
+```
+
+2. To install the agent, use the commands below, based on the Linux distribution:
+
+* **Debian-based distributions:**
+```bash
 sudo apt-get install logdna-agent
 ```
-
-### On RPM-based distributions
-
-```shell script
-sudo rpm --import https://assets.logdna.com/logdna.gpg
-echo "[logdna]
-name=LogDNA packages
-baseurl=https://assets.logdna.com/el6/
-enabled=1
-gpgcheck=1
-gpgkey=https://assets.logdna.com/logdna.gpg" | sudo tee /etc/yum.repos.d/logdna.repo
-sudo yum -y install logdna-agent
+* **RPM-based distributions:**
+```bash
+sudo yum install logdna-agent
 ```
 
-## Usage
+## Upgrade/migration
 
-The agent uses [systemd](https://systemd.io/) to run as a Linux daemon.
+---
+**NOTE**
+for users migrating from the [legacy LogDNA Agent](https://github.com/logdna/logdna-agent): If you have previously installed the `logdna-agent` Linux package and have an existing `/etc/logdna.conf` file, it is _still_ recommended to follow the instructions below to ensure that all users are retrieving the latest version of the package from the correct source repository.
 
-After installing the package, you should enable it on systemd and set the ingestion key:
+---
 
-```shell script
-sudo systemctl daemon-reload
-sudo systemctl enable logdna-agent
-sudo systemctl edit logdna-agent
-```
+1.  To download the agent and resources package, open a host terminal and run the appropriate commands based on the Linux distribution.
 
-The last command above, `systemctl edit logdna-agent`, will start your default text editor with an empty systemd
-configuration file for the LogDNA Agent.
-
-Specify the [ingestion key][ingestion-key] by setting the `LOGDNA_INGESTION_KEY` environment variable:
-
-```unit file (systemd)
-[Service]
-Environment="LOGDNA_INGESTION_KEY=<YOUR INGESTION KEY HERE>"
-```
-
-The ingestion key is the only required setting, you can see all the available options using `logdna-agent --help`.
-
-For example, you can set the tags to attach to each log line using `LOGDNA_TAGS` variable:
-
-```unit file (systemd)
-[Service]
-Environment="LOGDNA_INGESTION_KEY=<YOUR INGESTION KEY HERE>"
-Environment="LOGDNA_TAGS=production"
-```
-
-After saving the configuration, start the `logdna-agent` service using the following command:
-
-```shell script
-sudo systemctl start logdna-agent
-```
-
-You can check the status of the agent using `systemctl status`:
-
-```shell script
-systemctl status logdna-agent
-```
-
-## Upgrading from the legacy LogDNA Agent for Linux
-
-The legacy LogDNA Agent for Linux used initd to start as a daemon and `.conf` files to define the settings.
-
-To upgrade, make sure you use the new repository on `https://assets.logdna.com` and run the appropriate upgrade command
-for your specific package manager.
-
-### On Debian-based distributions
-
-```shell script
-# Add the new repository
+* **Debian-based distributions:**
+```bash
 echo "deb https://assets.logdna.com stable main" | sudo tee /etc/apt/sources.list.d/logdna.list
 wget -qO - https://assets.logdna.com/logdna.gpg | sudo apt-key add -
 sudo apt-get update
-
-# Update the package
-sudo apt-get upgrade logdna-agent
 ```
 
-### On RPM-based distributions
-
-```shell script
-# Add the new repository
+* **RPM-based distributions:**
+```bash
 sudo rpm --import https://assets.logdna.com/logdna.gpg
 echo "[logdna]
 name=LogDNA packages
@@ -100,26 +68,80 @@ baseurl=https://assets.logdna.com/el6/
 enabled=1
 gpgcheck=1
 gpgkey=https://assets.logdna.com/logdna.gpg" | sudo tee /etc/yum.repos.d/logdna.repo
+```
 
-# Update the package
+2. To upgrade the agent, use the commands below, based on the distro:
+
+* **Debian-based distributions:**
+```bash
+sudo apt-get upgrade logdna-agent
+```
+* **RPM-based distributions:**
+```bash
 sudo yum update logdna-agent
 ```
 
-The agent will uninstall the previous version and reuse the existing configuration file, by default
-located in `/etc/logdna.conf`.
+## Usage
+The agent uses [**systemd**](https://systemd.io/) to run as a Linux daemon. The installed package provides a **systemd** unit file for the `logdna-agent` service, which is defined to execute a daemon process with the compiled agent binary. The process that is started in the service is managed by **systemd** and can be interfaced with using `systemctl`.
 
-If you defined a `logdna-agent.conf` configuration file on a different location, and want to use it instead, you
-can specify it on your systemd unit file:
+### _Enable the agent_
 
-```unit file (systemd)
-[Service]
-Environment="LOGDNA_CONFIG_FILE=/your/path/to/logdna.conf"
+1.  Reload the **systemd** unit files to obtain the most recent version of the agent:
+```bash
+    sudo systemctl daemon-reload
 ```
 
-"Next, restart the agent:
-
-```shell script
-sudo systemctl restart logdna-agent
+2.  Enable the `logdna-agent` service using the `systemctl` command:
+```bash
+    sudo systemctl enable logdna-agent
 ```
 
-[ingestion-key]: https://docs.logdna.com/docs/ingestion-key
+
+### _Configure the agent_
+
+---
+**NOTE** for users upgrading /migrating from the [legacy LogDNA
+Agent](https://github.com/logdna/logdna-agent)\: Many users will likely already have a configuration file `/etc/logdna.conf` from prior installations. The LogDNA Agent 3.3 does support the legacy `/etc/logdna.conf` file by default, and additionally uses a **systemd** unit file `/etc/logdna.env`.
+
+---
+
+1.  Create the agent's configuration file (`logdna.env`) in the `/etc` directory, using the following command:
+
+    ```bash
+    sudo touch /etc/logdna.env
+    ```
+    The logdna.env file can be initialized as an empty file; you will add to it in the steps below. This file stores key-value pairs as environment variables that are injected into the agent at runtime and manage a variety of configuration options.
+
+2.  Edit the `/etc/logdna.env` file and set the `LOGDNA_INGESTION_KEY` variable:
+    ```bash
+    LOGDNA_INGESTION_KEY=<YOUR INGESTION KEY HERE>
+    ```
+
+3. (_Optional_) The ingestion key is the only required variable, but you can set
+    any additional variables in order to meet your desired
+    configuration. For example, to attach a "production" tag to
+    every log line, set the `LOGDNA_TAGS` variable in the
+    `/etc/logdna.env` file:
+
+    ```bash
+    LOGDNA_TAGS=production
+    ```
+   You can see all the available variable options by running the command `logdna-agent --help` or refer to them in our [README](https://github.com/logdna/logdna-agent-v2/blob/eb06d4f3f7c1033b494f1f0439957f96533f9225/docs/README.md#options). If you're migrating from the legacy agent, take note of the variables that have are changed, updated, and deprecated when compared to the [legacy LogDNA
+Agent](https://github.com/logdna/logdna-agent).
+
+
+### _Run the agent_
+
+1.  After you have added your ingestion key and configured your desired
+    settings, save the `/etc/logdna.env` file and then start the
+    `logdna-agent` service using the `systemctl` command:
+
+    ```bash
+    sudo systemctl start logdna-agent
+    ```
+
+2.  Verify that the agent is running and log data flowing, using the
+    `systemctl` command to check the status of the agent:
+    ```bash
+    systemctl status logdna-agent
+    ```
