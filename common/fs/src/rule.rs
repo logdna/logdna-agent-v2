@@ -26,6 +26,14 @@ pub enum Status {
     Ok,
 }
 
+#[derive(std::fmt::Debug, thiserror::Error)]
+pub enum RuleError {
+    #[error("{0}")]
+    Regex(RegexError),
+    #[error("{0}")]
+    Pattern(PatternError),
+}
+
 impl Status {
     /// Converts a status into a bool, returning true if the status is ok and false otherwise
     pub fn is_ok(&self) -> bool {
@@ -106,9 +114,9 @@ pub struct RegexRule {
 
 impl RegexRule {
     /// Creates a new RegexRule from a pattern
-    pub fn new<'a, T: Into<&'a str>>(pattern: T) -> Result<Self, RegexError> {
+    pub fn new<'a, T: Into<&'a str>>(pattern: T) -> Result<Self, RuleError> {
         Ok(Self {
-            inner: Regex::new(pattern.into())?,
+            inner: Regex::new(pattern.into()).map_err(RuleError::Regex)?,
         })
     }
 }
@@ -122,7 +130,7 @@ impl Rule for RegexRule {
 }
 
 impl FromStr for RegexRule {
-    type Err = RegexError;
+    type Err = RuleError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         RegexRule::new(s)
@@ -137,9 +145,9 @@ pub struct GlobRule {
 
 impl GlobRule {
     /// Creates a new GlobRule from a pattern
-    pub fn new<'a, T: Into<&'a str>>(pattern: T) -> Result<Self, PatternError> {
+    pub fn new<'a, T: Into<&'a str>>(pattern: T) -> Result<Self, RuleError> {
         Ok(Self {
-            inner: Pattern::new(pattern.into())?,
+            inner: Pattern::new(pattern.into()).map_err(RuleError::Pattern)?,
         })
     }
 }
@@ -151,7 +159,7 @@ impl Rule for GlobRule {
 }
 
 impl FromStr for GlobRule {
-    type Err = PatternError;
+    type Err = RuleError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         GlobRule::new(s)
