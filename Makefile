@@ -66,14 +66,18 @@ else
 	PULL_OPTS :=
 endif
 
+ARCH?=x86_64
+ARCH_TRIPLE?=$(ARCH)-linux-gnu
+TARGET?=$(ARCH)-unknown-linux-gnu
 STATIC ?= 0
 ifeq ($(STATIC), 1)
-	RUSTFLAGS:=-C link-self-contained=yes -Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc -L /usr/local/x86_64-linux-musl/lib/ -l static=stdc++ $(RUSTFLAGS)
-	TARGET=x86_64-unknown-linux-musl
-	BUILD_ENVS=ROCKSDB_LIB_DIR=/usr/local/rocksdb/lib ROCKSDB_INCLUDE_DIR=/usr/local/rocksdb/include ROCKSDB_STATIC=1
+	ARCH_TRIPLE=$(ARCH)-linux-musl
+	RUSTFLAGS:=-C link-self-contained=yes -Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc -L /usr/local/$(ARCH)-linux-musl/lib/ -l static=stdc++ $(RUSTFLAGS)
+	BINDGEN_EXTRA_CLANG_ARGS:=-I /usr/local/$(ARCH)-linux-musl/include
+	TARGET=$(ARCH)-unknown-linux-musl
+	BUILD_ENVS=ROCKSDB_LIB_DIR=/usr/local/rocksdb/$(ARCH)-linux-musl/lib ROCKSDB_INCLUDE_DIR=/usr/local/rocksdb/$(ARCH)-linux-musl/include ROCKSDB_STATIC=1
 else
 	RUSTFLAGS:=
-	TARGET=
 endif
 
 CHANGE_BIN_VERSION = awk '{sub(/^version = ".+"$$/, "version = \"$(1)\"")}1' bin/Cargo.toml >> bin/Cargo.toml.tmp && mv bin/Cargo.toml.tmp bin/Cargo.toml
@@ -121,11 +125,11 @@ endif
 
 .PHONY:build
 build: ## Build the agent
-	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG)"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG)"
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
-	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && strip ./target/$(TARGET)/release/logdna-agent"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && $(ARCH_TRIPLE)-strip ./target/$(TARGET)/release/logdna-agent"
 
 .PHONY:check
 check: ## Run unit tests
