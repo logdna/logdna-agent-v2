@@ -192,6 +192,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn multi_thread_random() {
         let mut joins = Vec::new();
         let limiter = Arc::new(RateLimiter::new(2));
