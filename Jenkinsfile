@@ -144,6 +144,12 @@ pipeline {
                 branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
             }
             stages {
+                stage('Scanning Images') {
+                    steps {
+                        sh 'make sysdig_secure_images'
+                        sysdig engineCredentialsId: 'sysdig-secure-api-credentials', name: 'sysdig_secure_images', inlineScanning: true
+                    }
+                }
                 stage('Publish static binary') {
                     steps {
                         withCredentials([[
@@ -160,10 +166,6 @@ pipeline {
                                 rm ${PWD}/.aws_creds_static
                             '''
                         }
-                stage('Scanning Images') {
-                    steps {
-                        sh 'make sysdig_secure_images'
-                        sysdig engineCredentialsId: 'sysdig-secure-api-credentials', name: 'sysdig_secure_images', inlineScanning: true
                     }
                 }
                 stage('Check Publish GCR Image or Timeout') {
