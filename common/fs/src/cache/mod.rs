@@ -483,7 +483,6 @@ impl FileSystem {
         };
 
         if is_dir {
-            // Watch recursively
             let contents =
                 fs::read_dir(path).map_err(|e| Error::DirectoryListNotValid(e, path.into()))?;
             // Insert the parent directory first
@@ -495,6 +494,8 @@ impl FileSystem {
                 path: path.into(),
             };
 
+            // We use non-recursive watches and scan children manually
+            // to have the same behaviour across all platforms
             self.watcher
                 .watch(&path, RecursiveMode::NonRecursive)
                 .map_err(|e| Error::Watch(path.to_path_buf(), e))?;

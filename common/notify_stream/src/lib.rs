@@ -322,7 +322,10 @@ mod tests {
         let dir = tempdir().unwrap().into_path();
 
         let mut w = Watcher::new(DELAY);
-        w.watch(&dir, RecursiveMode::Recursive).unwrap();
+
+        // We use non-recursive watches on directories and scan children manually
+        // to have the same behaviour across all platforms
+        w.watch(&dir, RecursiveMode::NonRecursive).unwrap();
 
         let file1_path = &dir.join("file1.log");
         let mut file1 = File::create(&file1_path)?;
@@ -336,8 +339,8 @@ mod tests {
         assert!(!items.is_empty());
         is_match!(&items[0], Create, file1_path);
 
-        wait_and_append!(file1);
-        take!(stream, items);
+        // Manually add watch
+        w.watch(&file1_path, RecursiveMode::NonRecursive).unwrap();
 
         wait_and_append!(file1);
         take!(stream, items);
