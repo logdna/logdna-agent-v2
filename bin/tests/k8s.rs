@@ -15,7 +15,7 @@ async fn test_k8s_enrichment() {
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let file_path = dir.join("test.log");
     File::create(&file_path).expect("Couldn't create temp log file...");
-    let settings = AgentSettings::with_mock_ingester(&dir.to_str().unwrap(), &addr);
+    let settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &addr);
     let mut agent_handle = common::spawn_agent(settings);
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
     common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
