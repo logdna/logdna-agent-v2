@@ -192,7 +192,7 @@ impl FileSystem {
 
             let mut acc = Vec::new();
             if !fs.initial_events.is_empty() {
-                for event in std::mem::replace(&mut fs.initial_events, Vec::new()) {
+                for event in std::mem::take(&mut fs.initial_events) {
                     acc.push(event)
                 }
             }
@@ -296,7 +296,7 @@ impl FileSystem {
         // entry
         let entry_key = self.get_first_entry(watch_descriptor)?;
         let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
-        let mut path = self.resolve_direct_path(&entry, _entries);
+        let mut path = self.resolve_direct_path(entry, _entries);
         path.push(name);
 
         if let Some(new_entry) = self.insert(&path, events, _entries)? {
@@ -348,7 +348,7 @@ impl FileSystem {
         // entry
         let entry_key = self.get_first_entry(watch_descriptor)?;
         let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
-        let mut path = self.resolve_direct_path(&entry, _entries);
+        let mut path = self.resolve_direct_path(entry, _entries);
         path.push(name);
         if !self.initial_dirs.iter().any(|dir| dir.as_ref() == path) {
             self.remove(&path, events, _entries)
@@ -372,9 +372,9 @@ impl FileSystem {
         let from_entry = _entries.get(from_entry_key).ok_or(Error::Lookup)?;
         let to_entry = _entries.get(to_entry_key).ok_or(Error::Lookup)?;
 
-        let mut from_path = self.resolve_direct_path(&from_entry, _entries);
+        let mut from_path = self.resolve_direct_path(from_entry, _entries);
         from_path.push(from_name);
-        let mut to_path = self.resolve_direct_path(&to_entry, _entries);
+        let mut to_path = self.resolve_direct_path(to_entry, _entries);
         to_path.push(to_name);
 
         // the entry is expected to exist
@@ -443,7 +443,7 @@ impl FileSystem {
                     let symlink = _entries.get(*symlink_ptr);
                     if let Some(symlink) = symlink {
                         self.resolve_valid_paths_helper(
-                            &symlink,
+                            symlink,
                             paths,
                             symlink_components.clone(),
                             _entries,
@@ -479,7 +479,7 @@ impl FileSystem {
             return Ok(None);
         }
 
-        let parent_ref = self.create_dir(&path.parent().unwrap(), _entries)?;
+        let parent_ref = self.create_dir(path.parent().unwrap(), _entries)?;
         let parent_ref = self.follow_links(parent_ref, _entries);
 
         if parent_ref.is_none() {
@@ -573,7 +573,7 @@ impl FileSystem {
 
     fn register(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap) -> FsResult<()> {
         let entry = _entries.get(entry_ptr).ok_or(Error::Lookup)?;
-        let path = self.resolve_direct_path(&entry, _entries);
+        let path = self.resolve_direct_path(entry, _entries);
 
         self.watch_descriptors
             .entry(entry.watch_descriptor().clone())
@@ -593,7 +593,7 @@ impl FileSystem {
 
     fn unregister(&mut self, entry_ptr: EntryKey, _entries: &mut EntryMap) {
         if let Some(entry) = _entries.get(entry_ptr) {
-            let path = self.resolve_direct_path(&entry, _entries);
+            let path = self.resolve_direct_path(entry, _entries);
 
             let wd = entry.watch_descriptor().clone();
             let entries = match self.watch_descriptors.get_mut(&wd) {
@@ -963,9 +963,9 @@ impl FileSystem {
 
     fn entry_path_passes(&self, entry: EntryKey, name: &OsStr, _entries: &EntryMap) -> bool {
         if let Some(entry_ref) = _entries.get(entry) {
-            let mut path = self.resolve_direct_path(&entry_ref, &_entries);
+            let mut path = self.resolve_direct_path(entry_ref, _entries);
             path.push(name);
-            self.passes(&path, &_entries)
+            self.passes(&path, _entries)
         } else {
             false
         }
