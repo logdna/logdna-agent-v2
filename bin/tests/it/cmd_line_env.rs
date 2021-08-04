@@ -225,7 +225,7 @@ fn test_list_config_no_options() -> io::Result<()> {
 
 #[test]
 #[serial]
-#[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
+#[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 fn test_list_default_conf() -> io::Result<()> {
     let file_path = Path::new("/etc/logdna.conf");
     fs::write(file_path, "key = 1234\ntags = sample_tag_on_conf")?;

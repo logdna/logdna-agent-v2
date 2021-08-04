@@ -477,7 +477,7 @@ fn test_files_other_than_dot_log_should_be_not_included_by_default() {
 }
 
 #[test]
-#[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
+#[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 fn test_dangling_symlinks() {
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
@@ -508,7 +508,7 @@ fn test_dangling_symlinks() {
 }
 
 #[test]
-#[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
+#[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 fn test_append_after_symlinks_delete() {
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
@@ -539,7 +539,7 @@ fn test_append_after_symlinks_delete() {
 }
 
 #[test]
-#[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
+#[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 fn test_directory_symlinks_delete() {
     let _ = env_logger::Builder::from_default_env().try_init();
@@ -1108,7 +1108,7 @@ async fn test_symlink_initialization_both_included() {
 }
 
 #[tokio::test]
-#[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
+#[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 async fn test_symlink_initialization_excluded_file() {
     let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
@@ -1158,7 +1158,7 @@ async fn test_symlink_initialization_excluded_file() {
 }
 
 #[tokio::test]
-#[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
+#[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 async fn test_symlink_to_symlink_initialization_excluded_file() {
     let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
@@ -1209,7 +1209,7 @@ async fn test_symlink_to_symlink_initialization_excluded_file() {
 }
 
 #[tokio::test]
-#[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
+#[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 async fn test_symlink_to_hardlink_initialization_excluded_file() {
     let _ = env_logger::Builder::from_default_env().try_init();
@@ -1314,7 +1314,7 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
 }
 
 #[tokio::test]
-#[cfg_attr(all(target_os = "linux", feature = "integration_tests"), ignore)]
+#[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 async fn test_symlink_initialization_with_stateful_lookback() {
     let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
