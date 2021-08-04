@@ -74,15 +74,17 @@ pipeline {
                 }
                 stage('Run K8s Integration Tests') {
                     steps {
-                        withCredentials([[
-                                                 $class: 'AmazonWebServicesCredentialsBinding',
-                                                 credentialsId: 'aws',
-                                                 accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                                 secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                         ]]) {
-                            sh '''
+                        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                            withCredentials([[
+                                              $class: 'AmazonWebServicesCredentialsBinding',
+                                              credentialsId: 'aws',
+                                              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                             ]]) {
+                                sh '''
                                     make k8s-test
-                            '''
+                                '''
+                            }
                         }
                     }
                 }
@@ -158,6 +160,10 @@ pipeline {
                                 rm ${PWD}/.aws_creds_static
                             '''
                         }
+                stage('Scanning Images') {
+                    steps {
+                        sh 'make sysdig_secure_images'
+                        sysdig engineCredentialsId: 'sysdig-secure-api-credentials', name: 'sysdig_secure_images', inlineScanning: true
                     }
                 }
                 stage('Check Publish GCR Image or Timeout') {
