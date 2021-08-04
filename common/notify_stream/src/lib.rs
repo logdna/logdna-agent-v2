@@ -339,6 +339,9 @@ mod tests {
         wait_and_append!(file1);
         take!(stream, items);
 
+        wait_and_append!(file1);
+        take!(stream, items);
+
         is_match!(&items[1], Write, file1_path);
         Ok(())
     }
