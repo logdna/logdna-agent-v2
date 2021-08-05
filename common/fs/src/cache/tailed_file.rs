@@ -1,8 +1,8 @@
+use crate::cache::get_inode;
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::fs::OpenOptions;
 use std::ops::DerefMut;
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -322,12 +322,12 @@ pub struct TailedFile<T> {
 
 impl<T> TailedFile<T> {
     pub(crate) fn new(
-        path: &std::path::Path,
+        path: &Path,
         initial_offsets: SpanVec,
         resume_events_sender: Option<Sender<(u64, OffsetDateTime)>>,
     ) -> Result<Self, std::io::Error> {
         let file = OpenOptions::new().read(true).open(path)?;
-        let inode = get_inode(path, &file)?;
+        let inode = get_inode(path, Some(&file))?;
         Ok(Self {
             inner: Arc::new(Mutex::new(TailedFileInner {
                 reader: BufReader::new(tokio::fs::File::from_std(file)).compat(),
@@ -340,38 +340,6 @@ impl<T> TailedFile<T> {
             _phantom: std::marker::PhantomData::<T>,
         })
     }
-
-    pub(crate) async fn seek(&mut self, offset: u64) -> Result<(), std::io::Error> {
-        let mut inner = self.inner.lock().await;
-        inner.offset = offset;
-        inner
-            .reader
-            .get_mut()
-            .get_mut()
-            .seek(SeekFrom::Start(offset))
-            .await?;
-        Ok(())
-    }
-
-    pub(crate) async fn get_inode(&self) -> u64 {
-        let inner = self.inner.lock().await;
-        inner.inode
-    }
-}
-
-#[cfg(unix)]
-fn get_inode(path: &Path, _file: &std::fs::File) -> std::io::Result<u64> {
-    use std::os::unix::fs::MetadataExt;
-
-    Ok(path.metadata()?.ino())
-}
-
-#[cfg(windows)]
-fn get_inode(_path: &Path, file: &std::fs::File) -> std::io::Result<u64> {
-    use winapi_util::AsHandleRef;
-
-    let h = file.as_handle_ref();
-    return Ok(winapi_util::file::information(h)?.file_index());
 }
 
 impl TailedFile<LineBuilder> {

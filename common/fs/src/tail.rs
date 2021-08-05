@@ -32,11 +32,11 @@ pub struct Tailer {
 
 fn get_file_for_path(fs: &FileSystem, next_path: &std::path::Path) -> Option<EntryKey> {
     let entries = fs.entries.borrow();
-    let mut next_path = next_path;
-    loop {
+    let mut next_path_opt = Some(next_path);
+    while let Some(next_path) = next_path_opt {
         let next_entry_key = fs.lookup(next_path, &entries)?;
         match entries.get(next_entry_key) {
-            Some(Entry::Symlink { link, .. }) => next_path = link,
+            Some(Entry::Symlink { ref link, .. }) => next_path_opt = link.as_deref(),
             Some(Entry::File { .. }) => return Some(next_entry_key),
             _ => break,
         }
@@ -55,38 +55,43 @@ async fn handle_event(
             // will initiate a file to it's current length
             let entries = fs.entries.borrow();
             let entry = entries.get(entry_ptr)?;
-            let path = entry.path().to_path_buf();
+            let paths = fs.resolve_valid_paths(entry, &entries);
             match entry {
                 Entry::File { data, .. } => {
                     let path_display = entry.path().display();
                     // If the file's passes the rules tail it
                     info!("initialize event for file {}", path_display);
-                    if fs.is_initial_dir_target(&path) {
-                        return data.borrow_mut().tail(vec![path]).await;
+                    if fs.is_initial_dir_target(&entry.path()) {
+                        return data.borrow_mut().tail(paths).await;
                     }
                 }
-                Entry::Symlink { link, .. } => {
+                Entry::Symlink { link, path } => {
                     let sym_path = path;
-                    let final_target = get_file_for_path(&fs, link)?;
+                    if let Some(link) = link {
+                        let final_target = get_file_for_path(fs, link)?;
 
-                    let entries = &fs.entries.borrow();
-                    let path = entries.get(final_target)?.path();
+                        let entries = &fs.entries.borrow();
+                        let final_entry = entries.get(final_target)?;
+                        let paths = fs.resolve_valid_paths(final_entry, &entries);
+                        debug!("paths: {:#?}", paths);
+                        let path = final_entry.path();
 
-                    info!(
-                        "initialize event for symlink {}, final target {}",
-                        sym_path.display(),
-                        path.display()
-                    );
-
-                    let entry_key = get_file_for_path(fs, &path)?;
-                    if let Entry::File { data, .. } = &entries.get(entry_key)? {
                         info!(
-                            "initialized symlink {:?} as {:?}",
+                            "initialize event for symlink {}, final target {}",
                             sym_path.display(),
-                            final_target
+                            path.display()
                         );
-                        let mut data = data.borrow_mut();
-                        return data.tail(vec![sym_path]).await;
+
+                        let entry_key = get_file_for_path(fs, path)?;
+                        if let Entry::File { data, .. } = &entries.get(entry_key)? {
+                            info!(
+                                "initialized symlink {:?} as {:?}",
+                                sym_path.display(),
+                                final_target
+                            );
+                            let mut data = data.borrow_mut();
+                            return data.tail(paths).await;
+                        }
                     }
                 }
                 _ => (),
@@ -98,10 +103,13 @@ async fn handle_event(
             // similar to initiate but sets the offset to 0
             let entries = fs.entries.borrow();
             let entry = entries.get(entry_ptr)?;
-            let path = entry.path().to_path_buf();
+            let paths = fs.resolve_valid_paths(entry, &entries);
+            if paths.is_empty() {
+                return None;
+            }
             if let Entry::File { data, .. } = entry {
-                info!("added {:?}", path);
-                return data.borrow_mut().tail(vec![path]).await;
+                info!("added {:?}", paths[0]);
+                return data.borrow_mut().tail(paths).await;
             }
         }
         Event::Write(entry_ptr) => {
@@ -109,10 +117,14 @@ async fn handle_event(
             debug!("Write Event");
             let entries = fs.entries.borrow();
             let entry = entries.get(entry_ptr)?;
-            let path = entry.path().to_path_buf();
+
+            let paths = fs.resolve_valid_paths(entry, &entries);
+            if paths.is_empty() {
+                return None;
+            }
 
             if let Entry::File { data, .. } = entry {
-                return data.borrow_mut().deref_mut().tail(vec![path]).await;
+                return data.borrow_mut().deref_mut().tail(paths).await;
             }
         }
         Event::Delete(entry_ptr) => {
@@ -121,22 +133,27 @@ async fn handle_event(
             let ret = {
                 let entries = fs.entries.borrow();
                 let mut entry = entries.get(entry_ptr)?;
-                let path = entry.path().to_path_buf();
 
-                if let Entry::Symlink { link, .. } = entry {
-                    if let Some(real_entry) = fs.lookup(link, &entries) {
-                        if let Some(r_entry) = entries.get(real_entry) {
-                            entry = r_entry
-                        }
-                    } else {
-                        info!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", path);
-                    }
-                }
-
-                if let Entry::File { data, .. } = entry {
-                    data.borrow_mut().deref_mut().tail(vec![path]).await
-                } else {
+                let paths = fs.resolve_valid_paths(entry, &entries);
+                if paths.is_empty() {
                     None
+                } else {
+                    if let Entry::Symlink { link, .. } = entry {
+                        if let Some(link) = link {
+                            if let Some(real_entry) = fs.lookup(link, &entries) {
+                                if let Some(r_entry) = entries.get(real_entry) {
+                                    entry = r_entry
+                                }
+                            } else {
+                                info!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths);
+                            }
+                        }
+                    }
+                    if let Entry::File { data, .. } = entry {
+                        data.borrow_mut().deref_mut().tail(paths).await
+                    } else {
+                        None
+                    }
                 }
             };
             {
@@ -323,8 +340,6 @@ where
 mod test {
     use super::*;
     use crate::rule::{RuleDef, Rules};
-    use crate::test::LOGGER;
-    use http::types::body::LineBufferMut;
     use pin_utils::pin_mut;
     use std::cell::Cell;
     use std::convert::TryInto;
@@ -397,9 +412,7 @@ mod test {
                     DELAY,
                 );
 
-                let stream = process(tailer)
-                    .expect("failed to read events")
-                    .timeout(std::time::Duration::from_millis(500));
+                let stream = process(tailer).expect("failed to read events");
                 pin_mut!(stream);
 
                 let events = take_events!(stream);
@@ -446,15 +459,13 @@ mod test {
                     DELAY,
                 );
 
-                let stream = process(tailer)
-                    .expect("failed to read events")
-                    .timeout(std::time::Duration::from_millis(500));
+                let stream = process(tailer).expect("failed to read events");
                 pin_mut!(stream);
 
                 let events = take_events!(stream);
                 assert_eq!(events.len(), 0);
 
-                tokio::time::sleep(Duration::from_millis(500)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
 
                 let log_lines2 = "This is a test log line2";
                 writeln!(file, "{}", log_lines2).expect("Couldn't write to temp log file...");
@@ -480,8 +491,9 @@ mod test {
 
                 let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
                 let line_write_count = (8_388_608 / (log_lines.as_bytes().len() + 1)) + 1;
-                (0..line_write_count).for_each(|_| {
-                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...")
+                (0..line_write_count).for_each(|i| {
+                    writeln!(file, "{}, {}", log_lines, i)
+                        .expect("Couldn't write to temp log file...")
                 });
                 file.sync_all().expect("Failed to sync file");
 
@@ -496,9 +508,7 @@ mod test {
                     DELAY,
                 );
 
-                let stream = process(tailer)
-                    .expect("failed to read events")
-                    .timeout(std::time::Duration::from_millis(500));
+                let stream = process(tailer).expect("failed to read events");
                 pin_mut!(stream);
 
                 let events = take_events!(stream);

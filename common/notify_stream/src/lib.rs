@@ -94,10 +94,12 @@ impl Watcher {
         let (async_tx, rx) = async_channel::unbounded();
         tokio::task::spawn_blocking(move || {
             while let Ok(event) = blocking_rx.recv() {
+                log::trace!("received {:#?} from blocking_rx", event);
                 // Safely ignore closed error as it's caused by the runtime being dropped
                 // It can't result in a `TrySendError::Full` as it's an unbounded channel
                 let _ = async_tx.try_send(event);
             }
+            log::info!("Shutting down watcher");
         });
 
         Self {
@@ -108,11 +110,13 @@ impl Watcher {
 
     /// Adds a new directory or file to watch
     pub fn watch<P: AsRef<Path>>(&mut self, path: P, mode: RecursiveMode) -> Result<(), Error> {
+        log::trace!("watching {:?}", path.as_ref());
         self.watcher.watch(path, mode.into()).map_err(|e| e.into())
     }
 
     /// Removes a file or directory
     pub fn unwatch<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
+        log::trace!("unwatching {:?}", path.as_ref());
         self.watcher.unwatch(path).map_err(|e| e.into())
     }
 
@@ -120,6 +124,7 @@ impl Watcher {
     ///
     /// Returns Ok(true) when watch was found and removed.
     pub fn unwatch_if_exists<P: AsRef<Path>>(&mut self, path: P) -> Result<bool, Error> {
+        log::trace!("unwatching {:?} if it exists", path.as_ref());
         match self.watcher.unwatch(path).map_err(|e| e.into()) {
             Ok(_) => Ok(true),
             Err(e) => match e {
@@ -136,6 +141,7 @@ impl Watcher {
         stream::unfold(rx, |rx| async move {
             loop {
                 let received = rx.recv().await.expect("channel can not be closed");
+                log::info!("received raw notify event: {:?}", received);
                 if let Some(mapped_event) = match received {
                     DebouncedEvent::NoticeRemove(p) => Some(Event::Remove(p)),
                     DebouncedEvent::Create(p) => Some(Event::Create(p)),
@@ -276,12 +282,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_create_file_after_dir_watch() -> io::Result<()> {
+        let _ = env_logger::Builder::from_default_env().try_init();
+
+        let dir = tempdir().unwrap().into_path();
+        let dir_path = &dir;
+
+        let mut w = Watcher::new(DELAY);
+        w.watch(dir_path, RecursiveMode::Recursive).unwrap();
+
+        let stream = w.receive();
+        pin_mut!(stream);
+
+        let mut items = Vec::new();
+        take!(stream, items);
+        assert!(items.is_empty());
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
+        let file1_path = dir_path.join("file1.log");
+        let mut file1 = File::create(&file1_path)?;
+        append!(file1);
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let mut items = Vec::new();
+        take!(stream, items);
+        // Depending on timers, it will get debounced or not :(
+        assert!(!items.is_empty());
+        is_match!(&items[0], Create, file1_path);
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn test_create_write_delete() -> io::Result<()> {
         let dir = tempdir().unwrap();
         let dir_path = dir.path();
 
         let mut w = Watcher::new(DELAY);
-        w.watch(dir_path, RecursiveMode::Recursive).unwrap();
+        // Copy the same behaviour we use
+        w.watch(dir_path, RecursiveMode::NonRecursive).unwrap();
 
         let file_path = dir_path.join("file1.log");
         let mut file = File::create(&file_path)?;
@@ -293,12 +332,17 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
         let mut items = Vec::new();
         take!(stream, items);
+
         // Depending on timers, it can get debounced into a single create
         assert!(!items.is_empty());
         is_match!(&items[0], Create, file_path);
 
+        // Manually add watch to file
+        w.watch(&file_path, RecursiveMode::NonRecursive).unwrap();
+
         wait_and_append!(file);
         fs::remove_file(&file_path)?;
+
         take!(stream, items);
 
         let is_equal = |p: &PathId| p.as_os_str() == file_path.as_os_str();

@@ -131,10 +131,10 @@ TEST_RULES=
 define TEST_RULE
 TEST_RULES=$(TEST_RULES)test-$(1): <> Run unit tests for $(1) crate\\n
 test-$(1):
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=1 --env RUST_LOG=$(RUST_LOG)" "cargo test -p $(1) $(TESTS) -- --nocapture"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=1 --env RUST_LOG=$(RUST_LOG)" "cargo nextest run -p $(1) $(TESTS) --no-fail-fast --nocapture"
 endef
 
-CRATES=$(shell sed -e '/members/,/]/!d' Cargo.toml | tail -n +2 | $(_TAC) | tail -n +2 | $(_TAC) | sed 's/,//' | xargs -n1 -I{} sh -c 'grep -E "^name *=" {}/Cargo.toml | tail -n1' | sed 's/name *= *"\([A-Za-z0-9_\-]*\)"/\1/' | awk '!/journald/{print $0}')
+CRATES=$(shell sed -e '/members/,/]/!d' Cargo.toml | tail -n +2 | $(_TAC) | tail -n +2 | $(_TAC) | sed 's/,//' | xargs -I{} sh -c 'grep -E "^name *=" {}/Cargo.toml | tail -n1' | sed 's/name *= *"\([A-Za-z0-9_\-]*\)"/\1/' | awk '!/journald/{print $0}')
 $(foreach _crate, $(CRATES), $(eval $(call TEST_RULE,$(strip $(_crate)))))
 
 BUILD_ENV_DOCKER_ARGS=
@@ -176,7 +176,7 @@ unit-test:
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
 	$(eval FEATURES := $(FEATURES) integration_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) -- --nocapture $(TEST_THREADS_ARG)"
+	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run --no-fail-fast $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) $(TEST_THREADS_ARG)"
 
 .PHONY:k8s-test
 k8s-test: build-image-debian ## Run integration tests using k8s kind

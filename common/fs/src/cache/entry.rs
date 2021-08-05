@@ -19,7 +19,7 @@ pub enum Entry {
     },
     Symlink {
         /// The target of the symlink
-        link: PathBuf,
+        link: Option<PathBuf>,
         path: PathBuf,
     },
 }
@@ -43,7 +43,7 @@ impl Entry {
 
     pub fn link(&self) -> Option<&PathBuf> {
         match self {
-            Entry::Symlink { link, .. } => Some(link),
+            Entry::Symlink { link, .. } => link.as_ref(),
             _ => None,
         }
     }

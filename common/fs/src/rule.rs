@@ -1,12 +1,10 @@
 use std::fmt::Debug;
 use std::path::Path;
 
-use core::fmt;
 use glob::{Pattern, PatternError};
+use os_str_bytes::OsStrBytes;
 use pcre2::{bytes::Regex, Error as RegexError};
 
-#[cfg(unix)]
-use std::os::unix::ffi::OsStrExt;
 /// A trait for implementing a rule, see GlobRule/RegexRule for an example
 pub trait Rule {
     /// Takes a value and returns true or false based on if it matches
@@ -39,7 +37,9 @@ impl RuleDef {
 impl Rule for RuleDef {
     fn matches(&self, value: &Path) -> bool {
         match self {
-            Self::RegexRule(re) => re.is_match(value.as_os_str().as_bytes()).unwrap_or(false),
+            Self::RegexRule(re) => re
+                .is_match(&value.as_os_str().to_raw_bytes())
+                .unwrap_or(false),
             Self::GlobRule(p) => p.matches(&value.to_string_lossy()),
         }
     }

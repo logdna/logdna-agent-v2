@@ -36,14 +36,14 @@ async-trait = "0.1"
 kube = { version = "0.73", default-features = false, features = ["rustls-tls"] }
 log = "0.4"
 env_logger = "0.9"
-anyhow = "1"
+anyhow = { version = "1", optional = true }
 serde_yaml = "0.8"
 futures = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "signal", "time"] }
 tokio-stream = "0.1"
 pin-utils = "0.1"
 regex = "1"
-auditable = "0.1"
+auditable = { version = "0.1", optional = true }
 miniz_oxide = "0.5"
 
 [target.'cfg(any(unix, macos))'.dependencies]
@@ -51,19 +51,20 @@ capctl = "0.2"
 
 # Dependency for linux integration tests
 [target.'cfg(target_os="linux")'.dependencies]
-systemd = { package = "systemd", version = "0.7" }
+systemd = { package = "systemd", version = "0.7", optional = true}
 
 [target.'cfg(unix)'.dependencies]
 tikv-jemallocator  = { version = "0.5", default-features = false, features = ["stats"] }
 
 [features]
-default = []
+default = ["dep_audit"]
+dep_audit = ["auditable", "auditable-build", "anyhow"]
 integration_tests = []
 profiling = ["tikv-jemallocator/profiling"]
 slow_tests = []
 k8s_tests = []
-libjournald = ["journald/libjournald"]
-journald_tests = ["journald/journald_tests"]
+libjournald = ["journald/libjournald", "systemd" ]
+journald_tests = ["journald/journald_tests", "systemd" ]
 
 [dev-dependencies]
 assert_cmd = "2"
@@ -99,7 +100,7 @@ serial_test = "0.8"
 systemd = { package = "systemd", version = "0.7" }
 
 [build-dependencies]
-auditable-build = "0.1"
+auditable-build = { version = "0.1", optional = true }
 
 [profile.release]
 opt-level = 2

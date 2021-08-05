@@ -28,7 +28,6 @@ use middleware::line_rules::LineRules;
 use middleware::meta_rules::{MetaRules, MetaRulesConfig};
 use middleware::Executor;
 
-use config::env_vars;
 use pin_utils::pin_mut;
 use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
@@ -37,11 +36,12 @@ use tokio::signal::*;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
 
+#[cfg(feature = "dep_audit")]
 mod dep_audit;
 mod stream_adapter;
 
-/// Debounce filesystem event with a delay of hundreds of milliseconds
-static FS_EVENT_DELAY: Duration = Duration::from_millis(500);
+/// Debounce filesystem event
+static FS_EVENT_DELAY: Duration = Duration::from_millis(10);
 
 #[cfg(unix)]
 #[global_allocator]
@@ -71,7 +71,7 @@ fn main() {
         // - docker
         if (std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
             || std::path::Path::new("/.dockerenv").exists())
-            && std::env::var_os(env_vars::NO_CAP).is_none()
+            && std::env::var_os(config::env_vars::NO_CAP).is_none()
         {
             match set_capabilities() {
                 Ok(r) if r => debug!("Using Capabilities to bypass filesystem permissions"),
@@ -97,6 +97,7 @@ fn main() {
 async fn _main() {
     // Actually use the data to work around a bug in rustc:
     // https://github.com/rust-lang/rust/issues/47384
+    #[cfg(feature = "dep_audit")]
     dep_audit::get_auditable_dependency_list()
         .map_or_else(|e| trace!("{}", e), |d| trace!("{}", d));
 
@@ -107,6 +108,20 @@ async fn _main() {
             std::process::exit(1);
         }
     };
+
+    tokio::spawn(async {
+        Metrics::log_periodically().await;
+    });
+
+    if let Some(port) = config.log.metrics_port {
+        info!("Enabling prometheus endpoint with agent metrics");
+        tokio::spawn(async move {
+            // Should panic when server exits
+            http::metrics_endpoint::serve(&port)
+                .await
+                .expect("metrics server error");
+        });
+    }
 
     let mut _agent_state = None;
     let mut offset_state = None;
@@ -305,10 +320,8 @@ async fn _main() {
 
     let fs_source = tail::RestartingTailer::new(
         ds_source_params,
-        |item| match item {
-            // TODO check for any conditions that require the tailer to restart
-            _ => false,
-        },
+        // TODO check for any conditions that require the tailer to restart
+        |_item| false,
         |params| {
             let watched_dirs = params.0.clone();
             let rules = params.1.clone();
@@ -517,20 +530,6 @@ async fn _main() {
                 .expect("Join Error")
             }
         });
-
-    tokio::spawn(async {
-        Metrics::log_periodically().await;
-    });
-
-    if let Some(port) = config.log.metrics_port {
-        info!("Enabling prometheus endpoint with agent metrics");
-        tokio::spawn(async move {
-            // Should panic when server exits
-            http::metrics_endpoint::serve(&port)
-                .await
-                .expect("metrics server error");
-        });
-    }
 
     // Concurrently run the line streams and listen for the `shutdown` signal
     tokio::select! {
