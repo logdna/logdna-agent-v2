@@ -280,7 +280,8 @@ mod tests {
         let dir_path = dir.path();
 
         let mut w = Watcher::new(DELAY);
-        w.watch(dir_path, RecursiveMode::Recursive).unwrap();
+        // Copy the same behaviour we use
+        w.watch(dir_path, RecursiveMode::NonRecursive).unwrap();
 
         let file_path = dir_path.join("file1.log");
         let mut file = File::create(&file_path)?;
@@ -292,12 +293,17 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(500)).await;
         let mut items = Vec::new();
         take!(stream, items);
+
         // Depending on timers, it can get debounced into a single create
         assert!(!items.is_empty());
         is_match!(&items[0], Create, file_path);
 
+        // Manually add watch to file
+        w.watch(&file_path, RecursiveMode::NonRecursive).unwrap();
+
         wait_and_append!(file);
         fs::remove_file(&file_path)?;
+
         take!(stream, items);
 
         let is_equal = |p: &PathId| p.as_os_str() == file_path.as_os_str();
