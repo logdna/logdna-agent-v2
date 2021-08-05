@@ -163,6 +163,7 @@ pipeline {
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static
                                 STATIC=1 make publish-s3-binary
+                                ARCH=aarch64 STATIC=1 make publish-s3-binary
                                 rm ${PWD}/.aws_creds_static
                             '''
                         }
