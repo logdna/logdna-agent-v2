@@ -1,0 +1,666 @@
+//use common::AgentSettings;
+//use std::fs::File;
+//use std::io::BufReader;
+use pnet::datalink;
+use std::net::{SocketAddr, ToSocketAddrs};
+use tempfile::tempdir;
+
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
+
+use futures::{StreamExt, TryStreamExt};
+
+use k8s_openapi::api::apps::v1::DaemonSet;
+use k8s_openapi::api::core::v1::{Endpoints, Pod, Service};
+use kube::api::{Api, ListParams, PostParams, Resource, WatchEvent};
+use kube::Client;
+
+mod common;
+
+// workaround for unused functions in different features: https://github.com/rust-lang/rust/issues/46379
+pub use common::*;
+
+async fn start_line_proxy_pod(
+    client: Client,
+    pod_name: &str,
+    namespace: &str,
+    node_port: u16,
+) -> SocketAddr {
+    //// Create socat pod
+    let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
+    let services: Api<Service> = Api::namespaced(client.clone(), namespace);
+
+    let pod = serde_json::from_value(serde_json::json!({
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "metadata": {
+            "name": pod_name,
+            "labels": {
+                "app": pod_name,
+                "app.kubernetes.io/name": pod_name,
+                "app.kubernetes.io/instance": format!("{}-instance", pod_name),
+            },
+        },
+        "spec": {
+            "containers": [
+                {
+                    "name": pod_name,
+                    "image": "alpine/socat",
+                    "ports": [
+                        {
+                            "name": "tcp-socat",
+                            "containerPort": 80,
+                            "protocol": "TCP"
+                        },
+                    ],
+                    "readinessProbe": {
+                        "tcpSocket": {
+                            "port": 80
+                        },
+                        "periodSeconds": 1,
+                    },
+                    "livenessProbe": {
+                        "tcpSocket" : {
+                            "port": 80,
+                        },
+                        "periodSeconds": 1,
+                    },
+                    "command": [
+                        "sh",
+                        "-c",
+                        "socat TCP-LISTEN:80,fork,reuseaddr stdio"
+                    ],
+                },
+            ]
+        }
+    }))
+    .unwrap();
+
+    let service = serde_json::from_value(serde_json::json!({
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {
+            "name": pod_name,
+            "labels": {
+                "app": pod_name,
+            },
+        },
+        "spec": {
+            "type": "NodePort",
+            "selector": {
+                "app": pod_name,
+            },
+            "ports": [
+                {
+                    "protocol": "TCP",
+                    "port": 80,
+                    "nodePort": node_port,
+                }
+            ],
+        }
+    }))
+    .unwrap();
+
+    // Create the pod
+    let pod = pods.create(&PostParams::default(), &pod).await.unwrap();
+    let service = services
+        .create(&PostParams::default(), &service)
+        .await
+        .unwrap();
+
+    //// Wait for pod
+
+    // Start a watch call for pods matching our name
+    let lp = ListParams::default()
+        .fields(&format!("metadata.name={}", pod_name))
+        .timeout(60);
+    let mut stream = pods.watch(&lp, "0").await.unwrap().boxed();
+
+    // Observe the pods phase for up to 60 seconds
+    'outer: while let Some(status) = stream.try_next().await.unwrap() {
+        match status {
+            WatchEvent::Added(o) => {
+                let s = o.status.as_ref().expect("status exists on pod");
+
+                let phase = s.phase.clone().unwrap_or_default();
+                println!("Added: {} with phase: {}", Resource::name(&o), phase);
+                if let Some(container_statuses) = s.container_statuses.as_ref() {
+                    for status in container_statuses {
+                        if status.ready {
+                            break 'outer;
+                        }
+                    }
+                }
+            }
+            WatchEvent::Modified(o) => {
+                let s = o.status.as_ref().expect("status exists on pod");
+                let phase = s.phase.clone().unwrap_or_default();
+                println!("Modified: {} with phase: {}", Resource::name(&o), phase);
+                if let Some(container_statuses) = s.container_statuses.as_ref() {
+                    for status in container_statuses {
+                        if status.ready {
+                            break 'outer;
+                        }
+                    }
+                }
+            }
+            WatchEvent::Deleted(o) => println!("Deleted {}", Resource::name(&o)),
+            WatchEvent::Error(e) => println!("Error {}", e),
+            _ => {}
+        }
+    }
+
+    let pods = pods.list(&lp).await.unwrap();
+    let pod_addr = pods
+        .iter()
+        .next()
+        .as_ref()
+        .expect("pod exists")
+        .status
+        .as_ref()
+        .expect("status exists for pod")
+        .host_ip
+        .as_ref()
+        .expect("pod has a host ip")
+        .parse::<std::net::IpAddr>()
+        .expect("host IP should be an IP")
+        .clone();
+    // Get the IP for the node port
+    SocketAddr::new(pod_addr, node_port)
+}
+
+fn ingester_public_addr(ingester_addr: impl ToSocketAddrs) -> SocketAddr {
+    let default_ip = datalink::interfaces()
+        .iter()
+        .find(|e| e.is_up() && !e.is_loopback() && !e.ips.is_empty())
+        .expect("container should have an interface")
+        .ips
+        .iter()
+        .next()
+        .expect("container should have an IP")
+        .ip();
+    let ingester_addr = ingester_addr
+        .to_socket_addrs()
+        .expect("Addr should be valid")
+        .next()
+        .unwrap();
+    SocketAddr::new(default_ip, ingester_addr.port())
+}
+
+async fn create_mock_ingester_service(
+    client: Client,
+    ingester_addr: SocketAddr,
+    service_name: &str,
+    service_namespace: &str,
+    service_port: u16,
+) -> String {
+    //// Set up mock ingester service
+    let ingest_service = serde_json::from_value(serde_json::json!({
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {
+            "name": service_name,
+        },
+        "spec": {
+            "ports": [
+                {
+                    "name": service_name,
+                    "protocol": "TCP",
+                    "port": service_port,
+                    "targetPort": ingester_addr.port(),
+                    "nodePort": 0,
+                }
+            ],
+        }
+    }))
+    .unwrap();
+
+    let agent_services: Api<Service> = Api::namespaced(client.clone(), service_namespace);
+    let ingest_service = agent_services
+        .create(&PostParams::default(), &ingest_service)
+        .await
+        .unwrap();
+
+    let ingest_cluster_ip = ingest_service
+        .spec
+        .as_ref()
+        .unwrap()
+        .cluster_ip
+        .as_ref()
+        .unwrap();
+
+    let ingest_endpoint = serde_json::from_value(serde_json::json!({
+        "apiVersion": "v1",
+        "kind": "Endpoints",
+        "metadata": {
+            "name": service_name,
+        },
+        "subsets": [
+            {
+                "addresses": [
+                    { "ip": ingester_addr.ip() }
+                ],
+                "ports": [
+                    {
+                        "name": service_name,
+                        "port": ingester_addr.port(),
+                    }
+                ],
+            },
+        ],
+    }))
+    .unwrap();
+
+    let agent_endpoints: Api<Endpoints> = Api::namespaced(client.clone(), service_namespace);
+    let ingest_endpoint = agent_endpoints
+        .create(&PostParams::default(), &ingest_endpoint)
+        .await
+        .unwrap();
+
+    // format!("{}.{}.svc.cluster.local:{}", service_name, service_namespace, service_port)
+    format!("{}:{}", ingest_cluster_ip, service_port)
+}
+
+async fn create_agent_ds(
+    client: Client,
+    agent_name: &str,
+    agent_namespace: &str,
+    ingester_addr: &str,
+) -> () {
+    //// Set up agent
+    let ds = get_agent_ds_yaml(
+        "logdna-agent-kind:building",
+        ingester_addr,
+        "false",
+        agent_name,
+    );
+    //
+    let dss: Api<DaemonSet> = Api::namespaced(client.clone(), agent_namespace);
+
+    let ds = dss.create(&PostParams::default(), &ds).await.unwrap();
+
+    let agent_pods: Api<Pod> = Api::namespaced(client.clone(), agent_namespace);
+
+    let lp = ListParams::default()
+        .fields(&format!("metadata.name={}", agent_name))
+        .timeout(60);
+    let mut stream = agent_pods.watch(&lp, "0").await.unwrap().boxed();
+
+    println!("Waiting for agent");
+    // Observe the pods phase for up to 60 seconds
+    'ds_outer: while let Some(status) = stream.try_next().await.unwrap() {
+        match status {
+            WatchEvent::Added(o) => {
+                let s = o.status.as_ref().expect("status exists on pod");
+
+                let phase = s.phase.clone().unwrap_or_default();
+                println!("Added: {} with phase: {}", Resource::name(&o), phase);
+                if let Some(container_statuses) = s.container_statuses.as_ref() {
+                    for status in container_statuses {
+                        if status.ready {
+                            break 'ds_outer;
+                        }
+                    }
+                }
+            }
+            WatchEvent::Modified(o) => {
+                let s = o.status.as_ref().expect("status exists on pod");
+                let phase = s.phase.clone().unwrap_or_default();
+                println!("Modified: {} with phase: {}", Resource::name(&o), phase);
+                if let Some(container_statuses) = s.container_statuses.as_ref() {
+                    for status in container_statuses {
+                        if status.ready {
+                            break 'ds_outer;
+                        }
+                    }
+                }
+            }
+            WatchEvent::Deleted(o) => println!("Deleted {}", Resource::name(&o)),
+            WatchEvent::Error(e) => println!("Error {}", e),
+            _ => {}
+        }
+    }
+    tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+    println!("Agent ready");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "k8s_tests"), ignore)]
+async fn test_k8s_enrichment() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();
+
+    let ingester_public_addr = ingester_public_addr(ingester_addr);
+
+    let client = Client::try_default().await.unwrap();
+
+    let pod_name = "socat-listener";
+    let pod_node_addr = start_line_proxy_pod(client.clone(), pod_name, "default", 30000).await;
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    println!("Pod addr: {:?}", pod_node_addr);
+
+    let (server_result, _) = tokio::join!(server, async {
+        // common::append_to_file(&file_path, 10, 5).unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        // Create Agent
+        let agent_namespace = "logdna-agent";
+        let agent_name = "logdna-agent";
+
+        let mock_ingester_socket_addr_str = create_mock_ingester_service(
+            client.clone(),
+            ingester_public_addr,
+            "ingest-service",
+            agent_namespace,
+            80,
+        )
+        .await;
+
+        create_agent_ds(
+            client.clone(),
+            agent_name,
+            agent_namespace,
+            &mock_ingester_socket_addr_str,
+        ).await;
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+
+        println!("Agent ready");
+
+        //// Test
+        println!("writing messages");
+
+        let messages = vec![
+            "Hello, World! 0\n",
+            "Hello, World! 2\n",
+            "Hello, World! 3\n",
+            "Hello, World! 1\n",
+            "Hello, World! 4\n",
+        ];
+
+        let mut logger_stream = None;
+
+        for msg in messages.iter() {
+            while logger_stream.is_none() {
+                logger_stream = TcpStream::connect(pod_node_addr).await.ok();
+                tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+            }
+            let logger_stream = logger_stream.as_mut().unwrap();
+
+            println!("Connected to pod_node_addr");
+            // Write some data.
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            logger_stream.write_all(msg.as_bytes()).await.unwrap();
+        }
+
+        // Wait for the data to be received by the mock ingester
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        let map = received.lock().await;
+
+        let result = map.iter().find(|(k, _)| k.contains(pod_name));
+        assert!(result.is_some());
+
+        let (_, pod_file_info) = result.unwrap();
+        let label = pod_file_info.label.as_ref();
+        assert!(label.is_some());
+        assert_eq!(label.unwrap()["app.kubernetes.io/name"], pod_name);
+        assert_eq!(
+            label.unwrap()["app.kubernetes.io/instance"],
+            format!("{}-instance", pod_name)
+        );
+        let values = &pod_file_info.values;
+        assert!(values.len() == 5);
+        for (idx, (left, right)) in values.iter().zip(messages.iter()).enumerate() {
+            assert!(left.ends_with(right));
+        }
+
+        let result = map.iter().find(|(k, _)| k.contains("sample-pod"));
+        assert!(result.is_some());
+        let (_, pod_file_info) = result.unwrap();
+        let label = pod_file_info.label.as_ref();
+        assert!(label.is_some());
+        assert_eq!(label.unwrap()["app.kubernetes.io/name"], "sample-pod");
+        assert_eq!(
+            label.unwrap()["app.kubernetes.io/instance"],
+            "sample-pod-instance"
+        );
+
+        let result = map.iter().find(|(k, _)| k.contains("sample-job"));
+        assert!(result.is_some());
+        let (_, job_file_info) = result.unwrap();
+        let label = job_file_info.label.as_ref();
+        assert!(label.is_some());
+        assert_eq!(label.unwrap()["job-name"], "sample-job");
+
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "k8s_tests"), ignore)]
+async fn test_k8s_connection() {
+    println!("env {}", std::env::var("KUBECONFIG").unwrap());
+    let client = Client::try_default().await.unwrap();
+    let pods: Api<Pod> = Api::all(client);
+    let lp = ListParams::default(); // for this app only
+    let pod_list = pods.list(&lp).await.unwrap();
+    assert!(pod_list.iter().count() > 0);
+}
+
+fn get_agent_ds_yaml(
+    image_name: &str,
+    ingester_addr: &str,
+    use_ssl: &str,
+    agent_name: &str,
+) -> DaemonSet {
+    serde_json::from_value(serde_json::json!({
+        "apiVersion": "apps/v1",
+        "kind": "DaemonSet",
+        "metadata": {
+            "labels": {
+                "app.kubernetes.io/instance": format!("{}-instance", agent_name),
+                "app.kubernetes.io/name": agent_name,
+            },
+            "name": agent_name,
+            //"namespace": "logdna-agent"
+        },
+        "spec": {
+            "selector": {
+            "matchLabels": {
+                "app": "logdna-agent"
+            }
+            },
+            "template": {
+            "metadata": {
+                "labels": {
+                    "app.kubernetes.io/instance": format!("{}-instance", agent_name),
+                    "app.kubernetes.io/name": agent_name,
+                    "app": agent_name,
+                }
+            },
+            "spec": {
+                "containers": [
+                {
+                    "env": [
+                    {
+                        "name": "RUST_LOG",
+                        "value": "info"
+                    },
+                    {
+                        "name": "LOGDNA_HOST",
+                        "value": ingester_addr
+                    },
+                    {
+                        "name": "LOGDNA_USE_SSL",
+                        "value": use_ssl
+                    },
+                    {
+                        "name": "LOGDNA_AGENT_KEY",
+                        "value": "123456"
+                        /*"valueFrom": {
+                        "secretKeyRef": {
+                            "key": "logdna-agent-key",
+                            "name": "logdna-agent-key"
+                        }
+                        }*/
+                    },
+                    {
+                        "name": "LOGDNA_DB_PATH",
+                        "value": "/var/lib/logdna"
+                    },
+                    {
+                        "name": "LOGDNA_LOG_K8S_EVENTS",
+                        "value": "always"
+                    },
+                    {
+                        "name": "POD_APP_LABEL",
+                        "valueFrom": {
+                        "fieldRef": {
+                            "fieldPath": "metadata.labels['app.kubernetes.io/name']"
+                        }
+                        }
+                    },
+                    {
+                        "name": "POD_NAME",
+                        "valueFrom": {
+                        "fieldRef": {
+                            "fieldPath": "metadata.name"
+                        }
+                        }
+                    },
+                    {
+                        "name": "NODE_NAME",
+                        "valueFrom": {
+                        "fieldRef": {
+                            "fieldPath": "spec.nodeName"
+                        }
+                        }
+                    },
+                    {
+                        "name": "NAMESPACE",
+                        "valueFrom": {
+                        "fieldRef": {
+                            "fieldPath": "metadata.namespace"
+                        }
+                        }
+                    }
+                    ],
+                    "image": image_name,
+                    "imagePullPolicy": "IfNotPresent",
+                    "name": agent_name,
+                    "resources": {
+                    "limits": {
+                        "memory": "500Mi"
+                    },
+                    "requests": {
+                        "cpu": "20m"
+                    }
+                    },
+                    "securityContext": {
+                    "capabilities": {
+                        "add": [
+                        "DAC_READ_SEARCH"
+                        ],
+                        "drop": [
+                        "all"
+                        ]
+                    }
+                    },
+                    "volumeMounts": [
+                    {
+                        "mountPath": "/var/log",
+                        "name": "varlog"
+                    },
+                    {
+                        "mountPath": "/var/data",
+                        "name": "vardata"
+                    },
+                    {
+                        "mountPath": "/var/lib/logdna",
+                        "name": "varliblogdna"
+                    },
+                    {
+                        "mountPath": "/var/lib/docker/containers",
+                        "name": "varlibdockercontainers",
+                        "readOnly": true
+                    },
+                    {
+                        "mountPath": "/mnt",
+                        "name": "mnt",
+                        "readOnly": true
+                    },
+                    {
+                        "mountPath": "/etc/os-release",
+                        "name": "osrelease"
+                    },
+                    {
+                        "mountPath": "/etc/logdna-hostname",
+                        "name": "logdnahostname"
+                    }
+                    ]
+                }
+                ],
+                "serviceAccountName": "logdna-agent",
+                "terminationGracePeriodSeconds": 2,
+                "volumes": [
+                {
+                    "hostPath": {
+                    "path": "/var/log"
+                    },
+                    "name": "varlog"
+                },
+                {
+                    "hostPath": {
+                    "path": "/var/data"
+                    },
+                    "name": "vardata"
+                },
+                {
+                    "hostPath": {
+                    "path": "/var/lib/logdna"
+                    },
+                    "name": "varliblogdna"
+                },
+                {
+                    "hostPath": {
+                    "path": "/var/lib/docker/containers"
+                    },
+                    "name": "varlibdockercontainers"
+                },
+                {
+                    "hostPath": {
+                    "path": "/mnt"
+                    },
+                    "name": "mnt"
+                },
+                {
+                    "hostPath": {
+                    "path": "/etc/os-release"
+                    },
+                    "name": "osrelease"
+                },
+                {
+                    "hostPath": {
+                    "path": "/etc/hostname"
+                    },
+                    "name": "logdnahostname"
+                }
+                ]
+            }
+            },
+            "updateStrategy": {
+            "rollingUpdate": {
+                "maxUnavailable": "100%"
+            },
+            "type": "RollingUpdate"
+            }
+        }
+        }
+    ))
+    .expect("failed to serialize DS manifest")
+}

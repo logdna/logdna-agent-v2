@@ -6,9 +6,8 @@ use std::path::PathBuf;
 use futures::Stream;
 
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
-use config::Config;
+use config::{Config, DbPath};
 use env_logger::Env;
-use fs::tail::Lookback;
 use fs::tail::Tailer as FSSource;
 use futures::future::Either;
 use futures::StreamExt;
@@ -71,25 +70,30 @@ async fn main() {
     let mut _agent_state = None;
     let mut offset_state = None;
     let mut initial_offsets = None;
-    if !matches!(config.log.lookback, Lookback::None) {
-        if let Some(path) = config.log.db_path {
-            match AgentState::new(path) {
-                Ok(agent_state) => {
-                    let _offset_state = agent_state.get_offset_state();
-                    let offsets = _offset_state.offsets();
-                    _agent_state = Some(agent_state);
-                    offset_state = Some(_offset_state);
-                    match offsets {
-                        Ok(os) => {
-                            initial_offsets =
-                                Some(os.into_iter().map(|fo| (fo.key, fo.offset)).collect());
+    match config.log.db_path {
+        DbPath::Empty => {}
+        DbPath::Path(path) => {
+            if path.is_dir() {
+                match AgentState::new(path) {
+                    Ok(agent_state) => {
+                        let _offset_state = agent_state.get_offset_state();
+                        let offsets = _offset_state.offsets();
+                        _agent_state = Some(agent_state);
+                        offset_state = Some(_offset_state);
+                        match offsets {
+                            Ok(os) => {
+                                initial_offsets =
+                                    Some(os.into_iter().map(|fo| (fo.key, fo.offset)).collect());
+                            }
+                            Err(e) => warn!("couldn't retrieve offsets from agent state, {:?}", e),
                         }
-                        Err(e) => warn!("couldn't retrieve offsets from agent state, {:?}", e),
+                    }
+                    Err(e) => {
+                        error!("Failed to open agent state db {}", e);
                     }
                 }
-                Err(e) => {
-                    error!("Failed to open agent state db {}", e);
-                }
+            } else {
+                error!("{} is not a directory", path.to_string_lossy());
             }
         }
     }

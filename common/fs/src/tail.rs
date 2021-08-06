@@ -61,9 +61,17 @@ impl fmt::Display for Lookback {
     }
 }
 
+#[cfg(feature = "smallfiles_lookback")]
 impl Default for Lookback {
     fn default() -> Self {
         Lookback::SmallFiles
+    }
+}
+
+#[cfg(not(feature = "smallfiles_lookback"))]
+impl Default for Lookback {
+    fn default() -> Self {
+        Lookback::None
     }
 }
 

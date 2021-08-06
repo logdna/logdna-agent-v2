@@ -46,3 +46,7 @@ tempfile = "3"
 tokio-test = "0.4"
 tokio = {version= "1", features= ["fs", "io-util", "time"]}
 middleware = { package = "middleware", path = "../middleware" }
+
+[features]
+default = ["smallfiles_lookback"]
+smallfiles_lookback = []
