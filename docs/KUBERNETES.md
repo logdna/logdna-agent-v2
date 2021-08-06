@@ -122,6 +122,10 @@ Older versions of our configurations do not provide these labels. In that case, 
 
 > :warning:  Exporting Kubernetes objects with "kubectl get \<resource\> -o yaml" includes extra information about the object's state. This data does not need to be copied over to the new YAML file.
 
+#### Upgrading from Configuration v3.0 and v3.1.x to 3.2
+
+_Note_ When upgrading from 3.0 or 3.1 TO 3.2, the `lookback` functionality might be configured such that the first time you start the agent you no longer receive up to the first 8k of small files, and on update/restart you will stop seeing duplicate logs for small files.
+
 ### Upgrading the Image
 
 The image contains the actual agent code that is run on the Pods created by the DaemonSet. New versions of the agent always strive for backwards compatibility with old configuration versions. Any breaking changes will be outlined in the [release page](https://github.com/logdna/logdna-agent-v2/releases). We always recommend upgrading to the latest configuration to guarantee access to new features.
