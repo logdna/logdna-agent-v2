@@ -94,6 +94,8 @@ Labels:         app.kubernetes.io/instance=logdna-agent
 
 Older versions of our configurations do not provide these labels. In that case, each upgrade path below provides an example of each configuration to compare to what's running on your cluster.
 
+> :warning:  Exporting Kubernetes objects with "kubectl get \<resource\> -o yaml" includes extra information about the object's state. This data does not need to be copied over to the new YAML file.
+
 #### Upgrading from Configuration v1.x.x or v2.0.x
 
 * **Example Configuration YAML Files:**
@@ -107,8 +109,6 @@ Older versions of our configurations do not provide these labels. In that case, 
   2. Remove the old DaemonSet in the default namespace; run `kubectl delete daemonset logdna-agent`.
   3. [Install the latest agent](#installation-steps).
 
-> :warning:  Exporting Kubernetes objects with "kubectl get \<resource\> -o yaml" includes extra information about the object's state. This data does not need to be copied over to the new YAML file.
-
 #### Upgrading from Configuration v2.1.x
 
 * **Example Configuration YAML Files:**
@@ -120,11 +120,17 @@ Older versions of our configurations do not provide these labels. In that case, 
      2. Copy any desired changes from `old-logdna-agent-daemon-set.yaml` to the DaemonSet object in `k8s/agent-resources.yaml`.
   2. Apply the latest configuration YAML file; run `kubectl apply -f k8s/agent-resources.yaml`.
 
-> :warning:  Exporting Kubernetes objects with "kubectl get \<resource\> -o yaml" includes extra information about the object's state. This data does not need to be copied over to the new YAML file.
 
 #### Upgrading from Configuration v3.0 and v3.1.x to 3.2
 
-_Note_ When upgrading from 3.0 or 3.1 TO 3.2, the `lookback` functionality might be configured such that the first time you start the agent you no longer receive up to the first 8k of small files, and on update/restart you will stop seeing duplicate logs for small files.
+* **Example Configuration YAML Files:**
+   * [v3.2.2](--)
+* **Differences:** The 3.2 release introduced "statefulness" for the agent, using a persistent set of files that is available for reference whenever the agent is restarted; this allows for a configurable `lookback` option. For details, refer to our documentation about [configuring lookback](README.md/#configuring-lookback) and the [configuration options](README.md/#options) for environment variables.
+* **Upgrade Steps:**
+
+
+
+  **Note** When upgrading from 3.0 or 3.1 TO 3.2, the stateful `lookback` functionality might be configured such that the first time you start the agent you no longer receive up to the first 8k of small files, and on update/restart you will stop seeing duplicate logs for small files.
 
 ### Upgrading the Image
 
