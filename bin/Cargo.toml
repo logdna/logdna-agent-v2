@@ -52,7 +52,6 @@ integration_tests = []
 profiling = ["jemallocator/profiling"]
 k8s_tests = []
 libjournald = ["journald/libjournald"]
-smallfiles_lookback = ["fs/smallfiles_lookback", "config/smallfiles_lookback"]
 journald_tests = ["journald/journald_tests"]
 
 [dev-dependencies]

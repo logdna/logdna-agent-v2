@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 #local
-fs = { package = "fs", path = "../fs" , default-features = false}
+fs = { package = "fs", path = "../fs" }
 k8s = { package = "k8s", path = "../k8s" }
 http = { package = "http", path = "../http" }
 
@@ -19,10 +19,6 @@ log = "0.4"
 sysinfo = "0.15"
 structopt = "0.3"
 java-properties = "1"
-
-[features]
-default = ["smallfiles_lookback"]
-smallfiles_lookback = ["fs/smallfiles_lookback"]
 
 [dev-dependencies]
 scopeguard = "1.0"

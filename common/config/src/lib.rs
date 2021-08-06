@@ -452,9 +452,6 @@ mod tests {
         let config = get_default_config();
         assert_eq!(config.log.use_k8s_enrichment, K8sTrackingConf::Always);
         assert_eq!(config.log.log_k8s_events, K8sTrackingConf::Never);
-        #[cfg(feature = "smallfiles_lookback")]
-        assert_eq!(config.log.lookback, Lookback::SmallFiles);
-        #[cfg(not(feature = "smallfiles_lookback"))]
         assert_eq!(config.log.lookback, Lookback::None);
         assert_eq!(
             config
