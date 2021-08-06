@@ -66,6 +66,9 @@ async fn test_retry_after_timeout() {
         ))
         .await;
 
+        // Sleep for long enough for retry to tick
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
         let map = received.lock().await;
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();
         // Received it multiple times
@@ -73,7 +76,7 @@ async fn test_retry_after_timeout() {
 
         let attempts_made = attempts_counter.lock().unwrap();
         // It retried multiple times
-        assert_eq!(*attempts_made, attempts);
+        assert_eq!(*attempts_made, attempts + 1);
         shutdown_handle();
     });
 
