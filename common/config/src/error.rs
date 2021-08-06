@@ -11,7 +11,7 @@ pub enum ConfigError {
     PropertyInvalid(String),
     Template(http::types::error::TemplateError),
     Glob(globber::Error),
-    Regex(pcre2::Error),
+    Regex(fs::rule::RuleError),
     NotADirectory(fs::cache::DirPathBufError),
     Lookback(fs::tail::ParseLookbackError),
 }
@@ -65,8 +65,8 @@ impl From<globber::Error> for ConfigError {
     }
 }
 
-impl From<pcre2::Error> for ConfigError {
-    fn from(e: pcre2::Error) -> Self {
+impl From<fs::rule::RuleError> for ConfigError {
+    fn from(e: fs::rule::RuleError) -> Self {
         ConfigError::Regex(e)
     }
 }
