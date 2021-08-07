@@ -72,7 +72,7 @@ fn test_list_config_from_conf() -> io::Result<()> {
 
     let output: Output = cmd
         .env_clear()
-        .args(&["-c", &config_file_path.to_str().unwrap()])
+        .args(&["-c", config_file_path.to_str().unwrap()])
         .arg("-l")
         .unwrap();
     assert!(output.status.success());
@@ -365,7 +365,7 @@ journald: {{}}
     test_command(
         |cmd| {
             cmd.args(&["-k", "123"])
-                .args(&["-c", &config_file_path.to_str().unwrap()])
+                .args(&["-c", config_file_path.to_str().unwrap()])
                 .args(&["-d", "/var/log2/,/var/log3/"])
                 .args(&["-t", "tag2", "tag3"])
                 .args(&["--exclude", "file.log"])
@@ -405,7 +405,7 @@ fn test_properties_config_min() -> io::Result<()> {
 
     test_command(
         |cmd| {
-            cmd.args(&["-c", &config_file_path.to_str().unwrap()]);
+            cmd.args(&["-c", config_file_path.to_str().unwrap()]);
         },
         |d| {
             // Verify that it starts thanks to having the key is good enough
@@ -436,7 +436,7 @@ hostname = some-linux-instance"
 
     test_command(
         |cmd| {
-            cmd.args(&["-c", &config_file_path.to_str().unwrap()]);
+            cmd.args(&["-c", config_file_path.to_str().unwrap()]);
         },
         |d| {
             assert!(is_match(r"log:\s+dirs:\s+\- /var/my_log\s+\- /var/my_log2")
@@ -477,7 +477,7 @@ line_exclusion_regex = (?i:debug),(?i:trace)"
 
     test_command(
         |cmd| {
-            cmd.args(&["-c", &config_file_path.to_str().unwrap()]);
+            cmd.args(&["-c", config_file_path.to_str().unwrap()]);
         },
         |d| {
             assert!(is_match(r"log:\s+dirs:\s+\- /var/log\s+\- /var/my_log2")

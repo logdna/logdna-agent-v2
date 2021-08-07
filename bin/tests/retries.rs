@@ -45,7 +45,7 @@ async fn test_retry_after_timeout() {
         }
     }));
 
-    let mut settings = AgentSettings::with_mock_ingester(&dir.to_str().unwrap(), &address);
+    let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &address);
     settings.config_file = config_file_path.to_str();
     let mut agent_handle = common::spawn_agent(settings);
     let agent_stderr = agent_handle.stderr.take().unwrap();
@@ -108,7 +108,7 @@ async fn test_retry_is_not_made_before_retry_base_delay_ms() {
         }
     }));
 
-    let mut settings = AgentSettings::with_mock_ingester(&dir.to_str().unwrap(), &address);
+    let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &address);
     settings.config_file = config_file_path.to_str();
     let mut agent_handle = common::spawn_agent(settings);
     let agent_stderr = agent_handle.stderr.take().unwrap();

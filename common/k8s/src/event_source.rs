@@ -422,7 +422,7 @@ impl K8sEventStream {
         try_flatten_touched(watcher(events, params))
             .map_err(K8sEventStreamError::WatcherError)
             .filter({
-                move |ref event| {
+                move |event| {
                     let latest_event_time = latest_event_time.clone();
                     let earliest = previous_event_logger_delete_time.clone();
                     let ret = latest_event_time
