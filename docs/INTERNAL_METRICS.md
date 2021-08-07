@@ -3,19 +3,24 @@
 The LogDNA agent records metrics that can be relevant for monitoring and alerting, such as number log files currently
 tracked or number of bytes parsed, along with process status information.
 
-## Exposing the Agent Metrics as a Prometheus Endpoint 
+## Exposing the Agent Metrics as a Prometheus Endpoint
 
 You can enable the agent's [Prometheus][prometheus] endpoint to expose the internal metrics to a Prometheus server,
 by setting the `LOGDNA_METRICS_PORT` environment variable to an available port number, for example:
 
+Kubernetes:
 ```yaml
-    - env:
+   - env:
         - name: LOGDNA_METRICS_PORT
           value: "9881"
+```    
+Linux:
+```yaml
+   LOGDNA_METRICS_PORT:9881
+
 ```
 
-Metrics related to the agent are exposed using the prefix `logdna_agent_` and process status information, like memory
-and cpu usage, are exposed with the prefix `process_`.
+To expose the metrics that are agent-related, use the prefix `logdna_agent_`. To expose metrics about process status information (e.g.memory and CPU usage), use the prefix  `process_`.
 
 ## Enabling Prometheus target discovery on Kubernetes
 
