@@ -123,15 +123,11 @@ impl Service<Request<Body>> for Svc {
             let ingest_body: IngestBody = match serde_json::from_slice(&bytes) {
                 Ok(lines) => lines,
                 Err(e) => {
-                    error!("{}", e);
-                    return Ok(rsp
-                        .status(500)
-                        .body(Body::from(format!(
-                            "Ingest body could not be parsed: {}\n{}",
-                            e,
-                            std::str::from_utf8(&bytes).unwrap(),
-                        )))
-                        .unwrap());
+                    panic!(
+                        "Ingest body could not be parsed: {}\n{}",
+                        e,
+                        std::str::from_utf8(&bytes).unwrap(),
+                    );
                 }
             };
 
