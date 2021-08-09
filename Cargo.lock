@@ -400,7 +400,6 @@ dependencies = [
  "k8s",
  "lazy_static",
  "log",
- "pcre2",
  "scopeguard",
  "serde",
  "serde_yaml",
@@ -724,21 +723,12 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "foreign-types"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6f339eb8adc052cd2ca78910fda869aefa38d22d5cb648e6485e4d3fc06f3b1"
-dependencies = [
- "foreign-types-shared 0.1.1",
-]
-
-[[package]]
-name = "foreign-types"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d737d9aa519fb7b749cbc3b962edcf310a8dd1f4b67c91c4f83975dbdd17d965"
 dependencies = [
  "foreign-types-macros",
- "foreign-types-shared 0.3.0",
+ "foreign-types-shared",
 ]
 
 [[package]]
@@ -751,12 +741,6 @@ dependencies = [
  "quote",
  "syn",
 ]
-
-[[package]]
-name = "foreign-types-shared"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "00b0228411908ca8685dba7fc2cdd70ec9990a6e753e89b6ac91a84c40fbaf4b"
 
 [[package]]
 name = "foreign-types-shared"
@@ -1091,19 +1075,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyper-tls"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6183ddfa99b85da61a140bea0efc93fdf56ceaa041b37d553518030827f9905"
-dependencies = [
- "bytes",
- "hyper",
- "native-tls",
- "tokio",
- "tokio-native-tls",
-]
-
-[[package]]
 name = "idna"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1326,12 +1297,11 @@ dependencies = [
  "futures",
  "http 0.2.4",
  "hyper",
+ "hyper-rustls",
  "hyper-timeout",
- "hyper-tls",
  "jsonpath_lib",
  "k8s-openapi",
  "log",
- "openssl",
  "pem",
  "pin-project 1.0.8",
  "serde",
@@ -1340,7 +1310,7 @@ dependencies = [
  "static_assertions",
  "thiserror",
  "tokio",
- "tokio-native-tls",
+ "tokio-rustls",
  "tokio-util",
  "tower",
  "tracing",
@@ -1488,8 +1458,8 @@ dependencies = [
 
 [[package]]
 name = "logdna-client"
-version = "0.5.2"
-source = "git+https://github.com/logdna/logdna-rust.git?branch=0.5.x#d7adef1f5b547a2031e8dfd835834b3011ceacfb"
+version = "0.5.3"
+source = "git+https://github.com/logdna/logdna-rust.git?branch=0.5.x#d204fe55d19ecfa6077e9893af2d00883bf0fafb"
 dependencies = [
  "async-buf-pool",
  "async-compression",
@@ -1615,24 +1585,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "native-tls"
-version = "0.2.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b8d96b2e1c8da3957d58100b09f102c6d9cfdfced01b7ec5a8974044bb09dbd4"
-dependencies = [
- "lazy_static",
- "libc",
- "log",
- "openssl",
- "openssl-probe",
- "openssl-sys",
- "schannel",
- "security-framework",
- "security-framework-sys",
- "tempfile",
-]
-
-[[package]]
 name = "nix"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1707,37 +1659,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "692fcb63b64b1758029e0a96ee63e049ce8c5948587f2f7208df04625e5f6b56"
 
 [[package]]
-name = "openssl"
-version = "0.10.35"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "549430950c79ae24e6d02e0b7404534ecf311d94cc9f861e9e4020187d13d885"
-dependencies = [
- "bitflags",
- "cfg-if 1.0.0",
- "foreign-types 0.3.2",
- "libc",
- "once_cell",
- "openssl-sys",
-]
-
-[[package]]
 name = "openssl-probe"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28988d872ab76095a6e6ac88d99b54fd267702734fd7ffe610ca27f533ddb95a"
-
-[[package]]
-name = "openssl-sys"
-version = "0.9.65"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a7907e3bfa08bb85105209cdfcb6c63d109f8f6c1ed6ca318fff5c1853fbc1d"
-dependencies = [
- "autocfg",
- "cc",
- "libc",
- "pkg-config",
- "vcpkg",
-]
 
 [[package]]
 name = "ordered-float"
@@ -1806,8 +1731,7 @@ dependencies = [
 [[package]]
 name = "pcre2"
 version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "85b30f2f69903b439dd9dc9e824119b82a55bf113b29af8d70948a03c1b11ab1"
+source = "git+https://github.com/logdna/rust-pcre2.git?branch=0.2#8096355b43e26db1eb73010e3be404aedc10f81d"
 dependencies = [
  "libc",
  "log",
@@ -1817,9 +1741,8 @@ dependencies = [
 
 [[package]]
 name = "pcre2-sys"
-version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dec30e5e9ec37eb8fbf1dea5989bc957fd3df56fbee5061aa7b7a99dbb37b722"
+version = "0.2.4"
+source = "git+https://github.com/logdna/rust-pcre2.git?branch=0.2#8096355b43e26db1eb73010e3be404aedc10f81d"
 dependencies = [
  "cc",
  "libc",
@@ -2609,7 +2532,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "954ca4554d4e42f566a6b6a159010c70dd328efcbdd0ee8b1d230cb4dba25af7"
 dependencies = [
  "cstr-argument",
- "foreign-types 0.5.0",
+ "foreign-types",
  "libc",
  "libsystemd-sys",
  "log",
@@ -2749,16 +2672,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
-]
-
-[[package]]
-name = "tokio-native-tls"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f7d995660bd2b7f8c1568414c1126076c13fbb725c40112dc0120b78eb9b717b"
-dependencies = [
- "native-tls",
- "tokio",
 ]
 
 [[package]]
@@ -2966,12 +2879,6 @@ checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 dependencies = [
  "getrandom",
 ]
-
-[[package]]
-name = "vcpkg"
-version = "0.2.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "vec_map"
