@@ -989,6 +989,7 @@ async fn test_lookback_restarting_agent() {
     let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &addr);
     settings.state_db_dir = Some(&db_dir);
     settings.exclusion_regex = Some(r"/var\w*");
+    settings.lookback = Some("smallfiles");
 
     let line_count_target = 5_000;
 
@@ -1085,7 +1086,8 @@ async fn test_symlink_initialization_both_included() {
     std::os::unix::fs::symlink(&file_path, &symlink_path).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     let (server_result, _) = tokio::join!(server, async {
-        let settings = AgentSettings::with_mock_ingester(log_dir.to_str().unwrap(), &addr);
+        let mut settings = AgentSettings::with_mock_ingester(log_dir.to_str().unwrap(), &addr);
+        settings.lookback = Some("smallfiles");
         let mut agent_handle = common::spawn_agent(settings);
         let stderr_reader = agent_handle.stderr.take().unwrap();
         consume_output(stderr_reader);
@@ -1140,7 +1142,8 @@ async fn test_symlink_initialization_excluded_file() {
     std::os::unix::fs::symlink(&file_path, &symlink_path).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     let (server_result, _) = tokio::join!(server, async {
-        let settings = AgentSettings::with_mock_ingester(log_dir.to_str().unwrap(), &addr);
+        let mut settings = AgentSettings::with_mock_ingester(log_dir.to_str().unwrap(), &addr);
+        settings.lookback = Some("smallfiles");
         let mut agent_handle = common::spawn_agent(settings);
         let stderr_reader = agent_handle.stderr.take().unwrap();
         // Consume output
@@ -1191,7 +1194,8 @@ async fn test_symlink_to_symlink_initialization_excluded_file() {
     std::os::unix::fs::symlink(&excluded_symlink_path, &symlink_path).unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     let (server_result, _) = tokio::join!(server, async {
-        let settings = AgentSettings::with_mock_ingester(log_dir.to_str().unwrap(), &addr);
+        let mut settings = AgentSettings::with_mock_ingester(log_dir.to_str().unwrap(), &addr);
+        settings.lookback = Some("smallfiles");
         let mut agent_handle = common::spawn_agent(settings);
         let stderr_reader = agent_handle.stderr.take().unwrap();
         // Consume output
