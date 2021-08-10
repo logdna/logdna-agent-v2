@@ -20,7 +20,7 @@ Linux:
 
 ```
 
-To expose the metrics that are agent-related, use the prefix `logdna_agent_`. To expose metrics about process status information (e.g.memory and CPU usage), use the prefix  `process_`.
+To access the metrics that are agent-related, use the prefix `logdna_agent_`. To access metrics about process status information (e.g.memory and CPU usage), use the prefix  `process_`.
 
 ## Enabling Prometheus target discovery on Kubernetes
 
@@ -45,9 +45,9 @@ After applying the DaemonSet with the Prometheus annotations, the metrics will b
 ## Metrics in log messages
 
 The agent also publishes its internal metrics every minute as a log line. This was useful in older versions for
-observability, but it's now deprecated in favor of Prometheus support.
+observability.
 
-If you want to continue using these log line metrics, you should consider that there has been the following changes in
+Prometheus metrics provide further detail and granularity than log messages. If you want to continue using these log line metrics, you should consider that there has been the following changes in
 version 3.3 and above of the agent:
 
 - Counters such as `"fs.events"`, `"ingest.requests"` and `"ingest.requests_size"`, etc are now monotonically
