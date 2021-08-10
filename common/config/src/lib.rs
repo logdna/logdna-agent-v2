@@ -30,6 +30,36 @@ extern "Rust" {
     static PKG_VERSION: &'static str;
 }
 
+#[derive(Debug, PartialEq)]
+pub enum DbPath {
+    Path(PathBuf),
+    Empty,
+}
+
+impl DbPath {
+    pub fn from(db_path: Option<PathBuf>) -> Self {
+        match db_path {
+            Some(path) => {
+                let path_os_str = path.as_os_str();
+                // if path is empty or all whitespace
+                if path_os_str.is_empty()
+                    || (path_os_str
+                        .to_string_lossy()
+                        .chars()
+                        .filter(|c| !c.is_whitespace())
+                        .count()
+                        == 0)
+                {
+                    DbPath::Empty
+                } else {
+                    DbPath::Path(path)
+                }
+            }
+            None => DbPath::Path(PathBuf::from("/var/lib/logdna/")),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Config {
     pub http: HttpConfig,
@@ -51,7 +81,7 @@ pub struct HttpConfig {
 #[derive(Debug)]
 pub struct LogConfig {
     pub dirs: Vec<DirPathBuf>,
-    pub db_path: Option<PathBuf>,
+    pub db_path: DbPath,
     pub metrics_port: Option<u16>,
     pub rules: Rules,
     pub line_exclusion_regex: Vec<String>,
@@ -222,7 +252,7 @@ impl TryFrom<RawConfig> for Config {
                         .ok()
                 })
                 .collect(),
-            db_path: raw.log.db_path,
+            db_path: DbPath::from(raw.log.db_path),
             metrics_port: raw.log.metrics_port,
             rules: Rules::new(),
             line_exclusion_regex: raw.log.line_exclusion_regex.unwrap_or_default(),
@@ -391,11 +421,38 @@ mod tests {
     }
 
     #[test]
+    fn test_db_path() {
+        // Default
+        assert_eq!(
+            DbPath::from(None),
+            DbPath::Path(PathBuf::from("/var/lib/logdna/"))
+        );
+
+        // Actual path
+        assert_eq!(
+            DbPath::from(Some(PathBuf::from("/not/var/lib/logdna"))),
+            DbPath::Path(PathBuf::from("/not/var/lib/logdna"))
+        );
+
+        // gibberish value, but not DbPath's problem to deal with
+        assert_eq!(
+            DbPath::from(Some(PathBuf::from(" n "))),
+            DbPath::Path(PathBuf::from(" n "))
+        );
+
+        // Empty values
+        assert_eq!(DbPath::from(Some(PathBuf::from(""))), DbPath::Empty);
+        assert_eq!(DbPath::from(Some(PathBuf::from(" "))), DbPath::Empty);
+        assert_eq!(DbPath::from(Some(PathBuf::from("\n"))), DbPath::Empty);
+        assert_eq!(DbPath::from(Some(PathBuf::from("   \n "))), DbPath::Empty);
+    }
+
+    #[test]
     fn test_default_parsed() {
         let config = get_default_config();
         assert_eq!(config.log.use_k8s_enrichment, K8sTrackingConf::Always);
         assert_eq!(config.log.log_k8s_events, K8sTrackingConf::Never);
-        assert_eq!(config.log.lookback, Lookback::SmallFiles);
+        assert_eq!(config.log.lookback, Lookback::None);
         assert_eq!(
             config
                 .log

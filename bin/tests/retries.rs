@@ -67,7 +67,7 @@ async fn test_retry_after_timeout() {
         .await;
 
         // Sleep for long enough for retry to tick
-        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(6000)).await;
 
         let map = received.lock().await;
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();

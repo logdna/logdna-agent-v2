@@ -63,7 +63,7 @@ impl fmt::Display for Lookback {
 
 impl Default for Lookback {
     fn default() -> Self {
-        Lookback::SmallFiles
+        Lookback::None
     }
 }
 
