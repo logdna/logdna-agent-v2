@@ -102,7 +102,7 @@ spec:
       serviceAccountName: logdna-agent
       containers:
         - name: logdna-agent
-          image: logdna/logdna-agent-3.2.3
+          image: logdna/logdna-agent:3.2.3
           imagePullPolicy: IfNotPresent
           securityContext:
             capabilities:
