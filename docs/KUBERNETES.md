@@ -24,6 +24,14 @@ git checkout major.minor.patch-beta.n
 
 To view a list of all available release versions, navigate in your terminal to your local working directory (where you cloned the agent source repository) and then run the command `git tag -l`.
 
+__NOTE:__
+For a quick installation without cloning the GitHub repo, you can run the following three commands in your terminal to create a logdna-agent namespace with your ingestion key and then deploy the LogDNA Agent DaemonSet to your cluster.
+```bash
+kubectl apply -f https://assets.logdna.com/clients/logdna-agent/3/agent-resources.yaml
+kubectl create secret generic logdna-agent-key -n logdna-agent --from-literal=logdna-agent-key=<your ingestion key> # this is your unique Ingestion Key
+kubectl apply -f https://assets.logdna.com/clients/logdna-agent/3/agent-resources.yaml
+```
+
 ## Table of Contents
 
 * [Installing](#installing)
