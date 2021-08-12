@@ -74,15 +74,17 @@ pipeline {
                 }
                 stage('Run K8s Integration Tests') {
                     steps {
-                        withCredentials([[
-                                                 $class: 'AmazonWebServicesCredentialsBinding',
-                                                 credentialsId: 'aws',
-                                                 accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                                 secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                         ]]) {
-                            sh '''
+                        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                            withCredentials([[
+                                              $class: 'AmazonWebServicesCredentialsBinding',
+                                              credentialsId: 'aws',
+                                              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                             ]]) {
+                                sh '''
                                     make k8s-test
-                            '''
+                                '''
+                            }
                         }
                     }
                 }
@@ -129,12 +131,12 @@ pipeline {
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static
                                 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
+                                ARCH=aarch64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
                                 rm ${PWD}/.aws_creds_static
                             '''
                         }
                     }
                 }
-
             }
         }
         stage('Check Publish Images') {
@@ -142,6 +144,12 @@ pipeline {
                 branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
             }
             stages {
+                stage('Scanning Images') {
+                    steps {
+                        sh 'make sysdig_secure_images'
+                        sysdig engineCredentialsId: 'sysdig-secure-api-credentials', name: 'sysdig_secure_images', inlineScanning: true
+                    }
+                }
                 stage('Publish static binary') {
                     steps {
                         withCredentials([[
@@ -155,6 +163,7 @@ pipeline {
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static
                                 STATIC=1 make publish-s3-binary
+                                ARCH=aarch64 STATIC=1 make publish-s3-binary
                                 rm ${PWD}/.aws_creds_static
                             '''
                         }

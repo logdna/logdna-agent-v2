@@ -63,7 +63,7 @@ impl fmt::Display for Lookback {
 
 impl Default for Lookback {
     fn default() -> Self {
-        Lookback::SmallFiles
+        Lookback::None
     }
 }
 
@@ -132,7 +132,7 @@ impl Tailer {
                 match lookback_config {
                     Lookback::Start => match initial_offsets.as_ref() {
                         Some(initial_offsets) => {
-                            _lookup_offset(&initial_offsets, &inode, &path).unwrap_or(0)
+                            _lookup_offset(initial_offsets, &inode, &path).unwrap_or(0)
                         }
                         None => 0,
                     },
@@ -142,10 +142,8 @@ impl Tailer {
                         let smallfiles_offset = if file_len < 8192 { 0 } else { file_len };
 
                         match initial_offsets.as_ref() {
-                            Some(initial_offsets) => {
-                                _lookup_offset(&initial_offsets, &inode, &path)
-                                    .unwrap_or(smallfiles_offset)
-                            }
+                            Some(initial_offsets) => _lookup_offset(initial_offsets, &inode, &path)
+                                .unwrap_or(smallfiles_offset),
                             None => {
                                 debug!(
                                     "Smallfiles lookback {} from len using key {:?}",
@@ -175,18 +173,14 @@ impl Tailer {
                 // will initiate a file to it's current length
                 let entries = fs.entries.borrow();
                 let entry = entries.get(entry_ptr)?;
-                let path = fs.resolve_direct_path(&entry, &fs.entries.borrow());
+                let path = fs.resolve_direct_path(entry, &fs.entries.borrow());
                 match entry {
                     Entry::File { name, data, .. } => {
                         // If the file's passes the rules tail it
                         info!("initialize event for file {:?}, target {:?}", name, path);
-                        let (_, offset) = Tailer::get_initial_offset(
-                            &path,
-                            &fs,
-                            initial_offsets,
-                            lookback_config,
-                        )
-                        .await?;
+                        let (_, offset) =
+                            Tailer::get_initial_offset(&path, fs, initial_offsets, lookback_config)
+                                .await?;
                         data.borrow_mut()
                             .deref_mut()
                             .seek(offset)
@@ -200,7 +194,7 @@ impl Tailer {
                     }
                     Entry::Symlink { name, link, .. } => {
                         let sym_path = path;
-                        let final_target = Tailer::get_file_for_path(&fs, link)?;
+                        let final_target = Tailer::get_file_for_path(fs, link)?;
                         info!(
                             "initialize event for symlink {:?}, target {:?}, final target {:?}",
                             name, link, final_target
@@ -210,13 +204,9 @@ impl Tailer {
                         let path = fs
                             .resolve_direct_path(entries.get(final_target)?, &fs.entries.borrow());
 
-                        let (entry_key, offset) = Tailer::get_initial_offset(
-                            &path,
-                            &fs,
-                            initial_offsets,
-                            lookback_config,
-                        )
-                        .await?;
+                        let (entry_key, offset) =
+                            Tailer::get_initial_offset(&path, fs, initial_offsets, lookback_config)
+                                .await?;
                         if let Entry::File { data, .. } = &entries.get(entry_key)? {
                             info!(
                                 "initialized symlink {:?} as {:?} with offset {}",
@@ -239,7 +229,7 @@ impl Tailer {
                 // similar to initiate but sets the offset to 0
                 let entries = fs.entries.borrow();
                 let entry = entries.get(entry_ptr)?;
-                let paths = fs.resolve_valid_paths(&entry, &entries);
+                let paths = fs.resolve_valid_paths(entry, &entries);
                 if paths.is_empty() {
                     return None;
                 }
@@ -253,7 +243,7 @@ impl Tailer {
                 debug!("Write Event");
                 let entries = fs.entries.borrow();
                 let entry = entries.get(entry_ptr)?;
-                let paths = fs.resolve_valid_paths(&entry, &entries);
+                let paths = fs.resolve_valid_paths(entry, &entries);
                 if paths.is_empty() {
                     return None;
                 }
@@ -268,7 +258,7 @@ impl Tailer {
                 let ret = {
                     let entries = fs.entries.borrow();
                     let mut entry = entries.get(entry_ptr)?;
-                    let paths = fs.resolve_valid_paths(&entry, &entries);
+                    let paths = fs.resolve_valid_paths(entry, &entries);
                     if paths.is_empty() {
                         None
                     } else {

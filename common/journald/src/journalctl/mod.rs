@@ -53,7 +53,7 @@ pub enum FieldValue {
 impl FieldValue {
     pub fn to_string_lossy(&self) -> String {
         match self {
-            FieldValue::Bytes(b) => String::from_utf8_lossy(&b).to_string(),
+            FieldValue::Bytes(b) => String::from_utf8_lossy(b).to_string(),
             FieldValue::Utf8(s) => s.clone(),
         }
     }

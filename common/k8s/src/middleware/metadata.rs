@@ -206,8 +206,8 @@ impl Middleware for K8sMetadata {
     }
 
     fn process<'a>(&self, line: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
-        if let Some(ref file_name) = line.get_file() {
-            if let Some(key) = parse_container_path(&file_name) {
+        if let Some(file_name) = line.get_file() {
+            if let Some(key) = parse_container_path(file_name) {
                 if let Some(pod_meta_data) = self.metadata.lock().get(&key) {
                     if line
                         .set_annotations(pod_meta_data.annotations.clone())

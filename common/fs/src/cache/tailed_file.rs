@@ -190,7 +190,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         S: SerializeMap<'b, HashMap<String, String>> + std::marker::Send,
     {
         if let Some(ref annotations) = self.annotations {
-            ser.serialize_map(&annotations).await?;
+            ser.serialize_map(annotations).await?;
         }
         Ok(())
     }
@@ -248,7 +248,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         S: SerializeMap<'b, HashMap<String, String>> + std::marker::Send,
     {
         if let Some(ref labels) = self.labels {
-            ser.serialize_map(&labels).await?;
+            ser.serialize_map(labels).await?;
         }
         Ok(())
     }
@@ -444,7 +444,7 @@ impl Stream for LazyLines {
                 let ret = LazyLineSerializer::new(
                     rc_reader.clone(),
                     paths[*path].clone(),
-                    current_offset.clone().unwrap(),
+                    (*current_offset).unwrap(),
                 );
                 *path += 1;
                 Metrics::fs().increment_lines();

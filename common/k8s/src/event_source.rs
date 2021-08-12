@@ -276,17 +276,18 @@ impl K8sEventStream {
                 if let (pod_gen, Some(pod_started_at), Some(pod_name)) =
                     // get pod generation, it will be there if there is an update strategy
                     (
-                    p.metadata
-                        .labels
-                        .as_ref()
-                        .map(|l| {
-                            l.get("pod-template-generation")
-                                .and_then(|g| g.parse::<u64>().ok())
-                        })
-                        .flatten(),
-                    get_pod_started_at(p),
-                    p.metadata.name.as_ref(),
-                ) {
+                        p.metadata
+                            .labels
+                            .as_ref()
+                            .map(|l| {
+                                l.get("pod-template-generation")
+                                    .and_then(|g| g.parse::<u64>().ok())
+                            })
+                            .flatten(),
+                        get_pod_started_at(p),
+                        p.metadata.name.as_ref(),
+                    )
+                {
                     Some((pod_gen, pod_started_at, pod_name))
                 } else {
                     None
@@ -421,7 +422,7 @@ impl K8sEventStream {
         try_flatten_touched(watcher(events, params))
             .map_err(K8sEventStreamError::WatcherError)
             .filter({
-                move |ref event| {
+                move |event| {
                     let latest_event_time = latest_event_time.clone();
                     let earliest = previous_event_logger_delete_time.clone();
                     let ret = latest_event_time
