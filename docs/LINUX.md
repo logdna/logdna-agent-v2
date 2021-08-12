@@ -4,8 +4,8 @@ The LogDNA Agent for Linux collects log data from your Linux environment. The ag
 
 ## Table of Contents
   * [Considerations](#considerations)
-  * [Installation (first time installations)](#Installation)
-  * [Upgrading (migrating from legacy Linux agent)](#upgrademigration)
+  * [Installation (first time installations)](#installation-first-time-installations)
+  * [Upgrading (migrating from legacy Linux agent)](#upgrading-migrating-from-legacy-linux-agent)
   * [Usage](#usage)
     * [Configure the agent](#configure-the-agent)
     * [Run the agent](#run-the-agent)
