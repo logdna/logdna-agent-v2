@@ -22,9 +22,13 @@ struct Opt {
     #[structopt(parse(from_os_str), short)]
     out_dir: PathBuf,
 
-    /// Output directory
-    #[structopt(short)]
+    /// Number of files to retain during rotation
+    #[structopt(long)]
     file_history: usize,
+
+    /// Cut of Bytes before rotation
+    #[structopt(long)]
+    file_size: usize,
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -45,7 +49,11 @@ fn main() -> Result<(), std::io::Error> {
 
     fs::create_dir(opt.out_dir)?;
 
-    let mut log = FileRotate::new(out_file, RotationMode::Lines(20_000), opt.file_history);
+    let mut log = FileRotate::new(
+        out_file,
+        RotationMode::BytesSurpassed(opt.file_size),
+        opt.file_history,
+    );
 
     for word in words {
         writeln!(log, "{}", word)?;
