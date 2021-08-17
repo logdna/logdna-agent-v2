@@ -197,8 +197,10 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 name = "bench"
 version = "0.1.0"
 dependencies = [
+ "escargot",
  "file-rotate",
  "memmap",
+ "owning_ref",
  "structopt",
 ]
 
@@ -663,6 +665,18 @@ name = "escargot"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ead7d8a70259beb627c1ffdd19b0372381f247f88e46a3bd52bb797182690b3"
+dependencies = [
+ "log",
+ "once_cell",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "escargot"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44bb3f795fe1b9d34f089c7fab034c2b757998d65361d95ef008045b57665262"
 dependencies = [
  "log",
  "once_cell",
@@ -1779,6 +1793,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "owning_ref"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ff55baddef9e4ad00f88b6c743a2a8062d4c6ade126c2a528644b8e444d52ce"
+dependencies = [
+ "stable_deref_trait",
+]
+
+[[package]]
 name = "parking_lot"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2668,6 +2691,12 @@ name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
+
+[[package]]
+name = "stable_deref_trait"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
 name = "state"

@@ -3,13 +3,19 @@
 // Start agent under flamegraph
 // Kill agent
 
-use memmap::MmapOptions;
 use std::fs::{self, File};
+use std::io::Write;
 use std::path::PathBuf;
-use structopt::StructOpt;
+use std::process::{Child, Command, Stdio};
 
 use file_rotate::{FileRotate, RotationMode};
-use std::io::Write;
+
+use memmap::MmapOptions;
+use owning_ref::OwningHandle;
+
+use structopt::StructOpt;
+
+const CARGO_MANIFEST_DIR: &'static str = "CARGO_MANIFEST_DIR";
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "agent throughput bench")]
@@ -35,13 +41,34 @@ fn main() -> Result<(), std::io::Error> {
     let opt = Opt::from_args();
     println!("{:?}", opt);
 
-    let file = File::open(opt.dict)?;
-    let dict_arr = unsafe { MmapOptions::new().map(&file)? };
+    // Parse mmap into Vec<&str>
+    let words = OwningHandle::new_with_fn(
+        Box::new(unsafe { MmapOptions::new().map(&File::open(opt.dict)?)? }),
+        |dict_arr_ptr| unsafe {
+            dict_arr_ptr
+                .as_ref()
+                .unwrap()
+                .split(|c| c == &b'\n')
+                .map(|s| std::str::from_utf8(s).unwrap())
+                .collect::<Vec<&str>>()
+        },
+    );
 
-    let words = dict_arr
-        .split(|c| c == &b'\n')
-        .map(|s| std::str::from_utf8(&s).unwrap())
-        .collect::<Vec<&str>>();
+    let mut manifest_path = std::path::PathBuf::from(std::env::var(CARGO_MANIFEST_DIR).unwrap());
+    manifest_path.pop();
+    manifest_path.push("bin/Cargo.toml");
+    println!("{:?}", manifest_path);
+    let run = escargot::CargoBuild::new()
+        .bin("logdna-agent")
+        .current_release()
+        .current_target()
+        .no_default_features()
+        .manifest_path(manifest_path)
+        .run()
+        .unwrap();
+
+    println!("artifact={}", run.path().display());
+
     println!("word count: {}", words.len());
 
     let mut out_file: PathBuf = opt.out_dir.clone();
@@ -55,7 +82,7 @@ fn main() -> Result<(), std::io::Error> {
         opt.file_history,
     );
 
-    for word in words {
+    for word in words.iter() {
         writeln!(log, "{}", word)?;
     }
 
