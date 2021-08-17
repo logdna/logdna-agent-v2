@@ -119,6 +119,8 @@ spec:
                 secretKeyRef:
                   name: logdna-agent-key
                   key: logdna-agent-key
+            - name: LOGDNA_LOOKBACK
+              value: smallfiles
             - name: LOGDNA_ENDPOINT
               value: /supertenant/logs/ingest
             - name: RUST_LOG
