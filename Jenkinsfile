@@ -67,6 +67,9 @@ pipeline {
                         }
                     }
                     post {
+                        always {
+                            archiveArtifacts artifacts: '*-results.json', allowEmptyArchive: true
+                        }
                         success {
                             sh "make clean"
                         }

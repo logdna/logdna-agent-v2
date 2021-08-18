@@ -137,7 +137,7 @@ check: ## Run unit tests
 
 .PHONY:test
 test: test-journald ## Run unit tests
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --no-run && cargo test $(TESTS)"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --no-run && cargo test $(TESTS) -- -Z unstable-options --format json | tee unit-test-results.json"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
