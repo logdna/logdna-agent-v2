@@ -35,7 +35,7 @@ SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 INTEGRATION_TEST_THREADS ?= 1
 K8S_TEST_CREATE_CLUSTER ?= true
 
-VCS_REF := $(shell git rev-parse --short HEAD)
+VCS_REF := $(shell git rev-parse --short HEAD | sed 's/[^a-zA-Z0-9_-]/_/g')
 VCS_URL := https://github.com/logdna/$(REPO)
 BUILD_DATE := $(shell date -u +'%Y%m%d')
 BUILD_TIMESTAMP := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
@@ -136,8 +136,8 @@ check: ## Run unit tests
 	$(RUST_COMMAND) "" "cargo check --all-targets"
 
 .PHONY:test
-test: test-journald ## Run unit tests
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --no-run && cargo test $(TESTS) -- -Z unstable-options --format json | tee unit-test-results.json"
+test: #test-journald ## Run unit tests
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --no-run && (cargo test $(TESTS) -- -Z unstable-options --format json | tee unit-test-results.json)"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
