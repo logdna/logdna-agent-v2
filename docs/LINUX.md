@@ -11,11 +11,11 @@ The LogDNA Agent for Linux collects log data from your Linux environment. The ag
     * [Run the agent](#run-the-agent)
 
 ## Considerations
-* The agent provides a "stateful" or persistent set of files that is available for reference whenever the agent is restarted; this allows for a configurable `lookback` option. For details, refer to our documentation about [configuring lookback](README.md/#configuring-lookback) and the [configuration options](README.md/#options) for environment variables.
+* The agent has a "stateful" or persistent set of files that is available for reference whenever the agent is restarted. This provides a configurable `lookback` option that allows the agent to pick up where it left off upon an agent restart. For details, refer to our documentation about [configuring lookback](README.md/#configuring-lookback) and the [configuration options](README.md/#options) for environment variables.
 
 ## Installation (first-time installations)
 
-1. To add the logdna repository to your package manager, open a host terminal and run the appropriate commands based on the Linux distribution.
+1. To add the logdna repository to your package manager, open a host terminal and run the appropriate command, based on the Linux distribution.
 
 * **Debian-based distributions**
 ```bash
