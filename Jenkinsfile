@@ -60,9 +60,7 @@ pipeline {
                                                  secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                          ]]){
                             sh """
-                        make lint \
-                        && make test \
-                        && make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
+                        make lint test integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
                     """
                         }
                     }
