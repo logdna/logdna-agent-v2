@@ -11,11 +11,11 @@ The LogDNA Agent for Linux collects log data from your Linux environment. The ag
     * [Run the agent](#run-the-agent)
 
 ## Considerations
-* The agent provides a "stateful" or persistent set of files that is available for reference whenever the agent is restarted; this allows for a configurable `lookback` option. For details, refer to our documentation about [configuring lookback](README.md/#configuring-lookback) and the [configuration options](README.md/#options) for environment variables.
+* The agent has a "stateful" or persistent set of files that is available for reference whenever the agent is restarted. This provides a configurable `lookback` option that allows the agent to pick up where it left off upon an agent restart. For details, refer to our documentation about [configuring lookback](README.md/#configuring-lookback) and the [configuration options](README.md/#options) for environment variables.
 
 ## Installation (first-time installations)
 
-1. To add the logdna repository to your package manager, open a host terminal and run the appropriate commands based on the Linux distribution.
+1. To add the logdna repository to your package manager, open a host terminal and run the appropriate command, based on the Linux distribution.
 
 * **Debian-based distributions**
 ```bash
@@ -91,9 +91,11 @@ The agent uses [**systemd**](https://systemd.io/) to run as a Linux daemon. The 
 ### _Configure the agent_
 
 ---
-**NOTE** for users upgrading /migrating from the [legacy LogDNA
+**NOTES**
+* For users upgrading/migrating from the [legacy LogDNA
 Agent](https://github.com/logdna/logdna-agent)\: You might already have a configuration file `/etc/logdna.conf` from prior installations. The LogDNA Agent 3.3 does support the legacy `/etc/logdna.conf` file by default, and additionally uses a **systemd** unit file `/etc/logdna.env`.
 
+* For users on older Linux distributions (Centos 7, Amazon Linux 2, RHEL 7):The user should manually ensure that the /var/lib/logdna directory exists as the older versions of systemd packaged with these systems will not automatically create it.
 ---
 
 1.  Create the agent's configuration file (`logdna.env`) in the `/etc` directory, using the following command:
