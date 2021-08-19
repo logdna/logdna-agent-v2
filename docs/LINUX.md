@@ -92,10 +92,10 @@ The agent uses [**systemd**](https://systemd.io/) to run as a Linux daemon. The 
 
 ---
 **NOTES**
-* For users upgrading /migrating from the [legacy LogDNA
+* For users upgrading/migrating from the [legacy LogDNA
 Agent](https://github.com/logdna/logdna-agent)\: You might already have a configuration file `/etc/logdna.conf` from prior installations. The LogDNA Agent 3.3 does support the legacy `/etc/logdna.conf` file by default, and additionally uses a **systemd** unit file `/etc/logdna.env`.
 
-* For users on older Linux distributions (Centos 7, Amazon Linux 2, RHEL 7): If the default variables directory `var/lib/logdna` does not exist after following the above installation or upgrade steps, you will need to manually create the directory.
+* For users on older Linux distributions (Centos 7, Amazon Linux 2, RHEL 7):The user should manually ensure that the /var/lib/logdna directory exists as the older versions of systemd packaged with these systems will not automatically create it.
 ---
 
 1.  Create the agent's configuration file (`logdna.env`) in the `/etc` directory, using the following command:
