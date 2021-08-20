@@ -1538,3 +1538,60 @@ fn lookback_stateful_lines_are_delivered() {
         assert_eq!(line_count, 5);
     });
 }
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_tight_writes() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+    let file_path = dir.join("test.log");
+    File::create(&file_path).expect("Couldn't create temp log file...");
+    let settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &addr);
+    let mut agent_handle = common::spawn_agent(settings);
+    let agent_stderr = agent_handle.stderr.take().unwrap();
+    let mut stderr_reader = BufReader::new(agent_stderr);
+    common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+    let agent_stderr = stderr_reader.into_inner();
+    consume_output(agent_stderr);
+
+    let (server_result, _) = tokio::join!(server, async {
+        let line = "Nice short message";
+        let lines = 500_000;
+        let sync_every = 5_000;
+
+        let mut file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&file_path)?;
+
+        for i in 0..lines {
+            if let Err(e) = writeln!(file, "{}", line) {
+                eprintln!("Couldn't write to file: {}", e);
+                return Err(e);
+            }
+
+            if i % sync_every == 0 {
+                file.sync_all()?;
+            }
+        }
+        file.sync_all()?;
+
+        common::force_client_to_flush(&dir).await;
+
+        // Wait for the data to be received by the mock ingester
+        tokio::time::sleep(tokio::time::Duration::from_millis(20000)).await;
+        writeln!(file, "And we're done").unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        let map = received.lock().await;
+        let file_info = map.get(file_path.to_str().unwrap()).unwrap();
+        assert_eq!(file_info.lines, lines + 1);
+        shutdown_handle();
+        Ok(())
+    });
+
+    server_result.unwrap();
+    agent_handle.kill().expect("Could not kill process");
+}
