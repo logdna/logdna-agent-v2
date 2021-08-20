@@ -141,16 +141,45 @@ pub struct LazyLines {
     current_offset: Option<(u64, u64)>,
     read: usize,
     path: usize,
+    total_read: usize,
+    target_read: Option<usize>,
     paths: Vec<String>,
 }
 
 impl LazyLines {
-    pub fn new(reader: Arc<Mutex<TailedFileInner>>, paths: Vec<String>) -> Self {
+    pub async fn new(reader: Arc<Mutex<TailedFileInner>>, paths: Vec<String>) -> Self {
+        let (initial_end, initial_offset): (Option<u64>, Option<u64>) = {
+            let inner = &mut reader.lock().await.reader;
+
+            let inner = inner.get_mut().get_mut();
+            let initial_end = match inner.metadata().await.map(|m| m.len()) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    error!("unable to stat {:?}: {:?}", &paths[0], e);
+                    None
+                }
+            };
+            let initial_offset = match inner.seek(SeekFrom::Current(0)).await {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    error!("unable to get current file offset {:?}: {:?}", &paths[0], e);
+                    None
+                }
+            };
+
+            (initial_end, initial_offset)
+        };
+        let target_read: Option<usize> = match (initial_end, initial_offset) {
+            (Some(e), Some(o)) => (e - o).try_into().ok(),
+            _ => None,
+        };
         Self {
             reader,
             current_offset: None,
             read: 0,
             path: 0,
+            total_read: 0,
+            target_read,
             paths,
         }
     }
@@ -435,6 +464,8 @@ impl Stream for LazyLines {
             ref mut read,
             ref mut current_offset,
             ref mut path,
+            ref mut total_read,
+            ref target_read,
             paths,
             ..
         } = self.get_mut();
@@ -450,6 +481,7 @@ impl Stream for LazyLines {
                 Metrics::fs().increment_lines();
                 break Poll::Ready(Some(ret));
             }
+
             // Get the next line
             let mut borrow = rc_reader.try_lock().unwrap();
             let TailedFileInner {
@@ -467,10 +499,22 @@ impl Stream for LazyLines {
                 buf.clear();
             }
 
+            // If we've read more than a 0.5 MB from this one event and reached the end
+            // of the file as it was when we started break to prevent starvation
+            if *total_read > (1024 * 512) {
+                if let Some(target_read) = target_read {
+                    if *total_read > *target_read {
+                        debug!("read 512KB from a single event, returning");
+                        break Poll::Ready(None);
+                    }
+                }
+            }
+
             let pinned_reader = Pin::new(reader);
             let result = ready!(read_until_internal(pinned_reader, cx, b'\n', buf, read));
             match result {
                 Ok(Some(count)) => {
+                    *total_read += count.get();
                     // Got a line
                     debug_assert_eq!(*read, 0);
                     debug!("tailer sendings lines for {:?}", &paths);
@@ -623,58 +667,62 @@ impl TailedFile<LazyLineSerializer> {
         &mut self,
         paths: Vec<PathBuf>,
     ) -> Option<impl Stream<Item = LazyLineSerializer>> {
-        let mut inner = self.inner.lock().await;
-        let len = match inner
-            .reader
-            .get_ref()
-            .get_ref()
-            .metadata()
-            .await
-            .map(|m| m.len())
         {
-            Ok(v) => v,
-            Err(e) => {
-                error!("unable to stat {:?}: {:?}", &paths[0], e);
-                return None;
-            }
-        };
-
-        // if we are at the end of the file there's no work to do
-        if inner.offset == len {
-            return None;
-        }
-
-        // if the offset is greater than the file's len
-        // it's very likely a truncation occurred
-        if inner.offset > len {
-            info!(
-                "{:?} was truncated from {} to {}",
-                &paths[0], inner.offset, len
-            );
-            // Reset offset back to the start... ish?
-            // TODO: Work out the purpose of the 8192 something to do with lookback? That seems wrong.
-            inner.offset = if len < 8192 { 0 } else { len };
-            // seek to the offset, this creates the "tailing" effect
-            let offset = inner.offset;
-            if let Err(e) = inner
+            let mut inner = self.inner.lock().await;
+            let len = match inner
                 .reader
-                .get_mut()
-                .get_mut()
-                .seek(SeekFrom::Start(offset))
+                .get_ref()
+                .get_ref()
+                .metadata()
                 .await
+                .map(|m| m.len())
             {
-                error!("error seeking {:?}", e);
+                Ok(v) => v,
+                Err(e) => {
+                    error!("unable to stat {:?}: {:?}", &paths[0], e);
+                    return None;
+                }
+            };
+
+            // if we are at the end of the file there's no work to do
+            if inner.offset == len {
                 return None;
             }
-        }
 
-        Some(LazyLines::new(
-            self.inner.clone(),
-            paths
-                .into_iter()
-                .map(|path| path.to_string_lossy().into())
-                .collect(),
-        ))
+            // if the offset is greater than the file's len
+            // it's very likely a truncation occurred
+            if inner.offset > len {
+                info!(
+                    "{:?} was truncated from {} to {}",
+                    &paths[0], inner.offset, len
+                );
+                // Reset offset back to the start... ish?
+                // TODO: Work out the purpose of the 8192 something to do with lookback? That seems wrong.
+                inner.offset = if len < 8192 { 0 } else { len };
+                // seek to the offset, this creates the "tailing" effect
+                let offset = inner.offset;
+                if let Err(e) = inner
+                    .reader
+                    .get_mut()
+                    .get_mut()
+                    .seek(SeekFrom::Start(offset))
+                    .await
+                {
+                    error!("error seeking {:?}", e);
+                    return None;
+                }
+            }
+        }
+        Some(
+            LazyLines::new(
+                self.inner.clone(),
+                paths
+                    .into_iter()
+                    .map(|path| path.to_string_lossy().into())
+                    .collect(),
+            )
+            .await,
+        )
     }
 }
 
