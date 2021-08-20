@@ -173,7 +173,8 @@ impl FileSystem {
     pub fn stream_events(
         fs: Arc<Mutex<FileSystem>>,
         buf: &mut [u8],
-    ) -> Result<impl Stream<Item = Event> + '_, std::io::Error> {
+    ) -> Result<impl Stream<Item = (Event, chrono::DateTime<chrono::Utc>)> + '_, std::io::Error>
+    {
         let events_stream = {
             match fs
                 .try_lock()
@@ -189,34 +190,46 @@ impl FileSystem {
             }
         };
 
+        let init_time = chrono::offset::Utc::now();
         let initial_events = {
             let mut fs = fs.try_lock().expect("could not lock filesystem cache");
 
             let mut acc = Vec::new();
             if !fs.initial_events.is_empty() {
-                for event in std::mem::replace(&mut fs.initial_events, Vec::new()) {
-                    acc.push(event)
+                for event in std::mem::take(&mut fs.initial_events) {
+                    acc.push((event, init_time))
                 }
             }
             acc
         };
 
-        let events = events_stream.into_stream().map(move |event| {
-            let fs = fs.clone();
-            {
-                let mut acc = Vec::new();
+        let events = events_stream
+            .into_stream()
+            .map(|event| async { event })
+            .buffered(1000)
+            .map(move |(event, event_time)| {
+                let fs = fs.clone();
+                {
+                    // TODO: Can this be a Smallvec?
+                    let mut acc = Vec::new();
 
-                match event {
-                    Ok(event) => {
-                        fs.try_lock()
-                            .expect("couldn't lock filesystem cache")
-                            .process(event, &mut acc);
-                        futures::stream::iter(acc)
+                    match event {
+                        Ok(event) => {
+                            {
+                                fs.try_lock()
+                                    .expect("couldn't lock filesystem cache")
+                                    .process(event, &mut acc);
+                            }
+                            let a = acc
+                                .into_iter()
+                                .map(|event| (event, event_time))
+                                .collect::<SmallVec<[_; 2]>>();
+                            futures::stream::iter(a)
+                        }
+                        _ => panic!("Inotify error"),
                     }
-                    _ => panic!("Inotify error"),
                 }
-            }
-        });
+            });
 
         Ok(futures::stream::iter(initial_events).chain(events.flatten()))
     }
