@@ -9,7 +9,7 @@ use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::apps::v1::DaemonSet;
 use k8s_openapi::api::core::v1::{Endpoints, Namespace, Pod, Service, ServiceAccount};
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBinding};
-use kube::api::{Api, ListParams, PostParams, Resource, WatchEvent};
+use kube::api::{Api, ListParams, PostParams, WatchEvent};
 use kube::Client;
 
 mod common;
@@ -433,7 +433,7 @@ async fn create_agent_ds(
                     }
                 }
             }
-            WatchEvent::Deleted(o) => println!("Deleted {}", Resource::name(&o)),
+            WatchEvent::Deleted(o) => println!("Deleted {}", &o.metadata.name.unwrap()),
             WatchEvent::Error(e) => println!("Error {}", e),
             _ => {}
         }

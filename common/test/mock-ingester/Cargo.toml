@@ -11,7 +11,7 @@ path = "src/bin/https_ingester.rs"
 
 [dependencies]
 async-compression = { version ="0.3", features = ["tokio", "gzip"]}
-hyper = { version = "0.14", features = ["http1", "server", "stream"] }
+hyper = { version = "0.14", features = ["http1", "server", "stream", "tcp"] }
 bytes = "*"
 futures = "0.3"
 rcgen = "0.8"
