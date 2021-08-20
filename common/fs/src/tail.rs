@@ -9,7 +9,9 @@ use state::FileId;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use futures::{Stream, StreamExt};
 
@@ -244,6 +246,7 @@ impl Tailer {
                 }
 
                 if let Entry::File { data, .. } = entry {
+                    // TODO: check if it's new
                     return data.borrow_mut().deref_mut().tail(paths).await;
                 }
             }
@@ -301,7 +304,7 @@ impl Tailer {
     ) -> Result<impl Stream<Item = LazyLineSerializer> + 'a, std::io::Error> {
         let events = {
             match FileSystem::stream_events(self.fs_cache.clone(), buf) {
-                Ok(event) => event,
+                Ok(events) => events,
                 Err(e) => {
                     warn!("tailer stream raised exception: {:?}", e);
                     return Err(e);
@@ -324,7 +327,7 @@ impl Tailer {
                             event,
                             initial_offsets,
                             lookback_config,
-                            &fs.lock().expect("Couldn't lock fs"),
+                            fs.lock().await.deref(),
                         )
                         .await
                     }
