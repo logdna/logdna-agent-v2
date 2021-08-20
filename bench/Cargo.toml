@@ -11,7 +11,13 @@ path = "bin/throughput.rs"
 
 [dependencies]
 structopt = "0.3"
-memmap = "0.7"
+memmap2 = "0.3"
 file-rotate = "0.4"
 owning_ref = "0.4"
 escargot = "0.5"
+nix = "0.22"
+procfs = "0.9"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+logdna_mock_ingester = { package = "logdna-mock-ingester", path = "../common/test/mock-ingester" }
+rand = "0.8"
+async-channel = "1.6"

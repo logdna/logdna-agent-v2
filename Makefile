@@ -158,6 +158,10 @@ test-journald: ## Run journald unit tests
 	$(eval FEATURES := $(FEATURES) journald_tests)
 	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald -- --nocapture"
 
+.PHONY:bench
+bench:
+	$(RUST_COMMAND) "--privileged --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo run --release --manifest-path bench/Cargo.toml --bin=throughput dict.txt -o /tmp/out --file-history 3 --file-size 20000000 && mv /tmp/flamegraph.svg ."
+
 .PHONY:clean
 clean: ## Clean all artifacts from the build process
 	$(RUST_COMMAND) "" "rm -fr target/* \$$CARGO_HOME/registry/* \$$CARGO_HOME/git/*"
