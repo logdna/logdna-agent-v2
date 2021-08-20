@@ -499,12 +499,12 @@ impl Stream for LazyLines {
                 buf.clear();
             }
 
-            // If we've read more than a 0.5 MB from this one event and reached the end
+            // If we've read more than a 16 KB from this one event and reached the end
             // of the file as it was when we started break to prevent starvation
-            if *total_read > (1024 * 512) {
+            if *total_read > (1024 * 16) {
                 if let Some(target_read) = target_read {
                     if *total_read > *target_read {
-                        debug!("read 512KB from a single event, returning");
+                        debug!("read 16KB from a single event, returning");
                         break Poll::Ready(None);
                     }
                 }
