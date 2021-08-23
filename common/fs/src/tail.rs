@@ -248,7 +248,6 @@ impl Tailer {
                 }
 
                 if let Entry::File { data, .. } = entry {
-                    // TODO: check if it's new
                     return data.borrow_mut().deref_mut().tail(paths).await;
                 }
             }

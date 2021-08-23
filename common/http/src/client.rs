@@ -141,10 +141,10 @@ impl Client {
 
     fn should_flush(&self) -> bool {
         if self.buffer_bytes >= self.buffer_max_size {
-            debug!("filled buffer, flushing");
+            trace!("filled buffer, flushing");
             true
         } else if self.last_flush.elapsed() > Duration::from_millis(250) {
-            debug!("250ms since last upload, flushing");
+            trace!("250ms since last upload, flushing");
             true
         } else {
             false
