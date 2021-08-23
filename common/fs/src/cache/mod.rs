@@ -5,21 +5,23 @@ use crate::cache::watch::{WatchEvent, Watcher};
 use crate::rule::{GlobRule, Rules, Status};
 
 use std::cell::RefCell;
+use std::collections::hash_map::Entry as HashMapEntry;
+use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::fs::read_dir;
 use std::iter::FromIterator;
 use std::ops::Deref;
 use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::{fmt, io};
 
 use futures::{Stream, StreamExt};
 use inotify::WatchDescriptor;
 use slotmap::{DefaultKey, SlotMap};
-use std::collections::hash_map::Entry as HashMapEntry;
-use std::collections::HashMap;
+use smallvec::SmallVec;
 use thiserror::Error;
+use tokio::sync::Mutex;
 
 pub mod dir_path;
 pub mod entry;
@@ -171,7 +173,8 @@ impl FileSystem {
     pub fn stream_events(
         fs: Arc<Mutex<FileSystem>>,
         buf: &mut [u8],
-    ) -> Result<impl Stream<Item = Event> + '_, std::io::Error> {
+    ) -> Result<impl Stream<Item = (Event, chrono::DateTime<chrono::Utc>)> + '_, std::io::Error>
+    {
         let events_stream = {
             match fs
                 .try_lock()
@@ -187,34 +190,46 @@ impl FileSystem {
             }
         };
 
+        let init_time = chrono::offset::Utc::now();
         let initial_events = {
             let mut fs = fs.try_lock().expect("could not lock filesystem cache");
 
             let mut acc = Vec::new();
             if !fs.initial_events.is_empty() {
                 for event in std::mem::take(&mut fs.initial_events) {
-                    acc.push(event)
+                    acc.push((event, init_time))
                 }
             }
             acc
         };
 
-        let events = events_stream.into_stream().map(move |event| {
-            let fs = fs.clone();
-            {
-                let mut acc = Vec::new();
+        let events = events_stream
+            .into_stream()
+            .map(|event| async { event })
+            .buffered(1000)
+            .map(move |(event, event_time)| {
+                let fs = fs.clone();
+                {
+                    // TODO: Can this be a Smallvec?
+                    let mut acc = Vec::new();
 
-                match event {
-                    Ok(event) => {
-                        fs.try_lock()
-                            .expect("couldn't lock filesystem cache")
-                            .process(event, &mut acc);
-                        futures::stream::iter(acc)
+                    match event {
+                        Ok(event) => {
+                            {
+                                fs.try_lock()
+                                    .expect("couldn't lock filesystem cache")
+                                    .process(event, &mut acc);
+                            }
+                            let a = acc
+                                .into_iter()
+                                .map(|event| (event, event_time))
+                                .collect::<SmallVec<[_; 2]>>();
+                            futures::stream::iter(a)
+                        }
+                        _ => panic!("Inotify error"),
                     }
-                    _ => panic!("Inotify error"),
                 }
-            }
-        });
+            });
 
         Ok(futures::stream::iter(initial_events).chain(events.flatten()))
     }
@@ -1103,7 +1118,11 @@ mod tests {
 
     macro_rules! lookup_entry {
         ( $x:expr, $y: expr ) => {{
-            let fs = $x.lock().expect("failed to lock fs");
+            let fs = loop {
+                if let Ok(fs) = $x.try_lock() {
+                    break fs;
+                }
+            };
             let entries = fs.entries.clone();
             let entries = entries.borrow();
             fs.lookup(&$y, &entries)
@@ -1154,7 +1173,7 @@ mod tests {
             let entry = lookup_entry!(fs, a);
             assert!(entry.is_some());
             {
-                let _fs = fs.lock().expect("couldn't lock fs");
+                let _fs = fs.try_lock().expect("couldn't lock fs");
                 let _entries = &_fs.entries;
                 let _entries = _entries.borrow();
                 match _entries.get(entry.unwrap()).unwrap().deref() {
@@ -1174,7 +1193,7 @@ mod tests {
             let entry = lookup_entry!(fs, old);
             assert!(entry.is_some());
             {
-                let _fs = fs.lock().expect("couldn't lock fs");
+                let _fs = fs.try_lock().expect("couldn't lock fs");
                 let _entries = &_fs.entries;
                 let _entries = _entries.borrow();
                 match _entries.get(entry.unwrap()).unwrap().deref() {
@@ -1189,7 +1208,7 @@ mod tests {
             let entry = lookup_entry!(fs, a);
             assert!(entry.is_some());
             {
-                let _fs = fs.lock().expect("couldn't lock fs");
+                let _fs = fs.try_lock().expect("couldn't lock fs");
                 let _entries = &_fs.entries;
                 let _entries = _entries.borrow();
                 match _entries.get(entry.unwrap()).unwrap().deref() {
@@ -1218,7 +1237,7 @@ mod tests {
 
             assert!(entry.is_some());
             {
-                let _fs = fs.lock().expect("couldn't lock fs");
+                let _fs = fs.try_lock().expect("couldn't lock fs");
                 let _entries = &_fs.entries;
                 let _entries = _entries.borrow();
                 match _entries.get(entry.unwrap()).unwrap().deref() {
@@ -1240,7 +1259,7 @@ mod tests {
 
             assert!(entry.is_some());
             {
-                let _fs = fs.lock().expect("couldn't lock fs");
+                let _fs = fs.try_lock().expect("couldn't lock fs");
                 let _entries = &_fs.entries;
                 let _entries = _entries.borrow();
                 match _entries.get(entry.unwrap()).unwrap().deref() {
@@ -1255,7 +1274,7 @@ mod tests {
 
             let entry = lookup_entry!(fs, a);
             assert!(entry.is_some());
-            let _fs = fs.lock().expect("couldn't lock fs");
+            let _fs = fs.try_lock().expect("couldn't lock fs");
             let _entries = &_fs.entries;
             let _entries = _entries.borrow();
             match _entries.get(entry.unwrap()).unwrap().deref() {
@@ -1339,7 +1358,7 @@ mod tests {
             assert!(entry.is_some());
             let entry2 = lookup_entry!(fs, b);
             assert!(entry.is_some());
-            let _fs = fs.lock().expect("couldn't lock fs");
+            let _fs = fs.try_lock().expect("couldn't lock fs");
             let _entries = &_fs.entries;
             let _entries = _entries.borrow();
             match _entries.get(entry.unwrap()).unwrap().deref() {
@@ -1375,7 +1394,7 @@ mod tests {
             let entry = lookup_entry!(fs, file_path).unwrap();
             let entry2 = lookup_entry!(fs, hard_path);
             let real_watch_descriptor;
-            let _fs = fs.lock().expect("couldn't lock fs");
+            let _fs = fs.try_lock().expect("couldn't lock fs");
             let _entries = &_fs.entries;
             let _entries = _entries.borrow();
             let _entry = _entries.get(entry).unwrap();
@@ -1637,7 +1656,7 @@ mod tests {
             let entry4 = lookup_entry!(fs, new_dir_path.join("sym.log"));
             assert!(entry4.is_some());
 
-            let _fs = fs.lock().expect("couldn't lock fs");
+            let _fs = fs.try_lock().expect("couldn't lock fs");
             let _entries = &_fs.entries;
             let _entries = _entries.borrow();
             match _entries.get(entry.unwrap()).unwrap().deref() {
@@ -1737,7 +1756,7 @@ mod tests {
             let entry4 = lookup_entry!(fs, new_dir_path.join("sym.log"));
             assert!(entry4.is_some());
 
-            let _fs = fs.lock().expect("couldn't lock fs");
+            let _fs = fs.try_lock().expect("couldn't lock fs");
             let _entries = &_fs.entries;
             let _entries = _entries.borrow();
             match _entries.get(entry.unwrap()).unwrap().deref() {
@@ -1786,7 +1805,7 @@ mod tests {
 
             let entry = lookup_entry!(fs, new_path);
             assert!(entry.is_some());
-            let _fs = fs.lock().expect("couldn't lock fs");
+            let _fs = fs.try_lock().expect("couldn't lock fs");
             let _entries = &_fs.entries;
             let _entries = _entries.borrow();
             match _entries.get(entry.unwrap()).unwrap().deref() {
@@ -1854,7 +1873,7 @@ mod tests {
 
             let entry = lookup_entry!(fs, move_path);
             assert!(entry.is_some());
-            let _fs = fs.lock().expect("couldn't lock fs");
+            let _fs = fs.try_lock().expect("couldn't lock fs");
             let _entries = &_fs.entries;
             let _entries = _entries.borrow();
             match _entries.get(entry.unwrap()).unwrap().deref() {
@@ -1959,7 +1978,7 @@ mod tests {
             let fs = Arc::new(Mutex::new(new_fs::<()>(path, None)));
             let entry = lookup_entry!(fs, file_path).unwrap();
 
-            let _fs = fs.lock().expect("failed to lock fs");
+            let _fs = fs.try_lock().expect("failed to lock fs");
             let entries = _fs.entries.borrow();
             let resolved_paths =
                 _fs.resolve_valid_paths(_fs.entries.borrow().get(entry).unwrap().deref(), &entries);
