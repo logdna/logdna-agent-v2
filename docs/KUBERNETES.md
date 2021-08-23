@@ -75,7 +75,9 @@ NAME                 READY   STATUS    RESTARTS   AGE
 logdna-agent-hcvhn   1/1     Running   0          10s
 ```
 
-> :warning: By default the agent will run as root. To run the agent as a non-root user, refer to the section [Run as Non-Root](#run-as-non-root) below.
+> :warning:  By default the agent will run as root. To run the agent as a non-root user, refer to the section [Run as Non-Root](#run-as-non-root) below.
+
+__NOTE__ The agent provides a "stateful" or persistent set of files that is available for reference whenever the agent is restarted; this allows for a configurable `lookback` option. For details, refer to our documentation about [Configuring Lookback](README.md/#configuring-lookback). To maintain backward compatibility, our default YAML file for Kubernetes environments uses a configuration value of `smallfiles`. However, if you create your own YAML file, the default `lookback` setting will be `none` unless you configure your yaml to enable statefulness and explicitly set it to `smallfiles` or `start`.
 
 ## Upgrading
 
@@ -100,6 +102,8 @@ Labels:         app.kubernetes.io/instance=logdna-agent
 
 Older versions of our configurations do not provide these labels. In that case, each upgrade path below provides an example of each configuration to compare to what's running on your cluster.
 
+> :warning:  Exporting Kubernetes objects with "kubectl get \<resource\> -o yaml" includes extra information about the object's state. This data does not need to be copied over to the new YAML file.
+
 #### Upgrading from Configuration v1.x.x or v2.0.x
 
 * **Example Configuration YAML Files:**
@@ -113,8 +117,6 @@ Older versions of our configurations do not provide these labels. In that case, 
   2. Remove the old DaemonSet in the default namespace; run `kubectl delete daemonset logdna-agent`.
   3. [Install the latest agent](#installation-steps).
 
-> :warning: Exporting Kubernetes objects with "kubectl get \<resource\> -o yaml" includes extra information about the object's state. This data does not need to be copied over to the new YAML file.
-
 #### Upgrading from Configuration v2.1.x
 
 * **Example Configuration YAML Files:**
@@ -126,7 +128,6 @@ Older versions of our configurations do not provide these labels. In that case, 
      2. Copy any desired changes from `old-logdna-agent-daemon-set.yaml` to the DaemonSet object in `k8s/agent-resources.yaml`.
   2. Apply the latest configuration YAML file; run `kubectl apply -f k8s/agent-resources.yaml`.
 
-> :warning: Exporting Kubernetes objects with "kubectl get \<resource\> -o yaml" includes extra information about the object's state. This data does not need to be copied over to the new YAML file.
 
 ### Upgrading the Image
 
@@ -152,7 +153,7 @@ kubectl patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"rep
 * `2.2` - Updates with each patch version update under `2.2.x`.
 * `2.2.0` - Targets a specific version of the agent.
 
-**Note:** This list isn't exhaustive; for a full list check out the [logdna-agent dockerhub page](https://hub.docker.com/r/logdna/logdna-agent)
+__NOTE__ This list isn't exhaustive; for a full list check out the [logdna-agent dockerhub page](https://hub.docker.com/r/logdna/logdna-agent)
 
 ## Uninstalling
 

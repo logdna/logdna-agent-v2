@@ -19,6 +19,7 @@ The LogDNA agent is a resource-efficient log collection client that forwards log
     * [Using manifest files](#using-manifest-files)
     * [Using Helm](#using-helm)
   * [Installing on OpenShift](#installing-on-openshift)
+  * [Installing on Linux](#installing-on-linux)
   * [Running as Non-Root](#running-as-non-root)
   * [Additional Installation Options](#additional-installation-options)
 * [Building](#building-the-logdna-agent)
@@ -59,7 +60,11 @@ Visit the documentation to [install the agent on Kubernetes using Helm](HELM.md)
 
 ### Installing on OpenShift
 
-Follow the instructions for [deploying the agent on Red Hat®️ OpenShift®️](OPENSHIFT.md).
+Follow the instructions for [deploying the agent on Red Hat OpenShift](OPENSHIFT.md).
+
+### Installing on Linux
+
+Refer to the documentation for [deploying the agent on Linux](LINUX.md).
 
 ### Running as Non-Root
 
@@ -148,10 +153,10 @@ options are available:
 |`LOGDNA_LINE_INCLUSION_REGEX`|Comma separated list of regex patterns to include log lines. When set, the Agent will send ONLY log lines that match any of these patterns.||
 |`LOGDNA_REDACT_REGEX`|Comma separated list of regex patterns used to mask matching sensitive information (such as PII) before sending it in the log line.||
 |`LOGDNA_JOURNALD_PATHS`|Comma separated list of paths (directories or files) of journald paths to monitor||
-|`LOGDNA_LOOKBACK`|The lookback strategy on startup|`smallfiles`|
+|`LOGDNA_LOOKBACK`|The lookback strategy on startup|`none`|
 |`LOGDNA_USE_K8S_LOG_ENRICHMENT`|Determines whether the agent should query the K8s API to enrich log lines from other pods.|`always`|
 |`LOGDNA_LOG_K8S_EVENTS`|Determines whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
-|`LOGDNA_DB_PATH`|The directory in which the agent will store its state database. Note that the agent must have write access to the directory and be a persistent volume.||
+|`LOGDNA_DB_PATH`|The directory in which the agent will store its state database. Note that the agent must have write access to the directory and be a persistent volume.|`/var/lib/logdna`|
 |`LOGDNA_METRICS_PORT`|The port number to expose a Prometheus endpoint target with the [agent internal metrics](INTERNAL_METRICS.md).||
 
 All regular expressions use [Perl-style syntax][regex-syntax] with case sensitivity by default. If you don't
@@ -183,9 +188,9 @@ The lookback strategy determines how the agent handles existing files on agent s
 By default, the agent provides a "stateful", or persistent, collection of files that can be referenced whenever the agent is restarted, in order to return (or look back) to see any files that were ingested during the time that the agent was not running. The state directory location is defined using the `LOGDNA_DB_PATH` environment variable in the YAML file (the default path is `/var/lib/logdna`).
 
 The valid values for this option are:
-   * When set to **`none`**:
+   * When set to **`none`** (default):
       * lookback is disabled, and LogDNA Agent will read new lines as those are added to the file, ignoring the lines that were written before the time the Agent restarted.
-   * When set to **`smallfiles`** (default):
+   * When set to **`smallfiles`**:
        * If there is information in the “state file”, use the last recorded state. 
        * If the file is not present in the “state file” and the file is less than 8KiB, start at the beginning. If the file is larger than 8KiB, start at the end. 
    * When set to **`start`**:
@@ -261,7 +266,7 @@ log ingestion service.
 ### Exposing Agent Metrics
 
 The LogDNA agent records internal metrics that can be relevant for monitoring and alerting, such as number log
-files currently tracked or number of bytes parsed, along with process status information. Check out the 
+files currently tracked or number of bytes parsed, along with process status information. Check out the
 [documentation for internal metrics](INTERNAL_METRICS.md) for more information.
 
 [regex-syntax]: https://docs.rs/regex/1.4.5/regex/#syntax
