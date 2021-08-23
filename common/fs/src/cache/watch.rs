@@ -90,7 +90,14 @@ pub struct WatchEventStream<'a> {
 }
 
 impl<'a> WatchEventStream<'a> {
-    pub fn into_stream(self) -> impl Stream<Item = Result<WatchEvent, std::io::Error>> + 'a {
+    pub fn into_stream(
+        self,
+    ) -> impl Stream<
+        Item = (
+            Result<WatchEvent, std::io::Error>,
+            chrono::DateTime<chrono::Utc>,
+        ),
+    > + 'a {
         let unmatched_move_to: Arc<Mutex<Vec<(Instant, WatchEvent)>>> =
             Arc::new(Mutex::new(Vec::new()));
         let unmatched_move_from: Arc<Mutex<Vec<(Instant, WatchEvent)>>> =
@@ -398,6 +405,7 @@ impl<'a> WatchEventStream<'a> {
                     event => Some(event.map(|e| e.unwrap())),
                 }
             })
+            .map(|event| (event, chrono::offset::Utc::now()))
     }
 }
 
