@@ -3,6 +3,10 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::fs::MetadataExt;
 use std::process::Command;
+
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+
 use std::thread::{self, sleep};
 use std::time::Duration;
 use wait_timeout::ChildExt;
@@ -18,6 +22,7 @@ use proptest::prelude::*;
 use systemd::journal;
 use tempfile::tempdir;
 use test_types::random_line_string_vec;
+use tokio::io::BufWriter;
 use tokio::task;
 
 mod common;
@@ -977,8 +982,6 @@ async fn test_tags() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_lookback_restarting_agent() {
     let _ = env_logger::Builder::from_default_env().try_init();
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
 
     let line_count = Arc::new(AtomicUsize::new(0));
 
@@ -1779,6 +1782,97 @@ async fn test_tight_writes() {
         let map = received.lock().await;
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();
         assert_eq!(file_info.lines, lines + 1);
+        shutdown_handle();
+        Ok(())
+    });
+
+    server_result.unwrap();
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "slow_tests"), ignore)]
+async fn test_endurance_writes() {
+    use tokio::io::AsyncWriteExt;
+    let _ = env_logger::Builder::from_default_env().try_init();
+    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+
+    let counter = std::sync::Arc::new(AtomicUsize::new(0));
+
+    let (server, received, shutdown_handle, addr) = common::start_ingester({
+        let counter = counter.clone();
+        Box::new(move |body| {
+            counter.fetch_add(body.lines.len(), Ordering::SeqCst);
+        })
+    });
+    let file_path = dir.join("test.log");
+    File::create(&file_path).expect("Couldn't create temp log file...");
+    let settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &addr);
+    let mut agent_handle = common::spawn_agent(settings);
+    let agent_stderr = agent_handle.stderr.take().unwrap();
+    let mut stderr_reader = BufReader::new(agent_stderr);
+    common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+    let agent_stderr = stderr_reader.into_inner();
+    consume_output(agent_stderr);
+
+    let (server_result, _) = tokio::join!(server, async {
+        let line = "Nice short message\n";
+
+        let sync_every = 5_000;
+
+        let mut file = BufWriter::new(
+            tokio::fs::OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&file_path)
+                .await?,
+        );
+
+        let now = std::time::Instant::now();
+
+        let mut i = 0;
+        let mut elapsed = 1u64;
+        while elapsed < 90 {
+            i += 1;
+            if let Err(e) = file.write_all(line.as_bytes()).await {
+                eprintln!("Couldn't write to file: {}", e);
+                return Err(e);
+            }
+            if i % (sync_every / 10) == 0 {
+                tokio::time::sleep(tokio::time::Duration::from_millis(20)).await;
+            }
+            if i % sync_every == 0 {
+                file.flush().await?;
+
+                if elapsed > 0 {
+                    let count = counter.load(Ordering::SeqCst);
+                    println!(
+                        "written: {}, received: {}, written/sec, {}, received/sec: {}",
+                        i,
+                        count,
+                        i / elapsed,
+                        count as u64 / elapsed
+                    );
+                }
+            }
+            elapsed = now.elapsed().as_secs();
+        }
+
+        common::force_client_to_flush(&dir).await;
+
+        // Wait for the data to be received by the mock ingester
+        tokio::time::sleep(tokio::time::Duration::from_millis(20000)).await;
+        file.write_all("One more and we're done\n".as_bytes())
+            .await
+            .unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        file.write_all("And we're done\n".as_bytes()).await.unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+        let map = received.lock().await;
+        let file_info = map.get(file_path.to_str().unwrap()).unwrap();
+        let diff = i as usize - file_info.lines;
+        assert!(diff < 1000);
         shutdown_handle();
         Ok(())
     });

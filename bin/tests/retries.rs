@@ -1,9 +1,12 @@
 use common::AgentSettings;
 pub use common::*;
+
+use std::convert::TryInto;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 use tempfile::tempdir;
@@ -23,7 +26,7 @@ async fn test_retry_after_timeout() {
     let file_path = dir.join("test.log");
     let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
-    let attempts_counter = Arc::new(Mutex::new(0));
+    let attempts_counter = Arc::new(AtomicUsize::new(0));
     let counter = attempts_counter.clone();
     let (server, received, shutdown_handle, address) = start_ingester(Box::new(move |body| {
         if body
@@ -31,9 +34,8 @@ async fn test_retry_after_timeout() {
             .iter()
             .any(|l| l.file.as_deref().unwrap().contains("test.log"))
         {
-            let mut counter = counter.lock().unwrap();
-            *counter += 1;
-            if *counter < attempts {
+            counter.fetch_add(1, Ordering::SeqCst);
+            if counter.load(Ordering::SeqCst) < attempts.try_into().unwrap() {
                 // Sleep enough time to mark the request as timed out by the client
                 thread::sleep(Duration::from_millis(timeout + 20));
             }
@@ -69,9 +71,9 @@ async fn test_retry_after_timeout() {
         // Received it multiple times
         assert!(file_info.values.len() >= file_lines.len());
 
-        let attempts_made = attempts_counter.lock().unwrap();
+        let attempts_made: i32 = attempts_counter.load(Ordering::SeqCst).try_into().unwrap();
         // It retried multiple times
-        assert!(i32::abs(*attempts_made - attempts) <= 2);
+        assert!(i32::abs(attempts_made - attempts) <= 2);
         shutdown_handle();
     });
 
@@ -91,7 +93,7 @@ async fn test_retry_is_not_made_before_retry_base_delay_ms() {
     let file_path = dir.join("test.log");
     let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
-    let attempts_counter = Arc::new(Mutex::new(0));
+    let attempts_counter = Arc::new(AtomicUsize::new(0));
     let counter = attempts_counter.clone();
     let (server, _, shutdown_handle, address) = start_ingester(Box::new(move |body| {
         if body
@@ -99,8 +101,7 @@ async fn test_retry_is_not_made_before_retry_base_delay_ms() {
             .iter()
             .any(|l| l.file.as_deref().unwrap().contains("test.log"))
         {
-            let mut counter = counter.lock().unwrap();
-            *counter += 1;
+            counter.fetch_add(1, Ordering::SeqCst);
             // Sleep enough time to mark the request as timed out by the client
             thread::sleep(Duration::from_millis(timeout + 20));
         }
@@ -120,9 +121,9 @@ async fn test_retry_is_not_made_before_retry_base_delay_ms() {
 
         // Wait for the data to be received by the mock ingester / retried
         tokio::time::sleep(tokio::time::Duration::from_secs(4)).await;
-        let attempts_made = attempts_counter.lock().unwrap();
+        let attempts_made = attempts_counter.load(Ordering::SeqCst);
         // It was not retried
-        assert_eq!(*attempts_made, 1);
+        assert_eq!(attempts_made, 1);
         shutdown_handle();
     });
 

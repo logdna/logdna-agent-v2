@@ -49,6 +49,7 @@ miniz_oxide = "0.4"
 [features]
 default = ["libjournald"]
 integration_tests = []
+slow_tests = []
 profiling = ["jemallocator/profiling"]
 k8s_tests = []
 libjournald = ["journald/libjournald"]
