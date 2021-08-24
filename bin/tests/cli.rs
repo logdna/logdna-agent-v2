@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread::{self, sleep};
 use std::time::Duration;
+
 use wait_timeout::ChildExt;
 
 use crate::common::{consume_output, AgentSettings};
