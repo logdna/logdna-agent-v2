@@ -50,6 +50,7 @@ miniz_oxide = "0.4"
 default = []
 integration_tests = []
 profiling = ["tikv-jemallocator/profiling"]
+slow_tests = []
 k8s_tests = []
 libjournald = ["journald/libjournald"]
 journald_tests = ["journald/journald_tests"]

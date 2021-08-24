@@ -83,7 +83,7 @@ impl Service<Request<Body>> for Svc {
     }
 
     fn call(&mut self, req: Request<Body>) -> Self::Future {
-        info!("Received {:?}", req);
+        debug!("Received {:?}", req);
         let files = self.files.clone();
         let process_fn = self.process_fn.clone();
         Box::pin(async move {
