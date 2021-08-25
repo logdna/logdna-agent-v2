@@ -517,7 +517,7 @@ impl Stream for LazyLines {
                     *total_read += count.get();
                     // Got a line
                     debug_assert_eq!(*read, 0);
-                    debug!("tailer sendings lines for {:?}", &paths);
+                    trace!("tailer sendings lines for {:?}", &paths);
                     let count = TryInto::<u64>::try_into(count.get()).unwrap();
                     Metrics::fs().add_bytes(count);
                     *offset += count;
@@ -642,7 +642,7 @@ impl TailedFile<LineBuilder> {
                             let paths = paths.clone();
                             line_res.ok().map({
                                 move |line| {
-                                    debug!("tailer sendings lines for {:?}", paths);
+                                    trace!("tailer sendings lines for {:?}", paths);
                                     futures::stream::iter(paths.into_iter().map({
                                         move |path| {
                                             Metrics::fs().increment_lines();

@@ -90,7 +90,7 @@ impl Client {
                 Ok((offsets, Some(body))) => {
                     if let (Some(sw), Some(offsets)) = (self.state_write.as_ref(), &offsets) {
                         for (file_name, offset) in offsets {
-                            debug!("Updating offset for {:?} to {}", file_name, *offset);
+                            trace!("Updating offset for {:?} to {}", file_name, *offset);
                             if let Err(e) = sw.update(file_name, *offset).await {
                                 error!("Unable to write offsets. error: {}", e);
                             };
@@ -121,7 +121,7 @@ impl Client {
             Ok(_) => {
                 if let Some(wh) = self.state_write.as_ref() {
                     if let (Some(key), Some(offset)) = (key.as_ref(), offset) {
-                        debug!("Updating offset for {:?} to {}", key, offset);
+                        trace!("Updating offset for {:?} to {}", key, offset);
                         wh.update(key, offset).await.unwrap();
                     }
                 }
