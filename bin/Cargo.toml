@@ -10,7 +10,7 @@
 
 [package]
 name = "logdna-agent"
-version = "3.1.0"
+version = "3.1.1"
 authors = ["CJP10 <connor.peticca@logdna.com>"]
 edition = "2018"
 build = "build.rs"
@@ -54,7 +54,7 @@ journald_tests = ["journald/journald_tests"]
 lazy_static = "*"
 assert_cmd = "1"
 itertools = "0.10"
-predicates = "1"
+predicates = "2"
 tempfile = "3"
 rustls = "0.18"
 rcgen = "0.8"
