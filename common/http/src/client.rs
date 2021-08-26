@@ -140,8 +140,15 @@ impl Client {
     }
 
     fn should_flush(&self) -> bool {
-        self.buffer_bytes >= self.buffer_max_size
-            || self.last_flush.elapsed() > Duration::from_millis(250)
+        if self.buffer_bytes >= self.buffer_max_size {
+            trace!("filled buffer, flushing");
+            true
+        } else if self.last_flush.elapsed() > Duration::from_millis(250) {
+            trace!("250ms since last upload, flushing");
+            true
+        } else {
+            false
+        }
     }
 
     fn should_retry(&self) -> bool {
@@ -169,11 +176,10 @@ impl Client {
         let buffer = self.buffer.replace(buffer).unwrap();
         let buffer_size = self.buffer_bytes as u64;
         self.buffer_bytes = 0;
-        self.last_flush = Instant::now();
-
         Metrics::http().add_request_size(buffer_size);
         let body = buffer.end().expect("Failed to close ingest buffer");
         self.make_request(IngestBodyBuffer::from_buffer(body)).await;
+        self.last_flush = Instant::now();
     }
 
     async fn make_request(&mut self, body: IngestBodyBuffer) {

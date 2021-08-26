@@ -9,7 +9,9 @@ use state::FileId;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
+
+use std::sync::Arc;
+use tokio::sync::Mutex;
 
 use futures::{Stream, StreamExt};
 
@@ -72,6 +74,7 @@ pub struct Tailer {
     lookback_config: Lookback,
     fs_cache: Arc<Mutex<FileSystem>>,
     initial_offsets: Option<HashMap<FileId, u64>>,
+    event_times: Arc<Mutex<HashMap<EntryKey, chrono::DateTime<chrono::Utc>>>>,
 }
 
 impl Tailer {
@@ -86,6 +89,7 @@ impl Tailer {
             lookback_config,
             fs_cache: Arc::new(Mutex::new(FileSystem::new(watched_dirs, rules))),
             initial_offsets,
+            event_times: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -306,7 +310,7 @@ impl Tailer {
     ) -> Result<impl Stream<Item = LazyLineSerializer> + 'a, std::io::Error> {
         let events = {
             match FileSystem::stream_events(self.fs_cache.clone(), buf) {
-                Ok(event) => event,
+                Ok(events) => events,
                 Err(e) => {
                     warn!("tailer stream raised exception: {:?}", e);
                     return Err(e);
@@ -315,23 +319,55 @@ impl Tailer {
         };
 
         debug!("Tailer starting with lookback: {:?}", self.lookback_config);
+
         Ok(events
             .then({
                 let fs = self.fs_cache.clone();
                 let lookback_config = self.lookback_config.clone();
                 let initial_offsets = self.initial_offsets.clone();
-                move |event| {
+                let event_times = self.event_times.clone();
+                move |(event, event_time)| {
                     let fs = fs.clone();
                     let lookback_config = lookback_config.clone();
                     let initial_offsets = initial_offsets.clone();
+                    let event_times = event_times.clone();
+
                     async move {
-                        Tailer::handle_event(
+                        // debounce events
+                        // check event_time, if it's before the previous one
+                        let key_and_previous_event_time = match event {
+                            Event::Write(key) => {
+                                let event_times = event_times.lock().await;
+                                Some((key, event_times.get(&key).cloned()))
+                            }
+                            _ => None,
+                        };
+
+                        if let Some((_, Some(previous_event_time))) = key_and_previous_event_time {
+                            // We've already processed this event, skip tailing
+                            if previous_event_time
+                                >= (event_time + chrono::Duration::milliseconds(250))
+                            {
+                                debug!("skipping already processed events");
+                                Metrics::fs().increment_writes();
+                                return None;
+                            }
+                        }
+
+                        let line = Tailer::handle_event(
                             event,
                             initial_offsets,
                             lookback_config,
-                            &fs.lock().expect("Couldn't lock fs"),
+                            fs.lock().await.deref(),
                         )
-                        .await
+                        .await;
+
+                        if let Some((key, _)) = key_and_previous_event_time {
+                            let mut event_times = event_times.lock().await;
+                            let new_event_time = chrono::offset::Utc::now();
+                            event_times.insert(key, new_event_time);
+                        }
+                        line
                     }
                 }
             })
