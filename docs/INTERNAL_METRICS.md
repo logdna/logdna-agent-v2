@@ -13,10 +13,10 @@ Kubernetes:
    - env:
         - name: LOGDNA_METRICS_PORT
           value: "9881"
-```    
+```
 Linux:
-```yaml
-   LOGDNA_METRICS_PORT:9881
+```bash
+   LOGDNA_METRICS_PORT=9881
 
 ```
 
