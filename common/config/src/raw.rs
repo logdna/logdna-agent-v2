@@ -106,7 +106,7 @@ impl Default for HttpConfig {
                 .hostname(get_hostname().unwrap_or_default())
                 .build()
                 .ok(),
-            body_size: Some(2 * 1024 * 1024 + 5 * 1024),
+            body_size: Some(2 * 1024 * 1024),
             retry_base_delay_ms: None,
             retry_step_delay_ms: None,
         }
