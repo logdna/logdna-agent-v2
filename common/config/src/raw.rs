@@ -98,9 +98,9 @@ impl Default for HttpConfig {
             host: Some("logs.logdna.com".to_string()),
             endpoint: Some("/logs/agent".to_string()),
             use_ssl: Some(true),
-            timeout: Some(10_000),
+            timeout: Some(25_000),
             use_compression: Some(true),
-            gzip_level: Some(2),
+            gzip_level: Some(9),
             ingestion_key: None,
             params: Params::builder()
                 .hostname(get_hostname().unwrap_or_default())
