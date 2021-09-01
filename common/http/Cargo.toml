@@ -23,9 +23,12 @@ serde_json = "1"
 chrono = "0.4"
 thiserror = "1"
 futures = "0.3"
+futures-timer = "3"
+pin-project-lite = "0.2"
 hyper = { version = "0.14", features = ["http1", "server"] }
 prometheus = { version = "0.12", features = ["process"] }
 
 [dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }
 rand = "0.8"
 num_cpus = "1.0"
