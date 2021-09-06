@@ -982,11 +982,13 @@ dependencies = [
  "rand 0.8.4",
  "serde",
  "serde_json",
+ "smallvec",
  "state",
  "thiserror",
  "tokio",
  "tokio-test",
  "uuid",
+ "vec-collections",
 ]
 
 [[package]]
@@ -1469,6 +1471,7 @@ dependencies = [
  "tokio-stream",
  "tokio-test",
  "types",
+ "vec-collections",
  "wait-timeout",
 ]
 
@@ -2516,6 +2519,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "sorted-iter"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbe9135ed5fd05813a47006636308dc34f5df43e6be5bf3f76744669248c2c8b"
+
+[[package]]
 name = "spin"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2952,6 +2961,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc5cf98d8186244414c848017f0e2676b3fcb46807f6668a97dfe67359a3c4b7"
 dependencies = [
  "getrandom 0.2.3",
+]
+
+[[package]]
+name = "vec-collections"
+version = "0.3.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fda5a72f237908a7d5087b0411f44ac4c29f39d53845d7e3f7c84085b15639f6"
+dependencies = [
+ "num-traits",
+ "serde",
+ "smallvec",
+ "sorted-iter",
 ]
 
 [[package]]

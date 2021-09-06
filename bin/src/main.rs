@@ -31,6 +31,7 @@ use pin_utils::pin_mut;
 use state::AgentState;
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::time::Duration;
 use tokio::signal::*;
 
 const POLL_PERIOD_MS: u64 = 100;
@@ -273,34 +274,45 @@ async fn main() {
         .map(Either::Right),
     );
 
-    let lines_future = sources.for_each(|line| async {
-        match line {
-            Either::Left(line) => match line {
-                StrictOrLazyLineBuilder::Strict(mut line) => {
-                    if executor.process(&mut line).is_some() {
-                        match line.build() {
-                            Ok(line) => {
-                                client
-                                    .borrow_mut()
-                                    .send(StrictOrLazyLines::Strict(&line))
-                                    .await
-                            }
-                            Err(e) => {
-                                error!("Couldn't build line from linebuilder {:?}", e)
-                            }
+    let lines_stream = sources.map(|line| match line {
+        Either::Left(line) => match line {
+            StrictOrLazyLineBuilder::Strict(mut line) => {
+                if executor.process(&mut line).is_some() {
+                    match line.build() {
+                        Ok(line) => Some(StrictOrLazyLines::Strict(line)),
+                        Err(e) => {
+                            error!("Couldn't build line from linebuilder {:?}", e);
+                            None
                         }
                     }
+                } else {
+                    None
                 }
-                StrictOrLazyLineBuilder::Lazy(mut line) => {
-                    if executor.process(&mut line).is_some() {
-                        client
-                            .borrow_mut()
-                            .send(StrictOrLazyLines::Lazy(line))
-                            .await
-                    }
+            }
+            StrictOrLazyLineBuilder::Lazy(mut line) => {
+                if executor.process(&mut line).is_some() {
+                    Some(StrictOrLazyLines::Lazy(line))
+                } else {
+                    None
                 }
-            },
-            Either::Right(_) => client.borrow_mut().poll().await,
+            }
+        },
+        Either::Right(_) => None,
+    });
+
+    let _stream = lines_stream
+        .filter_map(|l| async {
+            if l.is_some() {
+                client.borrow_mut().poll().await;
+            }
+            l
+        })
+        .timed_request_batches(2 * 1024 * 1024, Duration::new(1, 0));
+
+    let lines_future = _stream.for_each(|line| async {
+        match line {
+            Ok(line) => client.borrow_mut().send(line).await,
+            Err(e) => error!("Couldn't batch lines {:?}", e),
         }
     });
 

@@ -90,7 +90,7 @@ impl Client {
                 Ok((offsets, Some(body))) => {
                     if let (Some(sw), Some(offsets)) = (self.state_write.as_ref(), &offsets) {
                         for (file_name, offset) in offsets {
-                            debug!("Updating offset for {:?} to {}", file_name, *offset);
+                            trace!("Updating offset for {:?} to {}", file_name, *offset);
                             if let Err(e) = sw.update(file_name, *offset).await {
                                 error!("Unable to write offsets. error: {}", e);
                             };
@@ -119,10 +119,17 @@ impl Client {
         match self.buffer.as_mut().unwrap(/* poll will panic if this isn't set */).write_line(line).await
         {
             Ok(_) => {
-                if let Some(wh) = self.state_write.as_ref() {
+                if let (Some(wh), Some(offsets)) =
+                    (self.state_write.as_ref(), self.offsets.as_mut())
+                {
                     if let (Some(key), Some(offset)) = (key.as_ref(), offset) {
-                        debug!("Updating offset for {:?} to {}", key, offset);
-                        wh.update(key, offset).await.unwrap();
+                        trace!("Updating offset for {:?} to {}", key, offset);
+
+                        if let Err(e) = wh.update(key, offset).await {
+                            error!("Unable to write offsets. error: {}", e);
+                        } else {
+                            offsets.push((*key, offset));
+                        };
                     }
                 }
                 self.buffer_bytes = self.buffer.as_ref().map(|b| b.bytes_len()).unwrap_or(0);
