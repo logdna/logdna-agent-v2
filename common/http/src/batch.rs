@@ -1,25 +1,24 @@
 use core::pin::Pin;
+
+use std::collections::HashMap;
+use std::time::Duration;
+
 use futures::stream::{Fuse, FusedStream, Stream};
 use futures::task::{Context, Poll};
 use futures::Future;
 use futures::StreamExt;
 
-#[cfg(feature = "sink")]
-use futures_sink::Sink;
-
 use futures_timer::Delay;
-use std::collections::HashMap;
-use std::time::Duration;
+
+use pin_project_lite::pin_project;
+use thiserror::Error;
+
+use state::GetOffset;
 
 use crate::types::body::IngestBodyBuffer;
-
 use crate::types::serialize::{
     body_serializer_source, IngestBodySerializer, IngestLineSerialize, IngestLineSerializeError,
 };
-
-use pin_project_lite::pin_project;
-
-use thiserror::Error;
 
 /// A Stream extension trait allowing you to call `timed_request_batches` on any `Stream`
 /// of objects implementing IngestLineSerialize
@@ -31,16 +30,10 @@ pub trait TimedRequestBatcherStreamExt: Stream {
     ) -> TimedRequestBatcher<'a, Self>
     where
         Self::Item: IngestLineSerialize<String, bytes::Bytes, HashMap<String, String>, Ok = ()>
+            + GetOffset
             + std::marker::Send
             + std::marker::Sync,
-        Self: Sized,
-        <Self as futures::Stream>::Item: 'a
-            + IngestLineSerialize<
-                std::string::String,
-                bytes::Bytes,
-                HashMap<std::string::String, std::string::String>,
-                Ok = (),
-            >,
+        Self: Sized + 'a,
     {
         TimedRequestBatcher::<'a, Self>::new(self, capacity, duration)
     }
@@ -91,9 +84,10 @@ pin_project! {
 impl<'a, St: Stream> TimedRequestBatcher<'a, St>
 where
     St::Item: IngestLineSerialize<String, bytes::Bytes, HashMap<String, String>, Ok = ()>
-        + 'a
+        + GetOffset
         + std::marker::Send
-        + std::marker::Sync,
+        + std::marker::Sync
+        + 'a,
 {
     pub fn new(stream: St, capacity: usize, duration: Duration) -> TimedRequestBatcher<'a, St> {
         assert!(capacity > 0);
@@ -301,9 +295,10 @@ where
 impl<'a, St: Stream> Stream for TimedRequestBatcher<'a, St>
 where
     St::Item: IngestLineSerialize<String, bytes::Bytes, HashMap<String, String>, Ok = ()>
-        + 'a
+        + GetOffset
         + std::marker::Send
-        + std::marker::Sync,
+        + std::marker::Sync
+        + 'a,
 {
     type Item = Result<IngestBodyBuffer, TimedRequestBatcherError>;
 
@@ -381,22 +376,14 @@ where
 impl<'a, St: FusedStream> FusedStream for TimedRequestBatcher<'a, St>
 where
     St::Item: IngestLineSerialize<String, bytes::Bytes, HashMap<String, String>, Ok = ()>
-        + 'a
+        + GetOffset
         + std::marker::Send
-        + std::marker::Sync,
+        + std::marker::Sync
+        + 'a,
 {
     fn is_terminated(&self) -> bool {
         self.stream.is_terminated() & self.current.is_none()
     }
-}
-
-impl<S, Item> Sink<Item> for TimedRequestBatcher<S>
-where
-    S: Stream + Sink<Item>,
-{
-    type Error = S::Error;
-
-    delegate_sink!(stream, Item);
 }
 
 #[cfg(test)]
@@ -407,7 +394,7 @@ mod tests {
     use std::io::Read;
     use std::time::{Duration, Instant};
 
-    use crate::types::body::{KeyValueMap, Line};
+    use async_trait::async_trait;
 
     use futures::{stream, FutureExt, StreamExt};
 
@@ -416,7 +403,130 @@ mod tests {
     use proptest::prelude::*;
     use proptest::string::string_regex;
 
-    pub fn key_value_map_st(max_entries: usize) -> impl Strategy<Value = KeyValueMap> {
+    use crate::types::body::{KeyValueMap, Line, LineMeta};
+    use crate::types::serialize::{
+        SerializeI64, SerializeMap, SerializeStr, SerializeUtf8, SerializeValue,
+    };
+
+    #[derive(Clone, Debug, PartialEq)]
+    struct OffsetLine {
+        line: Line,
+    }
+
+    impl OffsetLine {
+        fn new(line: Line) -> Self {
+            OffsetLine { line }
+        }
+    }
+
+    impl GetOffset for &OffsetLine {
+        fn get_offset(&self) -> Option<u64> {
+            None
+        }
+        fn get_key(&self) -> Option<u64> {
+            None
+        }
+    }
+
+    #[async_trait]
+    impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String, String>>
+        for &OffsetLine
+    {
+        type Ok = ();
+
+        fn has_annotations(&self) -> bool {
+            self.line.get_annotations().is_some()
+        }
+        async fn annotations<'b, S>(
+            &mut self,
+            writer: &mut S,
+        ) -> Result<Self::Ok, IngestLineSerializeError>
+        where
+            S: SerializeMap<'b, HashMap<String, String>> + std::marker::Send,
+        {
+            (&self.line).annotations(writer).await
+        }
+        fn has_app(&self) -> bool {
+            self.line.get_app().is_some()
+        }
+        async fn app<S>(&mut self, writer: &mut S) -> Result<(), IngestLineSerializeError>
+        where
+            S: SerializeStr<String> + std::marker::Send,
+        {
+            (&self.line).app(writer).await
+        }
+        fn has_env(&self) -> bool {
+            self.line.get_env().is_some()
+        }
+        async fn env<S>(&mut self, writer: &mut S) -> Result<(), IngestLineSerializeError>
+        where
+            S: SerializeStr<String> + std::marker::Send,
+        {
+            (&self.line).env(writer).await
+        }
+        fn has_file(&self) -> bool {
+            self.line.get_file().is_some()
+        }
+        async fn file<S>(&mut self, writer: &mut S) -> Result<(), IngestLineSerializeError>
+        where
+            S: SerializeStr<String> + std::marker::Send,
+        {
+            (&self.line).file(writer).await
+        }
+        fn has_host(&self) -> bool {
+            self.line.get_host().is_some()
+        }
+        async fn host<S>(&mut self, writer: &mut S) -> Result<(), IngestLineSerializeError>
+        where
+            S: SerializeStr<String> + std::marker::Send,
+        {
+            (&self.line).host(writer).await
+        }
+        fn has_labels(&self) -> bool {
+            self.line.get_labels().is_some()
+        }
+        async fn labels<'b, S>(&mut self, writer: &mut S) -> Result<(), IngestLineSerializeError>
+        where
+            S: SerializeMap<'b, HashMap<String, String>> + std::marker::Send,
+        {
+            (&self.line).labels(writer).await
+        }
+        fn has_level(&self) -> bool {
+            self.line.get_level().is_some()
+        }
+        async fn level<S>(&mut self, writer: &mut S) -> Result<(), IngestLineSerializeError>
+        where
+            S: SerializeStr<String> + std::marker::Send,
+        {
+            (&self.line).level(writer).await
+        }
+        fn has_meta(&self) -> bool {
+            self.line.get_meta().is_some()
+        }
+        async fn meta<S>(&mut self, writer: &mut S) -> Result<(), IngestLineSerializeError>
+        where
+            S: SerializeValue + std::marker::Send,
+        {
+            (&self.line).meta(writer).await
+        }
+        async fn line<S>(&mut self, writer: &mut S) -> Result<(), IngestLineSerializeError>
+        where
+            S: SerializeUtf8<bytes::Bytes> + std::marker::Send,
+        {
+            (&self.line).line(writer).await
+        }
+        async fn timestamp<S>(&mut self, writer: &mut S) -> Result<(), IngestLineSerializeError>
+        where
+            S: SerializeI64 + std::marker::Send,
+        {
+            (&self.line).timestamp(writer).await
+        }
+        fn field_count(&self) -> usize {
+            (&self.line).field_count()
+        }
+    }
+
+    fn key_value_map_st(max_entries: usize) -> impl Strategy<Value = KeyValueMap> {
         hash_map(
             string_regex(".{1,64}").unwrap(),
             string_regex(".{1,64}").unwrap(),
@@ -432,7 +542,7 @@ mod tests {
     }
 
     //recursive JSON type
-    pub fn json_st(depth: u32) -> impl Strategy<Value = serde_json::Value> {
+    fn json_st(depth: u32) -> impl Strategy<Value = serde_json::Value> {
         let leaf = prop_oneof![
             Just(serde_json::Value::Null),
             any::<bool>().prop_map(|o| serde_json::to_value(o).unwrap()),
@@ -448,7 +558,7 @@ mod tests {
             ]
         })
     }
-    pub fn line_st() -> impl Strategy<Value = Line> {
+    fn line_st() -> impl Strategy<Value = OffsetLine> {
         (
             of(key_value_map_st(5)),
             of(string_regex(".{1,64}").unwrap()),
@@ -462,17 +572,21 @@ mod tests {
             (0..i64::MAX),
         )
             .prop_map(
-                |(annotations, app, env, file, host, labels, level, meta, line, timestamp)| Line {
-                    annotations,
-                    app,
-                    env,
-                    file,
-                    host,
-                    labels,
-                    level,
-                    meta,
-                    line,
-                    timestamp,
+                |(annotations, app, env, file, host, labels, level, meta, line, timestamp)| {
+                    OffsetLine {
+                        line: Line {
+                            annotations,
+                            app,
+                            env,
+                            file,
+                            host,
+                            labels,
+                            level,
+                            meta,
+                            line,
+                            timestamp,
+                        },
+                    }
                 },
             )
     }
@@ -480,16 +594,16 @@ mod tests {
     #[tokio::test]
     async fn messages_pass_through() {
         let input = vec![
-            Line::builder().line("0".to_string()).build().unwrap(),
-            Line::builder().line("1".to_string()).build().unwrap(),
-            Line::builder().line("2".to_string()).build().unwrap(),
-            Line::builder().line("3".to_string()).build().unwrap(),
-            Line::builder().line("4".to_string()).build().unwrap(),
-            Line::builder().line("5".to_string()).build().unwrap(),
-            Line::builder().line("6".to_string()).build().unwrap(),
-            Line::builder().line("7".to_string()).build().unwrap(),
-            Line::builder().line("8".to_string()).build().unwrap(),
-            Line::builder().line("9".to_string()).build().unwrap(),
+            OffsetLine::new(Line::builder().line("0".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("1".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("2".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("3".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("4".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("5".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("6".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("7".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("8".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("9".to_string()).build().unwrap()),
         ];
         let results = stream::iter(input.iter())
             .timed_request_batches(350, Duration::new(1, 0))
@@ -505,7 +619,12 @@ mod tests {
             .unwrap();
 
         let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
-        let lines = body.remove("lines").unwrap_or(vec![]);
+        let lines: Vec<OffsetLine> = body
+            .remove("lines")
+            .unwrap_or_default()
+            .into_iter()
+            .map(OffsetLine::new)
+            .collect();
 
         assert_eq!(input, lines);
     }
@@ -513,16 +632,16 @@ mod tests {
     #[tokio::test]
     async fn message_batchs() {
         let input = vec![
-            Line::builder().line("0".to_string()).build().unwrap(),
-            Line::builder().line("1".to_string()).build().unwrap(),
-            Line::builder().line("2".to_string()).build().unwrap(),
-            Line::builder().line("3".to_string()).build().unwrap(),
-            Line::builder().line("4".to_string()).build().unwrap(),
-            Line::builder().line("5".to_string()).build().unwrap(),
-            Line::builder().line("6".to_string()).build().unwrap(),
-            Line::builder().line("7".to_string()).build().unwrap(),
-            Line::builder().line("8".to_string()).build().unwrap(),
-            Line::builder().line("9".to_string()).build().unwrap(),
+            OffsetLine::new(Line::builder().line("0".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("1".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("2".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("3".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("4".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("5".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("6".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("7".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("8".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("9".to_string()).build().unwrap()),
         ];
 
         let stream = stream::iter(input.iter());
@@ -537,7 +656,12 @@ mod tests {
             .read_to_string(&mut buf)
             .unwrap();
         let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
-        let lines0 = body.remove("lines").unwrap_or(vec![]);
+        let lines0: Vec<OffsetLine> = body
+            .remove("lines")
+            .unwrap_or_default()
+            .into_iter()
+            .map(OffsetLine::new)
+            .collect();
 
         buf.clear();
         result[1]
@@ -547,7 +671,12 @@ mod tests {
             .read_to_string(&mut buf)
             .unwrap();
         let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
-        let lines1 = body.remove("lines").unwrap_or(vec![]);
+        let lines1: Vec<OffsetLine> = body
+            .remove("lines")
+            .unwrap_or_default()
+            .into_iter()
+            .map(OffsetLine::new)
+            .collect();
 
         assert_eq!(input[..6], lines0);
         assert_eq!(input[6..], lines1);
@@ -556,24 +685,26 @@ mod tests {
     #[tokio::test]
     async fn message_timeout() {
         let input0 = vec![
-            Line::builder().line("0".to_string()).build().unwrap(),
-            Line::builder().line("1".to_string()).build().unwrap(),
-            Line::builder().line("2".to_string()).build().unwrap(),
-            Line::builder().line("3".to_string()).build().unwrap(),
+            OffsetLine::new(Line::builder().line("0".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("1".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("2".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("3".to_string()).build().unwrap()),
         ];
 
         let stream0 = stream::iter(input0.iter());
 
-        let input1 = vec![Line::builder().line("4".to_string()).build().unwrap()];
+        let input1 = vec![OffsetLine::new(
+            Line::builder().line("4".to_string()).build().unwrap(),
+        )];
         let stream1 = stream::iter(input1.iter())
             .then(move |n| Delay::new(Duration::from_millis(300)).map(move |_| n));
 
         let input2 = vec![
-            Line::builder().line("5".to_string()).build().unwrap(),
-            Line::builder().line("6".to_string()).build().unwrap(),
-            Line::builder().line("7".to_string()).build().unwrap(),
-            Line::builder().line("8".to_string()).build().unwrap(),
-            Line::builder().line("9".to_string()).build().unwrap(),
+            OffsetLine::new(Line::builder().line("5".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("6".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("7".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("8".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("9".to_string()).build().unwrap()),
         ];
         let stream2 = stream::iter(input2.iter());
 
@@ -605,7 +736,12 @@ mod tests {
             .read_to_string(&mut buf)
             .unwrap();
         let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
-        let lines0 = body.remove("lines").unwrap_or(vec![]);
+        let lines0: Vec<OffsetLine> = body
+            .remove("lines")
+            .unwrap_or_default()
+            .into_iter()
+            .map(OffsetLine::new)
+            .collect();
         assert_eq!(lines0, input0);
 
         let mut expected = input1.clone();
@@ -619,7 +755,13 @@ mod tests {
             .read_to_string(&mut buf)
             .unwrap();
         let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
-        let lines1 = body.remove("lines").unwrap_or(vec![]);
+        let lines1: Vec<OffsetLine> = body
+            .remove("lines")
+            .unwrap_or_default()
+            .into_iter()
+            .map(OffsetLine::new)
+            .collect();
+
         assert_eq!(lines1, expected);
     }
 
@@ -637,7 +779,7 @@ mod tests {
                     batch_stream.collect::<Vec<_>>().await
                 });
 
-            let all_results: Vec<_> = results.into_iter().map(move |body|{
+            let all_results = results.into_iter().map(move |body|{
                 let mut buf = String::new();
                 body.as_ref()
                     .unwrap()
@@ -645,13 +787,12 @@ mod tests {
                     .read_to_string(&mut buf)
                     .unwrap();
                 let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
-                body.remove("lines").unwrap_or(vec![])
+                body.remove("lines").unwrap_or_default()
             })
                 .into_iter()
-                .flatten()
-                .collect();
+                .flatten();
 
-            assert_eq!(all_results.len(), size);
+            assert_eq!(all_results.count(), size);
         }
     }
 }
