@@ -30,5 +30,7 @@ prometheus = { version = "0.12", features = ["process"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }
+tokio-test = "0.4"
 rand = "0.8"
 num_cpus = "1.0"
+proptest = "0.10"
