@@ -21,8 +21,8 @@ use pin_project_lite::pin_project;
 
 use thiserror::Error;
 
-/// A Stream extension trait allowing you to call `batchs_timeout` on anything
-/// which implements `Stream`.
+/// A Stream extension trait allowing you to call `timed_request_batches` on any `Stream`
+/// of objects implementing IngestLineSerialize
 pub trait TimedRequestBatcherStreamExt: Stream {
     fn timed_request_batches<'a>(
         self,
@@ -80,7 +80,6 @@ pin_project! {
         stream: Fuse<St>,
         current: Option<IngestBodySerializer>,
         cap: usize,
-        // https://github.com/rust-lang-nursery/futures-rs/issues/1475
         #[pin]
         timer: Option<Delay>,
         duration: Duration,
@@ -88,8 +87,6 @@ pin_project! {
         write_fut: Option<WriteFut<'a>>,
     }
 }
-
-//impl<St: Unpin + Stream> Unpin for TimedRequestBatcher<St> {}
 
 impl<'a, St: Stream> TimedRequestBatcher<'a, St>
 where
@@ -205,8 +202,10 @@ where
         timer: &mut Option<Delay>,
         cap: usize,
     ) -> Option<PollResult> {
+        // Check if we've filled our buffer
         let current = current_ptr.as_mut().unwrap();
         if current.count() > 0 && current.bytes_len() >= cap {
+            // Stop our timer and return our current buffer
             *timer = None;
             let ret = current_ptr.take().unwrap();
 
@@ -391,8 +390,6 @@ where
     }
 }
 
-// Forwarding impl of Sink from the underlying stream
-#[cfg(feature = "sink")]
 impl<S, Item> Sink<Item> for TimedRequestBatcher<S>
 where
     S: Stream + Sink<Item>,
@@ -404,14 +401,81 @@ where
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
-
-    use crate::types::body::{IngestBody, Line};
-
-    use futures::{stream, FutureExt, StreamExt};
 
     use std::io::Read;
     use std::time::{Duration, Instant};
+
+    use crate::types::body::{KeyValueMap, Line};
+
+    use futures::{stream, FutureExt, StreamExt};
+
+    use proptest::collection::hash_map;
+    use proptest::option::of;
+    use proptest::prelude::*;
+    use proptest::string::string_regex;
+
+    pub fn key_value_map_st(max_entries: usize) -> impl Strategy<Value = KeyValueMap> {
+        hash_map(
+            string_regex(".{1,64}").unwrap(),
+            string_regex(".{1,64}").unwrap(),
+            0..max_entries,
+        )
+        .prop_map(move |c| {
+            let mut kv_map = KeyValueMap::new();
+            for (k, v) in c.into_iter() {
+                kv_map = kv_map.add(k, v);
+            }
+            kv_map
+        })
+    }
+
+    //recursive JSON type
+    pub fn json_st(depth: u32) -> impl Strategy<Value = serde_json::Value> {
+        let leaf = prop_oneof![
+            Just(serde_json::Value::Null),
+            any::<bool>().prop_map(|o| serde_json::to_value(o).unwrap()),
+            any::<f64>().prop_map(|o| serde_json::to_value(o).unwrap()),
+            ".{1,64}".prop_map(|o| serde_json::to_value(o).unwrap()),
+        ];
+        leaf.prop_recursive(depth, 256, 10, |inner| {
+            prop_oneof![
+                prop::collection::vec(inner.clone(), 0..10)
+                    .prop_map(|o| serde_json::to_value(o).unwrap()),
+                prop::collection::hash_map(".*", inner, 0..10)
+                    .prop_map(|o| serde_json::to_value(o).unwrap()),
+            ]
+        })
+    }
+    pub fn line_st() -> impl Strategy<Value = Line> {
+        (
+            of(key_value_map_st(5)),
+            of(string_regex(".{1,64}").unwrap()),
+            of(string_regex(".{1,64}").unwrap()),
+            of(string_regex(".{1,64}").unwrap()),
+            of(string_regex(".{1,64}").unwrap()),
+            of(key_value_map_st(5)),
+            of(string_regex(".{1,64}").unwrap()),
+            of(json_st(3)),
+            string_regex(".{1,64}").unwrap(),
+            (0..i64::MAX),
+        )
+            .prop_map(
+                |(annotations, app, env, file, host, labels, level, meta, line, timestamp)| Line {
+                    annotations,
+                    app,
+                    env,
+                    file,
+                    host,
+                    labels,
+                    level,
+                    meta,
+                    line,
+                    timestamp,
+                },
+            )
+    }
 
     #[tokio::test]
     async fn messages_pass_through() {
@@ -439,9 +503,11 @@ mod tests {
             .reader()
             .read_to_string(&mut buf)
             .unwrap();
-        let test_body = IngestBody::new(input.clone());
-        let body: IngestBody = serde_json::from_str(&buf).unwrap();
-        assert_eq!(body, test_body);
+
+        let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
+        let lines = body.remove("lines").unwrap_or(vec![]);
+
+        assert_eq!(input, lines);
     }
 
     #[tokio::test]
@@ -462,7 +528,29 @@ mod tests {
         let stream = stream::iter(input.iter());
         let batch_stream = TimedRequestBatcher::new(stream, 200, Duration::new(0, 250));
         let result = batch_stream.collect::<Vec<_>>().await;
-        assert!(result.len() > 1);
+
+        let mut buf = String::new();
+        result[0]
+            .as_ref()
+            .unwrap()
+            .reader()
+            .read_to_string(&mut buf)
+            .unwrap();
+        let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
+        let lines0 = body.remove("lines").unwrap_or(vec![]);
+
+        buf.clear();
+        result[1]
+            .as_ref()
+            .unwrap()
+            .reader()
+            .read_to_string(&mut buf)
+            .unwrap();
+        let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
+        let lines1 = body.remove("lines").unwrap_or(vec![]);
+
+        assert_eq!(input[..6], lines0);
+        assert_eq!(input[6..], lines1);
     }
 
     #[tokio::test]
@@ -495,8 +583,6 @@ mod tests {
         let now = Instant::now();
         let min_times = [Duration::from_millis(80), Duration::from_millis(150)];
         let max_times = [Duration::from_millis(350), Duration::from_millis(500)];
-        let mut expected1 = input1.clone();
-        expected1.extend_from_slice(&input2[..]);
 
         let mut i = 0;
 
@@ -518,9 +604,12 @@ mod tests {
             .reader()
             .read_to_string(&mut buf)
             .unwrap();
-        let test_body = IngestBody::new(input0.clone());
-        let body: IngestBody = serde_json::from_str(&buf).unwrap();
-        assert_eq!(body, test_body);
+        let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
+        let lines0 = body.remove("lines").unwrap_or(vec![]);
+        assert_eq!(lines0, input0);
+
+        let mut expected = input1.clone();
+        expected.extend_from_slice(&input2[..]);
 
         buf.clear();
         results[1]
@@ -529,8 +618,40 @@ mod tests {
             .reader()
             .read_to_string(&mut buf)
             .unwrap();
-        let test_body = IngestBody::new(expected1);
-        let body: IngestBody = serde_json::from_str(&buf).unwrap();
-        assert_eq!(body, test_body);
+        let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
+        let lines1 = body.remove("lines").unwrap_or(vec![]);
+        assert_eq!(lines1, expected);
+    }
+
+    proptest! {
+        #[test]
+        fn roundtrip(
+            inp in (0..1024usize)
+                .prop_flat_map(|size|(Just(size),
+                                      proptest::collection::vec(line_st(), size)))) {
+
+            let (size, lines) = inp;
+            let results =
+                tokio_test::block_on(async {
+                    let batch_stream = stream::iter(lines.iter()).timed_request_batches(5_000, Duration::new(1, 0));
+                    batch_stream.collect::<Vec<_>>().await
+                });
+
+            let all_results: Vec<_> = results.into_iter().map(move |body|{
+                let mut buf = String::new();
+                body.as_ref()
+                    .unwrap()
+                    .reader()
+                    .read_to_string(&mut buf)
+                    .unwrap();
+                let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
+                body.remove("lines").unwrap_or(vec![])
+            })
+                .into_iter()
+                .flatten()
+                .collect();
+
+            assert_eq!(all_results.len(), size);
+        }
     }
 }
