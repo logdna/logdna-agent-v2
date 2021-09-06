@@ -15,6 +15,7 @@ use thiserror::Error;
 
 use state::GetOffset;
 
+use crate::offsets::OffsetMap;
 use crate::types::body::IngestBodyBuffer;
 use crate::types::serialize::{
     body_serializer_source, IngestBodySerializer, IngestLineSerialize, IngestLineSerializeError,
@@ -32,7 +33,8 @@ pub trait TimedRequestBatcherStreamExt: Stream {
         Self::Item: IngestLineSerialize<String, bytes::Bytes, HashMap<String, String>, Ok = ()>
             + GetOffset
             + std::marker::Send
-            + std::marker::Sync,
+            + std::marker::Sync
+            + 'a,
         Self: Sized + 'a,
     {
         TimedRequestBatcher::<'a, Self>::new(self, capacity, duration)
@@ -49,13 +51,13 @@ pub type BufferSource = Pin<
     >,
 >;
 
-pub type DynWriteFut<'a> = dyn Future<Output = Result<IngestBodySerializer, IngestLineSerializeError>>
+pub type DynWriteFut<'a> = dyn Future<Output = Result<(IngestBodySerializer, OffsetMap), IngestLineSerializeError>>
     + std::marker::Send
     + 'a;
 
 pub type WriteFut<'a> = Pin<Box<DynWriteFut<'a>>>;
 
-type PollResult = Poll<Option<Result<IngestBodyBuffer, TimedRequestBatcherError>>>;
+type PollResult = Poll<Option<Result<(IngestBodyBuffer, OffsetMap), TimedRequestBatcherError>>>;
 
 #[derive(Debug, Error)]
 pub enum TimedRequestBatcherError {
@@ -78,6 +80,7 @@ pin_project! {
         duration: Duration,
         buffer_source: BufferSource,
         write_fut: Option<WriteFut<'a>>,
+        offsets: Option<OffsetMap>,
     }
 }
 
@@ -107,6 +110,7 @@ where
             duration,
             buffer_source,
             write_fut: None,
+            offsets: None,
         }
     }
 
@@ -146,14 +150,16 @@ where
     fn poll_write_fut(
         write_fut: &mut Option<WriteFut>,
         current: &mut Option<IngestBodySerializer>,
+        offsets: &mut Option<OffsetMap>,
         cx: &mut Context<'_>,
     ) -> Option<PollResult> {
         if write_fut.is_some() {
             let fut = write_fut.as_mut().unwrap().as_mut();
             match fut.poll(cx) {
-                Poll::Ready(Ok(ser)) => {
+                Poll::Ready(Ok((ser, o))) => {
                     // yay, done writing
                     *current = Some(ser);
+                    *offsets = Some(o);
                 }
                 Poll::Ready(Err(e)) => return Some(Poll::Ready(Some(Err(e.into())))),
                 Poll::Pending => return Some(Poll::Pending),
@@ -165,6 +171,7 @@ where
 
     fn poll_populate_buffer(
         current: &mut Option<IngestBodySerializer>,
+        offsets: &mut Option<OffsetMap>,
         buffer_source: &mut BufferSource,
         cx: &mut Context<'_>,
     ) -> Option<PollResult> {
@@ -175,6 +182,7 @@ where
                 Poll::Ready(buf_res) => match buf_res {
                     Some(Ok(buf)) => {
                         *current = Some(buf);
+                        *offsets = Some(OffsetMap::default())
                     }
                     Some(Err(e)) => return Some(Poll::Ready(Some(Err(e.into())))),
                     None => {
@@ -193,6 +201,7 @@ where
 
     fn poll_check_capacity(
         current_ptr: &mut Option<IngestBodySerializer>,
+        offsets: &mut Option<OffsetMap>,
         timer: &mut Option<Delay>,
         cap: usize,
     ) -> Option<PollResult> {
@@ -202,10 +211,14 @@ where
             // Stop our timer and return our current buffer
             *timer = None;
             let ret = current_ptr.take().unwrap();
+            let offsets = offsets.take().unwrap();
 
             match ret.end() {
                 Ok(body) => {
-                    return Some(Poll::Ready(Some(Ok(IngestBodyBuffer::from_buffer(body)))))
+                    return Some(Poll::Ready(Some(Ok((
+                        IngestBodyBuffer::from_buffer(body),
+                        offsets,
+                    )))))
                 }
                 Err(e) => return Some(Poll::Ready(Some(Err(e.into())))),
             }
@@ -216,6 +229,7 @@ where
     fn poll_process_stream(
         line_stream: Pin<&mut futures::stream::Fuse<St>>,
         current: &mut Option<IngestBodySerializer>,
+        offsets: &mut Option<OffsetMap>,
         timer: &mut Option<Delay>,
         duration: Duration,
         cx: &mut Context<'_>,
@@ -231,12 +245,19 @@ where
 
                     // Safe as we can't get this far through the loop without a buffer ready
                     let mut current = current.take().unwrap();
+                    let mut offsets = offsets.take().unwrap();
+
                     let fut = async move {
+                        if let (Some(key), Some(offset)) = (item.get_key(), item.get_offset()) {
+                            let _ = offsets.insert(key, offset);
+                        }
+
                         let res = current.write_line(item).await;
+
                         if let Err(e) = res {
                             Err(e)
                         } else {
-                            Ok(current)
+                            Ok((current, offsets))
                         }
                     };
                     (Some(Box::pin(fut)), None)
@@ -249,6 +270,7 @@ where
                         (None, Some(Poll::Ready(None)))
                     } else {
                         let full_buf = current.take();
+                        let offsets = offsets.take().unwrap();
                         if full_buf.as_ref().unwrap().count() == 0 {
                             (None, Some(Poll::Ready(None)))
                         } else {
@@ -256,7 +278,7 @@ where
                                 None,
                                 Some(Poll::Ready(full_buf.map(|r| {
                                     r.end()
-                                        .map(IngestBodyBuffer::from_buffer)
+                                        .map(|r| (IngestBodyBuffer::from_buffer(r), offsets))
                                         .map_err(|e| e.into())
                                 }))),
                             )
@@ -271,6 +293,7 @@ where
 
     fn poll_check_timer(
         current_ptr: &mut Option<IngestBodySerializer>,
+        offsets: &mut Option<OffsetMap>,
         mut timer: Pin<&mut Option<Delay>>,
         cx: &mut Context<'_>,
     ) -> Option<PollResult> {
@@ -279,10 +302,11 @@ where
             Some(Poll::Ready(())) => {
                 *timer.get_mut() = None;
                 let ret = current_ptr.take();
+                let offsets = offsets.take().unwrap();
 
                 Some(Poll::Ready(ret.map(|r| {
                     r.end()
-                        .map(IngestBodyBuffer::from_buffer)
+                        .map(|r| (IngestBodyBuffer::from_buffer(r), offsets))
                         .map_err(|e| e.into())
                 })))
             }
@@ -300,30 +324,36 @@ where
         + std::marker::Sync
         + 'a,
 {
-    type Item = Result<IngestBodyBuffer, TimedRequestBatcherError>;
+    type Item = Result<(IngestBodyBuffer, OffsetMap), TimedRequestBatcherError>;
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut this = self.project();
 
         loop {
             // If we're writing a line keep going
-            if let Some(poll) = Self::poll_write_fut(this.write_fut, this.current, cx) {
+            if let Some(poll) = Self::poll_write_fut(this.write_fut, this.current, this.offsets, cx)
+            {
                 return poll;
             };
 
             debug_assert!(this.write_fut.is_none(), "we should be writing");
 
             // Ensure we have a buffer to write to
-            if let Some(poll) = Self::poll_populate_buffer(this.current, this.buffer_source, cx) {
+            if let Some(poll) =
+                Self::poll_populate_buffer(this.current, this.offsets, this.buffer_source, cx)
+            {
                 return poll;
             }
 
             debug_assert!(this.current.is_some(), "current is missing");
 
             // If we've gotten this far then this.current is some,
-            if let Some(poll) =
-                Self::poll_check_capacity(this.current, this.timer.as_mut().get_mut(), *this.cap)
-            {
+            if let Some(poll) = Self::poll_check_capacity(
+                this.current,
+                this.offsets,
+                this.timer.as_mut().get_mut(),
+                *this.cap,
+            ) {
                 return poll;
             }
 
@@ -335,6 +365,7 @@ where
             match Self::poll_process_stream(
                 stream,
                 this.current,
+                this.offsets,
                 this.timer.as_mut().get_mut(),
                 *this.duration,
                 cx,
@@ -353,7 +384,9 @@ where
             debug_assert!(this.current.is_some(), "current is missing");
 
             // Finally check if our timeout has expired
-            if let Some(poll) = Self::poll_check_timer(this.current, this.timer.as_mut(), cx) {
+            if let Some(poll) =
+                Self::poll_check_timer(this.current, this.offsets, this.timer.as_mut(), cx)
+            {
                 return poll;
             }
 
@@ -614,6 +647,7 @@ mod tests {
         results[0]
             .as_ref()
             .unwrap()
+            .0
             .reader()
             .read_to_string(&mut buf)
             .unwrap();
@@ -652,6 +686,7 @@ mod tests {
         result[0]
             .as_ref()
             .unwrap()
+            .0
             .reader()
             .read_to_string(&mut buf)
             .unwrap();
@@ -667,6 +702,7 @@ mod tests {
         result[1]
             .as_ref()
             .unwrap()
+            .0
             .reader()
             .read_to_string(&mut buf)
             .unwrap();
@@ -732,6 +768,7 @@ mod tests {
         results[0]
             .as_ref()
             .unwrap()
+            .0
             .reader()
             .read_to_string(&mut buf)
             .unwrap();
@@ -751,6 +788,7 @@ mod tests {
         results[1]
             .as_ref()
             .unwrap()
+            .0
             .reader()
             .read_to_string(&mut buf)
             .unwrap();
@@ -783,6 +821,7 @@ mod tests {
                 let mut buf = String::new();
                 body.as_ref()
                     .unwrap()
+                    .0
                     .reader()
                     .read_to_string(&mut buf)
                     .unwrap();
