@@ -29,6 +29,7 @@ hyper = { version = "0.14", features = ["http1", "server"] }
 prometheus = { version = "0.12", features = ["process"] }
 
 [dev-dependencies]
+async-trait = "0.1"
 tokio = { version = "1", features = ["rt", "macros"] }
 tokio-test = "0.4"
 rand = "0.8"

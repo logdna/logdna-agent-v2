@@ -11,6 +11,7 @@ use env_logger::Env;
 use fs::tail::Tailer as FSSource;
 use futures::future::Either;
 use futures::StreamExt;
+use http::batch::TimedRequestBatcherStreamExt;
 use http::client::Client;
 
 #[cfg(feature = "libjournald")]
