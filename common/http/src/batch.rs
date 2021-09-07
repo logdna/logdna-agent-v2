@@ -95,6 +95,7 @@ where
     pub fn new(stream: St, capacity: usize, duration: Duration) -> TimedRequestBatcher<'a, St> {
         assert!(capacity > 0);
 
+        // TODO expose parameters
         let buffer_source = Box::pin(body_serializer_source(
             16 * 1024, /* 16 KB segments */
             50,        /* 16KB * 50 = 256 KB initial capacity */

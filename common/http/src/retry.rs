@@ -52,11 +52,7 @@ impl Retry {
         }
     }
 
-    pub fn retry(
-        &self,
-        offsets: Option<&Vec<Offset>>,
-        body: &IngestBodyBuffer,
-    ) -> Result<(), Error> {
+    pub fn retry(&self, offsets: Option<&[Offset]>, body: &IngestBodyBuffer) -> Result<(), Error> {
         Metrics::http().increment_retries();
         let mut file = OpenOptions::new().create(true).write(true).open(format!(
             "/tmp/logdna/{}_{}.retry",
