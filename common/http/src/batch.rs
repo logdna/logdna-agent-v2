@@ -807,7 +807,7 @@ mod tests {
     proptest! {
         #[test]
         fn roundtrip(
-            inp in (0..1024usize)
+            inp in (0..512usize)
                 .prop_flat_map(|size|(Just(size),
                                       proptest::collection::vec(line_st(), size)))) {
 
