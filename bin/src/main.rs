@@ -104,11 +104,9 @@ async fn main() {
         config.http.template,
         handles,
         config.http.retry_base_delay,
-        config.http.retry_step_delay,
+        // TODO: use config.http.retry_step_delay,
     )));
-    client
-        .borrow_mut()
-        .set_max_buffer_size(config.http.body_size);
+
     client.borrow_mut().set_timeout(config.http.timeout);
 
     let mut executor = Executor::new();
@@ -300,18 +298,19 @@ async fn main() {
         Either::Right(_) => None,
     });
 
-    let _stream = lines_stream
-        .filter_map(|l| async {
-            if l.is_some() {
-                client.borrow_mut().poll().await;
-            }
-            l
-        })
-        .timed_request_batches(2 * 1024 * 1024, Duration::new(1, 0));
+    let body_offsets_stream = lines_stream
+        .filter_map(|l| async { l })
+        // TODO: paramaterise the flush frequency
+        .timed_request_batches(config.http.body_size, Duration::from_millis(250));
 
-    let lines_future = _stream.for_each(|line| async {
-        match line {
-            Ok(line) => client.borrow_mut().send(line).await,
+    let http_driver = body_offsets_stream.for_each(|body_offsets| async {
+        match body_offsets {
+            Ok((body, offsets)) => {
+                client
+                    .borrow()
+                    .send(body, Some(offsets.items_as_ref()))
+                    .await
+            }
             Err(e) => error!("Couldn't batch lines {:?}", e),
         }
     });
@@ -332,7 +331,7 @@ async fn main() {
 
     // Concurrently run the line streams and listen for the `shutdown` signal
     tokio::select! {
-        _ = lines_future => {}
+        _ = http_driver => {}
         signal_name = get_signal() => {
             info!("Received {} signal, shutting down", signal_name)
         }

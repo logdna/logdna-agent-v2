@@ -651,6 +651,7 @@ async fn test_journald_support() {
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
     common::wait_for_event("monitoring journald path", &mut stderr_reader);
+    sleep(Duration::from_millis(1000));
 
     let (server_result, _) = tokio::join!(server, async {
         for _ in 0..10 {
@@ -659,7 +660,7 @@ async fn test_journald_support() {
         }
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
         let map = received.lock().await;
         let file_info = map.values().next().unwrap();
