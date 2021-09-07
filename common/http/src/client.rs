@@ -44,7 +44,6 @@ impl Client {
         }
     }
 
-    /// The main logic loop, consumes self because it should only be called once
     pub async fn send(&self, body: IngestBodyBuffer, file_offsets: Option<&[Offset]>) {
         match self.retry.poll().await {
             Ok((offsets, Some(body))) => {
