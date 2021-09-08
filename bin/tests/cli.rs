@@ -690,12 +690,16 @@ async fn test_journalctl_support() {
     let mut agent_handle = common::spawn_agent(settings);
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
+    sleep(Duration::from_millis(500));
     common::wait_for_event("Listening to journalctl", &mut stderr_reader);
+    sleep(Duration::from_millis(500));
 
     let (server_result, _) = tokio::join!(server, async {
+        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
         for _ in 0..10 {
             journal::print(1, "Sample alert");
             journal::print(6, "Sample info");
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         }
 
         // Wait for the data to be received by the mock ingester

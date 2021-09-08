@@ -12,6 +12,7 @@ use fs::tail::Tailer as FSSource;
 use futures::StreamExt;
 use http::batch::TimedRequestBatcherStreamExt;
 use http::client::Client;
+use http::retry::retry_stream;
 
 #[cfg(feature = "libjournald")]
 use journald::libjournald::source::create_source;
@@ -97,12 +98,7 @@ async fn main() {
     let handles = offset_state
         .as_ref()
         .map(|os| (os.write_handle(), os.flush_handle()));
-    let client = Rc::new(RefCell::new(Client::new(
-        config.http.template,
-        handles,
-        config.http.retry_base_delay,
-        // TODO: use config.http.retry_step_delay,
-    )));
+    let client = Rc::new(RefCell::new(Client::new(config.http.template, handles)));
 
     client.borrow_mut().set_timeout(config.http.timeout);
 
@@ -299,6 +295,22 @@ async fn main() {
         }
     });
 
+    let retry_driver = retry_stream(
+        config.http.retry_base_delay,
+        // TODO: use config.http.retry_step_delay,
+    )
+    .for_each(|body_offsets| async {
+        match body_offsets {
+            Ok((body, offsets)) => {
+                client
+                    .borrow()
+                    .send(body, offsets.as_ref().map(|o| o.as_ref()))
+                    .await
+            }
+            Err(e) => error!("Couldn't batch lines {:?}", e),
+        }
+    });
+
     tokio::spawn(async {
         Metrics::log_periodically().await;
     });
@@ -316,6 +328,7 @@ async fn main() {
     // Concurrently run the line streams and listen for the `shutdown` signal
     tokio::select! {
         _ = lines_driver => {}
+        _ = retry_driver => {}
         signal_name = get_signal() => {
             info!("Received {} signal, shutting down", signal_name)
         }
