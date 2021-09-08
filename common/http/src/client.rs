@@ -1,9 +1,8 @@
 use std::convert::TryInto;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use crate::limit::RateLimiter;
-use crate::retry::Retry;
+use crate::retry;
 use crate::types::body::IngestBodyBuffer;
 use crate::types::client::Client as HttpClient;
 use crate::types::error::HttpError;
@@ -18,7 +17,6 @@ use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
 pub struct Client {
     inner: HttpClient,
     limiter: RateLimiter,
-    retry: Arc<Retry>,
     state_write: Option<FileOffsetWriteHandle>,
     state_flush: Option<FileOffsetFlushHandle>,
 }
@@ -29,7 +27,6 @@ impl Client {
     pub fn new(
         template: RequestTemplate,
         state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
-        retry_base_delay: Duration,
     ) -> Self {
         let (state_write, state_flush) = state_handles
             .map(|(sw, sf)| (Some(sw), Some(sf)))
@@ -37,31 +34,12 @@ impl Client {
         Self {
             inner: HttpClient::new(template),
             limiter: RateLimiter::new(10),
-            retry: Arc::new(Retry::new(retry_base_delay)),
             state_write,
             state_flush,
-            // retry_step_delay,
         }
     }
 
     pub async fn send(&self, body: IngestBodyBuffer, file_offsets: Option<&[Offset]>) {
-        match self.retry.poll().await {
-            Ok((offsets, Some(body))) => {
-                if let (Some(sw), Some(offsets)) = (self.state_write.as_ref(), &offsets) {
-                    for (file_name, offset) in offsets {
-                        trace!("Updating offset for {:?} to {}", file_name, *offset);
-                        if let Err(e) = sw.update(file_name, *offset).await {
-                            error!("Unable to write offsets. error: {}", e);
-                        };
-                    }
-                }
-                self.make_request(body, offsets.as_deref()).await
-            }
-            Err(e) => error!("error polling retry: {}", e),
-            _ => {}
-        };
-
-        //log::warn!("Queueing up offsets");
         Metrics::http().add_request_size(body.len().try_into().unwrap());
         if let (Some(wh), Some(offsets)) = (self.state_write.as_ref(), file_offsets) {
             for (key, offset) in offsets {
@@ -89,14 +67,14 @@ impl Client {
             Err(HttpError::Send(body, e)) => {
                 Metrics::http().add_request_failure(start);
                 warn!("failed sending http request, retrying: {}", e);
-                if let Err(e) = self.retry.retry(file_offsets, &body) {
+                if let Err(e) = retry::retry(file_offsets, &body).await {
                     error!("failed to retry request: {}", e)
                 }
             }
             Err(HttpError::Timeout(body)) => {
                 Metrics::http().add_request_timeout(start);
                 warn!("failed sending http request, retrying: request timed out!");
-                if let Err(e) = self.retry.retry(file_offsets, &body) {
+                if let Err(e) = retry::retry(file_offsets, &body).await {
                     error!("failed to retry request: {}", e)
                 };
             }

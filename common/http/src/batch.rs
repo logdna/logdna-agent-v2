@@ -96,7 +96,7 @@ where
     pub fn new(stream: St, capacity: usize, duration: Duration) -> TimedRequestBatcherState<St> {
         assert!(capacity > 0);
 
-        // TODO expose parameters
+        // TODO expose
         let buffer_source = Box::pin(body_serializer_source(
             16 * 1024, /* 16 KB segments */
             50,        /* 16KB * 50 = 256 KB initial capacity */
@@ -604,7 +604,7 @@ mod tests {
 
         #[test]
         fn roundtrip(
-            inp in (0..512usize)
+            inp in (0..1024usize)
                 .prop_flat_map(|size|(Just(size),
                                       proptest::collection::vec(line_st(), size)))) {
 
