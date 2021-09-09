@@ -2,13 +2,13 @@ use std::convert::TryInto;
 use std::time::{Duration, Instant};
 
 use crate::limit::RateLimiter;
+use crate::offsets::Offset;
 use crate::retry;
 use crate::types::body::IngestBodyBuffer;
 use crate::types::client::Client as HttpClient;
 use crate::types::error::HttpError;
 use crate::types::request::RequestTemplate;
 use crate::types::response::Response;
-use crate::Offset;
 
 use metrics::Metrics;
 use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
