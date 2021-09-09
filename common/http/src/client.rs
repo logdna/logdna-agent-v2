@@ -71,15 +71,6 @@ impl Client {
                 }
             }
         }
-        self.make_request(body, file_offsets.as_deref()).await;
-    }
-
-    pub fn set_timeout(&mut self, timeout: Duration) {
-        self.inner.set_timeout(timeout)
-    }
-
-    async fn make_request(&self, body: IngestBodyBuffer, file_offsets: Option<&[Offset]>) {
-        let retry = self.retry.clone();
         let sf = self.state_flush.as_ref();
         let start = Instant::now();
         match self
@@ -119,5 +110,9 @@ impl Client {
                 }
             } //success
         }
+    }
+
+    pub fn set_timeout(&mut self, timeout: Duration) {
+        self.inner.set_timeout(timeout)
     }
 }

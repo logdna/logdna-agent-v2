@@ -303,7 +303,7 @@ async fn main() {
         // TODO: paramaterise the flush frequency
         .timed_request_batches(config.http.body_size, Duration::from_millis(250));
 
-    let http_driver = body_offsets_stream.for_each(|body_offsets| async {
+    let lines_driver = body_offsets_stream.for_each(|body_offsets| async {
         match body_offsets {
             Ok((body, offsets)) => {
                 client
@@ -331,7 +331,7 @@ async fn main() {
 
     // Concurrently run the line streams and listen for the `shutdown` signal
     tokio::select! {
-        _ = http_driver => {}
+        _ = lines_driver => {}
         signal_name = get_signal() => {
             info!("Received {} signal, shutting down", signal_name)
         }
