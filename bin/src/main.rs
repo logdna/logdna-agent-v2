@@ -281,7 +281,9 @@ async fn main() {
     let body_offsets_stream = lines_stream
         .filter_map(|l| async { l })
         // TODO: paramaterise the flush frequency
-        .timed_request_batches(config.http.body_size, Duration::from_millis(250));
+        .timed_request_batches(config.http.body_size, Duration::from_millis(250))
+        .map(|b| async { b })
+        .buffered(1);
 
     let lines_driver = body_offsets_stream.for_each(|body_offsets| async {
         match body_offsets {
