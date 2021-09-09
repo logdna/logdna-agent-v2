@@ -1,5 +1,6 @@
 use std::iter::Iterator;
 
+#[derive(Debug)]
 pub struct OffsetMap {
     inner: vec_collections::VecMap<[(u64, u64); 4]>,
 }
