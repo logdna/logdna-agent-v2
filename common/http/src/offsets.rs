@@ -1,8 +1,10 @@
 use std::iter::Iterator;
 
+pub type Offset = (u64, u64);
+
 #[derive(Debug)]
 pub struct OffsetMap {
-    inner: vec_collections::VecMap<[(u64, u64); 4]>,
+    inner: vec_collections::VecMap<[Offset; 4]>,
 }
 
 impl OffsetMap {
@@ -16,18 +18,18 @@ impl OffsetMap {
         self.inner.insert(key, value)
     }
 
-    pub fn items_as_ref(&self) -> &[(u64, u64)] {
+    pub fn items_as_ref(&self) -> &[Offset] {
         self.inner.as_ref()
     }
 }
 
 pub struct IntoIter {
-    inner: smallvec::IntoIter<[(u64, u64); 4]>,
+    inner: smallvec::IntoIter<[Offset; 4]>,
 }
 
 impl IntoIterator for OffsetMap {
     type IntoIter = IntoIter;
-    type Item = (u64, u64);
+    type Item = Offset;
     fn into_iter(self) -> Self::IntoIter {
         IntoIter {
             inner: self.inner.into_inner().into_iter(),
@@ -36,7 +38,7 @@ impl IntoIterator for OffsetMap {
 }
 
 impl Iterator for IntoIter {
-    type Item = (u64, u64);
+    type Item = Offset;
 
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next()

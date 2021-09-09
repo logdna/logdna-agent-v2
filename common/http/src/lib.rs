@@ -11,5 +11,3 @@ pub mod retry;
 pub mod types {
     pub use logdna_client::*;
 }
-
-type Offset = (u64, u64);

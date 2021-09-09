@@ -22,8 +22,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
 use uuid::Uuid;
 
+use crate::offsets::Offset;
 use crate::types::body::{IngestBody, IngestBodyBuffer, IntoIngestBodyBuffer};
-use crate::Offset;
 
 #[derive(Debug, Error)]
 pub enum Error {
