@@ -464,7 +464,7 @@ mod tests {
         ];
 
         let stream = stream::iter(input.iter());
-        let batch_stream = TimedRequestBatcher::new(stream, 200, Duration::new(0, 250));
+        let batch_stream = stream.timed_request_batches(200, Duration::new(0, 250));
         let result = batch_stream.collect::<Vec<_>>().await;
 
         let mut buf = String::new();

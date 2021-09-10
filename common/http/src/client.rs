@@ -71,6 +71,10 @@ impl Client {
                 }
             }
         }
+        self.make_request(body, file_offsets.as_deref()).await
+    }
+
+    async fn make_request(&self, body: IngestBodyBuffer, file_offsets: Option<&[Offset]>) {
         let sf = self.state_flush.as_ref();
         let start = Instant::now();
         match self
@@ -85,14 +89,14 @@ impl Client {
             Err(HttpError::Send(body, e)) => {
                 Metrics::http().add_request_failure(start);
                 warn!("failed sending http request, retrying: {}", e);
-                if let Err(e) = retry.retry(file_offsets, &body) {
+                if let Err(e) = self.retry.retry(file_offsets, &body) {
                     error!("failed to retry request: {}", e)
                 }
             }
             Err(HttpError::Timeout(body)) => {
                 Metrics::http().add_request_timeout(start);
                 warn!("failed sending http request, retrying: request timed out!");
-                if let Err(e) = retry.retry(file_offsets, &body) {
+                if let Err(e) = self.retry.retry(file_offsets, &body) {
                     error!("failed to retry request: {}", e)
                 };
             }
