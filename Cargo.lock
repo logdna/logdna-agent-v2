@@ -2823,6 +2823,7 @@ dependencies = [
  "async-trait",
  "bytes",
  "futures",
+ "http 0.1.0",
  "logdna-client",
  "proptest",
  "serde_json",

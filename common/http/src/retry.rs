@@ -234,3 +234,68 @@ pub fn retry(
         Retry::new(dir, retry_base_delay, retry_step_delay),
     )
 }
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    use std::collections::HashMap;
+    use std::io::Read;
+    use std::time::{Duration, Instant};
+
+    use futures::stream::{self, StreamExt};
+    use futures::FutureExt;
+
+    use proptest::prelude::*;
+
+    use crate::batch::TimedRequestBatcherStreamExt;
+    use crate::types::body::Line;
+
+    use test_types::strategies::{line_st, offset_st, OffsetLine};
+
+    proptest! {
+        #[test]
+        fn roundtrip(
+
+
+            inp in (0..10usize)
+                .prop_flat_map(|size|(Just(size),
+                                      proptest::collection::vec(line_st(offset_st(1024)), size)
+                ))) {
+
+            let (size, lines) = inp;
+            let retry_stream = retry_stream(Duration::from_millis(1000));
+            let results =
+                tokio_test::block_on(async {
+                    let batch_stream = stream::iter(lines.iter()).timed_request_batches(5_000, Duration::new(1, 0));
+                    let results = batch_stream.collect::<Vec<_>>().await;
+
+                    // Retry all the results and assert they come off the stream
+                    for body_offsets in results.iter() {
+                        let (body, offsets) = body_offsets.as_ref().unwrap();
+                        retry(Some(offsets.items_as_ref()), body).await.unwrap()
+                    }
+                    results
+                });
+
+            /*
+            // Retry all the results and assert they come off the stream
+                let all_results = results.into_iter().map(move |body_offsets|{
+                let mut buf = String::new();
+                let (body, offsets) = body_offsets.unwrap();
+                body.reader()
+                .read_to_string(&mut buf)
+                .unwrap();
+                let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
+                body.remove("lines").unwrap_or_default()
+        })
+                .into_iter()
+                .flatten();
+             */
+
+
+            // assert_eq!(all_results.count(), size);
+        }
+    }
+}
