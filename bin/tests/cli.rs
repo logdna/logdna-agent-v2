@@ -17,7 +17,7 @@ use predicates::prelude::*;
 use proptest::prelude::*;
 use systemd::journal;
 use tempfile::tempdir;
-use test_types::random_line_string_vec;
+use test_types::strategies::random_line_string_vec;
 use tokio::task;
 
 mod common;
