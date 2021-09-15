@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use crate::limit::RateLimiter;
 use crate::offsets::Offset;
-use crate::retry;
+use crate::retry::RetrySender;
 use crate::types::body::IngestBodyBuffer;
 use crate::types::client::Client as HttpClient;
 use crate::types::error::HttpError;
@@ -17,6 +17,7 @@ use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
 pub struct Client {
     inner: HttpClient,
     limiter: RateLimiter,
+    retry: RetrySender,
     state_write: Option<FileOffsetWriteHandle>,
     state_flush: Option<FileOffsetFlushHandle>,
 }
@@ -26,6 +27,7 @@ impl Client {
     /// and a request template for building ingest requests
     pub fn new(
         template: RequestTemplate,
+        retry: RetrySender,
         state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
     ) -> Self {
         let (state_write, state_flush) = state_handles
@@ -34,6 +36,7 @@ impl Client {
         Self {
             inner: HttpClient::new(template),
             limiter: RateLimiter::new(10),
+            retry,
             state_write,
             state_flush,
         }
@@ -67,14 +70,14 @@ impl Client {
             Err(HttpError::Send(body, e)) => {
                 Metrics::http().add_request_failure(start);
                 warn!("failed sending http request, retrying: {}", e);
-                if let Err(e) = retry::retry(file_offsets, &body).await {
+                if let Err(e) = self.retry.retry(file_offsets, &body).await {
                     error!("failed to retry request: {}", e)
                 }
             }
             Err(HttpError::Timeout(body)) => {
                 Metrics::http().add_request_timeout(start);
                 warn!("failed sending http request, retrying: request timed out!");
-                if let Err(e) = retry::retry(file_offsets, &body).await {
+                if let Err(e) = self.retry.retry(file_offsets, &body).await {
                     error!("failed to retry request: {}", e)
                 };
             }

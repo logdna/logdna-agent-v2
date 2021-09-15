@@ -43,6 +43,7 @@ pub enum Error {
 
 #[derive(Default)]
 pub struct Retry {
+    directory: PathBuf,
     waiting: SegQueue<PathBuf>,
     retry_base_delay_secs: i64,
 }
@@ -54,16 +55,18 @@ struct DiskRead {
 }
 
 impl Retry {
-    pub fn new(retry_base_delay: Duration) -> Retry {
-        std::fs::create_dir_all("/tmp/logdna/").expect("can't create /tmp/logdna");
+    pub fn new(directory: PathBuf, retry_base_delay: Duration) -> Retry {
+        std::fs::create_dir_all(&directory)
+            .unwrap_or_else(|_| panic!("can't create {:#?}", &directory));
         Retry {
+            directory,
             waiting: SegQueue::new(),
             retry_base_delay_secs: retry_base_delay.as_secs() as i64,
         }
     }
 
     async fn fill_waiting(&self) -> Result<(), Error> {
-        let mut files = read_dir("/tmp/logdna/").await?;
+        let mut files = read_dir(&self.directory).await?;
         while let Some(file) = files.next_entry().await? {
             let path = file.path();
             if path.is_dir() {
@@ -103,95 +106,118 @@ impl Retry {
         let DiskRead { offsets, body } = serde_json::from_str(&data)?;
         Ok((offsets, body))
     }
-}
 
-pub async fn retry(offsets: Option<&[Offset]>, body: &IngestBodyBuffer) -> Result<(), Error> {
-    Metrics::http().increment_retries();
-
-    let fn_ts = Utc::now().timestamp();
-    let fn_uuid = Uuid::new_v4().to_string();
-
-    // Write to a partial file to avoid concurrently reading from a file that's not been written
-    let file_name = format!("/tmp/logdna/{}_{}.retry.partial", fn_ts, fn_uuid);
-
-    let mut file = BufWriter::new(
-        OpenOptions::new()
-            .create(true)
-            .write(true)
-            .open(&file_name)
-            .await?,
-    );
-
-    // Manually serialize the body and offsets
-    file.write_all(b"{").await?;
-    let mut file = if let Some(offsets) = offsets {
-        file.write_all(b"\"offsets\":").await?;
-
-        // Serde can't write to async_write, so offload this to a threadpool
-        let std_file = tokio::task::spawn_blocking(
-            {
-                // Get the std::fs::File out of the tokio BufWriter
-                file.flush().await?;
-                let mut std_file = std::io::BufWriter::new(file.into_inner().into_std().await);
-                let offsets = offsets.to_vec();
-                move || -> Result<std::fs::File, std::io::Error> {
-                    // Serialise the offsets to the std::io::BufWriter
-                    serde_json::to_writer(&mut std_file, &offsets)?;
-                    std_file.flush()?;
-                    Ok(std_file.into_inner()?)
-                }
-            }
-        ).await.unwrap(/*FIXME handle properly*/)?;
-        let mut file = BufWriter::new(File::from_std(std_file));
-        file.write_all(b",").await?;
-        file
-    } else {
-        file
-    };
-    file.write_all(b"\"body\":").await?;
-    let mut reader = body.reader();
-    let _bytes_written = futures::io::copy(&mut reader, &mut file.compat_mut()).await?;
-    file.write_all(b"}").await?;
-    file.flush().await?;
-
-    Ok(rename(
-        file_name,
-        format!("/tmp/logdna/{}_{}.retry", fn_ts, fn_uuid),
-    )
-    .await?)
-}
-
-pub fn retry_stream(
-    retry_base_delay: Duration,
-) -> impl Stream<Item = Result<(IngestBodyBuffer, Option<Vec<Offset>>), Error>> {
-    let retry = Retry::new(retry_base_delay);
-    stream::unfold(retry, |state| async move {
-        loop {
-            // Try to populate retry queue
-            if state.waiting.is_empty() {
-                if let Err(e) = state.fill_waiting().await {
-                    return Some((Err(e), state));
-                };
-                // If there are still no objects then sleep for a while
+    pub fn into_stream(
+        self,
+    ) -> impl Stream<Item = Result<(IngestBodyBuffer, Option<Vec<Offset>>), Error>> {
+        stream::unfold(self, |state| async move {
+            loop {
+                // Try to populate retry queue
                 if state.waiting.is_empty() {
-                    Delay::new(Duration::from_secs(
-                        state.retry_base_delay_secs.try_into().unwrap_or(2),
-                    ))
-                    .await;
-                }
-            }
-
-            if let Some(path) = state.waiting.pop() {
-                match Retry::read_from_disk(&path).await {
-                    Ok((offsets, ingest_body)) => {
-                        match IntoIngestBodyBuffer::into(ingest_body).await {
-                            Ok(body_buffer) => return Some((Ok((body_buffer, offsets)), state)),
-                            Err(e) => return Some((Err(e.into()), state)),
-                        }
+                    if let Err(e) = state.fill_waiting().await {
+                        return Some((Err(e), state));
+                    };
+                    // If there are still no objects then sleep for a while
+                    if state.waiting.is_empty() {
+                        Delay::new(Duration::from_secs(
+                            state.retry_base_delay_secs.try_into().unwrap_or(2),
+                        ))
+                        .await;
                     }
-                    Err(e) => return Some((Err(e), state)),
+                }
+
+                if let Some(path) = state.waiting.pop() {
+                    match Retry::read_from_disk(&path).await {
+                        Ok((offsets, ingest_body)) => {
+                            match IntoIngestBodyBuffer::into(ingest_body).await {
+                                Ok(body_buffer) => {
+                                    return Some((Ok((body_buffer, offsets)), state))
+                                }
+                                Err(e) => return Some((Err(e.into()), state)),
+                            }
+                        }
+                        Err(e) => return Some((Err(e), state)),
+                    }
                 }
             }
-        }
-    })
+        })
+    }
+}
+
+pub struct RetrySender {
+    directory: PathBuf,
+}
+
+impl RetrySender {
+    pub fn new(directory: PathBuf) -> Self {
+        Self { directory }
+    }
+
+    pub async fn retry(
+        &self,
+        offsets: Option<&[Offset]>,
+        body: &IngestBodyBuffer,
+    ) -> Result<(), Error> {
+        Metrics::http().increment_retries();
+
+        let fn_ts = Utc::now().timestamp();
+        let fn_uuid = Uuid::new_v4().to_string();
+
+        // Write to a partial file to avoid concurrently reading from a file that's not been written
+        let mut file_name = self.directory.clone();
+        file_name.push(format!("{}_{}.retry.partial", fn_ts, fn_uuid));
+
+        let mut file = BufWriter::new(
+            OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(&file_name)
+                .await?,
+        );
+
+        // Manually serialize the body and offsets
+        file.write_all(b"{").await?;
+        let mut file = if let Some(offsets) = offsets {
+            file.write_all(b"\"offsets\":").await?;
+
+            // Serde can't write to async_write, so offload this to a threadpool
+            let std_file = tokio::task::spawn_blocking(
+                {
+                    // Get the std::fs::File out of the tokio BufWriter
+                    file.flush().await?;
+                    let mut std_file = std::io::BufWriter::new(file.into_inner().into_std().await);
+                    let offsets = offsets.to_vec();
+                    move || -> Result<std::fs::File, std::io::Error> {
+                        // Serialise the offsets to the std::io::BufWriter
+                        serde_json::to_writer(&mut std_file, &offsets)?;
+                        std_file.flush()?;
+                        Ok(std_file.into_inner()?)
+                    }
+                }
+            ).await.unwrap(/*FIXME handle properly*/)?;
+            let mut file = BufWriter::new(File::from_std(std_file));
+            file.write_all(b",").await?;
+            file
+        } else {
+            file
+        };
+        file.write_all(b"\"body\":").await?;
+        let mut reader = body.reader();
+        let _bytes_written = futures::io::copy(&mut reader, &mut file.compat_mut()).await?;
+        file.write_all(b"}").await?;
+        file.flush().await?;
+
+        Ok(rename(
+            file_name,
+            format!("/tmp/logdna/{}_{}.retry", fn_ts, fn_uuid),
+        )
+        .await?)
+    }
+}
+
+pub fn retry(dir: PathBuf, retry_base_delay: Duration) -> (RetrySender, Retry) {
+    (
+        RetrySender::new(dir.clone()),
+        Retry::new(dir, retry_base_delay),
+    )
 }

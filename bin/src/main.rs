@@ -1,8 +1,6 @@
 #[macro_use]
 extern crate log;
 
-use std::path::PathBuf;
-
 use futures::Stream;
 
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
@@ -12,7 +10,7 @@ use fs::tail::Tailer as FSSource;
 use futures::StreamExt;
 use http::batch::TimedRequestBatcherStreamExt;
 use http::client::Client;
-use http::retry::retry_stream;
+use http::retry::retry;
 
 #[cfg(feature = "libjournald")]
 use journald::libjournald::source::create_source;
@@ -30,7 +28,9 @@ use middleware::Executor;
 use pin_utils::pin_mut;
 use state::AgentState;
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
+use std::str::FromStr;
 use std::time::Duration;
 use tokio::signal::*;
 
@@ -98,7 +98,16 @@ async fn main() {
     let handles = offset_state
         .as_ref()
         .map(|os| (os.write_handle(), os.flush_handle()));
-    let client = Rc::new(RefCell::new(Client::new(config.http.template, handles)));
+
+    let (retry, retry_stream) = retry(
+        PathBuf::from_str("/tmp/logdna").expect("Failed to create retry stream"),
+        config.http.retry_base_delay,
+    );
+    let client = Rc::new(RefCell::new(Client::new(
+        config.http.template,
+        retry,
+        handles,
+    )));
 
     client.borrow_mut().set_timeout(config.http.timeout);
 
@@ -297,11 +306,7 @@ async fn main() {
         }
     });
 
-    let retry_driver = retry_stream(
-        config.http.retry_base_delay,
-        // TODO: use config.http.retry_step_delay,
-    )
-    .for_each(|body_offsets| async {
+    let retry_driver = retry_stream.into_stream().for_each(|body_offsets| async {
         match body_offsets {
             Ok((body, offsets)) => {
                 client
