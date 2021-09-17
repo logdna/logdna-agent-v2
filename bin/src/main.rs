@@ -9,7 +9,6 @@ use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
 use config::{Config, DbPath};
 use env_logger::Env;
 use fs::tail::Tailer as FSSource;
-use futures::future::Either;
 use futures::StreamExt;
 use http::batch::TimedRequestBatcherStreamExt;
 use http::client::Client;
@@ -33,8 +32,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 use tokio::signal::*;
-
-const POLL_PERIOD_MS: u64 = 100;
 
 mod dep_audit;
 mod stream_adapter;
@@ -262,40 +259,27 @@ async fn main() {
         sources.push(k)
     };
 
-    let sources = sources.map(Either::Left);
-
-    let sources = futures::stream::select(
-        sources,
-        tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
-            tokio::time::Duration::from_millis(POLL_PERIOD_MS),
-        ))
-        .map(Either::Right),
-    );
-
     let lines_stream = sources.map(|line| match line {
-        Either::Left(line) => match line {
-            StrictOrLazyLineBuilder::Strict(mut line) => {
-                if executor.process(&mut line).is_some() {
-                    match line.build() {
-                        Ok(line) => Some(StrictOrLazyLines::Strict(line)),
-                        Err(e) => {
-                            error!("Couldn't build line from linebuilder {:?}", e);
-                            None
-                        }
+        StrictOrLazyLineBuilder::Strict(mut line) => {
+            if executor.process(&mut line).is_some() {
+                match line.build() {
+                    Ok(line) => Some(StrictOrLazyLines::Strict(line)),
+                    Err(e) => {
+                        error!("Couldn't build line from linebuilder {:?}", e);
+                        None
                     }
-                } else {
-                    None
                 }
+            } else {
+                None
             }
-            StrictOrLazyLineBuilder::Lazy(mut line) => {
-                if executor.process(&mut line).is_some() {
-                    Some(StrictOrLazyLines::Lazy(line))
-                } else {
-                    None
-                }
+        }
+        StrictOrLazyLineBuilder::Lazy(mut line) => {
+            if executor.process(&mut line).is_some() {
+                Some(StrictOrLazyLines::Lazy(line))
+            } else {
+                None
             }
-        },
-        Either::Right(_) => None,
+        }
     });
 
     let body_offsets_stream = lines_stream
