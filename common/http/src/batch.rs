@@ -3,7 +3,6 @@ use core::pin::Pin;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use futures::future::{select, Either};
 use futures::stream::{self, Fuse, Stream};
 use futures::task::{Context, Poll};
 use futures::StreamExt;
@@ -144,47 +143,49 @@ pub fn timed_request_batch_stream<'a>(
             let mut timeout = Delay::new(state.duration);
 
             loop {
-                let item = select(state.stream.next(), &mut timeout).await;
+                tokio::select! {
+                    item = state.stream.next() => {
+                        match item {
+                            Some(item) => {
+                                if let (Some(key), Some(offset)) = (item.get_key(), item.get_offset()) {
+                                    let _ = offsets.insert(key, offset);
+                                }
 
-                match item {
-                    Either::Left((Some(item), _)) => {
-                        if let (Some(key), Some(offset)) = (item.get_key(), item.get_offset()) {
-                            let _ = offsets.insert(key, offset);
-                        }
+                                // Write line to buffer
+                                if let Err(e) = current.write_line(item).await {
+                                    return Some((Err(e.into()), state));
+                                };
 
-                        // Write line to buffer
-                        if let Err(e) = current.write_line(item).await {
-                            return Some((Err(e.into()), state));
-                        };
+                                // check if we've passed capacity
+                                if current.count() > 0 && current.bytes_len() >= state.cap {
+                                    // Stop our timer and return our current buffer
 
-                        // check if we've passed capacity
-                        if current.count() > 0 && current.bytes_len() >= state.cap {
-                            // Stop our timer and return our current buffer
-
-                            return match current.end() {
-                                Ok(body) => Some((
-                                    Ok((IngestBodyBuffer::from_buffer(body), offsets)),
-                                    state,
-                                )),
-                                Err(e) => Some((Err(e.into()), state)),
-                            };
-                        }
-                    }
-                    Either::Left((None, _)) => {
-                        // Underlying stream is done. Return the buffer if we have any data
-                        return if current.count() > 0 {
-                            match current.end() {
-                                Ok(body) => Some((
-                                    Ok((IngestBodyBuffer::from_buffer(body), offsets)),
-                                    state,
-                                )),
-                                Err(e) => Some((Err(e.into()), state)),
+                                    return match current.end() {
+                                        Ok(body) => Some((
+                                            Ok((IngestBodyBuffer::from_buffer(body), offsets)),
+                                            state,
+                                        )),
+                                        Err(e) => Some((Err(e.into()), state)),
+                                    };
+                                }
                             }
-                        } else {
-                            None
-                        };
-                    }
-                    Either::Right(((), _)) => {
+                            None => {
+                                // Underlying stream is done. Return the buffer if we have any data
+                                return if current.count() > 0 {
+                                    match current.end() {
+                                        Ok(body) => Some((
+                                            Ok((IngestBodyBuffer::from_buffer(body), offsets)),
+                                            state,
+                                        )),
+                                        Err(e) => Some((Err(e.into()), state)),
+                                    }
+                                } else {
+                                    None
+                                };
+                            }
+                        }
+                    },
+                    _ = &mut timeout => {
                         // Timed out. If we have a buffer return it
                         if current.count() > 0 {
                             return match current.end() {
