@@ -55,6 +55,22 @@ struct DiskRead {
     body: IngestBody,
 }
 
+pub struct RetryItem {
+    pub body_buffer: IngestBodyBuffer,
+    pub offsets: Option<Vec<Offset>>,
+    pub path: PathBuf,
+}
+
+impl RetryItem {
+    fn new(body_buffer: IngestBodyBuffer, offsets: Option<Vec<Offset>>, path: PathBuf) -> Self {
+        Self {
+            body_buffer,
+            offsets,
+            path,
+        }
+    }
+}
+
 impl Retry {
     pub fn new(
         directory: PathBuf,
@@ -113,9 +129,7 @@ impl Retry {
         Ok((offsets, body))
     }
 
-    pub fn into_stream(
-        self,
-    ) -> impl Stream<Item = Result<(IngestBodyBuffer, Option<Vec<Offset>>), Error>> {
+    pub fn into_stream(self) -> impl Stream<Item = Result<RetryItem, Error>> {
         stream::unfold(self, |state| async move {
             loop {
                 // Try to populate retry queue
@@ -140,7 +154,10 @@ impl Retry {
                         Ok((offsets, ingest_body)) => {
                             match IntoIngestBodyBuffer::into(ingest_body).await {
                                 Ok(body_buffer) => {
-                                    return Some((Ok((body_buffer, offsets)), state))
+                                    return Some((
+                                        Ok(RetryItem::new(body_buffer, offsets, path)),
+                                        state,
+                                    ))
                                 }
                                 Err(e) => return Some((Err(e.into()), state)),
                             }

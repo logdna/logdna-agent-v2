@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 
 use crate::limit::RateLimiter;
 use crate::offsets::Offset;
-use crate::retry::RetrySender;
+use crate::retry::{self, RetrySender};
 use crate::types::body::IngestBodyBuffer;
 use crate::types::client::Client as HttpClient;
 use crate::types::error::HttpError;
@@ -20,6 +20,27 @@ pub struct Client {
     retry: RetrySender,
     state_write: Option<FileOffsetWriteHandle>,
     state_flush: Option<FileOffsetFlushHandle>,
+}
+
+pub enum SendStatus {
+    Sent,
+    Retry(hyper::Error),
+    RetryTimeout,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ClientError<T>
+where
+    T: Send + 'static,
+{
+    #[error("{0}")]
+    BadRequest(hyper::StatusCode),
+    #[error("{0}")]
+    Http(#[from] HttpError<T>),
+    #[error("{0}")]
+    Retry(#[from] retry::Error),
+    #[error("{0}")]
+    State(#[from] state::FileOffsetStateError),
 }
 
 impl Client {
@@ -42,7 +63,15 @@ impl Client {
         }
     }
 
-    pub async fn send(&self, body: IngestBodyBuffer, file_offsets: Option<&[Offset]>) {
+    pub async fn send<T>(
+        &self,
+        body: IngestBodyBuffer,
+        file_offsets: Option<&[Offset]>,
+    ) -> Result<SendStatus, ClientError<T>>
+    where
+        T: Send + 'static,
+        ClientError<T>: From<HttpError<IngestBodyBuffer>>,
+    {
         Metrics::http().add_request_size(body.len().try_into().unwrap());
         if let (Some(wh), Some(offsets)) = (self.state_write.as_ref(), file_offsets) {
             for (key, offset) in offsets {
@@ -61,34 +90,31 @@ impl Client {
         {
             Ok(Response::Failed(_, s, r)) => {
                 Metrics::http().add_request_failure(start);
-                warn!("bad response {}: {}", s, r);
+                debug!("Failed request: {}", r);
+                Err(ClientError::BadRequest(s))
             }
             Err(HttpError::Send(body, e)) => {
                 Metrics::http().add_request_failure(start);
                 warn!("failed sending http request, retrying: {}", e);
-                if let Err(e) = self.retry.retry(file_offsets, &body).await {
-                    error!("failed to retry request: {}", e)
-                }
+                self.retry.retry(file_offsets, &body).await?;
+                Ok(SendStatus::Retry(e))
             }
             Err(HttpError::Timeout(body)) => {
                 Metrics::http().add_request_timeout(start);
-                warn!("failed sending http request, retrying: request timed out!");
-                if let Err(e) = self.retry.retry(file_offsets, &body).await {
-                    error!("failed to retry request: {}", e)
-                };
+                self.retry.retry(file_offsets, &body).await?;
+                Ok(SendStatus::RetryTimeout)
             }
             Err(e) => {
                 Metrics::http().add_request_failure(start);
-                warn!("failed sending http request: {}", e);
+                Err(e.into())
             }
             Ok(Response::Sent) => {
                 Metrics::http().add_request_success(start);
                 if let Some(sf) = sf {
                     // Flush the state
-                    if let Err(e) = sf.flush().await {
-                        error!("Unable to flush state to disk. error: {}", e);
-                    }
+                    sf.flush().await?
                 }
+                Ok(SendStatus::Sent)
             } //success
         }
     }
