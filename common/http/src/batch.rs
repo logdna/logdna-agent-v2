@@ -597,6 +597,10 @@ mod tests {
     }
 
     proptest! {
+        #![proptest_config(ProptestConfig {
+          cases: 10, .. ProptestConfig::default()
+        })]
+
         #[test]
         fn roundtrip(
             inp in (0..512usize)
