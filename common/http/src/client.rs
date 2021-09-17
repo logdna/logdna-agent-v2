@@ -52,10 +52,6 @@ impl Client {
                 }
             }
         }
-        self.make_request(body, file_offsets.as_deref()).await
-    }
-
-    async fn make_request(&self, body: IngestBodyBuffer, file_offsets: Option<&[Offset]>) {
         let sf = self.state_flush.as_ref();
         let start = Instant::now();
         match self
