@@ -397,6 +397,9 @@ pub fn consume_output(stderr_handle: std::process::ChildStderr) {
     });
 }
 
+// The compiler/linter believes this function isn't used anywhere but it is currently
+// used in the retries and http integration tests. This flag disables that false positive.
+#[allow(dead_code)]
 pub fn start_ingester(
     process_fn: ProcessFn,
 ) -> (
