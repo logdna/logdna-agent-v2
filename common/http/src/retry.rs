@@ -123,6 +123,7 @@ impl Retry {
                             state.retry_base_delay_secs.try_into().unwrap_or(2),
                         ))
                         .await;
+                        continue;
                     }
                 }
 
