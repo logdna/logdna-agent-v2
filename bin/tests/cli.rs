@@ -52,8 +52,6 @@ fn api_key_present() {
         lookback: Some("start"),
         ..Default::default()
     });
-    // Dump the agent's stdout
-    // TODO: assert that it's successfully uploaded
 
     thread::sleep(std::time::Duration::from_secs(1));
 
