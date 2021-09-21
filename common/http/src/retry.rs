@@ -337,8 +337,8 @@ mod tests {
             // Grab retries and check we got them all
             let retry_results = retry_results.into_iter().map(move |body_offsets|{
                 let mut buf = String::new();
-                let (body, _offsets) = body_offsets.unwrap();
-                body.reader()
+                let body = body_offsets.unwrap();
+                body.body_buffer.reader()
                 .read_to_string(&mut buf)
                 .unwrap();
                 let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
