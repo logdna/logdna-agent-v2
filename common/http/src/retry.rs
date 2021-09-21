@@ -280,7 +280,7 @@ mod tests {
         #[test]
         fn roundtrip(
 
-            inp in (0..10usize)
+            inp in (0..1024usize)
                 .prop_flat_map(|size|(Just(size),
                                       proptest::collection::vec(line_st(offset_st(1024)), size)
                 ))) {
@@ -289,23 +289,40 @@ mod tests {
             let dir_path = format!("{}/", dir.path().to_str().unwrap());
 
             let (size, lines) = inp;
-            let (retrier, retry_stream) = retry(dir_path.into(), Duration::from_millis(1000), Duration::from_millis(0));
+            let (retrier, retry_stream) = retry(dir_path.clone().into(), Duration::from_millis(1000), Duration::from_millis(0));
             let (results, retry_results) =
-                tokio_test::block_on(async {
+                tokio_test::block_on({
+                    let dir_path = dir_path.clone();
+
                     let batch_stream = stream::iter(lines.iter()).timed_request_batches(5_000, Duration::new(1, 0));
-                    let results = batch_stream.collect::<Vec<_>>().await;
+                    async move {
+                        let results = batch_stream.collect::<Vec<_>>().await;
 
-                    // Retry all the results and assert they come off the stream
-                    for body_offsets in results.iter() {
-                        let (body, offsets) = body_offsets.as_ref().unwrap();
-                        retrier.retry(Some(offsets.items_as_ref()), body).await.unwrap()
-                    }
+                        // Check there are no retry files
+                        assert_eq!(std::fs::read_dir(&dir_path).unwrap().count(), 0);
+                        // Retry all the results and assert they come off the stream
+                        for (idx, body_offsets) in results.iter().enumerate() {
+                            let (body, offsets) = body_offsets.as_ref().unwrap();
+                            retrier.retry(Some(offsets.items_as_ref()), body).await.unwrap();
+                            // Check there are the right number of retry files
+                            assert_eq!(std::fs::read_dir(&dir_path).unwrap().count(), idx + 1);
+                        }
 
-                    let retry_results = retry_stream.into_stream()
-                        .take(results.len())
-                        .collect::<Vec<_>>().await;
-                    (results, retry_results)
-                });
+                        let results_len = results.len();
+                        let retry_results = retry_stream.into_stream()
+                            .take(results_len)
+                            .enumerate()
+                            .map({
+                                let dir_path = dir_path.clone();
+                                move |(idx, res)| {
+                                    assert_eq!(std::fs::read_dir(&dir_path).unwrap().count(), results_len - (idx + 1));
+                                    res
+                                }})
+                            .collect::<Vec<_>>().await;
+                        (results, retry_results)
+                }});
+
+            assert_eq!(std::fs::read_dir(&dir_path).unwrap().count(), 0);
 
             assert_eq!(results.len(), retry_results.len());
 
