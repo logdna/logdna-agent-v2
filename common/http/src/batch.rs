@@ -222,21 +222,21 @@ mod tests {
     use proptest::prelude::*;
 
     use crate::types::body::Line;
-    use test_types::strategies::{line_st, OffsetLine};
+    use test_types::strategies::{line_st, offset_st, OffsetLine};
 
     #[tokio::test]
     async fn messages_pass_through() {
         let input = vec![
-            OffsetLine::new(Line::builder().line("0".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("1".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("2".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("3".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("4".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("5".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("6".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("7".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("8".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("9".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("0".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("1".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("2".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("3".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("4".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("5".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("6".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("7".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("8".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("9".to_string()).build().unwrap(), None),
         ];
         let results = stream::iter(input.iter())
             .timed_request_batches(350, Duration::new(1, 0))
@@ -257,7 +257,7 @@ mod tests {
             .remove("lines")
             .unwrap_or_default()
             .into_iter()
-            .map(OffsetLine::new)
+            .map(|l| OffsetLine::new(l, None))
             .collect();
 
         assert_eq!(input, lines);
@@ -266,16 +266,16 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
     async fn message_batchs() {
         let input = vec![
-            OffsetLine::new(Line::builder().line("0".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("1".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("2".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("3".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("4".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("5".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("6".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("7".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("8".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("9".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("0".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("1".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("2".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("3".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("4".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("5".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("6".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("7".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("8".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("9".to_string()).build().unwrap(), None),
         ];
 
         let stream = stream::iter(input.iter());
@@ -295,7 +295,7 @@ mod tests {
             .remove("lines")
             .unwrap_or_default()
             .into_iter()
-            .map(OffsetLine::new)
+            .map(|l| OffsetLine::new(l, None))
             .collect();
 
         buf.clear();
@@ -311,7 +311,7 @@ mod tests {
             .remove("lines")
             .unwrap_or_default()
             .into_iter()
-            .map(OffsetLine::new)
+            .map(|l| OffsetLine::new(l, None))
             .collect();
 
         assert_eq!(input[..6], lines0);
@@ -321,26 +321,27 @@ mod tests {
     #[tokio::test]
     async fn message_timeout() {
         let input0 = vec![
-            OffsetLine::new(Line::builder().line("0".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("1".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("2".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("3".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("0".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("1".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("2".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("3".to_string()).build().unwrap(), None),
         ];
 
         let stream0 = stream::iter(input0.iter());
 
         let input1 = vec![OffsetLine::new(
             Line::builder().line("4".to_string()).build().unwrap(),
+            None,
         )];
         let stream1 = stream::iter(input1.iter())
             .then(move |n| Delay::new(Duration::from_millis(300)).map(move |_| n));
 
         let input2 = vec![
-            OffsetLine::new(Line::builder().line("5".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("6".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("7".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("8".to_string()).build().unwrap()),
-            OffsetLine::new(Line::builder().line("9".to_string()).build().unwrap()),
+            OffsetLine::new(Line::builder().line("5".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("6".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("7".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("8".to_string()).build().unwrap(), None),
+            OffsetLine::new(Line::builder().line("9".to_string()).build().unwrap(), None),
         ];
         let stream2 = stream::iter(input2.iter());
 
@@ -378,7 +379,7 @@ mod tests {
             .remove("lines")
             .unwrap_or_default()
             .into_iter()
-            .map(OffsetLine::new)
+            .map(|l| OffsetLine::new(l, None))
             .collect();
         assert_eq!(
             input0.len(),
@@ -405,7 +406,7 @@ mod tests {
             .remove("lines")
             .unwrap_or_default()
             .into_iter()
-            .map(OffsetLine::new)
+            .map(|l| OffsetLine::new(l, None))
             .collect();
 
         assert_eq!(expected, lines1);
@@ -420,7 +421,7 @@ mod tests {
         fn roundtrip(
             inp in (0..1024usize)
                 .prop_flat_map(|size|(Just(size),
-                                      proptest::collection::vec(line_st(), size)))) {
+                                      proptest::collection::vec(line_st(offset_st(2048)), size)))) {
 
             let (size, lines) = inp;
             let results =

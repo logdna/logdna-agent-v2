@@ -15,6 +15,7 @@ use proptest::string::string_regex;
 
 use proptest::collection::vec;
 
+use http::offsets::Offset;
 use state::GetOffset;
 
 pub fn random_line_string_vec(
@@ -30,21 +31,22 @@ pub fn random_line_string_vec(
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct OffsetLine {
-    line: Line,
+    pub line: Line,
+    pub offset: Option<Offset>,
 }
 
 impl OffsetLine {
-    pub fn new(line: Line) -> Self {
-        OffsetLine { line }
+    pub fn new(line: Line, offset: Option<Offset>) -> Self {
+        OffsetLine { line, offset }
     }
 }
 
 impl GetOffset for &OffsetLine {
-    fn get_offset(&self) -> Option<u64> {
-        None
-    }
     fn get_key(&self) -> Option<u64> {
-        None
+        self.offset.map(|o| o.1)
+    }
+    fn get_offset(&self) -> Option<u64> {
+        self.offset.map(|o| o.0)
     }
 }
 
@@ -178,7 +180,19 @@ fn json_st(depth: u32) -> impl Strategy<Value = serde_json::Value> {
         ]
     })
 }
-pub fn line_st() -> impl Strategy<Value = OffsetLine> {
+
+pub fn offset_st(size: usize) -> impl Strategy<Value = Option<Offset>> {
+    proptest::option::of((0..size).prop_flat_map(|o| {
+        (
+            proptest::num::u8::ANY.prop_map(|k| k as u64),
+            Just(o as u64),
+        )
+    }))
+}
+
+pub fn line_st(
+    offset_st: impl Strategy<Value = Option<Offset>>,
+) -> impl Strategy<Value = OffsetLine> {
     (
         of(key_value_map_st(5)),
         of(string_regex(".{1,64}").unwrap()),
@@ -190,11 +204,12 @@ pub fn line_st() -> impl Strategy<Value = OffsetLine> {
         of(json_st(3)),
         string_regex(".{1,64}").unwrap(),
         (0..i64::MAX),
+        offset_st,
     )
         .prop_map(
-            |(annotations, app, env, file, host, labels, level, meta, line, timestamp)| {
-                OffsetLine {
-                    line: Line {
+            |(annotations, app, env, file, host, labels, level, meta, line, timestamp, offset)| {
+                OffsetLine::new(
+                    Line {
                         annotations,
                         app,
                         env,
@@ -206,7 +221,8 @@ pub fn line_st() -> impl Strategy<Value = OffsetLine> {
                         line,
                         timestamp,
                     },
-                }
+                    offset,
+                )
             },
         )
 }
