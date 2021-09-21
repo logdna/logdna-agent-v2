@@ -32,7 +32,8 @@ vec-collections = "0.3.5"
 smallvec = "1.4"
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt", "macros"] }
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 tokio-test = "0.4"
 rand = "0.8"
 num_cpus = "1.0"

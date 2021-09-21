@@ -7,9 +7,8 @@ use futures::stream::{self, Fuse, Stream};
 use futures::task::{Context, Poll};
 use futures::StreamExt;
 
-use futures_timer::Delay;
-
 use thiserror::Error;
+use tokio::time;
 
 use state::GetOffset;
 
@@ -140,7 +139,8 @@ pub fn timed_request_batch_stream<'a>(
             let mut offsets: OffsetMap = OffsetMap::default();
 
             // Set the initial timeout
-            let mut timeout = Delay::new(state.duration);
+            let timeout = time::sleep(state.duration);
+            tokio::pin!(timeout);
 
             loop {
                 tokio::select! {
@@ -197,7 +197,7 @@ pub fn timed_request_batch_stream<'a>(
                             };
                         }
                         // No logs, reset timeout and keep waiting
-                        timeout.reset(state.duration);
+                        timeout.as_mut().reset(tokio::time::Instant::now() + state.duration);
                     }
                 }
             }
@@ -216,6 +216,8 @@ mod tests {
 
     use futures::stream;
     use futures::FutureExt;
+
+    use futures_timer::Delay;
 
     use proptest::prelude::*;
 
@@ -261,7 +263,7 @@ mod tests {
         assert_eq!(input, lines);
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
     async fn message_batchs() {
         let input = vec![
             OffsetLine::new(Line::builder().line("0".to_string()).build().unwrap()),
