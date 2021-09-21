@@ -102,6 +102,7 @@ async fn main() {
     let (retry, retry_stream) = retry(
         PathBuf::from_str("/tmp/logdna").expect("Failed to create retry stream"),
         config.http.retry_base_delay,
+        config.http.retry_step_delay,
     );
     let client = Rc::new(RefCell::new(Client::new(
         config.http.template,

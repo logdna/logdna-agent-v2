@@ -46,6 +46,7 @@ pub struct Retry {
     directory: PathBuf,
     waiting: SegQueue<PathBuf>,
     retry_base_delay_secs: i64,
+    retry_step_delay: Duration,
 }
 
 #[derive(Deserialize)]
@@ -55,13 +56,18 @@ struct DiskRead {
 }
 
 impl Retry {
-    pub fn new(directory: PathBuf, retry_base_delay: Duration) -> Retry {
+    pub fn new(
+        directory: PathBuf,
+        retry_base_delay: Duration,
+        retry_step_delay: Duration,
+    ) -> Retry {
         std::fs::create_dir_all(&directory)
             .unwrap_or_else(|_| panic!("can't create {:#?}", &directory));
         Retry {
             directory,
             waiting: SegQueue::new(),
             retry_base_delay_secs: retry_base_delay.as_secs() as i64,
+            retry_step_delay,
         }
     }
 
@@ -128,6 +134,8 @@ impl Retry {
                 }
 
                 if let Some(path) = state.waiting.pop() {
+                    // Step delay
+                    Delay::new(state.retry_step_delay).await;
                     match Retry::read_from_disk(&path).await {
                         Ok((offsets, ingest_body)) => {
                             match IntoIngestBodyBuffer::into(ingest_body).await {
@@ -216,9 +224,13 @@ impl RetrySender {
     }
 }
 
-pub fn retry(dir: PathBuf, retry_base_delay: Duration) -> (RetrySender, Retry) {
+pub fn retry(
+    dir: PathBuf,
+    retry_base_delay: Duration,
+    retry_step_delay: Duration,
+) -> (RetrySender, Retry) {
     (
         RetrySender::new(dir.clone()),
-        Retry::new(dir, retry_base_delay),
+        Retry::new(dir, retry_base_delay, retry_step_delay),
     )
 }
