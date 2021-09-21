@@ -295,6 +295,38 @@ async fn main() {
         .map(|b| async { b })
         .buffered(1);
 
+    fn handle_client_error<T>(e: ClientError<T>)
+    where
+        T: Send + 'static,
+    {
+        match e {
+            ClientError::BadRequest(s) => {
+                warn!("bad http request: {}", s);
+            }
+            ClientError::Http(e) => {
+                warn!("failed sending http request: {}", e);
+            }
+            ClientError::Retry(r) => {
+                error!("failed to retry request: {}", r);
+            }
+            ClientError::State(s) => {
+                error!("Unable to flush state to disk. error: {}", s);
+            }
+        }
+    }
+
+    fn handle_send_status(s: SendStatus) {
+        match s {
+            SendStatus::Retry(e) => {
+                warn!("failed sending http request, retrying: {}", e);
+            }
+            SendStatus::RetryTimeout => {
+                warn!("failed sending http request, retrying: request timed out!");
+            }
+            _ => {}
+        }
+    }
+
     let lines_driver = body_offsets_stream.for_each(|body_offsets| async {
         match body_offsets {
             Ok((body, offsets)) => {
@@ -303,29 +335,8 @@ async fn main() {
                     .send(body, Some(offsets.items_as_ref()))
                     .await
                 {
-                    Ok(s) => match s {
-                        SendStatus::Retry(e) => {
-                            warn!("failed sending http request, retrying: {}", e);
-                        }
-                        SendStatus::RetryTimeout => {
-                            warn!("failed sending http request, retrying: request timed out!");
-                        }
-                        _ => {}
-                    },
-                    Err(e) => match e {
-                        ClientError::BadRequest(s) => {
-                            warn!("bad http request: {}", s);
-                        }
-                        ClientError::Http(e) => {
-                            warn!("failed sending http request: {}", e);
-                        }
-                        ClientError::Retry(r) => {
-                            error!("failed to retry request: {}", r);
-                        }
-                        ClientError::State(s) => {
-                            error!("Unable to flush state to disk. error: {}", s);
-                        }
-                    },
+                    Ok(s) => handle_send_status(s),
+                    Err(e) => handle_client_error(e),
                 }
             }
             Err(e) => error!("Couldn't batch lines {:?}", e),
@@ -346,33 +357,15 @@ async fn main() {
                     .await
                 {
                     Ok(s) => match s {
-                        SendStatus::Retry(e) => {
-                            warn!("failed sending http request, retrying: {}", e);
-                        }
-                        SendStatus::RetryTimeout => {
-                            warn!("failed sending http request, retrying: request timed out!");
-                        }
                         SendStatus::Sent => {
                             debug!("cleaned up retry file");
                             if let Err(e) = std::fs::remove_file(path) {
                                 error!("couldn't clean up retry file {}", e)
                             }
                         }
+                        _ => handle_send_status(s),
                     },
-                    Err(e) => match e {
-                        ClientError::BadRequest(s) => {
-                            warn!("bad http request: {}", s);
-                        }
-                        ClientError::Http(e) => {
-                            warn!("failed sending http request: {}", e);
-                        }
-                        ClientError::Retry(r) => {
-                            error!("failed to retry request: {}", r);
-                        }
-                        ClientError::State(s) => {
-                            error!("Unable to flush state to disk. error: {}", s);
-                        }
-                    },
+                    Err(e) => handle_client_error(e),
                 }
             }
             Err(e) => error!("Couldn't batch lines {:?}", e),
