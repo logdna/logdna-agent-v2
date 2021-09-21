@@ -31,8 +31,8 @@ pub fn random_line_string_vec(
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct OffsetLine {
-    line: Line,
-    offset: Option<Offset>,
+    pub line: Line,
+    pub offset: Option<Offset>,
 }
 
 impl OffsetLine {

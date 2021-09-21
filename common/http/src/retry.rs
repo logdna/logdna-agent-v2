@@ -216,11 +216,10 @@ impl RetrySender {
         file.write_all(b"}").await?;
         file.flush().await?;
 
-        Ok(rename(
-            file_name,
-            format!("/tmp/logdna/{}_{}.retry", fn_ts, fn_uuid),
-        )
-        .await?)
+        let mut new_file_name = self.directory.clone();
+        new_file_name.push(format!("{}_{}.retry", fn_ts, fn_uuid));
+
+        Ok(rename(file_name, new_file_name).await?)
     }
 }
 
@@ -240,33 +239,41 @@ mod tests {
 
     use super::*;
 
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::io::Read;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
     use futures::stream::{self, StreamExt};
-    use futures::FutureExt;
 
     use proptest::prelude::*;
+
+    use tempfile::tempdir;
 
     use crate::batch::TimedRequestBatcherStreamExt;
     use crate::types::body::Line;
 
-    use test_types::strategies::{line_st, offset_st, OffsetLine};
+    use test_types::strategies::{line_st, offset_st};
 
     proptest! {
+        #![proptest_config(ProptestConfig {
+          cases: 10, .. ProptestConfig::default()
+        })]
+
+
         #[test]
         fn roundtrip(
-
 
             inp in (0..10usize)
                 .prop_flat_map(|size|(Just(size),
                                       proptest::collection::vec(line_st(offset_st(1024)), size)
                 ))) {
 
+            let dir = tempdir().expect("Couldn't create temp dir...");
+            let dir_path = format!("{}/", dir.path().to_str().unwrap());
+
             let (size, lines) = inp;
-            let retry_stream = retry_stream(Duration::from_millis(1000));
-            let results =
+            let (retrier, retry_stream) = retry(dir_path.into(), Duration::from_millis(1000), Duration::from_millis(0));
+            let (results, retry_results) =
                 tokio_test::block_on(async {
                     let batch_stream = stream::iter(lines.iter()).timed_request_batches(5_000, Duration::new(1, 0));
                     let results = batch_stream.collect::<Vec<_>>().await;
@@ -274,28 +281,59 @@ mod tests {
                     // Retry all the results and assert they come off the stream
                     for body_offsets in results.iter() {
                         let (body, offsets) = body_offsets.as_ref().unwrap();
-                        retry(Some(offsets.items_as_ref()), body).await.unwrap()
+                        retrier.retry(Some(offsets.items_as_ref()), body).await.unwrap()
                     }
-                    results
+
+                    let retry_results = retry_stream.into_stream()
+                        .take(results.len())
+                        .collect::<Vec<_>>().await;
+                    (results, retry_results)
                 });
 
-            /*
-            // Retry all the results and assert they come off the stream
-                let all_results = results.into_iter().map(move |body_offsets|{
+            assert_eq!(results.len(), retry_results.len());
+
+            let lines = lines.into_iter().map(|offsetline| {
+                offsetline.line
+            })
+                .collect::<Vec<_>>();
+
+            // Grab results and check we got them all
+            let stream_results = results.into_iter().map(move |body_offsets|{
                 let mut buf = String::new();
-                let (body, offsets) = body_offsets.unwrap();
+                let (body, _offsets) = body_offsets.unwrap();
                 body.reader()
                 .read_to_string(&mut buf)
                 .unwrap();
                 let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
                 body.remove("lines").unwrap_or_default()
-        })
+            })
                 .into_iter()
-                .flatten();
-             */
+                .flatten()
+                .collect::<Vec<_>>();
 
+            let lines_set: HashSet<String> = lines.iter().map(|l|l.line.clone()).collect::<HashSet<_>>();
+            let l: HashSet<String> = stream_results.iter().map(|r|r.line.clone()).collect::<HashSet<_>>();
 
-            // assert_eq!(all_results.count(), size);
+            assert_eq!(stream_results.len(), size);
+            assert_eq!(lines_set, l);
+
+            // Grab retries and check we got them all
+            let retry_results = retry_results.into_iter().map(move |body_offsets|{
+                let mut buf = String::new();
+                let (body, _offsets) = body_offsets.unwrap();
+                body.reader()
+                .read_to_string(&mut buf)
+                .unwrap();
+                let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
+                body.remove("lines").unwrap_or_default()
+            })
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
+            let r: HashSet<String> = retry_results.iter().map(|r|r.line.clone()).collect::<HashSet<_>>();
+
+            assert_eq!(retry_results.len(), size);
+            assert_eq!(lines_set, r);
         }
     }
 }
