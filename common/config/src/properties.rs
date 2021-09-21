@@ -44,6 +44,8 @@ from_env_name!(LOG_K8S_EVENTS);
 from_env_name!(LINE_EXCLUSION);
 from_env_name!(LINE_INCLUSION);
 from_env_name!(REDACT);
+from_env_name!(INGEST_TIMEOUT);
+from_env_name!(INGEST_BUFFER_SIZE);
 
 enum Key {
     FromEnv(&'static str),
@@ -144,6 +146,18 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
     params.mac = map.get_string(&MAC);
 
     result.http.params = Some(params);
+
+    if let Some(value) = map.get(&INGEST_TIMEOUT) {
+        result.http.timeout = Some(value.parse().map_err(|e| {
+            ConfigError::PropertyInvalid(format!("ingest_timeout is invalid: {}", e))
+        })?);
+    }
+
+    if let Some(value) = map.get(&INGEST_BUFFER_SIZE) {
+        result.http.body_size = Some(value.parse().map_err(|e| {
+            ConfigError::PropertyInvalid(format!("ingest_buffer_size is invalid: {}", e))
+        })?);
+    }
 
     if let Some(log_dirs) = map.get(&LOG_DIRS) {
         // To support the legacy agent behaviour, we override the default (/var/log)

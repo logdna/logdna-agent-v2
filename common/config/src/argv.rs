@@ -37,6 +37,8 @@ pub mod env {
     pub const LINE_EXCLUSION: &str = "LOGDNA_LINE_EXCLUSION_REGEX";
     pub const LINE_INCLUSION: &str = "LOGDNA_LINE_INCLUSION_REGEX";
     pub const REDACT: &str = "LOGDNA_REDACT_REGEX";
+    pub const INGEST_TIMEOUT: &str = "LOGDNA_INGEST_TIMEOUT";
+    pub const INGEST_BUFFER_SIZE: &str = "LOGDNA_INGEST_BUFFER_SIZE";
 
     pub const INGESTION_KEY_ALTERNATE: &str = "LOGDNA_AGENT_KEY";
     pub const CONFIG_FILE_DEPRECATED: &str = "DEFAULT_CONF_FILE";
@@ -188,6 +190,16 @@ pub struct ArgumentOptions {
     /// and environment variables).
     #[structopt(short = "l", long = "list")]
     pub list_settings: bool,
+
+    /// The timeout on requests to the ingestion API in milliseconds.
+    /// Defaults to 10000 ms.
+    #[structopt(long, env = env::INGEST_TIMEOUT)]
+    ingest_timeout: Option<u64>,
+
+    /// The maximum size, in bytes, of log content that will be sent to the ingestion API.
+    /// Defaults to 2097152 (2 MB).
+    #[structopt(long, env = env::INGEST_BUFFER_SIZE)]
+    ingest_buffer_size: Option<usize>,
 }
 
 impl ArgumentOptions {
@@ -249,6 +261,14 @@ impl ArgumentOptions {
         }
 
         raw.http.params = Some(params);
+
+        if self.ingest_timeout.is_some() {
+            raw.http.timeout = self.ingest_timeout;
+        }
+
+        if self.ingest_buffer_size.is_some() {
+            raw.http.body_size = self.ingest_buffer_size;
+        }
 
         if !self.log_dirs.is_empty() {
             with_csv(self.log_dirs)
@@ -601,6 +621,8 @@ mod test {
             use_k8s_enrichment: Some(K8sTrackingConf::Always),
             log_k8s_events: Some(K8sTrackingConf::Never),
             journald_paths: vec_strings!("/a"),
+            ingest_timeout: Some(1111111),
+            ingest_buffer_size: Some(222222),
             ..ArgumentOptions::default()
         };
         let config = argv.merge(RawConfig::default());
@@ -609,6 +631,8 @@ mod test {
         assert_eq!(config.http.use_ssl, Some(false));
         assert_eq!(config.http.use_compression, Some(true));
         assert_eq!(config.http.gzip_level, Some(3));
+        assert_eq!(config.http.timeout, Some(1111111));
+        assert_eq!(config.http.body_size, Some(222222));
         let params = config.http.params.unwrap();
         assert_eq!(params.hostname, "my_host");
         assert_eq!(params.tags, Some(Tags::from(vec_strings!("a", "b"))));

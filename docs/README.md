@@ -158,6 +158,8 @@ options are available:
 |`LOGDNA_LOG_K8S_EVENTS`|Determines whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
 |`LOGDNA_DB_PATH`|The directory in which the agent will store its state database. Note that the agent must have write access to the directory and be a persistent volume.|`/var/lib/logdna`|
 |`LOGDNA_METRICS_PORT`|The port number to expose a Prometheus endpoint target with the [agent internal metrics](INTERNAL_METRICS.md).||
+|`LOGDNA_INGEST_TIMEOUT`|The timeout of the API calls to the ingest API in milliseconds|`10000`|
+|`LOGDNA_INGEST_BUFFER_SIZE`|The size, in bytes, of the ingest data buffer used to batch log data with.|`2097152`|
 
 All regular expressions use [Perl-style syntax][regex-syntax] with case sensitivity by default. If you don't
 want to differentiate between capital and lower-case letters, use non-capturing groups with a flag: `(?flags:exp)`,

@@ -473,13 +473,18 @@ inclusion_regex_rules = /a/regex/include/.*
 line_exclusion_regex = a.*, b.*
 line_inclusion_regex = c.+
 # needs escaping in java properties
-redact_regex = \\\\S+@\\\\S+\\\\.\\\\S+",
+redact_regex = \\\\S+@\\\\S+\\\\.\\\\S+
+ingest_timeout = 9999
+ingest_buffer_size = 3145728
+",
         )?;
         let config = Config::parse(&file_name).unwrap();
 
         assert_eq!(config.http.use_compression, Some(false));
         assert_eq!(config.http.use_ssl, Some(true));
         assert_eq!(config.http.gzip_level, Some(4));
+        assert_eq!(config.http.body_size, Some(3 * 1024 * 1024));
+        assert_eq!(config.http.timeout, Some(9999));
 
         let params = config.http.params.unwrap();
         assert_eq!(params.ip, some_string!("10.10.10.8"));

@@ -15,7 +15,10 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 
 use futures::Future;
 use log::debug;
-use logdna_mock_ingester::{http_ingester, https_ingester, FileLineCounter, IngestError};
+use logdna_mock_ingester::{
+    http_ingester, http_ingester_with_processors, https_ingester, FileLineCounter, IngestError,
+    ProcessFn,
+};
 
 use rcgen::generate_simple_self_signed;
 use rustls::internal::pemfile;
@@ -124,6 +127,8 @@ pub struct AgentSettings<'a> {
     pub line_exclusion_regex: Option<&'a str>,
     pub line_inclusion_regex: Option<&'a str>,
     pub line_redact_regex: Option<&'a str>,
+    pub ingest_timeout: Option<&'a str>,
+    pub ingest_buffer_size: Option<&'a str>,
 }
 
 impl<'a> AgentSettings<'a> {
@@ -156,7 +161,7 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
         std::env::var("LOGDNA_INGESTION_KEY").unwrap()
     };
 
-    assert_ne!(ingestion_key, "");
+    assert_ne!(ingestion_key, "", "Ingestion key not set. Set LOGDNA_INGESTION_KEY in your local env or update the test to use a mock ingestor.");
 
     let agent = cmd
         .env("RUST_LOG", "debug")
@@ -223,6 +228,14 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
 
     if let Some(regex_str) = settings.line_redact_regex {
         agent.env("LOGDNA_REDACT_REGEX", regex_str);
+    }
+
+    if let Some(ingest_timeout) = settings.ingest_timeout {
+        agent.env("LOGDNA_INGEST_TIMEOUT", ingest_timeout);
+    }
+
+    if let Some(ingest_buffer_size) = settings.ingest_buffer_size {
+        agent.env("LOGDNA_INGEST_BUFFER_SIZE", ingest_buffer_size);
     }
 
     agent.spawn().expect("Failed to start agent")
@@ -382,4 +395,27 @@ pub fn consume_output(stderr_handle: std::process::ChildStderr) {
             debug!("{:?}", line);
         }
     });
+}
+
+// The compiler/linter believes this function isn't used anywhere but it is currently
+// used in the retries and http integration tests. This flag disables that false positive.
+#[allow(dead_code)]
+pub fn start_ingester(
+    process_fn: ProcessFn,
+) -> (
+    impl Future<Output = std::result::Result<(), IngestError>>,
+    FileLineCounter,
+    impl FnOnce(),
+    String,
+) {
+    let port = get_available_port().expect("No ports free");
+    let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
+
+    let (server, received, shutdown_handle) = http_ingester_with_processors(address, process_fn);
+    (
+        server,
+        received,
+        shutdown_handle,
+        format!("localhost:{}", port),
+    )
 }

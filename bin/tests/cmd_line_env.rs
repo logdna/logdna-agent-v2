@@ -40,6 +40,30 @@ fn test_command_line_arguments_help() {
         "Adds log directories to scan, in addition to the default (/var/log)",
         "-t, --tags",
         "List of tags metadata to attach to lines forwarded from this agent",
+        // Verify long only options
+        "--db-path",
+        "--endpoint-path",
+        "--exclude-regex",
+        "--exclude",
+        "--gzip-level",
+        "--host",
+        "--include-regex",
+        "--include",
+        "--ingest-buffer-size",
+        "--ingest-timeout",
+        "--ip",
+        "--journald-paths",
+        "--line-exclusion",
+        "--line-inclusion",
+        "--line-redact",
+        "--log-k8s-events",
+        "--lookback",
+        "--mac-address",
+        "--metrics-port",
+        "--os-hostname",
+        "--use-compression",
+        "--use-k8s-enrichment",
+        "--use-ssl",
     ]
     .iter()
     .for_each(|m| {
@@ -174,7 +198,9 @@ fn test_command_line_arguments_should_set_config() {
                 .args(&["--metrics-port", "9898"])
                 .args(&["--line-exclusion", "abc"])
                 .args(&["--line-inclusion", "z_inc"])
-                .args(&["--line-redact", "a@b.com"]);
+                .args(&["--line-redact", "a@b.com"])
+                .args(&["--ingest-buffer-size", "123456"])
+                .args(&["--ingest-timeout", "9876"]);
         },
         |d| {
             assert!(contains("tags: \"a,b\"").eval(d));
@@ -205,6 +231,8 @@ fn test_command_line_arguments_should_set_config() {
             assert!(is_match(r"line_redact_regex:\s+\- a@b.com")
                 .unwrap()
                 .eval(d));
+            assert!(contains("body_size: 123456").eval(d));
+            assert!(contains("timeout: 9876").eval(d));
         },
     );
 }
@@ -249,7 +277,9 @@ fn test_environment_variables_should_set_config() {
                 .env("LOGDNA_LOG_K8S_EVENTS", "never")
                 .env("LOGDNA_LINE_EXCLUSION_REGEX", "exc_re")
                 .env("LOGDNA_LINE_INCLUSION_REGEX", "inc_re")
-                .env("LOGDNA_REDACT_REGEX", "c@d.com");
+                .env("LOGDNA_REDACT_REGEX", "c@d.com")
+                .env("LOGDNA_INGEST_TIMEOUT", "123456")
+                .env("LOGDNA_INGEST_BUFFER_SIZE", "987654");
         },
         |d| {
             assert!(contains("tags: \"d,e,f\"").eval(d));
@@ -284,6 +314,8 @@ fn test_environment_variables_should_set_config() {
             assert!(is_match(r"line_redact_regex:\s+\- c@d.com")
                 .unwrap()
                 .eval(d));
+            assert!(contains("timeout: 123456").eval(d));
+            assert!(contains("body_size: 987654").eval(d));
         },
     );
 }
