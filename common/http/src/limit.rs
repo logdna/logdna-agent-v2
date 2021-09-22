@@ -199,7 +199,7 @@ mod tests {
             let tmp = limiter.clone();
             let join_handle = spawn(move || {
                 let mut rng = rand::thread_rng();
-                for _ in 0..10000 {
+                for _ in 0..1000 {
                     let slot = tmp.get_slot(());
                     assert_ne!(slot.inner.slot, 0);
                     assert!(slot.inner.slot <= 2);

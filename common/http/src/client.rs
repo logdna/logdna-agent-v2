@@ -1,41 +1,46 @@
-use std::collections::HashMap;
-use std::pin::Pin;
+use std::convert::TryInto;
 use std::time::{Duration, Instant};
 
-use futures::{Stream, StreamExt};
-
 use crate::limit::RateLimiter;
-use crate::retry::Retry;
+use crate::offsets::Offset;
+use crate::retry::{self, RetrySender};
 use crate::types::body::IngestBodyBuffer;
 use crate::types::client::Client as HttpClient;
 use crate::types::error::HttpError;
 use crate::types::request::RequestTemplate;
 use crate::types::response::Response;
-use crate::types::serialize::{
-    body_serializer_source, IngestBodySerializer, IngestLineSerialize, IngestLineSerializeError,
-};
-use crate::Offset;
+
 use metrics::Metrics;
-use state::{FileOffsetFlushHandle, FileOffsetWriteHandle, GetOffset};
-use std::sync::Arc;
+use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
 
 /// Http(s) client used to send logs to the Ingest API
 pub struct Client {
     inner: HttpClient,
-    buffer_source:
-        Pin<Box<dyn Stream<Item = Result<IngestBodySerializer, IngestLineSerializeError>>>>,
     limiter: RateLimiter,
-    retry: Arc<Retry>,
-
-    buffer: Option<IngestBodySerializer>,
-    offsets: Option<Vec<Offset>>,
-    buffer_max_size: usize,
-    buffer_bytes: usize,
-    last_flush: Instant,
-    last_retry: Instant,
+    retry: RetrySender,
     state_write: Option<FileOffsetWriteHandle>,
     state_flush: Option<FileOffsetFlushHandle>,
-    retry_step_delay: Duration,
+}
+
+pub enum SendStatus {
+    Sent,
+    Retry(hyper::Error),
+    RetryTimeout,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ClientError<T>
+where
+    T: Send + 'static,
+{
+    #[error("{0}")]
+    BadRequest(hyper::StatusCode),
+    #[error("{0}")]
+    Http(#[from] HttpError<T>),
+    #[error("{0}")]
+    Retry(#[from] retry::Error),
+    #[error("{0}")]
+    State(#[from] state::FileOffsetStateError),
 }
 
 impl Client {
@@ -43,147 +48,39 @@ impl Client {
     /// and a request template for building ingest requests
     pub fn new(
         template: RequestTemplate,
+        retry: RetrySender,
         state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
-        retry_base_delay: Duration,
-        retry_step_delay: Duration,
     ) -> Self {
-        let buffer_source = Box::pin(body_serializer_source(
-            16 * 1024, /* 16 KB segments */
-            50,        /* 16KB * 50 = 256 KB initial capacity */
-            None,      /* No max size */
-            Some(100), /* max 512KB idle buffers */
-        ));
-        let (offsets, state_write, state_flush) = state_handles
-            .map(|(sw, sf)| (Some(Vec::new()), Some(sw), Some(sf)))
-            .unwrap_or((None, None, None));
+        let (state_write, state_flush) = state_handles
+            .map(|(sw, sf)| (Some(sw), Some(sf)))
+            .unwrap_or((None, None));
         Self {
             inner: HttpClient::new(template),
-            buffer_source,
             limiter: RateLimiter::new(10),
-            retry: Arc::new(Retry::new(retry_base_delay)),
-            buffer: None,
-            offsets,
-            buffer_max_size: 2 * 1024 * 1024,
-            buffer_bytes: 0,
-            last_flush: Instant::now(),
-            last_retry: Instant::now(),
+            retry,
             state_write,
             state_flush,
-            retry_step_delay,
         }
     }
 
-    pub async fn poll(&mut self) {
-        if self.buffer.is_none() {
-            match self.buffer_source.next().await {
-                Some(Ok(buf)) => self.buffer = Some(buf),
-                Some(Err(e)) => error!("{}", e),
-                None => {
-                    error!("client buffer stream shut down");
-                    panic!("client buffer stream shut down");
+    pub async fn send<T>(
+        &self,
+        body: IngestBodyBuffer,
+        file_offsets: Option<&[Offset]>,
+    ) -> Result<SendStatus, ClientError<T>>
+    where
+        T: Send + 'static,
+        ClientError<T>: From<HttpError<IngestBodyBuffer>>,
+    {
+        Metrics::http().add_request_size(body.len().try_into().unwrap());
+        if let (Some(wh), Some(offsets)) = (self.state_write.as_ref(), file_offsets) {
+            for (key, offset) in offsets {
+                trace!("Updating offset for {:?} to {}", key, offset);
+                if let Err(e) = wh.update(key, *offset).await {
+                    error!("Unable to write offsets. error: {}", e);
                 }
             }
         }
-        if self.should_retry() {
-            self.last_retry = Instant::now();
-            match self.retry.poll().await {
-                Ok((offsets, Some(body))) => {
-                    if let (Some(sw), Some(offsets)) = (self.state_write.as_ref(), &offsets) {
-                        for (file_name, offset) in offsets {
-                            debug!("Updating offset for {:?} to {}", file_name, *offset);
-                            if let Err(e) = sw.update(file_name, *offset).await {
-                                error!("Unable to write offsets. error: {}", e);
-                            };
-                        }
-                    }
-                    self.make_request(body).await
-                }
-                Err(e) => error!("error polling retry: {}", e),
-                _ => {}
-            };
-        }
-
-        if self.should_flush() {
-            self.flush().await
-        }
-    }
-    /// The main logic loop, consumes self because it should only be called once
-    pub async fn send(
-        &mut self,
-        line: impl IngestLineSerialize<String, bytes::Bytes, HashMap<String, String>, Ok = ()>
-            + GetOffset,
-    ) {
-        let key = line.get_key();
-        let offset = line.get_offset();
-        self.poll().await;
-        match self.buffer.as_mut().unwrap(/* poll will panic if this isn't set */).write_line(line).await
-        {
-            Ok(_) => {
-                if let Some(wh) = self.state_write.as_ref() {
-                    if let (Some(key), Some(offset)) = (key.as_ref(), offset) {
-                        debug!("Updating offset for {:?} to {}", key, offset);
-                        wh.update(key, offset).await.unwrap();
-                    }
-                }
-                self.buffer_bytes = self.buffer.as_ref().map(|b| b.bytes_len()).unwrap_or(0);
-            }
-            Err(e) => error!("{:?}", e),
-        }
-    }
-
-    pub fn set_max_buffer_size(&mut self, size: usize) {
-        self.buffer_max_size = size;
-    }
-
-    pub fn set_timeout(&mut self, timeout: Duration) {
-        self.inner.set_timeout(timeout)
-    }
-
-    fn should_flush(&self) -> bool {
-        if self.buffer_bytes >= self.buffer_max_size {
-            trace!("filled buffer, flushing");
-            true
-        } else if self.last_flush.elapsed() > Duration::from_millis(250) {
-            trace!("250ms since last upload, flushing");
-            true
-        } else {
-            false
-        }
-    }
-
-    fn should_retry(&self) -> bool {
-        self.last_retry.elapsed() > self.retry_step_delay
-    }
-
-    async fn flush(&mut self) {
-        if self.buffer.is_none() || self.buffer.as_ref().unwrap().count() == 0 {
-            return;
-        }
-
-        let buffer = {
-            match self.buffer_source.next().await {
-                Some(Ok(buf)) => buf,
-                Some(Err(e)) => {
-                    error!("{}", e);
-                    return;
-                }
-                None => {
-                    error!("client buffer stream shut down");
-                    panic!("client buffer stream shut down");
-                }
-            }
-        };
-        let buffer = self.buffer.replace(buffer).unwrap();
-        let buffer_size = self.buffer_bytes as u64;
-        self.buffer_bytes = 0;
-        Metrics::http().add_request_size(buffer_size);
-        let body = buffer.end().expect("Failed to close ingest buffer");
-        self.make_request(IngestBodyBuffer::from_buffer(body)).await;
-        self.last_flush = Instant::now();
-    }
-
-    async fn make_request(&mut self, body: IngestBodyBuffer) {
-        let retry = self.retry.clone();
         let sf = self.state_flush.as_ref();
         let start = Instant::now();
         match self
@@ -193,37 +90,36 @@ impl Client {
         {
             Ok(Response::Failed(_, s, r)) => {
                 Metrics::http().add_request_failure(start);
-                warn!("bad response {}: {}", s, r);
+                debug!("Failed request: {}", r);
+                Err(ClientError::BadRequest(s))
             }
             Err(HttpError::Send(body, e)) => {
                 Metrics::http().add_request_failure(start);
                 warn!("failed sending http request, retrying: {}", e);
-                if let Err(e) = retry.retry(self.offsets.as_ref(), &body) {
-                    error!("failed to retry request: {}", e)
-                }
+                self.retry.retry(file_offsets, &body).await?;
+                Ok(SendStatus::Retry(e))
             }
             Err(HttpError::Timeout(body)) => {
                 Metrics::http().add_request_timeout(start);
-                warn!("failed sending http request, retrying: request timed out!");
-                if let Err(e) = retry.retry(self.offsets.as_ref(), &body) {
-                    error!("failed to retry request: {}", e)
-                };
+                self.retry.retry(file_offsets, &body).await?;
+                Ok(SendStatus::RetryTimeout)
             }
             Err(e) => {
                 Metrics::http().add_request_failure(start);
-                warn!("failed sending http request: {}", e);
+                Err(e.into())
             }
             Ok(Response::Sent) => {
                 Metrics::http().add_request_success(start);
                 if let Some(sf) = sf {
                     // Flush the state
-                    if let Err(e) = sf.flush().await {
-                        error!("Unable to flush state to disk. error: {}", e);
-                    } else if let Some(offsets) = self.offsets.as_mut() {
-                        offsets.clear()
-                    }
+                    sf.flush().await?
                 }
+                Ok(SendStatus::Sent)
             } //success
         }
+    }
+
+    pub fn set_timeout(&mut self, timeout: Duration) {
+        self.inner.set_timeout(timeout)
     }
 }

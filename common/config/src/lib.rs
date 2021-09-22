@@ -233,7 +233,7 @@ impl TryFrom<RawConfig> for Config {
                 raw.http.retry_base_delay_ms.unwrap_or(15_000) as u64
             ),
             retry_step_delay: Duration::from_millis(
-                raw.http.retry_step_delay_ms.unwrap_or(3_000) as u64
+                raw.http.retry_step_delay_ms.unwrap_or(50) as u64
             ),
         };
 
