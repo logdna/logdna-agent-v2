@@ -1,17 +1,16 @@
 #[macro_use]
 extern crate log;
 
-use std::path::PathBuf;
-
 use futures::Stream;
 
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
 use config::{Config, DbPath};
 use env_logger::Env;
 use fs::tail::Tailer as FSSource;
-use futures::future::Either;
 use futures::StreamExt;
-use http::client::Client;
+use http::batch::TimedRequestBatcherStreamExt;
+use http::client::{Client, ClientError, SendStatus};
+use http::retry::{retry, RetryItem};
 
 #[cfg(feature = "libjournald")]
 use journald::libjournald::source::create_source;
@@ -29,10 +28,11 @@ use middleware::Executor;
 use pin_utils::pin_mut;
 use state::{AgentState, StateError};
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::rc::Rc;
+use std::str::FromStr;
+use std::time::Duration;
 use tokio::signal::*;
-
-const POLL_PERIOD_MS: u64 = 100;
 
 mod dep_audit;
 mod stream_adapter;
@@ -95,15 +95,18 @@ async fn main() {
     let handles = offset_state
         .as_ref()
         .map(|os| (os.write_handle(), os.flush_handle()));
-    let client = Rc::new(RefCell::new(Client::new(
-        config.http.template,
-        handles,
+
+    let (retry, retry_stream) = retry(
+        PathBuf::from_str("/tmp/logdna").expect("Failed to create retry stream"),
         config.http.retry_base_delay,
         config.http.retry_step_delay,
+    );
+    let client = Rc::new(RefCell::new(Client::new(
+        config.http.template,
+        retry,
+        handles,
     )));
-    client
-        .borrow_mut()
-        .set_max_buffer_size(config.http.body_size);
+
     client.borrow_mut().set_timeout(config.http.timeout);
 
     let mut executor = Executor::new();
@@ -259,44 +262,110 @@ async fn main() {
         sources.push(k)
     };
 
-    let sources = sources.map(Either::Left);
+    let lines_stream = sources.map(|line| match line {
+        StrictOrLazyLineBuilder::Strict(mut line) => {
+            if executor.process(&mut line).is_some() {
+                match line.build() {
+                    Ok(line) => Some(StrictOrLazyLines::Strict(line)),
+                    Err(e) => {
+                        error!("Couldn't build line from linebuilder {:?}", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        }
+        StrictOrLazyLineBuilder::Lazy(mut line) => {
+            if executor.process(&mut line).is_some() {
+                Some(StrictOrLazyLines::Lazy(line))
+            } else {
+                None
+            }
+        }
+    });
 
-    let sources = futures::stream::select(
-        sources,
-        tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
-            tokio::time::Duration::from_millis(POLL_PERIOD_MS),
-        ))
-        .map(Either::Right),
-    );
+    let body_offsets_stream = lines_stream
+        .filter_map(|l| async { l })
+        // TODO: paramaterise the flush frequency
+        .timed_request_batches(config.http.body_size, Duration::from_millis(250))
+        .map(|b| async { b })
+        .buffered(1);
 
-    let lines_future = sources.for_each(|line| async {
-        match line {
-            Either::Left(line) => match line {
-                StrictOrLazyLineBuilder::Strict(mut line) => {
-                    if executor.process(&mut line).is_some() {
-                        match line.build() {
-                            Ok(line) => {
-                                client
-                                    .borrow_mut()
-                                    .send(StrictOrLazyLines::Strict(&line))
-                                    .await
-                            }
-                            Err(e) => {
-                                error!("Couldn't build line from linebuilder {:?}", e)
+    fn handle_client_error<T>(e: ClientError<T>)
+    where
+        T: Send + 'static,
+    {
+        match e {
+            ClientError::BadRequest(s) => {
+                warn!("bad http request: {}", s);
+            }
+            ClientError::Http(e) => {
+                warn!("failed sending http request: {}", e);
+            }
+            ClientError::Retry(r) => {
+                error!("failed to retry request: {}", r);
+            }
+            ClientError::State(s) => {
+                error!("Unable to flush state to disk. error: {}", s);
+            }
+        }
+    }
+
+    fn handle_send_status(s: SendStatus) {
+        match s {
+            SendStatus::Retry(e) => {
+                warn!("failed sending http request, retrying: {}", e);
+            }
+            SendStatus::RetryTimeout => {
+                warn!("failed sending http request, retrying: request timed out!");
+            }
+            _ => {}
+        }
+    }
+
+    let lines_driver = body_offsets_stream.for_each(|body_offsets| async {
+        match body_offsets {
+            Ok((body, offsets)) => {
+                match client
+                    .borrow()
+                    .send(body, Some(offsets.items_as_ref()))
+                    .await
+                {
+                    Ok(s) => handle_send_status(s),
+                    Err(e) => handle_client_error(e),
+                }
+            }
+            Err(e) => error!("Couldn't batch lines {:?}", e),
+        }
+    });
+
+    let retry_driver = retry_stream.into_stream().for_each(|body_offsets| async {
+        match body_offsets {
+            Ok(item) => {
+                let RetryItem {
+                    body_buffer,
+                    offsets,
+                    path,
+                } = item;
+                match client
+                    .borrow()
+                    .send(body_buffer, offsets.as_ref().map(|o| o.as_ref()))
+                    .await
+                {
+                    Ok(s) => match s {
+                        SendStatus::Sent => {
+                            debug!("cleaned up retry file");
+                            if let Err(e) = std::fs::remove_file(path) {
+                                error!("couldn't clean up retry file {}", e)
                             }
                         }
-                    }
+                        _ => handle_send_status(s),
+                    },
+                    Err(e) => handle_client_error(e),
                 }
-                StrictOrLazyLineBuilder::Lazy(mut line) => {
-                    if executor.process(&mut line).is_some() {
-                        client
-                            .borrow_mut()
-                            .send(StrictOrLazyLines::Lazy(line))
-                            .await
-                    }
-                }
-            },
-            Either::Right(_) => client.borrow_mut().poll().await,
+            }
+            Err(e) => error!("Couldn't batch lines {:?}", e),
         }
     });
 
@@ -316,7 +385,8 @@ async fn main() {
 
     // Concurrently run the line streams and listen for the `shutdown` signal
     tokio::select! {
-        _ = lines_future => {}
+        _ = lines_driver => {}
+        _ = retry_driver => {}
         signal_name = get_signal() => {
             info!("Received {} signal, shutting down", signal_name)
         }

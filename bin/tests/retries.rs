@@ -13,6 +13,7 @@ mod common;
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_retry_after_timeout() {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let timeout = 200;
     let base_delay_ms = 300;
     let step_delay_ms = 100;
@@ -70,8 +71,14 @@ async fn test_retry_after_timeout() {
         assert!(file_info.values.len() >= file_lines.len());
 
         let attempts_made = attempts_counter.lock().unwrap();
+
         // It retried multiple times
-        assert!(i32::abs(*attempts_made - attempts) <= 2);
+        assert!(
+            i32::abs(*attempts_made - attempts) <= 2,
+            "{} attempts received, expected {}",
+            *attempts_made,
+            attempts
+        );
         shutdown_handle();
     });
 
@@ -82,6 +89,7 @@ async fn test_retry_after_timeout() {
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_retry_is_not_made_before_retry_base_delay_ms() {
+    let _ = env_logger::Builder::from_default_env().try_init();
     // Use a large base delay
     let base_delay_ms = 300_000;
     let timeout = 200;

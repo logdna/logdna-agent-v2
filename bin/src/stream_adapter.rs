@@ -15,14 +15,14 @@ pub(crate) enum StrictOrLazyLineBuilder {
 }
 
 #[allow(clippy::large_enum_variant)]
-pub(crate) enum StrictOrLazyLines<'a> {
-    Strict(&'a Line),
+pub(crate) enum StrictOrLazyLines {
+    Strict(Line),
     Lazy(LazyLineSerializer),
 }
 
 #[async_trait]
 impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String, String>>
-    for StrictOrLazyLines<'_>
+    for StrictOrLazyLines
 {
     type Ok = ();
 
@@ -40,7 +40,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         S: SerializeMap<'b, HashMap<String, String>> + std::marker::Send,
     {
         match self {
-            StrictOrLazyLines::Strict(line) => line.annotations(writer).await,
+            StrictOrLazyLines::Strict(line) => (&*line).annotations(writer).await,
             StrictOrLazyLines::Lazy(line) => line.annotations(writer).await,
         }
     }
@@ -55,7 +55,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         S: SerializeStr<String> + std::marker::Send,
     {
         match self {
-            StrictOrLazyLines::Strict(line) => line.app(writer).await,
+            StrictOrLazyLines::Strict(line) => (&*line).app(writer).await,
             StrictOrLazyLines::Lazy(line) => line.app(writer).await,
         }
     }
@@ -70,7 +70,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         S: SerializeStr<String> + std::marker::Send,
     {
         match self {
-            StrictOrLazyLines::Strict(line) => line.env(writer).await,
+            StrictOrLazyLines::Strict(line) => (&*line).env(writer).await,
             StrictOrLazyLines::Lazy(line) => line.env(writer).await,
         }
     }
@@ -85,7 +85,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         S: SerializeStr<String> + std::marker::Send,
     {
         match self {
-            StrictOrLazyLines::Strict(line) => line.file(writer).await,
+            StrictOrLazyLines::Strict(line) => (&*line).file(writer).await,
             StrictOrLazyLines::Lazy(line) => line.file(writer).await,
         }
     }
@@ -100,7 +100,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         S: SerializeStr<String> + std::marker::Send,
     {
         match self {
-            StrictOrLazyLines::Strict(line) => line.host(writer).await,
+            StrictOrLazyLines::Strict(line) => (&*line).host(writer).await,
             StrictOrLazyLines::Lazy(line) => line.host(writer).await,
         }
     }
@@ -115,7 +115,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         S: SerializeMap<'b, HashMap<String, String>> + std::marker::Send,
     {
         match self {
-            StrictOrLazyLines::Strict(line) => line.labels(writer).await,
+            StrictOrLazyLines::Strict(line) => (&*line).labels(writer).await,
             StrictOrLazyLines::Lazy(line) => line.labels(writer).await,
         }
     }
@@ -130,7 +130,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         S: SerializeStr<String> + std::marker::Send,
     {
         match self {
-            StrictOrLazyLines::Strict(line) => line.level(writer).await,
+            StrictOrLazyLines::Strict(line) => (&*line).level(writer).await,
             StrictOrLazyLines::Lazy(line) => line.level(writer).await,
         }
     }
@@ -145,7 +145,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         S: SerializeValue + std::marker::Send,
     {
         match self {
-            StrictOrLazyLines::Strict(line) => line.meta(writer).await,
+            StrictOrLazyLines::Strict(line) => (&*line).meta(writer).await,
             StrictOrLazyLines::Lazy(line) => line.meta(writer).await,
         }
     }
@@ -154,7 +154,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         S: SerializeUtf8<bytes::Bytes> + std::marker::Send,
     {
         match self {
-            StrictOrLazyLines::Strict(line) => line.line(writer).await,
+            StrictOrLazyLines::Strict(line) => (&*line).line(writer).await,
             StrictOrLazyLines::Lazy(line) => line.line(writer).await,
         }
     }
@@ -163,19 +163,19 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         S: SerializeI64 + std::marker::Send,
     {
         match self {
-            StrictOrLazyLines::Strict(line) => line.timestamp(writer).await,
+            StrictOrLazyLines::Strict(line) => (&*line).timestamp(writer).await,
             StrictOrLazyLines::Lazy(line) => line.timestamp(writer).await,
         }
     }
     fn field_count(&self) -> usize {
         match self {
-            StrictOrLazyLines::Strict(line) => line.field_count(),
+            StrictOrLazyLines::Strict(line) => (&*line).field_count(),
             StrictOrLazyLines::Lazy(line) => line.field_count(),
         }
     }
 }
 
-impl GetOffset for StrictOrLazyLines<'_> {
+impl GetOffset for StrictOrLazyLines {
     fn get_offset(&self) -> Option<u64> {
         match self {
             StrictOrLazyLines::Strict(_) => None,
