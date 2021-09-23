@@ -37,7 +37,9 @@ api_server_node_addr=$(KUBECONFIG=$curpath/.kind_config_host \
     head -n1 | \
     tr -d ',' | tr -d '"')
 
-sed "s#server: https://.*#server: https://$api_server_node_addr#" $curpath/.kind_config_host > $curpath/.kind_config
+api_server_node_port=$(echo $api_server_node_addr | cut -f2 -d":")
+
+sed "s#server: https://.*#server: https://${cluster_name}-control-plane:$api_server_node_port#" $curpath/.kind_config_host > $curpath/.kind_config
 chmod 744 $curpath/.kind_config
 
 echo $KIND_EXPERIMENTAL_DOCKER_NETWORK

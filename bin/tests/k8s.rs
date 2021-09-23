@@ -9,13 +9,42 @@ use futures::{StreamExt, TryStreamExt};
 use k8s_openapi::api::apps::v1::DaemonSet;
 use k8s_openapi::api::core::v1::{Endpoints, Namespace, Pod, Service, ServiceAccount};
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBinding};
-use kube::api::{Api, ListParams, PostParams, WatchEvent};
-use kube::Client;
+use kube::api::{Api, ListParams, LogParams, PostParams, WatchEvent};
+use kube::{Client, ResourceExt};
 
 mod common;
 
 // workaround for unused functions in different features: https://github.com/rust-lang/rust/issues/46379
 pub use common::*;
+
+async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
+    let pods: Api<Pod> = Api::namespaced(client, namespace);
+    let lp = ListParams::default().labels(label);
+    pods.list(&lp).await.unwrap().into_iter().for_each(|p| {
+        let pods = pods.clone();
+        tokio::spawn({
+            async move {
+                let mut logs = pods
+                    .log_stream(
+                        &p.name(),
+                        &LogParams {
+                            follow: true,
+                            tail_lines: None,
+                            ..LogParams::default()
+                        },
+                    )
+                    .await
+                    .unwrap()
+                    .boxed();
+
+                log::debug!("Logging agent pod {}", p.name());
+                while let Some(line) = logs.next().await {
+                    log::debug!("LOG {:?}", String::from_utf8_lossy(&line.unwrap()));
+                }
+            }
+        });
+    })
+}
 
 async fn start_line_proxy_pod(
     client: Client,
@@ -716,6 +745,13 @@ async fn test_k8s_enrichment() {
         .await;
 
         tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+
+        print_pod_logs(
+            client.clone(),
+            agent_namespace,
+            &format!("app={}", &agent_name),
+        )
+        .await;
 
         let messages = vec![
             "Hello, World! 0\n",
