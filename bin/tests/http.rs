@@ -53,7 +53,6 @@ async fn test_http_buffer_size() {
         // Ensure that the agent sent each log message individually because each log line
         // filled the configured buffer capacity.
         let calls_made = call_counter.lock().unwrap();
-        println!("total call count = {}", calls_made);
         assert_eq!(*calls_made, 5);
 
         shutdown_handle();

@@ -21,6 +21,8 @@ pub enum StateError {
     IoError(#[from] std::io::Error),
     #[error("{0:?}")]
     PermissionDenied(PathBuf),
+    #[error("{0:?}")]
+    InvalidPath(PathBuf),
 }
 
 #[derive(Derivative)]
