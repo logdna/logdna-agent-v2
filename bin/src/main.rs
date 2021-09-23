@@ -433,8 +433,8 @@ async fn get_signal() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::fs::File;
     use config::DbPath;
+    use std::fs::File;
     use tempfile::tempdir;
 
     #[test]
@@ -446,13 +446,20 @@ mod tests {
             .join("a")
             .join("ghostly")
             .join("path");
-        assert!(!missing_state_dir.exists(), "test prereq failed: {:?} reported as already existing", missing_state_dir);
-        
+        assert!(
+            !missing_state_dir.exists(),
+            "test prereq failed: {:?} reported as already existing",
+            missing_state_dir
+        );
+
         let test_db_path = DbPath::from(Some(missing_state_dir.clone()));
         let result = load_agent_state(&test_db_path).unwrap();
 
         assert!(result.is_some(), "failed to create valid AgentState struct");
-        assert!(missing_state_dir.exists(), "state directory was not created");
+        assert!(
+            missing_state_dir.exists(),
+            "state directory was not created"
+        );
     }
 
     #[test]
@@ -462,15 +469,27 @@ mod tests {
         use std::os::unix::fs::DirBuilderExt;
 
         let noperm_dir = tempdir().unwrap().into_path().join("denied");
-        assert!(!noperm_dir.exists(), "test prereq failed: {:?} reported as already existing", noperm_dir);
+        assert!(
+            !noperm_dir.exists(),
+            "test prereq failed: {:?} reported as already existing",
+            noperm_dir
+        );
         DirBuilder::new()
             .mode(0o000) // is only supported with the unix extension
             .create(&noperm_dir)
             .unwrap();
 
-        assert!(noperm_dir.exists(), "test preqreq failed: failed to create {:?}", noperm_dir);
-        assert!(noperm_dir.metadata().unwrap().permissions().readonly(), "test prereq failed: {:?} is not read only", noperm_dir);
-        
+        assert!(
+            noperm_dir.exists(),
+            "test preqreq failed: failed to create {:?}",
+            noperm_dir
+        );
+        assert!(
+            noperm_dir.metadata().unwrap().permissions().readonly(),
+            "test prereq failed: {:?} is not read only",
+            noperm_dir
+        );
+
         let test_db_path = DbPath::from(Some(noperm_dir.clone()));
         let result = load_agent_state(&test_db_path).unwrap_err();
 
