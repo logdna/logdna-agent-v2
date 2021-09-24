@@ -21,6 +21,8 @@ pub enum StateError {
     IoError(#[from] std::io::Error),
     #[error("{0:?}")]
     PermissionDenied(PathBuf),
+    #[error("{0:?}")]
+    InvalidPath(PathBuf),
 }
 
 #[derive(Derivative)]
@@ -32,60 +34,73 @@ pub struct AgentState {
     offset_cf_opt: Options,
 }
 
+// This was the old new fn implementation. It could probably be broken up
+// into a few smaller, private functions.
+fn _construct_agent_state(path: &Path) -> Result<AgentState, StateError> {
+    if path.metadata()?.permissions().readonly() {
+        return Err(StateError::PermissionDenied(path.into()));
+    }
+
+    let path = path.join("agent_state.db");
+
+    let mut db_opts = Options::default();
+    db_opts.create_missing_column_families(true);
+    db_opts.create_if_missing(true);
+
+    let offset_cf_opt = Options::default();
+    let offset_cf = ColumnFamilyDescriptor::new(OFFSET_NAME, offset_cf_opt.clone());
+    let cfs = vec![offset_cf];
+
+    info!("Opening state db at {:?}", path);
+
+    let db = match DB::open_cf_descriptors(&db_opts, &path, cfs) {
+        Ok(db) => db,
+        // Attempt to repair a badly closed DB
+        Err(e) => {
+            warn!("error opening state db, attempted to repair: {}", e);
+            DB::repair(&db_opts, &path).map_or_else(
+                |_| {
+                    DB::destroy(&db_opts, &path)?;
+                    DB::open_cf_descriptors(
+                        &db_opts,
+                        &path,
+                        vec![ColumnFamilyDescriptor::new(
+                            OFFSET_NAME,
+                            offset_cf_opt.clone(),
+                        )],
+                    )
+                },
+                |_| {
+                    DB::open_cf_descriptors(
+                        &db_opts,
+                        &path,
+                        vec![ColumnFamilyDescriptor::new(
+                            OFFSET_NAME,
+                            offset_cf_opt.clone(),
+                        )],
+                    )
+                },
+            )?
+        }
+    };
+    Ok(AgentState {
+        db: Arc::new(db),
+        offset_cf_opt,
+    })
+}
+
 impl AgentState {
     pub fn new(path: impl AsRef<Path>) -> Result<Self, StateError> {
         let path = path.as_ref();
 
-        if path.metadata()?.permissions().readonly() {
-            return Err(StateError::PermissionDenied(path.into()));
+        if !path.exists() {
+            std::fs::create_dir_all(path).map_err(StateError::IoError)?;
+        } else if !path.is_dir() {
+            error!("{} is not a directory", path.to_string_lossy());
+            return Err(StateError::InvalidPath(path.to_path_buf()));
         }
 
-        let path = path.join("agent_state.db");
-
-        let mut db_opts = Options::default();
-        db_opts.create_missing_column_families(true);
-        db_opts.create_if_missing(true);
-
-        let offset_cf_opt = Options::default();
-        let offset_cf = ColumnFamilyDescriptor::new(OFFSET_NAME, offset_cf_opt.clone());
-        let cfs = vec![offset_cf];
-
-        info!("Opening state db at {:?}", path);
-
-        let db = match DB::open_cf_descriptors(&db_opts, &path, cfs) {
-            Ok(db) => db,
-            // Attempt to repair a badly closed DB
-            Err(e) => {
-                warn!("error opening state db, attempted to repair: {}", e);
-                DB::repair(&db_opts, &path).map_or_else(
-                    |_| {
-                        DB::destroy(&db_opts, &path)?;
-                        DB::open_cf_descriptors(
-                            &db_opts,
-                            &path,
-                            vec![ColumnFamilyDescriptor::new(
-                                OFFSET_NAME,
-                                offset_cf_opt.clone(),
-                            )],
-                        )
-                    },
-                    |_| {
-                        DB::open_cf_descriptors(
-                            &db_opts,
-                            &path,
-                            vec![ColumnFamilyDescriptor::new(
-                                OFFSET_NAME,
-                                offset_cf_opt.clone(),
-                            )],
-                        )
-                    },
-                )?
-            }
-        };
-        Ok(Self {
-            db: Arc::new(db),
-            offset_cf_opt,
-        })
+        _construct_agent_state(path)
     }
 }
 
@@ -309,6 +324,7 @@ pub trait GetOffset {
 mod test {
 
     use super::*;
+    use std::fs::File;
     use tempfile::tempdir;
 
     #[test]
@@ -374,5 +390,76 @@ mod test {
         }
         _test(&data_dir, 0);
         _test(&data_dir, 2);
+    }
+
+    #[test]
+    fn load_agent_state_dir_missing() {
+        // build a path with multiple levels of missing directories to ensure they're all created
+        let missing_state_dir = tempdir()
+            .unwrap()
+            .into_path()
+            .join("a")
+            .join("ghostly")
+            .join("path");
+        assert!(
+            !missing_state_dir.exists(),
+            "test prereq failed: {:?} reported as already existing",
+            missing_state_dir
+        );
+
+        let result = AgentState::new(&missing_state_dir);
+        assert!(result.is_ok());
+        assert!(
+            missing_state_dir.exists(),
+            "state directory was not created"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn new_agent_state_dir_create_error() {
+        use std::fs::DirBuilder;
+        use std::os::unix::fs::DirBuilderExt;
+
+        let noperm_dir = tempdir().unwrap().into_path().join("denied");
+        assert!(
+            !noperm_dir.exists(),
+            "test prereq failed: {:?} reported as already existing",
+            noperm_dir
+        );
+        DirBuilder::new()
+            .mode(0o000) // is only supported with the unix extension
+            .create(&noperm_dir)
+            .unwrap();
+
+        assert!(
+            noperm_dir.exists(),
+            "test preqreq failed: failed to create {:?}",
+            noperm_dir
+        );
+        assert!(
+            noperm_dir.metadata().unwrap().permissions().readonly(),
+            "test prereq failed: {:?} is not read only",
+            noperm_dir
+        );
+
+        let result = AgentState::new(&noperm_dir).unwrap_err();
+        assert!(matches!(result, StateError::PermissionDenied(p) if p == noperm_dir));
+    }
+
+    #[test]
+    fn new_agent_state_not_dir() {
+        let blocking_file = tempdir().unwrap().into_path().join("block");
+        File::create(&blocking_file).unwrap();
+
+        let result = AgentState::new(&blocking_file).unwrap_err();
+        assert!(matches!(result, StateError::InvalidPath(p) if p == blocking_file));
+    }
+
+    #[test]
+    fn new_agent_state_dir_exists() {
+        let state_dir = tempdir().unwrap().into_path();
+        let result = AgentState::new(&state_dir);
+        assert!(result.is_ok(), "failed to create valid AgentState struct");
     }
 }
