@@ -26,7 +26,7 @@ use middleware::line_rules::LineRules;
 use middleware::Executor;
 
 use pin_utils::pin_mut;
-use state::{AgentState, StateError};
+use state::AgentState;
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -71,9 +71,9 @@ async fn main() {
     let mut offset_state = None;
     let mut initial_offsets = None;
 
-    match load_agent_state(&config.log.db_path) {
-        Ok(load_state_result) => {
-            if let Some(agent_state) = load_state_result {
+    if let DbPath::Path(db_path) = config.log.db_path {
+        match AgentState::new(db_path) {
+            Ok(agent_state) => {
                 let _offset_state = agent_state.get_offset_state();
                 let offsets = _offset_state.offsets();
                 _agent_state = Some(agent_state);
@@ -86,9 +86,9 @@ async fn main() {
                     Err(e) => warn!("couldn't retrieve offsets from agent state, {:?}", e),
                 }
             }
-        }
-        Err(e) => {
-            error!("Failed to open agent state db {}", e);
+            Err(e) => {
+                error!("Failed to open agent state db {}", e);
+            }
         }
     }
 
@@ -393,24 +393,6 @@ async fn main() {
     }
 }
 
-fn load_agent_state(db_path: &DbPath) -> Result<Option<AgentState>, StateError> {
-    if let DbPath::Path(path) = &db_path {
-        if !path.exists() {
-            std::fs::create_dir_all(path).map_err(StateError::IoError)?;
-        }
-
-        if path.is_dir() {
-            let state = AgentState::new(path)?;
-            Ok(Some(state))
-        } else {
-            error!("{} is not a directory", path.to_string_lossy());
-            Err(StateError::InvalidPath(path.to_path_buf()))
-        }
-    } else {
-        Ok(None)
-    }
-}
-
 #[cfg(unix)]
 async fn get_signal() -> &'static str {
     let mut interrupt_signal = unix::signal(unix::SignalKind::interrupt()).unwrap();
@@ -428,97 +410,4 @@ async fn get_signal() -> &'static str {
 async fn get_signal() -> &'static str {
     ctrl_c().await.unwrap();
     "CTRL+C"
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use config::DbPath;
-    use std::fs::File;
-    use tempfile::tempdir;
-
-    #[test]
-    fn load_agent_state_dir_missing() {
-        // build a path with multiple levels of missing directories to ensure they're all created
-        let missing_state_dir = tempdir()
-            .unwrap()
-            .into_path()
-            .join("a")
-            .join("ghostly")
-            .join("path");
-        assert!(
-            !missing_state_dir.exists(),
-            "test prereq failed: {:?} reported as already existing",
-            missing_state_dir
-        );
-
-        let test_db_path = DbPath::from(Some(missing_state_dir.clone()));
-        let result = load_agent_state(&test_db_path).unwrap();
-
-        assert!(result.is_some(), "failed to create valid AgentState struct");
-        assert!(
-            missing_state_dir.exists(),
-            "state directory was not created"
-        );
-    }
-
-    #[test]
-    #[cfg(unix)]
-    fn load_agent_state_dir_create_error() {
-        use std::fs::DirBuilder;
-        use std::os::unix::fs::DirBuilderExt;
-
-        let noperm_dir = tempdir().unwrap().into_path().join("denied");
-        assert!(
-            !noperm_dir.exists(),
-            "test prereq failed: {:?} reported as already existing",
-            noperm_dir
-        );
-        DirBuilder::new()
-            .mode(0o000) // is only supported with the unix extension
-            .create(&noperm_dir)
-            .unwrap();
-
-        assert!(
-            noperm_dir.exists(),
-            "test preqreq failed: failed to create {:?}",
-            noperm_dir
-        );
-        assert!(
-            noperm_dir.metadata().unwrap().permissions().readonly(),
-            "test prereq failed: {:?} is not read only",
-            noperm_dir
-        );
-
-        let test_db_path = DbPath::from(Some(noperm_dir.clone()));
-        let result = load_agent_state(&test_db_path).unwrap_err();
-
-        assert!(matches!(result, StateError::PermissionDenied(p) if p == noperm_dir));
-    }
-
-    #[test]
-    fn load_agent_state_not_dir() {
-        let blocking_file = tempdir().unwrap().into_path().join("block");
-        File::create(&blocking_file).unwrap();
-
-        let test_db_path = DbPath::from(Some(blocking_file.clone()));
-        let result = load_agent_state(&test_db_path).unwrap_err();
-
-        assert!(matches!(result, StateError::InvalidPath(p) if p == blocking_file));
-    }
-
-    #[test]
-    fn load_agent_state_dir_exists() {
-        let state_dir = tempdir().unwrap().into_path();
-        let test_db_path = DbPath::from(Some(state_dir));
-        let result = load_agent_state(&test_db_path).unwrap();
-
-        assert!(result.is_some(), "failed to create valid AgentState struct");
-    }
-
-    #[test]
-    fn load_agent_state_not_set() {
-        let result = load_agent_state(&DbPath::Empty).unwrap();
-        assert!(result.is_none());
-    }
 }
