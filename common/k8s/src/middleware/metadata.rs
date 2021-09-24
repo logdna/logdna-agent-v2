@@ -54,7 +54,7 @@ impl K8sMetadata {
                 )))
             }
         };
-        let client = Client::try_from(config).unwrap();
+        let client = Client::try_from(config)?;
         let metadata = K8sMetadata::initialize(&client, MAX_INIT_TIME).await?;
 
         Ok(K8sMetadata {
