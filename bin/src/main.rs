@@ -70,28 +70,25 @@ async fn main() {
     let mut _agent_state = None;
     let mut offset_state = None;
     let mut initial_offsets = None;
-    if let DbPath::Path(path) = config.log.db_path {
-        if path.is_dir() {
-            match AgentState::new(path) {
-                Ok(agent_state) => {
-                    let _offset_state = agent_state.get_offset_state();
-                    let offsets = _offset_state.offsets();
-                    _agent_state = Some(agent_state);
-                    offset_state = Some(_offset_state);
-                    match offsets {
-                        Ok(os) => {
-                            initial_offsets =
-                                Some(os.into_iter().map(|fo| (fo.key, fo.offset)).collect());
-                        }
-                        Err(e) => warn!("couldn't retrieve offsets from agent state, {:?}", e),
+
+    if let DbPath::Path(db_path) = config.log.db_path {
+        match AgentState::new(db_path) {
+            Ok(agent_state) => {
+                let _offset_state = agent_state.get_offset_state();
+                let offsets = _offset_state.offsets();
+                _agent_state = Some(agent_state);
+                offset_state = Some(_offset_state);
+                match offsets {
+                    Ok(os) => {
+                        initial_offsets =
+                            Some(os.into_iter().map(|fo| (fo.key, fo.offset)).collect());
                     }
-                }
-                Err(e) => {
-                    error!("Failed to open agent state db {}", e);
+                    Err(e) => warn!("couldn't retrieve offsets from agent state, {:?}", e),
                 }
             }
-        } else {
-            error!("{} is not a directory", path.to_string_lossy());
+            Err(e) => {
+                error!("Failed to open agent state db {}", e);
+            }
         }
     }
 
