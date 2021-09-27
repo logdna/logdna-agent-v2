@@ -240,7 +240,7 @@ impl K8sEventStream {
         pod_label: String,
     ) -> Result<Self, K8sError> {
         Ok(Self {
-            client: Client::new(config.try_into()?),
+            client: Client::try_from(config)?,
             pod_name,
             namespace,
             pod_label,

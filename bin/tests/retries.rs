@@ -4,7 +4,6 @@ use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
 use tempfile::tempdir;
 
@@ -36,9 +35,12 @@ async fn test_retry_after_timeout() {
             *counter += 1;
             if *counter < attempts {
                 // Sleep enough time to mark the request as timed out by the client
-                thread::sleep(Duration::from_millis(timeout + 20));
+                return Some(Box::pin(tokio::time::sleep(Duration::from_millis(
+                    timeout + 20,
+                ))));
             }
         }
+        None
     }));
 
     let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &address);
@@ -110,8 +112,11 @@ async fn test_retry_is_not_made_before_retry_base_delay_ms() {
             let mut counter = counter.lock().unwrap();
             *counter += 1;
             // Sleep enough time to mark the request as timed out by the client
-            thread::sleep(Duration::from_millis(timeout + 20));
+            return Some(Box::pin(tokio::time::sleep(Duration::from_millis(
+                timeout + 20,
+            ))));
         }
+        None
     }));
 
     let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &address);

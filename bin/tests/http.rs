@@ -28,7 +28,8 @@ async fn test_http_buffer_size() {
             {
                 let mut counter = counter.lock().unwrap();
                 *counter += 1;
-            }
+            };
+            None
         }));
 
     let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &address);

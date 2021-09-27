@@ -25,7 +25,9 @@ use tokio_stream::wrappers::TcpListenerStream;
 const ROOT: &str = "/logs/agent";
 
 pub type FileLineCounter = Arc<Mutex<HashMap<String, FileInfo>>>;
-pub type ProcessFn = Box<dyn Fn(&IngestBody) + Send + Sync>;
+pub type ProcessFn = Box<
+    dyn (Fn(&IngestBody) -> Option<Pin<Box<dyn Future<Output = ()> + Send + Sync>>>) + Send + Sync,
+>;
 
 #[derive(Debug)]
 pub struct FileInfo {
@@ -56,6 +58,9 @@ pub struct Line {
     pub file: Option<String>,
     annotation: Option<HashMap<String, String>>,
     label: Option<HashMap<String, String>>,
+    host: Option<String>,
+    app: Option<String>,
+    level: Option<String>,
 }
 
 // #[derive(Debug)]
@@ -130,8 +135,11 @@ impl Service<Request<Body>> for Svc {
                     );
                 }
             };
+            debug!("Body: {:#?}", &ingest_body);
 
-            process_fn(&ingest_body);
+            if let Some(fut) = process_fn(&ingest_body) {
+                let _ = fut.await;
+            };
 
             for line in ingest_body.lines {
                 if let Some(mut raw_line) = line.line {
@@ -183,7 +191,7 @@ impl MakeSvc {
 
 impl Default for MakeSvc {
     fn default() -> Self {
-        Self::new(Box::new(|_| {}))
+        Self::new(Box::new(|_| None))
     }
 }
 
@@ -211,7 +219,7 @@ pub fn http_ingester(
     FileLineCounter,
     impl FnOnce(),
 ) {
-    http_ingester_with_processors(addr, Box::new(|_| {}))
+    http_ingester_with_processors(addr, Box::new(|_| None))
 }
 
 pub fn http_ingester_with_processors(
@@ -265,7 +273,7 @@ pub fn https_ingester(
 ) {
     info!("creating https_ingester");
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-    let mk_svc = MakeSvc::new(Box::new(|_| {}));
+    let mk_svc = MakeSvc::new(Box::new(|_| None));
     let received = mk_svc.files.clone();
     (
         async move {
