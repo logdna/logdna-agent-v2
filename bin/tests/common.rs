@@ -1,4 +1,3 @@
-use assert_cmd::cargo::CommandCargoExt;
 use core::time;
 
 use rand::seq::IteratorRandom;
@@ -148,7 +147,18 @@ impl<'a> AgentSettings<'a> {
 }
 
 pub fn spawn_agent(settings: AgentSettings) -> Child {
-    let mut cmd = Command::cargo_bin("logdna-agent").unwrap();
+    let mut manifest_path = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    manifest_path.pop();
+    manifest_path.push("bin/Cargo.toml");
+    let cargo_build = escargot::CargoBuild::new()
+        .manifest_path(manifest_path)
+        .bin("logdna-agent")
+        .release()
+        .current_target()
+        .run()
+        .unwrap();
+
+    let mut cmd = cargo_build.command();
 
     let ingestion_key = if let Some(key) = settings.ingester_key {
         key.to_string()

@@ -16,7 +16,7 @@ use middleware::{Middleware, Status};
 use parking_lot::Mutex;
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::convert::{TryFrom, TryInto};
+use std::convert::TryFrom;
 use std::env;
 use std::rc::Rc;
 use std::time::Duration;
@@ -54,7 +54,7 @@ impl K8sMetadata {
                 )))
             }
         };
-        let client = Client::new(config.try_into()?);
+        let client = Client::try_from(config)?;
         let metadata = K8sMetadata::initialize(&client, MAX_INIT_TIME).await?;
 
         Ok(K8sMetadata {
@@ -269,8 +269,8 @@ struct PodMetadata {
 mod tests {
     use super::*;
     use http::types::body::{LineBuilder, LineMeta};
+    use hyper_http::Uri;
     use std::time::Instant;
-    use url::Url;
 
     #[tokio::test]
     async fn test_process_with_file_that_can_not_be_parsed() {
@@ -324,8 +324,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_init_max_elapsed_time() {
-        let config = Config::new(Url::parse("https://127.0.0.10/").unwrap());
-        let client = Client::new(config.try_into().unwrap());
+        let config = Config::new("https://127.0.0.10/".parse::<Uri>().unwrap());
+        let client = Client::try_from(config).unwrap();
         let start = Instant::now();
         let max_time = Duration::from_millis(2000);
 
@@ -341,10 +341,10 @@ mod tests {
     }
 
     fn get_instance(map: HashMap<(String, String), PodMetadata>) -> K8sMetadata {
-        let config = Config::new(Url::parse("https://sample.url/").unwrap());
+        let config = Config::new("https://sample.url/".parse::<Uri>().unwrap());
         K8sMetadata {
             metadata: Mutex::new(map),
-            api: Api::<Pod>::all(Client::new(config.try_into().unwrap())),
+            api: Api::<Pod>::all(Client::try_from(config).unwrap()),
         }
     }
 
