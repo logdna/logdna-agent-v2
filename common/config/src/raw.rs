@@ -5,6 +5,70 @@ use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use merge::Merge;
+
+fn merge_all_confs(confs: impl Iterator<Item = Result<Config, ConfigError>>) -> (Option<Config>, Vec<ConfigError>) {
+    let mut result_conf: Option<Config> = None;
+    let mut result_errs = Vec::new();
+
+    for result in confs {
+        match result {
+            Ok(conf) => {
+                result_conf = if let Some(mut c) = result_conf {
+                    c.merge(conf);
+                    Some(c)
+                } else  {
+                    Some(conf)
+                }
+            }
+            Err(e) => result_errs.push(e),
+        }
+    }
+
+    (result_conf, result_errs)
+}
+
+fn try_load_confs<'a>(paths: &'a Vec<&Path>) -> impl Iterator<Item = Result<Config, ConfigError>> + 'a {
+    paths.iter().map(|path| {
+        let mut conf_file = File::open(path)?;
+        if let Ok(legacy_conf) = properties::read_file(&conf_file) {
+            debug!("loading {} as a properties file", path.display());
+            return Ok(legacy_conf);
+        }
+
+        debug!("loading {} as a yaml file", path.display());
+        conf_file.seek(SeekFrom::Start(0))?;
+        Ok(serde_yaml::from_reader(&conf_file)?)
+    })
+}
+
+fn left_bias<T>(left: &mut T, right: T) {
+    *left = right;
+}
+
+fn merge_vec<T: PartialEq>(left: &mut Vec<T>, right: Vec<T>, default: Vec<T>) {
+    if !right.is_empty() && right != default {
+        for right_elem in right {
+            if !left.contains(&right_elem) {
+                left.push(right_elem.into());
+            }
+        }        
+    }
+}
+
+fn merge_option<T: PartialEq>(left: &mut Option<T>, right: Option<T>, default: Option<T>, strategy: impl Fn(&mut T, T)) {
+    if right == default {
+        return;
+    }
+
+    if let Some(right_value) = right {
+        match left {
+            Some(left_value) => strategy(left_value, right_value),
+            None => *left = Some(right_value),
+        }
+    }
+}
+
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct Config {
@@ -18,34 +82,23 @@ impl Config {
     pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
         let path = path.as_ref();
         let is_default_path = path.to_string_lossy() == argv::DEFAULT_YAML_FILE;
-        let mut file = File::open(path).or_else(|e| {
-            if !is_default_path {
-                // A path was configured but the file was NOT found
-                error!(
-                    "config file was configured in {} but it could not be opened",
-                    path.display()
-                );
-                Err(e)
-            } else {
-                File::open(argv::DEFAULT_CONF_FILE)
-            }
-        })?;
+        let conf_files = if is_default_path {
+            vec![Path::new(argv::DEFAULT_CONF_FILE), Path::new(argv::DEFAULT_YAML_FILE)]
+        } else {
+            vec![path]
+        };
 
-        // Everything is a yaml, so validation usually passes with java properties
-        // We have to validate first that is a java properties file
-        match properties::read_file(&file) {
-            Ok(c) => {
-                debug!("config is a valid properties file");
-                return Ok(c);
-            }
-            Err(e) => {
-                debug!("config file is not a valid properties file: {:?}", e);
-            }
+        let indiv_confs = try_load_confs(&conf_files);
+        let (final_conf, mut error_list) = merge_all_confs(indiv_confs);
+
+        for conf_err in &error_list {
+            error!("error encountered loading configuration: {:?}", conf_err);
         }
 
-        debug!("loading config file as yaml");
-        file.seek(SeekFrom::Start(0))?;
-        Ok(serde_yaml::from_reader(&file)?)
+        // Default to returning the first error encountered as this would most likely be the first error
+        // encounted in the old implementation. This will panic if there is nothing in the error_list but
+        // that is probably fine since it's a state that should never be hit.
+        final_conf.ok_or_else(|| error_list.pop().expect("no configuration loaded and no errors reported"))
     }
 }
 
@@ -107,6 +160,23 @@ pub struct JournaldConfig {
     pub paths: Option<Vec<PathBuf>>,
 }
 
+impl Default for JournaldConfig {
+    fn default() -> Self {
+        JournaldConfig { paths: None }
+    }
+}
+
+impl Merge for JournaldConfig {
+    fn merge(&mut self, other: Self) {
+        if let Some(other_paths) = other.paths {
+            match &mut self.paths {
+                Some(self_paths) => merge_vec(self_paths, other_paths, Vec::new()),
+                None => self.paths = Some(other_paths),
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct Rules {
     pub glob: Vec<String>,
@@ -122,6 +192,13 @@ impl Default for Rules {
     }
 }
 
+impl Merge for Rules {
+    fn merge(&mut self, other: Self) {
+        self.glob.extend(other.glob);
+        self.regex.extend(other.regex);
+    }
+}
+
 impl Default for Config {
     fn default() -> Self {
         Config {
@@ -129,6 +206,14 @@ impl Default for Config {
             log: LogConfig::default(),
             journald: JournaldConfig::default(),
         }
+    }
+}
+
+impl Merge for Config {
+    fn merge(&mut self, other: Self) {
+        self.http.merge(other.http);
+        self.log.merge(other.log);
+        self.journald.merge(other.journald);
     }
 }
 
@@ -150,6 +235,24 @@ impl Default for HttpConfig {
             retry_base_delay_ms: None,
             retry_step_delay_ms: None,
         }
+    }
+}
+
+impl Merge for HttpConfig {
+    fn merge(&mut self, other: Self) {
+        let default = Self::default();
+
+        merge_option(&mut self.host, other.host, default.host, left_bias);
+        merge_option(&mut self.endpoint, other.endpoint, default.endpoint, left_bias);
+        merge_option(&mut self.use_ssl, other.use_ssl, default.use_ssl, left_bias);
+        merge_option(&mut self.timeout, other.timeout, default.timeout, left_bias);
+        merge_option(&mut self.use_compression, other.use_compression, default.use_compression, left_bias);
+        merge_option(&mut self.gzip_level, other.gzip_level, default.gzip_level, left_bias);
+        merge_option(&mut self.ingestion_key, other.ingestion_key, default.ingestion_key, left_bias);
+        // TODO: params
+        merge_option(&mut self.body_size, other.body_size, default.body_size, left_bias);
+        merge_option(&mut self.retry_base_delay_ms, other.retry_base_delay_ms, default.retry_base_delay_ms, left_bias);
+        merge_option(&mut self.retry_step_delay_ms, other.retry_step_delay_ms, default.retry_step_delay_ms, left_bias);
     }
 }
 
@@ -190,9 +293,52 @@ impl Default for LogConfig {
     }
 }
 
-impl Default for JournaldConfig {
-    fn default() -> Self {
-        JournaldConfig { paths: None }
+impl Merge for LogConfig {
+    fn merge(&mut self, other: Self) {
+        let default = Self::default();
+
+        merge_vec(&mut self.dirs, other.dirs, default.dirs);
+        merge_option(&mut self.db_path, other.db_path, default.db_path, left_bias);
+        merge_option(&mut self.metrics_port, other.metrics_port, default.metrics_port, left_bias);
+
+        if let Some(other_include) = other.include {
+            match &mut self.include {
+                Some(self_include) => self_include.merge(other_include),
+                None => self.include = Some(other_include),
+            }
+        }
+
+        if let Some(other_exclude) = other.exclude {
+            match &mut self.exclude {
+                Some(self_exclude) => self_exclude.merge(other_exclude),
+                None => self.exclude = Some(other_exclude),
+            }
+        }
+
+        if let Some(other_line_exclusion_regex) = other.line_exclusion_regex {
+            match &mut self.line_exclusion_regex {
+                Some(self_line_exclusion_regex) => self_line_exclusion_regex.extend(other_line_exclusion_regex),
+                None => self.line_exclusion_regex = Some(other_line_exclusion_regex),
+            }
+        }
+
+        if let Some(other_line_inclusion_regex) = other.line_inclusion_regex {
+            match &mut self.line_inclusion_regex {
+                Some(self_line_inclusion_regex) => self_line_inclusion_regex.extend(other_line_inclusion_regex),
+                None => self.line_inclusion_regex = Some(other_line_inclusion_regex),
+            }
+        }
+
+        if let Some(other_line_redact_regex) = other.line_redact_regex {
+            match &mut self.line_redact_regex {
+                Some(self_line_redact_regex) => self_line_redact_regex.extend(other_line_redact_regex),
+                None => self.line_redact_regex = Some(other_line_redact_regex),
+            }
+        }
+
+        merge_option(&mut self.lookback, other.lookback, default.lookback, left_bias);
+        merge_option(&mut self.use_k8s_enrichment, other.use_k8s_enrichment, default.use_k8s_enrichment, left_bias);
+        merge_option(&mut self.log_k8s_events, other.log_k8s_events, default.log_k8s_events, left_bias);
     }
 }
 
@@ -529,4 +675,377 @@ ingest_buffer_size = 3145728
         );
         Ok(())
     }
+
+    #[test]
+    fn journald_config_merge_defaults_not_overwrite() {
+        let test_paths = vec![
+            Path::new("/a").to_path_buf(),
+            Path::new("/b").to_path_buf()
+        ];
+
+        let mut left_conf = JournaldConfig {
+            paths: Some(test_paths)
+        };
+        
+        let right_conf = JournaldConfig::default();
+        left_conf.merge(right_conf);
+
+        let actual_paths = left_conf.paths.expect("expected paths to not be None after merge");    
+        assert_eq!(actual_paths.len(), 2);
+        assert_eq!(actual_paths[0].to_str(), Some("/a"));
+        assert_eq!(actual_paths[1].to_str(), Some("/b"));
+    }
+
+    #[test]
+    fn journald_config_merge_works() {
+        let mut left_conf = JournaldConfig {
+            paths: Some(vec![Path::new("/left").to_path_buf()]),
+        }; 
+
+        let right_conf = JournaldConfig {
+            paths: Some(vec![Path::new("/right").to_path_buf()]),
+        };
+
+        left_conf.merge(right_conf);
+
+        let actual_paths = left_conf.paths.expect("expected paths to not be None after merge");    
+        assert_eq!(actual_paths.len(), 2);
+        assert_eq!(actual_paths[0].to_str(), Some("/left"));
+        assert_eq!(actual_paths[1].to_str(), Some("/right"));
+    }
+
+    #[test]
+    fn rules_merge_works() {
+        let mut left_conf = Rules {
+            glob: vec!["left glob".to_string()],
+            regex: vec!["left regex".to_string()]
+        };
+
+        let right_conf = Rules {
+            glob: vec!["right glob".to_string()],
+            regex: vec!["right regex".to_string()]
+        };
+
+        left_conf.merge(right_conf);
+
+        assert_eq!(left_conf.glob.len(), 2);
+        assert_eq!(left_conf.glob, vec!["left glob".to_string(), "right glob".to_string()]);
+
+        assert_eq!(left_conf.regex.len(), 2);
+        assert_eq!(left_conf.regex, vec!["left regex".to_string(), "right regex".to_string()]);
+    }
+
+    #[test]
+    fn http_config_merge_defaults_not_overwrite() {
+        let mut left_conf = HttpConfig {
+            host: Some("left.logdna.test".to_string()),
+            endpoint: Some("/left/endpoint".to_string()),
+            use_ssl: Some(false),
+            timeout: Some(1337),
+            use_compression: Some(false),
+            gzip_level: Some(0),
+            ingestion_key: Some("KEY".to_string()),
+            params: Params::builder()
+                .hostname("left.local".to_string())
+                .build()
+                .ok(),
+            body_size: Some(1337),
+            retry_base_delay_ms: Some(10_000),
+            retry_step_delay_ms: Some(10_000),
+        };
+
+        left_conf.merge(HttpConfig::default());
+
+        // Since the right conf was the default, none of the left conf values should have been changed
+        // to match the right.
+        let default_conf = HttpConfig::default();
+        assert_ne!(left_conf.host, default_conf.host);
+        assert_ne!(left_conf.endpoint, default_conf.endpoint);
+        assert_ne!(left_conf.use_ssl, default_conf.use_ssl);
+        assert_ne!(left_conf.timeout, default_conf.timeout);
+        assert_ne!(left_conf.use_compression, default_conf.use_compression);
+        assert_ne!(left_conf.gzip_level, default_conf.gzip_level);
+        assert_ne!(left_conf.ingestion_key, default_conf.ingestion_key);
+        assert_ne!(left_conf.params, default_conf.params);
+        assert_ne!(left_conf.body_size, default_conf.body_size);
+        assert_ne!(left_conf.retry_base_delay_ms, default_conf.retry_base_delay_ms);
+        assert_ne!(left_conf.retry_step_delay_ms, default_conf.retry_step_delay_ms);
+    }
+
+    #[test]
+    fn http_config_merge_nones_not_overwrite() {
+        let mut left_conf = HttpConfig {
+            host: Some("left.logdna.test".to_string()),
+            endpoint: Some("/left/endpoint".to_string()),
+            use_ssl: Some(false),
+            timeout: Some(1337),
+            use_compression: Some(false),
+            gzip_level: Some(0),
+            ingestion_key: Some("KEY".to_string()),
+            params: Params::builder()
+                .hostname("left.local".to_string())
+                .build()
+                .ok(),
+            body_size: Some(1337),
+            retry_base_delay_ms: Some(10_000),
+            retry_step_delay_ms: Some(10_000),
+        };
+
+        let right_conf = HttpConfig {
+            host: None,
+            endpoint: None,
+            use_ssl: None,
+            timeout: None,
+            use_compression: None,
+            gzip_level: None,
+            ingestion_key: None,
+            params: None,
+            body_size: None,
+            retry_base_delay_ms: None,
+            retry_step_delay_ms: None,
+        };
+
+        left_conf.merge(right_conf);
+
+        assert!(left_conf.host.is_some());
+        assert!(left_conf.endpoint.is_some());
+        assert!(left_conf.use_ssl.is_some());
+        assert!(left_conf.timeout.is_some());
+        assert!(left_conf.use_compression.is_some());
+        assert!(left_conf.gzip_level.is_some());
+        assert!(left_conf.ingestion_key.is_some());
+        assert!(left_conf.params.is_some());
+        assert!(left_conf.body_size.is_some());
+        assert!(left_conf.retry_base_delay_ms.is_some());
+        assert!(left_conf.retry_step_delay_ms.is_some());
+    }
+
+    #[test]
+    fn http_config_merge_does_override() {
+        let mut left_conf = HttpConfig {
+            host: Some("left.logdna.test".to_string()),
+            endpoint: Some("/left/endpoint".to_string()),
+            use_ssl: Some(false),
+            timeout: Some(1337),
+            use_compression: Some(false),
+            gzip_level: Some(0),
+            ingestion_key: Some("KEY".to_string()),
+            params: Params::builder()
+                .hostname("left.local".to_string())
+                .build()
+                .ok(),
+            body_size: Some(1337),
+            retry_base_delay_ms: Some(10_000),
+            retry_step_delay_ms: Some(10_000),
+        };
+
+        let right_conf = HttpConfig {
+            host: Some("right.logdna.test".to_string()),
+            endpoint: Some("/right/endpoint".to_string()),
+            use_ssl: Some(true),
+            timeout: Some(7331),
+            use_compression: Some(true),
+            gzip_level: Some(1),
+            ingestion_key: Some("VAL".to_string()),
+            params: Params::builder()
+                .hostname("right.local".to_string())
+                .build()
+                .ok(),
+            body_size: Some(7331),
+            retry_base_delay_ms: Some(2_000),
+            retry_step_delay_ms: Some(2_000),
+        };
+
+        left_conf.merge(right_conf);
+
+        assert_eq!(left_conf.host, Some("right.logdna.test".to_string()));
+        assert_eq!(left_conf.endpoint, Some("/right/endpoint".to_string()));
+        // assert_eq!(left_conf.use_ssl, Some(true));
+        assert_eq!(left_conf.timeout, Some(7331));
+        // assert_eq!(left_conf.use_compression, Some(true));
+        assert_eq!(left_conf.gzip_level, Some(1));
+        assert_eq!(left_conf.ingestion_key, Some("VAL".to_string()));
+        // assert_eq!(left_conf.params.map(|p| p.hostname), Some("right.local".to_string()));
+        assert_eq!(left_conf.body_size, Some(7331));
+        assert_eq!(left_conf.retry_base_delay_ms, Some(2_000));
+        assert_eq!(left_conf.retry_step_delay_ms, Some(2_000));
+    }
+
+    #[test]
+    fn merge_all_confs_empty_iter() {
+        let empty_vec: Vec<Result<Config, ConfigError>> = Vec::new();
+        let (actual_conf, actual_errs) = merge_all_confs(empty_vec.into_iter());
+        assert!(actual_conf.is_none());
+        assert!(actual_errs.is_empty());
+    }
+
+    #[test]
+    fn merge_all_confs_only_errors() {
+        let error_vec:  Vec<Result<Config, ConfigError>> = vec![
+            Err(ConfigError::MissingField("foo")), Err(ConfigError::PropertyInvalid(String::from("bar")))];
+        let (actual_conf, actual_errs) = merge_all_confs(error_vec.into_iter());
+        assert!(actual_conf.is_none());
+        assert!(matches!(actual_errs[0], ConfigError::MissingField(value) if value == "foo"));
+        assert!(matches!(&actual_errs[1], ConfigError::PropertyInvalid(value) if value == "bar"));
+    }
+
+    #[test]
+    fn merge_all_confs_overrides_lower_config() {
+        let mut lower_conf = Config::default();
+        lower_conf.http.host = Some("lower_conf.api.logdna.test".to_string());
+
+        let mut higher_conf = Config::default();
+        higher_conf.http.host = Some("higher_conf.api.logdna.test".to_string());
+
+        let (actual_conf, actual_errs) = merge_all_confs(vec![Ok(lower_conf), Ok(higher_conf)].into_iter());
+        assert_eq!(actual_conf.unwrap().http.host, Some("higher_conf.api.logdna.test".to_string()));
+        assert!(actual_errs.is_empty());
+    }
+
+    #[test]
+    fn merge_all_confs_skip_override_with_default() {
+        let mut lower_conf = Config::default();
+        lower_conf.http.host = Some("lower_conf.api.logdna.test".to_string());
+
+        let higher_conf = Config::default();
+        
+        let (actual_conf, actual_errs) = merge_all_confs(vec![Ok(lower_conf), Ok(higher_conf)].into_iter());
+        assert_eq!(actual_conf.unwrap().http.host, Some("lower_conf.api.logdna.test".to_string()));
+        assert!(actual_errs.is_empty());
+    }
+
+    #[test]
+    fn megre_all_confs_mixed_config_and_errors() {
+        let mut lower_conf = Config::default();
+        lower_conf.http.host = Some("lower_conf.api.logdna.test".to_string());
+
+        let mut higher_conf = Config::default();
+        higher_conf.http.host = Some("higher_conf.api.logdna.test".to_string());
+
+        let result_vec = vec![Ok(lower_conf), Err(ConfigError::MissingField("foo")), Ok(higher_conf)];
+        let (actual_conf, actual_errs) = merge_all_confs(result_vec.into_iter());
+
+        assert_eq!(actual_conf.unwrap().http.host, Some("higher_conf.api.logdna.test".to_string()));
+        assert_eq!(actual_errs.len(), 1);
+        assert!(matches!(actual_errs[0], ConfigError::MissingField(value) if value == "foo"));
+    }
+
+    #[test]
+    fn try_load_confs_empty_path_vector() {
+        let conf_paths: Vec<&Path> = Vec::new();
+        let result = try_load_confs(&conf_paths);
+        assert_eq!(result.count(), 0);
+    }
+
+    #[test]
+    fn try_load_confs_valid_config_files() -> io::Result<()> {
+        let test_dir = tempdir()?;
+
+        let legacy_conf_path = test_dir.path().join("legacy.conf");
+        fs::write(&legacy_conf_path, "LOGDNA_LOGHOST = legacy.logdna.test
+key = 1234567890
+logdir = /var/my_log,/var/my_log2
+tags = production, stable
+exclude = /path/to/exclude/**, /second/path/to/exclude/**
+
+exclude_regex = /a/regex/exclude.*
+hostname = jorge's-laptop        
+")?;
+
+        let new_conf_path = test_dir.path().join("new_conf.yaml");
+        fs::write(&new_conf_path, "
+http:
+    host: new.logdna.test
+    endpoint: /path/to/endpoint1
+    use_ssl: false
+    timeout: 12000
+    use_compression: true
+    gzip_level: 1
+    params:
+        hostname: abc
+        tags: tag1,tag2
+        now: 0
+    body_size: 2097152
+log:
+    dirs:
+        - /var/log1/
+        - /var/log2/
+journald: {}")?;
+
+
+        let conf_paths: Vec<&Path> = vec![&legacy_conf_path, &new_conf_path];
+        let result: Vec<Result<Config, ConfigError>> = try_load_confs(&conf_paths).collect();
+        
+        assert_eq!(result.len(), 2);
+        assert!(matches!(&result[0], Ok(conf)));
+        assert!(matches!(&result[1], Ok(conf)));
+
+        Ok(())
+    }
+
+    #[test]
+    fn try_load_confs_invalid_files() -> io::Result<()> {        
+        let test_dir = tempdir()?;
+        let missing_file = test_dir.path().join("ghost.yaml");
+
+        let invalid_file = test_dir.path().join("invalid.dat");
+        fs::write(&invalid_file, "!@##()#()(#)%%$^$^$*^)*%#*@$@)$#*%#*%)%)#")?;
+
+        let conf_paths: Vec<&Path> = vec![&missing_file, &invalid_file];
+        let result: Vec<Result<Config, ConfigError>> = try_load_confs(&conf_paths).collect();
+        assert_eq!(result.len(), 2);
+        assert!(matches!(result[0], Err(ConfigError::Io(_))));
+        assert!(matches!(result[1], Err(ConfigError::Serde(_))));
+
+        Ok(())
+    }
+
+    #[test]
+    fn try_load_confs_completes_when_errors_exist() -> io::Result<()> {
+        let test_dir = tempdir()?;
+        let missing_file = test_dir.path().join("ghost.yaml");
+
+        let legacy_conf_path = test_dir.path().join("legacy.conf");
+        fs::write(&legacy_conf_path, "
+LOGDNA_LOGHOST = legacy.logdna.test
+key = 1234567890
+logdir = /var/my_log,/var/my_log2
+tags = production, stable
+exclude = /path/to/exclude/**, /second/path/to/exclude/**
+
+exclude_regex = /a/regex/exclude.*
+hostname = jorge's-laptop        
+")?;
+
+        let new_conf_path = test_dir.path().join("new_conf.yaml");
+        fs::write(&new_conf_path, "
+http:
+    host: new.logdna.test
+    endpoint: /path/to/endpoint1
+    use_ssl: false
+    timeout: 12000
+    use_compression: true
+    gzip_level: 1
+    params:
+        hostname: abc
+        tags: tag1,tag2
+        now: 0
+    body_size: 2097152
+log:
+    dirs:
+        - /var/log1/
+        - /var/log2/
+journald: {}")?;
+
+        let conf_paths: Vec<&Path> = vec![&legacy_conf_path, &missing_file, &new_conf_path];
+        let result: Vec<Result<Config, ConfigError>> = try_load_confs(&conf_paths).collect();
+
+        assert_eq!(result.len(), 3);
+        assert!(matches!(result[0], Ok(_)));
+        assert!(matches!(result[1], Err(ConfigError::Io(_))));
+        assert!(matches!(result[2], Ok(_)));
+
+        Ok(())
+    }
+
 }
