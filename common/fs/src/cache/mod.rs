@@ -41,6 +41,8 @@ pub type EntryKey = DefaultKey;
 type EntryMap = SlotMap<EntryKey, entry::Entry>;
 type FsResult<T> = Result<T, Error>;
 
+pub const EVENT_STREAM_BUFFER_COUNT: usize = 1000;
+
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("error watching: {0:?} {1:?}")]
@@ -206,7 +208,7 @@ impl FileSystem {
         let events = events_stream
             .into_stream()
             .map(|event| async { event })
-            .buffered(1000)
+            .buffered(EVENT_STREAM_BUFFER_COUNT)
             .map(move |(event, event_time)| {
                 let fs = fs.clone();
                 {

@@ -2,7 +2,7 @@ use crate::cache::entry::Entry;
 use crate::cache::event::Event;
 use crate::cache::tailed_file::LazyLineSerializer;
 pub use crate::cache::DirPathBuf;
-use crate::cache::{EntryKey, FileSystem};
+use crate::cache::{EntryKey, FileSystem, EVENT_STREAM_BUFFER_COUNT};
 use crate::rule::Rules;
 use metrics::Metrics;
 use state::FileId;
@@ -69,12 +69,14 @@ impl Default for Lookback {
     }
 }
 
+type SyncHashMap<K, V> = Arc<Mutex<HashMap<K, V>>>;
+
 /// Tails files on a filesystem by inheriting events from a Watcher
 pub struct Tailer {
     lookback_config: Lookback,
     fs_cache: Arc<Mutex<FileSystem>>,
     initial_offsets: Option<HashMap<FileId, u64>>,
-    event_times: Arc<Mutex<HashMap<EntryKey, chrono::DateTime<chrono::Utc>>>>,
+    event_times: SyncHashMap<EntryKey, (usize, chrono::DateTime<chrono::Utc>)>,
 }
 
 impl Tailer {
@@ -321,12 +323,13 @@ impl Tailer {
         debug!("Tailer starting with lookback: {:?}", self.lookback_config);
 
         Ok(events
+            .enumerate()
             .then({
                 let fs = self.fs_cache.clone();
                 let lookback_config = self.lookback_config.clone();
                 let initial_offsets = self.initial_offsets.clone();
                 let event_times = self.event_times.clone();
-                move |(event, event_time)| {
+                move |(event_idx, (event, event_time))| {
                     let fs = fs.clone();
                     let lookback_config = lookback_config.clone();
                     let initial_offsets = initial_offsets.clone();
@@ -343,10 +346,14 @@ impl Tailer {
                             _ => None,
                         };
 
-                        if let Some((_, Some(previous_event_time))) = key_and_previous_event_time {
+                        // Need to check if the event is within buffer_length
+                        if let Some((_, Some((prev_event_idx, previous_event_time)))) =
+                            key_and_previous_event_time
+                        {
                             // We've already processed this event, skip tailing
                             if previous_event_time
                                 >= (event_time + chrono::Duration::milliseconds(250))
+                                && (event_idx < (prev_event_idx + EVENT_STREAM_BUFFER_COUNT))
                             {
                                 debug!("skipping already processed events");
                                 Metrics::fs().increment_writes();
@@ -365,7 +372,7 @@ impl Tailer {
                         if let Some((key, _)) = key_and_previous_event_time {
                             let mut event_times = event_times.lock().await;
                             let new_event_time = chrono::offset::Utc::now();
-                            event_times.insert(key, new_event_time);
+                            event_times.insert(key, (event_idx, new_event_time));
                         }
                         line
                     }
