@@ -351,9 +351,8 @@ impl Tailer {
                             key_and_previous_event_time
                         {
                             // We've already processed this event, skip tailing
-                            if previous_event_time
-                                >= (event_time + chrono::Duration::milliseconds(250))
-                                && (event_idx < (prev_event_idx + EVENT_STREAM_BUFFER_COUNT))
+                            if previous_event_time >= event_time
+                                && event_idx < (prev_event_idx + EVENT_STREAM_BUFFER_COUNT)
                             {
                                 debug!("skipping already processed events");
                                 Metrics::fs().increment_writes();
