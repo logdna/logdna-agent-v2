@@ -113,6 +113,7 @@ pub struct AgentSettings<'a> {
     pub log_dirs: &'a str,
     pub exclusion: Option<&'a str>,
     pub exclusion_regex: Option<&'a str>,
+    pub features: Option<&'a str>,
     pub journald_dirs: Option<&'a str>,
     pub ssl_cert_file: Option<&'a std::path::Path>,
     pub lookback: Option<&'a str>,
@@ -155,13 +156,17 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
     let mut manifest_path = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     manifest_path.pop();
     manifest_path.push("bin/Cargo.toml");
-    let cargo_build = escargot::CargoBuild::new()
+    let mut cargo_build = escargot::CargoBuild::new()
         .manifest_path(manifest_path)
         .bin("logdna-agent")
         .release()
-        .current_target()
-        .run()
-        .unwrap();
+        .current_target();
+
+    if let Some(features) = settings.features {
+        cargo_build = cargo_build.no_default_features().features(features);
+    }
+
+    let cargo_build = cargo_build.run().unwrap();
 
     let mut cmd = cargo_build.command();
 
