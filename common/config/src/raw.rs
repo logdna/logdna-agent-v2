@@ -10,20 +10,13 @@ use std::vec::Vec;
 fn merge_all_confs(
     confs: impl Iterator<Item = Result<Config, ConfigError>>,
 ) -> (Option<Config>, Vec<ConfigError>) {
+    let default_conf = Some(Config::default());
+
     let mut result_conf: Option<Config> = None;
     let mut result_errs = Vec::new();
-    let default_conf = Config::default();
-
     for result in confs {
         match result {
-            Ok(conf) => {
-                result_conf = if let Some(mut c) = result_conf {
-                    c.merge(&conf, &default_conf);
-                    Some(c)
-                } else {
-                    Some(conf)
-                }
-            }
+            Ok(conf) => result_conf.merge(&Some(conf), &default_conf),
             Err(e) => result_errs.push(e),
         }
     }
@@ -967,9 +960,9 @@ ingest_buffer_size = 3145728
 
         assert_eq!(left_conf.host, Some("right.logdna.test".to_string()));
         assert_eq!(left_conf.endpoint, Some("/right/endpoint".to_string()));
-        // assert_eq!(left_conf.use_ssl, Some(true));
+        assert_eq!(left_conf.use_ssl, Some(false)); // Note: default does not override value
         assert_eq!(left_conf.timeout, Some(7331));
-        // assert_eq!(left_conf.use_compression, Some(true));
+        assert_eq!(left_conf.use_compression, Some(false)); // Note: default does not override value
         assert_eq!(left_conf.gzip_level, Some(1));
         assert_eq!(left_conf.ingestion_key, Some("VAL".to_string()));
         assert_eq!(
