@@ -47,7 +47,7 @@ auditable = "0.1"
 miniz_oxide = "0.4"
 
 [features]
-default = ["libjournald"]
+default = []
 integration_tests = []
 profiling = ["jemallocator/profiling"]
 k8s_tests = []

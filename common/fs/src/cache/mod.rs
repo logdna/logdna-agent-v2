@@ -11,6 +11,7 @@ use std::ffi::{OsStr, OsString};
 use std::fs::read_dir;
 use std::iter::FromIterator;
 use std::ops::Deref;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -40,6 +41,8 @@ pub type EntryKey = DefaultKey;
 
 type EntryMap = SlotMap<EntryKey, entry::Entry>;
 type FsResult<T> = Result<T, Error>;
+
+pub const EVENT_STREAM_BUFFER_COUNT: usize = 1000;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -72,21 +75,27 @@ pub struct FileSystem {
 
     symlinks: Symlinks,
     watch_descriptors: WatchDescriptors,
+    wd_by_inode: HashMap<u64, WatchDescriptor>,
 
     master_rules: Rules,
     initial_dirs: Vec<DirPathBuf>,
     initial_dir_rules: Rules,
 
     initial_events: Vec<Event>,
+    resume_events_recv: async_channel::Receiver<(u64, chrono::DateTime<chrono::Utc>)>,
+    resume_events_send: async_channel::Sender<(u64, chrono::DateTime<chrono::Utc>)>,
 }
 
 impl FileSystem {
     pub fn new(initial_dirs: Vec<DirPathBuf>, rules: Rules) -> Self {
+        let (resume_events_send, resume_events_recv) = async_channel::unbounded();
+
         initial_dirs.iter().for_each(|path| {
             if !path.is_dir() {
                 panic!("initial dirs must be dirs")
             }
         });
+
         let mut watcher = Watcher::new().expect("unable to initialize inotify");
 
         let mut entries = SlotMap::new();
@@ -107,11 +116,14 @@ impl FileSystem {
             root,
             symlinks: Symlinks::new(),
             watch_descriptors: WatchDescriptors::new(),
+            wd_by_inode: HashMap::new(),
             master_rules: rules,
             initial_dirs: initial_dirs.clone(),
             initial_dir_rules,
             watcher,
             initial_events: Vec::new(),
+            resume_events_recv,
+            resume_events_send,
         };
 
         let entries = fs.entries.clone();
@@ -203,10 +215,26 @@ impl FileSystem {
             acc
         };
 
-        let events = events_stream
-            .into_stream()
+        let resume_events_recv = {
+            let _fs = fs.try_lock().expect("couldn't lock filesystem cache");
+            _fs.resume_events_recv
+                .clone()
+                .map({
+                    let fs = fs.clone();
+                    move |(inode, event_time)| {
+                        fs.try_lock()
+                            .expect("couldn't lock filesystem cache")
+                            .wd_by_inode
+                            .get(&inode)
+                            .map(|wd| (Ok(WatchEvent::Modify { wd: wd.clone() }), event_time))
+                    }
+                })
+                .filter_map(|e| async { e })
+        };
+
+        let events = futures::stream::select(resume_events_recv, events_stream.into_stream())
             .map(|event| async { event })
-            .buffered(1000)
+            .buffered(EVENT_STREAM_BUFFER_COUNT)
             .map(move |(event, event_time)| {
                 let fs = fs.clone();
                 {
@@ -540,11 +568,16 @@ impl FileSystem {
                     .watch(path)
                     .map_err(|e| Error::Watch(path.to_owned(), e))?;
 
+                let inode = path.metadata().map_err(Error::File)?.ino();
+                self.wd_by_inode.insert(inode, wd.clone());
                 let new_entry = Entry::File {
                     name: component,
                     parent: parent_ref,
                     wd,
-                    data: RefCell::new(TailedFile::new(path).map_err(Error::File)?),
+                    data: RefCell::new(
+                        TailedFile::new(path, Some(self.resume_events_send.clone()))
+                            .map_err(Error::File)?,
+                    ),
                 };
 
                 Metrics::fs().increment_tracked_files();

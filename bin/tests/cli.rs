@@ -644,6 +644,7 @@ async fn test_journald_support() {
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let mut settings = AgentSettings::with_mock_ingester("/var/log/journal", &addr);
     settings.journald_dirs = Some(dir);
+    settings.features = Some("libjournald");
     settings.exclusion_regex = Some(r"^(?!/var/log/journal).*$");
     let mut agent_handle = common::spawn_agent(settings);
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
@@ -1005,6 +1006,12 @@ async fn test_lookback_restarting_agent() {
             .create(true)
             .open(&file_path)
             .unwrap();
+        debug!("Running first agent");
+        let mut agent_handle = common::spawn_agent(settings.clone());
+        let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
+
+        common::wait_for_file_event("initialized", &file_path, &mut agent_stderr);
+
         let writer_thread = std::thread::spawn(move || {
             for i in 0..line_count_target {
                 writeln!(file, "Hello from line {}", i).unwrap();
@@ -1019,10 +1026,7 @@ async fn test_lookback_restarting_agent() {
             }
         });
 
-        debug!("Running first agent");
-        let mut agent_handle = common::spawn_agent(settings.clone());
-        let agent_stderr = agent_handle.stderr.take().unwrap();
-        consume_output(agent_stderr);
+        consume_output(agent_stderr.into_inner());
         tokio::time::sleep(tokio::time::Duration::from_millis(2_000)).await;
 
         while line_count.load(Ordering::SeqCst) < line_count_target {
@@ -1044,7 +1048,7 @@ async fn test_lookback_restarting_agent() {
             .await;
 
         // Sleep a bit more to give the agent a chance to process
-        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2500)).await;
 
         let map = received.lock().await;
         assert!(map.len() > 0);
@@ -1056,7 +1060,12 @@ async fn test_lookback_restarting_agent() {
             file_info.values.len(),
             line_count.load(Ordering::SeqCst)
         );
-        assert!(file_info.values.len() >= line_count.load(Ordering::SeqCst));
+        assert!(
+            file_info.values.len() >= line_count.load(Ordering::SeqCst),
+            "not enough lines: file_info.values len: {} line_count: {}",
+            file_info.values.len(),
+            line_count.load(Ordering::SeqCst)
+        );
 
         for i in 0..file_info.values.len() {
             assert_eq!(file_info.values[i], format!("Hello from line {}\n", i));

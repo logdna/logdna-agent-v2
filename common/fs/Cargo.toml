@@ -32,6 +32,7 @@ lazy_static = "1"
 
 #async
 async-trait = "0.1"
+async-channel = "1"
 tokio = {version= "1", features= ["fs", "io-util"]}
 tokio-util = {version= "0.6", features= ["compat"]}
 tokio-stream = "0.1"
@@ -44,5 +45,5 @@ pin-project-lite = "0.2"
 env_logger = "0.8"
 tempfile = "3"
 tokio-test = "0.4"
-tokio = {version= "1", features= ["fs", "io-util", "time"]}
+tokio = {version= "1", features= ["fs", "io-util", "time", "macros"]}
 middleware = { package = "middleware", path = "../middleware" }
