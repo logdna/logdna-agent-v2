@@ -95,6 +95,78 @@ fn test_list_config_from_conf() -> io::Result<()> {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(target_os = "linux")]
+fn test_legacy_and_new_confs_merge() -> io::Result<()> {
+    // Setting up an automatic finalizer for the test case that deletes the conf
+    // files created in this test from their global directories. If they remain,
+    // other integration tests may fail.
+    struct Finalizer;
+    impl Drop for Finalizer {
+        fn drop(&mut self) {
+            fs::remove_file(Path::new("/etc/logdna.conf")).unwrap_or(());
+            fs::remove_file(Path::new("/etc/logdna/config.yaml")).unwrap_or(());
+        }
+    }
+    let _defer_cleanup = Finalizer;
+
+    let legacy_conf_path = Path::new("/etc/logdna.conf");
+    let mut legacy_conf_file = File::create(legacy_conf_path)?;
+    write!(
+        legacy_conf_file,
+        "key = 1234567890\nhost = legacyhost.logdna.test\nexclude_regex = /a/regex/exclude"
+    )?;
+
+    let new_conf_path = Path::new("/etc/logdna");
+    fs::create_dir_all(&new_conf_path)?;
+    let new_conf_path = new_conf_path.join("config.yaml");
+    let mut new_conf_file = File::create(new_conf_path)?;
+    write!(
+        new_conf_file,
+        "
+http:
+  host: newhost.logdna.test
+  ingestion_key: 9876543210
+  params:
+    hostname: abcd1234
+    tags: newtag
+    now: 0
+log:
+  dirs:
+    - /var/log1/
+journald: {{}}
+"
+    )?;
+
+    let mut cmd = get_bin_command();
+    let output: Output = cmd.env_clear().arg("-l").unwrap();
+    assert!(output.status.success());
+
+    let stdout = from_utf8(&output.stdout).unwrap();
+    assert!(contains("Listing current settings from default conf, environment variables and command line options in yaml format").eval(stdout));
+    assert!(contains("host: newhost.logdna.test").eval(stdout));
+    assert!(contains("- /a/regex/exclude").eval(stdout));
+
+    Ok(())
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_ibm_legacy_host_env_var() {
+    let mut cmd = get_bin_command();
+    let output: Output = cmd
+        .env_clear()
+        .env("LOGDNA_LOGHOST", "other.api.logdna.test")
+        .arg("-l")
+        .unwrap();
+
+    assert!(output.status.success());
+
+    let stdout = from_utf8(&output.stdout).unwrap();
+    assert!(contains("host: other.api.logdna.test").eval(stdout));
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_list_config_from_env() -> io::Result<()> {
     let mut cmd = get_bin_command();
     let output: Output = cmd

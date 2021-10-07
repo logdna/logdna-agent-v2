@@ -345,12 +345,16 @@ pub fn get_hostname() -> Option<String> {
 fn print_settings(yaml: &str, config_path: &Path) {
     print!("Listing current settings ");
 
-    let is_default_path = config_path.to_string_lossy() == argv::DEFAULT_YAML_FILE;
+    let config_path_str = config_path.to_string_lossy();
+    let is_default_path =
+        config_path_str == argv::DEFAULT_YAML_FILE || config_path_str == argv::DEFAULT_CONF_FILE;
+    let does_default_exist =
+        Path::new(argv::DEFAULT_YAML_FILE).exists() || Path::new(argv::DEFAULT_CONF_FILE).exists();
 
-    if config_path.exists() {
-        print!("from config ({}), ", config_path.display());
-    } else if is_default_path && Path::new(argv::DEFAULT_CONF_FILE).exists() {
+    if is_default_path && does_default_exist {
         print!("from default conf, ");
+    } else if config_path.exists() {
+        print!("from config ({}), ", config_path.display());
     } else {
         print!("from ")
     }
