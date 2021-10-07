@@ -23,6 +23,7 @@ static TAGS: Key = Key::Name("tags");
 static OS_HOSTNAME: Key = Key::Name("hostname");
 static EXCLUSION_RULES: Key = Key::Name("exclude");
 static EXCLUSION_REGEX_RULES: Key = Key::Name("exclude_regex");
+static IBM_HOST_DEPRECATED: Key = Key::Name(env::IBM_HOST_DEPRECATED);
 
 // New keys: reuse the same name from env vars, removing the LOGDNA_ prefix and
 // setting it to lowercase
@@ -107,8 +108,15 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
     };
     result.http.ingestion_key = map.get(&INGESTION_KEY).map(|s| s.to_string());
 
-    if let Some(value) = map.get_string(&HOST) {
-        result.http.host = Some(value);
+    match (map.get_string(&HOST), map.get_string(&IBM_HOST_DEPRECATED)) {
+        (Some(_), Some(_)) => {
+            return Err(ConfigError::PropertyInvalid(
+                "entries for both host and LOGDNA_LOGHOST found".to_string(),
+            ))
+        }
+        (Some(value), _) => result.http.host = Some(value),
+        (_, Some(value)) => result.http.host = Some(value),
+        _ => (),
     }
 
     if let Some(value) = map.get_string(&ENDPOINT) {
