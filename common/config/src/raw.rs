@@ -119,17 +119,10 @@ impl Merge for Option<Params> {
     }
 }
 
-impl<T: PartialEq + Merge + Clone> Merge for Vec<T> {
+impl<T: PartialEq + Clone> Merge for Vec<T> {
     fn merge(&mut self, other: &Self, default: &Self) {
-        if !other.is_empty() && *other != *default {
-            let mut new_vals = Vec::new();
-            for other_val in other {
-                if !self.contains(other_val) {
-                    new_vals.push(other_val.clone());
-                }
-            }
-
-            self.extend(new_vals);
+        if *other != *default {
+            *self = other.clone();
         }
     }
 }
@@ -718,7 +711,7 @@ ingest_buffer_size = 3145728
         Ok(())
     }
 
-    macro_rules! test_merge_primitive_types {
+    macro_rules! test_merge_standard_types {
         ($($name:ident: $values:expr,)*) => {
             mod merge_primitive_types {
                 use super::super::*;
@@ -746,7 +739,7 @@ ingest_buffer_size = 3145728
         }
     }
 
-    test_merge_primitive_types! {
+    test_merge_standard_types! {
         pathbuf: (PathBuf::from("/tmp/cur"), PathBuf::from("/tmp/new"), PathBuf::from("/tmp/default")),
         string: ("current".to_string(), "new".to_string(), "default".to_string()),
         bool: (false, true, false),
@@ -754,6 +747,7 @@ ingest_buffer_size = 3145728
         u32: (100_u32, 5_u32, 0_u32),
         u64: (100_u64, 5_u64, 0_u64),
         usize: (100_usize, 5_usize, 0_usize),
+        vec: (vec!["a", "b", "c"], vec!["d"], vec!["e", "f"]),
     }
 
     #[test]
@@ -831,49 +825,6 @@ ingest_buffer_size = 3145728
     }
 
     #[test]
-    fn vec_merge() {
-        // Case 1: Merging two empty vecs should result in an empty vec
-        let default_val = vec!["default".to_string()];
-        let mut target: Vec<String> = Vec::new();
-        target.merge(&Vec::new(), &default_val);
-        assert!(target.is_empty());
-
-        // Case 2: Merging an empty vec onto a vec with elements does not change
-        // the current vec.
-        target = vec!["one".to_string(), "two".to_string()];
-        target.merge(&Vec::new(), &default_val);
-        assert_eq!(target, vec!["one".to_string(), "two".to_string()]);
-
-        // Case 3: Merging the default vec onto a target does not change the target.
-        target = vec!["one".to_string(), "two".to_string()];
-        target.merge(&vec!["default".to_string()], &default_val);
-        assert_eq!(target, vec!["one".to_string(), "two".to_string()]);
-
-        // Case 4: Merging two vectors with no elements in common
-        let new_vec = vec!["three".to_string(), "four".to_string()];
-        target = vec!["one".to_string(), "two".to_string()];
-        target.merge(&new_vec, &default_val);
-        assert_eq!(
-            target,
-            vec![
-                "one".to_string(),
-                "two".to_string(),
-                "three".to_string(),
-                "four".to_string()
-            ]
-        );
-
-        // Case 5: Values in common are not merged into the new vec.
-        let new_vec = vec!["one".to_string(), "four".to_string(), "two".to_string()];
-        target = vec!["one".to_string(), "two".to_string()];
-        target.merge(&new_vec, &default_val);
-        assert_eq!(
-            target,
-            vec!["one".to_string(), "two".to_string(), "four".to_string()]
-        );
-    }
-
-    #[test]
     fn journald_config_merge() {
         let mut left_conf = JournaldConfig {
             paths: Some(vec![Path::new("/left").to_path_buf()]),
@@ -888,9 +839,7 @@ ingest_buffer_size = 3145728
         let actual_paths = left_conf
             .paths
             .expect("expected paths to not be None after merge");
-        assert_eq!(actual_paths.len(), 2);
-        assert_eq!(actual_paths[0].to_str(), Some("/left"));
-        assert_eq!(actual_paths[1].to_str(), Some("/right"));
+        assert_eq!(actual_paths, vec![PathBuf::from("/right")]);
     }
 
     #[test]
@@ -907,17 +856,8 @@ ingest_buffer_size = 3145728
 
         left_conf.merge(&right_conf, &Rules::default());
 
-        assert_eq!(left_conf.glob.len(), 2);
-        assert_eq!(
-            left_conf.glob,
-            vec!["left glob".to_string(), "right glob".to_string()]
-        );
-
-        assert_eq!(left_conf.regex.len(), 2);
-        assert_eq!(
-            left_conf.regex,
-            vec!["left regex".to_string(), "right regex".to_string()]
-        );
+        assert_eq!(left_conf.glob, vec!["right glob".to_string()]);
+        assert_eq!(left_conf.regex, vec!["right regex".to_string()]);
     }
 
     #[test]
