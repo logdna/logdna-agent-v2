@@ -15,6 +15,7 @@ use futures::lock::Mutex;
 use futures::task::{Context, Poll};
 use futures::{ready, Stream, StreamExt};
 
+use async_channel::Sender;
 use async_trait::async_trait;
 use pin_project_lite::pin_project;
 
@@ -144,10 +145,15 @@ pub struct LazyLines {
     total_read: usize,
     target_read: Option<usize>,
     paths: Vec<String>,
+    resume_channel_send: Option<async_channel::Sender<(u64, chrono::DateTime<chrono::Utc>)>>,
 }
 
 impl LazyLines {
-    pub async fn new(reader: Arc<Mutex<TailedFileInner>>, paths: Vec<String>) -> Self {
+    pub async fn new(
+        reader: Arc<Mutex<TailedFileInner>>,
+        paths: Vec<String>,
+        resume_channel_send: Option<Sender<(u64, chrono::DateTime<chrono::Utc>)>>,
+    ) -> Self {
         let (initial_end, initial_offset): (Option<u64>, Option<u64>) = {
             let inner = &mut reader.lock().await.reader;
 
@@ -181,6 +187,7 @@ impl LazyLines {
             total_read: 0,
             target_read,
             paths,
+            resume_channel_send,
         }
     }
 }
@@ -467,6 +474,7 @@ impl Stream for LazyLines {
             ref mut total_read,
             ref target_read,
             paths,
+            ref resume_channel_send,
             ..
         } = self.get_mut();
         let rc_reader = reader;
@@ -505,6 +513,13 @@ impl Stream for LazyLines {
                 if let Some(target_read) = target_read {
                     if *total_read > *target_read {
                         debug!("read 16KB from a single event, returning");
+
+                        // put event on watch stream to ensure processing completes
+                        if let Some(sender) = resume_channel_send {
+                            if let Err(e) = sender.try_send((*inode, chrono::offset::Utc::now())) {
+                                warn!("Couldn't send tailer continuation event: {}", e);
+                            };
+                        }
                         break Poll::Ready(None);
                     }
                 }
@@ -545,11 +560,15 @@ pub struct TailedFileInner {
 #[derive(Debug, Clone)]
 pub struct TailedFile<T> {
     inner: Arc<Mutex<TailedFileInner>>,
+    resume_events_sender: Option<Sender<(u64, chrono::DateTime<chrono::Utc>)>>,
     _phantom: std::marker::PhantomData<T>,
 }
 
 impl<T> TailedFile<T> {
-    pub(crate) fn new(path: &Path) -> Result<Self, std::io::Error> {
+    pub(crate) fn new(
+        path: &Path,
+        resume_events_sender: Option<Sender<(u64, chrono::DateTime<chrono::Utc>)>>,
+    ) -> Result<Self, std::io::Error> {
         Ok(Self {
             inner: Arc::new(Mutex::new(TailedFileInner {
                 reader: BufReader::new(tokio::fs::File::from_std(
@@ -561,6 +580,7 @@ impl<T> TailedFile<T> {
                 file_path: path.into(),
                 inode: path.metadata()?.ino(),
             })),
+            resume_events_sender,
             _phantom: std::marker::PhantomData::<T>,
         })
     }
@@ -720,6 +740,7 @@ impl TailedFile<LazyLineSerializer> {
                     .into_iter()
                     .map(|path| path.to_string_lossy().into())
                     .collect(),
+                self.resume_events_sender.clone(),
             )
             .await,
         )
