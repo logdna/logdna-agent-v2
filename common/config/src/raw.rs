@@ -25,7 +25,7 @@ fn merge_all_confs(
 }
 
 fn try_load_confs<'a>(
-    paths: &'a Vec<&Path>,
+    paths: &'a [&Path],
 ) -> impl Iterator<Item = Result<Config, ConfigError>> + 'a {
     paths.iter().map(|path| {
         let mut conf_file = File::open(path)?;
@@ -750,10 +750,10 @@ ingest_buffer_size = 3145728
         pathbuf: (PathBuf::from("/tmp/cur"), PathBuf::from("/tmp/new"), PathBuf::from("/tmp/default")),
         string: ("current".to_string(), "new".to_string(), "default".to_string()),
         bool: (false, true, false),
-        u16: (100 as u16, 5 as u16, 0 as u16),
-        u32: (100 as u32, 5 as u32, 0 as u32),
-        u64: (100 as u64, 5 as u64, 0 as u64),
-        usize: (100 as usize, 5 as usize, 0 as usize),
+        u16: (100_u16, 5_u16, 0_u16),
+        u32: (100_u32, 5_u32, 0_u32),
+        u64: (100_u64, 5_u64, 0_u64),
+        usize: (100_usize, 5_usize, 0_usize),
     }
 
     #[test]
@@ -1102,8 +1102,8 @@ journald: {}",
         let result: Vec<Result<Config, ConfigError>> = try_load_confs(&conf_paths).collect();
 
         assert_eq!(result.len(), 2);
-        assert!(matches!(&result[0], Ok(conf)));
-        assert!(matches!(&result[1], Ok(conf)));
+        assert!(matches!(&result[0], Ok(_)));
+        assert!(matches!(&result[1], Ok(_)));
 
         Ok(())
     }
