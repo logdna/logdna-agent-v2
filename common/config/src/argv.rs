@@ -43,6 +43,7 @@ pub mod env {
     pub const INGESTION_KEY_ALTERNATE: &str = "LOGDNA_AGENT_KEY";
     pub const CONFIG_FILE_DEPRECATED: &str = "DEFAULT_CONF_FILE";
     pub const HOST_DEPRECATED: &str = "LDLOGHOST";
+    pub const IBM_HOST_DEPRECATED: &str = "LOGDNA_LOGHOST";
     pub const ENDPOINT_DEPRECATED: &str = "LDLOGPATH";
     pub const USE_SSL_DEPRECATED: &str = "LDLOGSSL";
     pub const USE_COMPRESSION_DEPRECATED: &str = "COMPRESS";
@@ -389,6 +390,7 @@ impl ArgumentOptions {
 
         deprecated_env!(config, CONFIG_FILE_DEPRECATED, String);
         deprecated_env!(host, HOST_DEPRECATED, Option<String>);
+        deprecated_env!(host, IBM_HOST_DEPRECATED, Option<String>);
         deprecated_env!(endpoint_path, ENDPOINT_DEPRECATED, Option<String>);
         deprecated_env!(use_ssl, USE_SSL_DEPRECATED, Option<bool>);
         deprecated_env!(use_compression, USE_COMPRESSION_DEPRECATED, Option<bool>);
