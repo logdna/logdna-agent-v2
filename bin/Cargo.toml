@@ -68,7 +68,7 @@ proptest = "1"
 tokio-test = "0.4"
 rand = "0.8"
 systemd = "0.7"
-nix = "0.20"
+nix = "0.23"
 wait-timeout = "0.2"
 hyper = { version = "0.14", features = ["http1"] }
 
