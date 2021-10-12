@@ -293,6 +293,7 @@ CODE_FUNC=<module>
 SYSLOG_IDENTIFIER=python3
 _COMM=python3
 _EXE=/usr/bin/python3.4
+GET_MD5=False
 _AUDIT_SESSION=35898
 _SYSTEMD_CGROUP=/user.slice/user-1001.slice/session-35898.scope
 _SYSTEMD_SESSION=35898
