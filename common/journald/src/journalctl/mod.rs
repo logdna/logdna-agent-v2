@@ -130,6 +130,25 @@ where
     )
 }
 
+// The actual parser for the journald export format
+fn find_next_record<'a, Input>(
+) -> impl Parser<Input, Output = (), PartialState = AnyPartialState> + 'a
+where
+    Input: RangeStream<Token = u8, Range = &'a [u8]> + 'a,
+    // Necessary due to rust-lang/rust#24159
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    any_partial_state(
+        (
+            skip_many(none_of(b"\n".iter().copied())),
+            // entries are line separated
+            token(b'\n'),
+            token(b'\n'),
+        )
+            .map(|_| ()),
+    )
+}
+
 impl JournaldExportDecoder {
     fn process_default_record(
         record: &JournalRecord,
@@ -170,23 +189,62 @@ impl Decoder for JournaldExportDecoder {
     type Error = Box<dyn std::error::Error + Send + Sync>;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let (opt, removed_len) = combine::stream::decode(
+        let decode_result = combine::stream::decode(
             decode_parser(),
             // PartialStream lets the parser know that more input should be
             // expected if end of input is unexpectedly reached
             &mut easy::Stream(PartialStream(&src[..])),
             &mut self.state,
-        )
-        .map_err(|err| {
-            let err = err
-                .map_range(|r| {
-                    std::str::from_utf8(r)
-                        .ok()
-                        .map_or_else(|| format!("{:?}", r), |s| s.to_string())
-                })
-                .map_position(|p| p.translate_position(&src[..]));
-            format!("{}\nIn input: `{}`", err, String::from_utf8_lossy(src))
-        })?;
+        );
+
+        let (opt, removed_len) = match decode_result {
+            Ok((opt, removed_len)) => (opt, removed_len),
+            Err(e) => {
+                let mut range_len = 0;
+                let err = e
+                    .map_range(|r| {
+                        range_len = r.len();
+                        std::str::from_utf8(r)
+                            .ok()
+                            .map_or_else(|| format!("{:?}", r), |s| s.to_string())
+                    })
+                    .map_position(|p| p.translate_position(&src[..]));
+
+                warn!(
+                    "{}\nError parsing record: `{}`",
+                    err,
+                    String::from_utf8_lossy(src)
+                );
+
+                // step over error range
+                src.advance(range_len);
+
+                // Search for the start of the next record
+                let mut search_state = AnyPartialState::default();
+                let search_result = combine::stream::decode(
+                    find_next_record(),
+                    &mut easy::Stream(PartialStream(&src[..])),
+                    &mut search_state,
+                );
+
+                let (_, removed_len) = search_result.map_err(|err| {
+                    let err = err
+                        .map_range(|r| {
+                            std::str::from_utf8(r)
+                                .ok()
+                                .map_or_else(|| format!("{:?}", r), |s| s.to_string())
+                        })
+                        .map_position(|p| p.translate_position(&src[..]));
+                    format!(
+                        "{}\nError scanning for next record in input: `{}`",
+                        err,
+                        String::from_utf8_lossy(src)
+                    )
+                })?;
+
+                (None, removed_len)
+            }
+        };
 
         // Advance by the accepted parse length
         src.advance(removed_len);
