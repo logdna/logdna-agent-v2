@@ -8,7 +8,7 @@ use combine::{
     error::{ParseError, StreamError},
     many1, none_of, one_of,
     parser::{
-        byte::{letter, num::le_u64},
+        byte::{alpha_num, num::le_u64},
         choice::choice,
         combinator::{any_partial_state, AnyPartialState},
         range::{recognize, take},
@@ -89,7 +89,7 @@ where
             many1::<std::collections::HashMap<_, _>, _, _>(
                 (
                     // Get the key
-                    recognize(skip_many1(choice((letter(), token(b'_'))))).and_then(
+                    recognize(skip_many1(choice((alpha_num(), token(b'_'))))).and_then(
                         |bytes: &[u8]| {
                             std::str::from_utf8(bytes)
                                 .map(|s| s.to_string())
