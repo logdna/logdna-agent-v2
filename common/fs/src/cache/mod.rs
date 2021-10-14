@@ -20,7 +20,6 @@ use std::{fmt, io};
 use futures::{Stream, StreamExt};
 use inotify::WatchDescriptor;
 use slotmap::{DefaultKey, SlotMap};
-use smallvec::SmallVec;
 use thiserror::Error;
 use tokio::sync::Mutex;
 
@@ -238,20 +237,35 @@ impl FileSystem {
             .map(move |(event, event_time)| {
                 let fs = fs.clone();
                 {
-                    // TODO: Can this be a Smallvec?
-                    let mut acc = Vec::new();
-
                     match event {
                         Ok(event) => {
-                            {
-                                fs.try_lock()
-                                    .expect("couldn't lock filesystem cache")
-                                    .process(event, &mut acc);
-                            }
-                            let a = acc
+                            let a = fs
+                                .try_lock()
+                                .expect("couldn't lock filesystem cache")
+                                .process(event)
+                                .unwrap_or_else(|e| {
+                                    // This block of error handling code was moved from the process method as an
+                                    // intermittent refactoring step.
+                                    match e {
+                                        Error::WatchOverflow => {
+                                            error!("{}", e);
+                                            panic!("overflowed kernel queue");
+                                        }
+                                        Error::PathNotValid(path) => {
+                                            debug!("Path is not longer valid: {:?}", path);
+                                        }
+                                        _ => {
+                                            warn!(
+                                                "Processing inotify event resulted in error: {}",
+                                                e
+                                            );
+                                        }
+                                    }
+
+                                    Vec::new()
+                                })
                                 .into_iter()
-                                .map(|event| (event, event_time))
-                                .collect::<SmallVec<[_; 2]>>();
+                                .map(move |event| (event, event_time));
                             futures::stream::iter(a)
                         }
                         _ => panic!("Inotify error"),
@@ -263,19 +277,19 @@ impl FileSystem {
     }
 
     /// Handles inotify events and may produce Event(s) that are returned upstream through sender
-    fn process(&mut self, watch_event: WatchEvent, events: &mut Vec<Event>) {
+    fn process(&mut self, watch_event: WatchEvent) -> FsResult<Vec<Event>> {
         let _entries = self.entries.clone();
         let mut _entries = _entries.borrow_mut();
 
         debug!("handling inotify event {:#?}", watch_event);
 
-        let result = match watch_event {
+        match watch_event {
             WatchEvent::Create { wd, name } | WatchEvent::MovedTo { wd, name, .. } => {
-                self.process_create(&wd, name, events, &mut _entries)
+                self.process_create(&wd, name, &mut _entries)
             }
-            WatchEvent::Modify { wd } => self.process_modify(&wd, events),
+            WatchEvent::Modify { wd } => self.process_modify(&wd),
             WatchEvent::Delete { wd, name } | WatchEvent::MovedFrom { wd, name, .. } => {
-                self.process_delete(&wd, name, events, &mut _entries)
+                self.process_delete(&wd, name, &mut _entries)
             }
             WatchEvent::Move {
                 from_wd,
@@ -296,35 +310,20 @@ impl FileSystem {
                     .unwrap_or(false);
 
                 if is_to_path_ok && is_from_path_ok {
-                    self.process_move(&from_wd, from_name, &to_wd, to_name, events, &mut _entries)
+                    self.process_move(&from_wd, from_name, &to_wd, to_name, &mut _entries)
                 } else if is_to_path_ok {
-                    self.process_create(&to_wd, to_name, events, &mut _entries)
+                    self.process_create(&to_wd, to_name, &mut _entries)
                 } else if is_from_path_ok {
-                    self.process_delete(&from_wd, from_name, events, &mut _entries)
+                    self.process_delete(&from_wd, from_name, &mut _entries)
                 } else {
                     // Most likely parent was removed, dropping all child watch descriptors
                     // and we've got the child watch event already queued up
                     debug!("Move event received from targets that are not watched anymore");
-                    Ok(())
+                    Ok(Vec::new())
                 }
             }
             // Files are being updated too often for inotify to catch up
             WatchEvent::Overflow => Err(Error::WatchOverflow),
-        };
-
-        if let Err(e) = result {
-            match e {
-                Error::WatchOverflow => {
-                    error!("{}", e);
-                    panic!("overflowed kernel queue");
-                }
-                Error::PathNotValid(path) => {
-                    debug!("Path is not longer valid: {:?}", path);
-                }
-                _ => {
-                    warn!("Processing inotify event resulted in error: {}", e);
-                }
-            }
         }
     }
 
@@ -332,9 +331,8 @@ impl FileSystem {
         &mut self,
         watch_descriptor: &WatchDescriptor,
         name: OsString,
-        events: &mut Vec<Event>,
         _entries: &mut EntryMap,
-    ) -> FsResult<()> {
+    ) -> FsResult<Vec<Event>> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
         let entry_key = self.get_first_entry(watch_descriptor)?;
@@ -342,11 +340,12 @@ impl FileSystem {
         let mut path = self.resolve_direct_path(entry, _entries);
         path.push(name);
 
-        if let Some(new_entry) = self.insert(&path, events, _entries)? {
+        let mut events = Vec::new();
+        if let Some(new_entry) = self.insert(&path, &mut events, _entries)? {
             let mut errors = vec![];
             if matches!(_entries.get(new_entry), Some(_)) {
                 for new_path in recursive_scan(&path) {
-                    if let Err(e) = self.insert(&new_path, events, _entries) {
+                    if let Err(e) = self.insert(&new_path, &mut events, _entries) {
                         errors.push(e);
                     }
                 }
@@ -357,24 +356,22 @@ impl FileSystem {
             }
         }
 
-        Ok(())
+        Ok(events)
     }
 
-    fn process_modify(
-        &mut self,
-        watch_descriptor: &WatchDescriptor,
-        events: &mut Vec<Event>,
-    ) -> FsResult<()> {
+    fn process_modify(&mut self, watch_descriptor: &WatchDescriptor) -> FsResult<Vec<Event>> {
         let mut entry_ptrs_opt = None;
         if let Some(entries) = self.watch_descriptors.get_mut(watch_descriptor) {
             entry_ptrs_opt = Some(entries.clone())
         }
 
         if let Some(mut entry_ptrs) = entry_ptrs_opt {
+            let mut events = Vec::new();
             for entry_ptr in entry_ptrs.iter_mut() {
                 events.push(Event::Write(*entry_ptr));
             }
-            Ok(())
+
+            Ok(events)
         } else {
             Err(Error::WatchEvent(watch_descriptor.to_owned()))
         }
@@ -384,20 +381,21 @@ impl FileSystem {
         &mut self,
         watch_descriptor: &WatchDescriptor,
         name: OsString,
-        events: &mut Vec<Event>,
         _entries: &mut EntryMap,
-    ) -> FsResult<()> {
+    ) -> FsResult<Vec<Event>> {
         // directories can't be a hard link so we're guaranteed the watch descriptor maps to one
         // entry
         let entry_key = self.get_first_entry(watch_descriptor)?;
         let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
         let mut path = self.resolve_direct_path(entry, _entries);
         path.push(name);
+
+        let mut events = Vec::new();
         if !self.initial_dirs.iter().any(|dir| dir.as_ref() == path) {
-            self.remove(&path, events, _entries)
-        } else {
-            Ok(())
+            self.remove(&path, &mut events, _entries)?;
         }
+
+        Ok(events)
     }
 
     fn process_move(
@@ -406,9 +404,8 @@ impl FileSystem {
         from_name: OsString,
         to_watch_descriptor: &WatchDescriptor,
         to_name: OsString,
-        events: &mut Vec<Event>,
         _entries: &mut EntryMap,
-    ) -> FsResult<()> {
+    ) -> FsResult<Vec<Event>> {
         let from_entry_key = self.get_first_entry(from_watch_descriptor)?;
         let to_entry_key = self.get_first_entry(to_watch_descriptor)?;
 
@@ -421,8 +418,9 @@ impl FileSystem {
         to_path.push(to_name);
 
         // the entry is expected to exist
-        self.rename(&from_path, &to_path, events, _entries)
-            .map(|_| ())
+        let mut events = Vec::new();
+        self.rename(&from_path, &to_path, &mut events, _entries)
+            .map(move |_| events)
     }
 
     pub fn resolve_direct_path(&self, entry: &Entry, _entries: &EntryMap) -> PathBuf {
@@ -1189,6 +1187,38 @@ mod tests {
 
         assert!(result.is_ok())
     }
+
+    // #[test]
+    // fn try_things() {
+    //     use futures::executor;
+    //     use futures::future;
+    //     use futures::stream;
+    //     use futures::stream::StreamExt;
+
+    //     executor::block_on(async {
+    //         println!("before creating the stream");
+
+    //         let s = stream::iter(1..=10)
+    //             .map(|x| {
+    //                 println!("running the computation on x = {}", x);
+    //                 x * 2
+    //             })
+    //             .take_while(|x| future::ready(*x < 15))
+    //             .map(|x| format!("done with {}", x));
+
+    //         println!("stream created; starting consumption");
+
+    //         s.for_each(|x| {
+    //             println!("stream value is {}", x);
+    //             future::ready(())
+    //         })
+    //         .await;
+
+    //         println!("stream is now empty");
+    //     });
+
+    //     assert_eq!(1, 2);
+    // }
 
     // Simulates the `create_move` log rotation strategy
     #[test]
