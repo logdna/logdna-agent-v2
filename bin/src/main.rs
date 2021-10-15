@@ -180,7 +180,10 @@ async fn main() {
     let fs_source = fs_source
         .process(&mut fs_tailer_buf)
         .expect("except Failed to create FS Tailer")
-        .map(StrictOrLazyLineBuilder::Lazy);
+        .map(|r| match r {
+            Err(e) => panic!("{}", e),
+            Ok(lazy_lin_ser) => StrictOrLazyLineBuilder::Lazy(lazy_lin_ser),
+        });
 
     let k8s_event_stream = match config.log.log_k8s_events {
         K8sTrackingConf::Never => None,
