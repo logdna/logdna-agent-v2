@@ -67,35 +67,43 @@ pub enum Error {
     File(io::Error),
 }
 
-fn foo(
+type EventTimestamp = chrono::DateTime<chrono::Utc>;
+
+/// Turns an inotify event into an event stream
+fn as_event_stream(
     fs: Arc<Mutex<FileSystem>>,
-    event: WatchEvent,
-    event_time: chrono::DateTime<chrono::Utc>,
-) -> impl Stream<Item = (Result<Event, Error>, chrono::DateTime<chrono::Utc>)> {
-    let a = match fs
-        .try_lock()
-        .expect("couldn't lock filesystem cache")
-        .process(event)
-    {
-        Ok(events) => {
-            let events = events.into_iter();
-            let events = events.map(|e: Event| Ok(e));
-            let events = events.collect::<Vec<Result<Event, Error>>>();
-            events
+    event_result: Result<WatchEvent, std::io::Error>,
+    event_time: EventTimestamp,
+) -> impl Stream<Item = (Result<Event, Error>, EventTimestamp)> {
+    match event_result {
+        Err(error) => futures::stream::iter(vec![(Err(Error::File(error)), event_time)]).boxed(),
+        Ok(event) => {
+            let a = match fs
+                .try_lock()
+                .expect("couldn't lock filesystem cache")
+                .process(event)
+            {
+                Ok(events) => {
+                    let events = events.into_iter();
+                    let events = events.map(|e: Event| Ok(e));
+                    let events = events.collect::<Vec<Result<Event, Error>>>();
+                    events
+                }
+                Err(e) => vec![Err(e)],
+            };
+
+            let a = a
+                .into_iter()
+                .map(move |event_result| (event_result, event_time));
+
+            futures::stream::iter(a).boxed()
         }
-        Err(e) => vec![Err(e)],
-    };
-
-    let a = a
-        .into_iter()
-        .map(move |event_result| (event_result, event_time));
-
-    futures::stream::iter(a)
+    }
 }
 
-fn init_stuff(
+fn get_initial_events(
     fs: &Arc<Mutex<FileSystem>>,
-) -> impl Stream<Item = (Result<Event, Error>, chrono::DateTime<chrono::Utc>)> {
+) -> impl Stream<Item = (Result<Event, Error>, EventTimestamp)> {
     let init_time = chrono::offset::Utc::now();
     let initial_events = {
         let mut fs = fs.try_lock().expect("could not lock filesystem cache");
@@ -112,14 +120,9 @@ fn init_stuff(
     futures::stream::iter(initial_events)
 }
 
-fn resume_stuff(
+fn get_resume_events(
     fs: &Arc<Mutex<FileSystem>>,
-) -> impl Stream<
-    Item = (
-        Result<WatchEvent, std::io::Error>,
-        chrono::DateTime<chrono::Utc>,
-    ),
-> {
+) -> impl Stream<Item = (Result<WatchEvent, std::io::Error>, EventTimestamp)> {
     let _fs = fs.try_lock().expect("couldn't lock filesystem cache");
     _fs.resume_events_recv
         .clone()
@@ -150,8 +153,8 @@ pub struct FileSystem {
     initial_dir_rules: Rules,
 
     initial_events: Vec<Event>,
-    resume_events_recv: async_channel::Receiver<(u64, chrono::DateTime<chrono::Utc>)>,
-    resume_events_send: async_channel::Sender<(u64, chrono::DateTime<chrono::Utc>)>,
+    resume_events_recv: async_channel::Receiver<(u64, EventTimestamp)>,
+    resume_events_send: async_channel::Sender<(u64, EventTimestamp)>,
 }
 
 impl FileSystem {
@@ -253,10 +256,8 @@ impl FileSystem {
     pub fn stream_events(
         fs: Arc<Mutex<FileSystem>>,
         buf: &mut [u8],
-    ) -> Result<
-        impl Stream<Item = (Result<Event, Error>, chrono::DateTime<chrono::Utc>)> + '_,
-        std::io::Error,
-    > {
+    ) -> Result<impl Stream<Item = (Result<Event, Error>, EventTimestamp)> + '_, std::io::Error>
+    {
         let events_stream = match fs
             .try_lock()
             .expect("could not lock filesystem cache")
@@ -270,19 +271,14 @@ impl FileSystem {
             }
         };
 
-        let initial_events = init_stuff(&fs);
-        let resume_events_recv = resume_stuff(&fs);
+        let initial_events = get_initial_events(&fs);
+        let resume_events_recv = get_resume_events(&fs);
         let events = futures::stream::select(resume_events_recv, events_stream.into_stream())
             .map(|event_result| async { event_result })
             .buffered(EVENT_STREAM_BUFFER_COUNT)
             .map(move |(event, event_time)| {
                 let fs = fs.clone();
-                {
-                    match event {
-                        Ok(event) => foo(fs, event, event_time),
-                        _ => panic!("Inotify error"),
-                    }
-                }
+                as_event_stream(fs, event, event_time)
             })
             .flatten();
 
@@ -1200,38 +1196,6 @@ mod tests {
 
         assert!(result.is_ok())
     }
-
-    // #[test]
-    // fn try_things() {
-    //     use futures::executor;
-    //     use futures::future;
-    //     use futures::stream;
-    //     use futures::stream::StreamExt;
-
-    //     executor::block_on(async {
-    //         println!("before creating the stream");
-
-    //         let s = stream::iter(1..=10)
-    //             .map(|x| {
-    //                 println!("running the computation on x = {}", x);
-    //                 x * 2
-    //             })
-    //             .take_while(|x| future::ready(*x < 15))
-    //             .map(|x| format!("done with {}", x));
-
-    //         println!("stream created; starting consumption");
-
-    //         s.for_each(|x| {
-    //             println!("stream value is {}", x);
-    //             future::ready(())
-    //         })
-    //         .await;
-
-    //         println!("stream is now empty");
-    //     });
-
-    //     assert_eq!(1, 2);
-    // }
 
     // Simulates the `create_move` log rotation strategy
     #[test]
