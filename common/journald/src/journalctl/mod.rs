@@ -8,7 +8,7 @@ use combine::{
     error::{ParseError, StreamError},
     many1, none_of, one_of,
     parser::{
-        byte::{letter, num::le_u64},
+        byte::{alpha_num, num::le_u64},
         choice::choice,
         combinator::{any_partial_state, AnyPartialState},
         range::{recognize, take},
@@ -89,7 +89,7 @@ where
             many1::<std::collections::HashMap<_, _>, _, _>(
                 (
                     // Get the key
-                    recognize(skip_many1(choice((letter(), token(b'_'))))).and_then(
+                    recognize(skip_many1(choice((alpha_num(), token(b'_'))))).and_then(
                         |bytes: &[u8]| {
                             std::str::from_utf8(bytes)
                                 .map(|s| s.to_string())
@@ -127,6 +127,25 @@ where
             token(b'\n'),
         )
             .map(|(kvs, _)| kvs),
+    )
+}
+
+// The actual parser for the journald export format
+fn find_next_record<'a, Input>(
+) -> impl Parser<Input, Output = (), PartialState = AnyPartialState> + 'a
+where
+    Input: RangeStream<Token = u8, Range = &'a [u8]> + 'a,
+    // Necessary due to rust-lang/rust#24159
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+{
+    any_partial_state(
+        (
+            skip_many(none_of(b"\n".iter().copied())),
+            // entries are line separated
+            token(b'\n'),
+            token(b'\n'),
+        )
+            .map(|_| ()),
     )
 }
 
@@ -170,23 +189,62 @@ impl Decoder for JournaldExportDecoder {
     type Error = Box<dyn std::error::Error + Send + Sync>;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        let (opt, removed_len) = combine::stream::decode(
+        let decode_result = combine::stream::decode(
             decode_parser(),
             // PartialStream lets the parser know that more input should be
             // expected if end of input is unexpectedly reached
             &mut easy::Stream(PartialStream(&src[..])),
             &mut self.state,
-        )
-        .map_err(|err| {
-            let err = err
-                .map_range(|r| {
-                    std::str::from_utf8(r)
-                        .ok()
-                        .map_or_else(|| format!("{:?}", r), |s| s.to_string())
-                })
-                .map_position(|p| p.translate_position(&src[..]));
-            format!("{}\nIn input: `{}`", err, String::from_utf8_lossy(src))
-        })?;
+        );
+
+        let (opt, removed_len) = match decode_result {
+            Ok((opt, removed_len)) => (opt, removed_len),
+            Err(e) => {
+                let mut range_len = 0;
+                let err = e
+                    .map_range(|r| {
+                        range_len = r.len();
+                        std::str::from_utf8(r)
+                            .ok()
+                            .map_or_else(|| format!("{:?}", r), |s| s.to_string())
+                    })
+                    .map_position(|p| p.translate_position(&src[..]));
+
+                warn!(
+                    "{}\nError parsing record: `{}`",
+                    err,
+                    String::from_utf8_lossy(src)
+                );
+
+                // step over error range
+                src.advance(range_len);
+
+                // Search for the start of the next record
+                let mut search_state = AnyPartialState::default();
+                let search_result = combine::stream::decode(
+                    find_next_record(),
+                    &mut easy::Stream(PartialStream(&src[..])),
+                    &mut search_state,
+                );
+
+                let (_, removed_len) = search_result.map_err(|err| {
+                    let err = err
+                        .map_range(|r| {
+                            std::str::from_utf8(r)
+                                .ok()
+                                .map_or_else(|| format!("{:?}", r), |s| s.to_string())
+                        })
+                        .map_position(|p| p.translate_position(&src[..]));
+                    format!(
+                        "{}\nError scanning for next record in input: `{}`",
+                        err,
+                        String::from_utf8_lossy(src)
+                    )
+                })?;
+
+                (None, removed_len)
+            }
+        };
 
         // Advance by the accepted parse length
         src.advance(removed_len);
@@ -274,6 +332,8 @@ _SYSTEMD_INVOCATION_ID=8dae8ecb15d44ed097aa35fca91e3f4b
 _MACHINE_ID=7827e5b17eaab5cd32a0b75d063c7569
 _HOSTNAME=07770dbe2bbb
 
+++Dodgy=record
+
 __CURSOR=s=bcce4fb8ffcb40e9a6e05eee8b7831bf;i=5ef603;b=ec25d6795f0645619ddac9afdef453ee;m=545242e7049;t=50f1202
 __REALTIME_TIMESTAMP=1423944916375353
 __MONOTONIC_TIMESTAMP=5794517905481
@@ -293,6 +353,7 @@ CODE_FUNC=<module>
 SYSLOG_IDENTIFIER=python3
 _COMM=python3
 _EXE=/usr/bin/python3.4
+GET_MD5=False
 _AUDIT_SESSION=35898
 _SYSTEMD_CGROUP=/user.slice/user-1001.slice/session-35898.scope
 _SYSTEMD_SESSION=35898
