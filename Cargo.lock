@@ -324,9 +324,9 @@ dependencies = [
 
 [[package]]
 name = "chrono-humanize"
-version = "0.2.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2eddc119501d583fd930cb92144e605f44e0252c38dd89d9247fffa1993375cb"
+checksum = "8164ae3089baf04ff71f32aeb70213283dcd236dce8bc976d00b17a458f5f71c"
 dependencies = [
  "chrono",
 ]
@@ -1425,7 +1425,7 @@ dependencies = [
 
 [[package]]
 name = "logdna-agent"
-version = "3.3.1"
+version = "3.3.2"
 dependencies = [
  "anyhow",
  "assert_cmd",
