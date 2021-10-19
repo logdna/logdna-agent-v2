@@ -373,8 +373,7 @@ impl Tailer {
                                 )
                                 .await;
 
-                                let line =
-                                    line.map(|option_val| option_val.map(|lls| Ok(lls)).boxed());
+                                let line = line.map(|option_val| option_val.map(Ok).boxed());
 
                                 if let Some((key, _)) = key_and_previous_event_time {
                                     let mut event_times = event_times.lock().await;

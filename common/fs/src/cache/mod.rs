@@ -83,12 +83,10 @@ fn as_event_stream(
                 .expect("couldn't lock filesystem cache")
                 .process(event)
             {
-                Ok(events) => {
-                    let events = events.into_iter();
-                    let events = events.map(|e: Event| Ok(e));
-                    let events = events.collect::<Vec<Result<Event, Error>>>();
-                    events
-                }
+                Ok(events) => events
+                    .into_iter()
+                    .map(Ok)
+                    .collect::<Vec<Result<Event, Error>>>(),
                 Err(e) => vec![Err(e)],
             };
 
