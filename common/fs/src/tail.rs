@@ -2,7 +2,7 @@ use crate::cache::entry::Entry;
 use crate::cache::event::Event;
 use crate::cache::tailed_file::LazyLineSerializer;
 pub use crate::cache::DirPathBuf;
-use crate::cache::{EntryKey, FileSystem, EVENT_STREAM_BUFFER_COUNT};
+use crate::cache::{EntryKey, Error as CacheError, FileSystem, EVENT_STREAM_BUFFER_COUNT};
 use crate::rule::Rules;
 use metrics::Metrics;
 use state::FileId;
@@ -309,7 +309,8 @@ impl Tailer {
     pub fn process<'a>(
         &mut self,
         buf: &'a mut [u8],
-    ) -> Result<impl Stream<Item = LazyLineSerializer> + 'a, std::io::Error> {
+    ) -> Result<impl Stream<Item = Result<LazyLineSerializer, CacheError>> + 'a, std::io::Error>
+    {
         let events = {
             match FileSystem::stream_events(self.fs_cache.clone(), buf) {
                 Ok(events) => events,
@@ -329,51 +330,59 @@ impl Tailer {
                 let lookback_config = self.lookback_config.clone();
                 let initial_offsets = self.initial_offsets.clone();
                 let event_times = self.event_times.clone();
-                move |(event_idx, (event, event_time))| {
+
+                move |(event_idx, (event_result, event_time))| {
                     let fs = fs.clone();
                     let lookback_config = lookback_config.clone();
                     let initial_offsets = initial_offsets.clone();
                     let event_times = event_times.clone();
 
                     async move {
-                        // debounce events
-                        // check event_time, if it's before the previous one
-                        let key_and_previous_event_time = match event {
-                            Event::Write(key) => {
-                                let event_times = event_times.lock().await;
-                                Some((key, event_times.get(&key).cloned()))
-                            }
-                            _ => None,
-                        };
+                        match event_result {
+                            Err(err) => Some(futures::stream::iter(vec![Err(err)]).left_stream()),
+                            Ok(event) => {
+                                // debounce events
+                                // check event_time, if it's before the previous one
+                                let key_and_previous_event_time = match event {
+                                    Event::Write(key) => {
+                                        let event_times = event_times.lock().await;
+                                        Some((key, event_times.get(&key).cloned()))
+                                    }
+                                    _ => None,
+                                };
 
-                        // Need to check if the event is within buffer_length
-                        if let Some((_, Some((prev_event_idx, previous_event_time)))) =
-                            key_and_previous_event_time
-                        {
-                            // We've already processed this event, skip tailing
-                            if previous_event_time >= event_time
-                                && event_idx < (prev_event_idx + EVENT_STREAM_BUFFER_COUNT)
-                            {
-                                debug!("skipping already processed events");
-                                Metrics::fs().increment_writes();
-                                return None;
+                                // Need to check if the event is within buffer_length
+                                if let Some((_, Some((prev_event_idx, previous_event_time)))) =
+                                    key_and_previous_event_time
+                                {
+                                    // We've already processed this event, skip tailing
+                                    if previous_event_time >= event_time
+                                        && event_idx < (prev_event_idx + EVENT_STREAM_BUFFER_COUNT)
+                                    {
+                                        debug!("skipping already processed events");
+                                        Metrics::fs().increment_writes();
+                                        return None;
+                                    }
+                                }
+
+                                let line = Tailer::handle_event(
+                                    event,
+                                    initial_offsets,
+                                    lookback_config,
+                                    fs.lock().await.deref(),
+                                )
+                                .await;
+
+                                let line = line.map(|option_val| option_val.map(Ok).right_stream());
+
+                                if let Some((key, _)) = key_and_previous_event_time {
+                                    let mut event_times = event_times.lock().await;
+                                    let new_event_time = chrono::offset::Utc::now();
+                                    event_times.insert(key, (event_idx, new_event_time));
+                                }
+                                line
                             }
                         }
-
-                        let line = Tailer::handle_event(
-                            event,
-                            initial_offsets,
-                            lookback_config,
-                            fs.lock().await.deref(),
-                        )
-                        .await;
-
-                        if let Some((key, _)) = key_and_previous_event_time {
-                            let mut event_times = event_times.lock().await;
-                            let new_event_time = chrono::offset::Utc::now();
-                            event_times.insert(key, (event_idx, new_event_time));
-                        }
-                        line
                     }
                 }
             })

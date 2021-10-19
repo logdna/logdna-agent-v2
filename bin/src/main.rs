@@ -180,7 +180,26 @@ async fn main() {
     let fs_source = fs_source
         .process(&mut fs_tailer_buf)
         .expect("except Failed to create FS Tailer")
-        .map(StrictOrLazyLineBuilder::Lazy);
+        .filter_map(|r| async {
+            match r {
+                Err(e) => {
+                    match e {
+                        fs::cache::Error::WatchOverflow => {
+                            error!("{}", e);
+                            panic!("overflowed kernel queue");
+                        }
+                        fs::cache::Error::PathNotValid(path) => {
+                            debug!("Path is not longer valid: {:?}", path);
+                        }
+                        _ => {
+                            warn!("Processing inotify event resulted in error: {}", e);
+                        }
+                    };
+                    None
+                }
+                Ok(lazy_lin_ser) => Some(StrictOrLazyLineBuilder::Lazy(lazy_lin_ser)),
+            }
+        });
 
     let k8s_event_stream = match config.log.log_k8s_events {
         K8sTrackingConf::Never => None,
