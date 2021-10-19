@@ -76,7 +76,9 @@ fn as_event_stream(
     event_time: EventTimestamp,
 ) -> impl Stream<Item = (Result<Event, Error>, EventTimestamp)> {
     match event_result {
-        Err(error) => futures::stream::iter(vec![(Err(Error::File(error)), event_time)]).boxed(),
+        Err(error) => {
+            futures::stream::iter(vec![(Err(Error::File(error)), event_time)]).left_stream()
+        }
         Ok(event) => {
             let a = match fs
                 .try_lock()
@@ -94,7 +96,7 @@ fn as_event_stream(
                 .into_iter()
                 .map(move |event_result| (event_result, event_time));
 
-            futures::stream::iter(a).boxed()
+            futures::stream::iter(a).right_stream()
         }
     }
 }

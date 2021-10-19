@@ -339,7 +339,7 @@ impl Tailer {
 
                     async move {
                         match event_result {
-                            Err(err) => Some(futures::stream::iter(vec![Err(err)]).boxed()),
+                            Err(err) => Some(futures::stream::iter(vec![Err(err)]).left_stream()),
                             Ok(event) => {
                                 // debounce events
                                 // check event_time, if it's before the previous one
@@ -373,7 +373,7 @@ impl Tailer {
                                 )
                                 .await;
 
-                                let line = line.map(|option_val| option_val.map(Ok).boxed());
+                                let line = line.map(|option_val| option_val.map(Ok).right_stream());
 
                                 if let Some((key, _)) = key_and_previous_event_time {
                                     let mut event_times = event_times.lock().await;
