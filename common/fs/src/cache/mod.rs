@@ -20,6 +20,7 @@ use std::{fmt, io};
 use futures::{Stream, StreamExt};
 use inotify::WatchDescriptor;
 use slotmap::{DefaultKey, SlotMap};
+use smallvec::SmallVec;
 use thiserror::Error;
 use tokio::sync::Mutex;
 
@@ -88,8 +89,12 @@ fn as_event_stream(
                 Ok(events) => events
                     .into_iter()
                     .map(Ok)
-                    .collect::<Vec<Result<Event, Error>>>(),
-                Err(e) => vec![Err(e)],
+                    .collect::<SmallVec<[Result<Event, Error>; 2]>>(),
+                Err(e) => {
+                    let mut result: SmallVec<[Result<Event, Error>; 2]> = SmallVec::new();
+                    result.push(Err(e));
+                    result
+                }
             };
 
             let a = a
