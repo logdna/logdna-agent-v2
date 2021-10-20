@@ -80,8 +80,11 @@ async fn main() {
                 offset_state = Some(_offset_state);
                 match offsets {
                     Ok(os) => {
-                        initial_offsets =
-                            Some(os.into_iter().map(|fo| (fo.key, fo.offset)).collect());
+                        initial_offsets = Some(
+                            os.into_iter()
+                                .map(|fo| (fo.key, fo.offsets.last().unwrap().end))
+                                .collect(),
+                        );
                     }
                     Err(e) => warn!("couldn't retrieve offsets from agent state, {:?}", e),
                 }
@@ -356,16 +359,10 @@ async fn main() {
 
     let lines_driver = body_offsets_stream.for_each(|body_offsets| async {
         match body_offsets {
-            Ok((body, offsets)) => {
-                match client
-                    .borrow()
-                    .send(body, Some(offsets.items_as_ref()))
-                    .await
-                {
-                    Ok(s) => handle_send_status(s),
-                    Err(e) => handle_client_error(e),
-                }
-            }
+            Ok((body, offsets)) => match client.borrow().send(body, Some(offsets)).await {
+                Ok(s) => handle_send_status(s),
+                Err(e) => handle_client_error(e),
+            },
             Err(e) => error!("Couldn't batch lines {:?}", e),
         }
     });
@@ -378,11 +375,7 @@ async fn main() {
                     offsets,
                     path,
                 } = item;
-                match client
-                    .borrow()
-                    .send(body_buffer, offsets.as_ref().map(|o| o.as_ref()))
-                    .await
-                {
+                match client.borrow().send(body_buffer, offsets).await {
                     Ok(s) => match s {
                         SendStatus::Sent => {
                             debug!("cleaned up retry file");

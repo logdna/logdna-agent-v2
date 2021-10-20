@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::convert::TryInto;
 
 use async_trait::async_trait;
 
@@ -15,8 +16,7 @@ use proptest::string::string_regex;
 
 use proptest::collection::vec;
 
-use http::offsets::Offset;
-use state::GetOffset;
+use state::{FileId, GetOffset, Offset};
 
 pub fn random_line_string_vec(
     min_size: usize,
@@ -43,10 +43,10 @@ impl OffsetLine {
 
 impl GetOffset for &OffsetLine {
     fn get_key(&self) -> Option<u64> {
-        self.offset.map(|o| o.1)
+        self.offset.map(|o| o.0.ffi())
     }
-    fn get_offset(&self) -> Option<u64> {
-        self.offset.map(|o| o.0)
+    fn get_offset(&self) -> Option<(u64, u64)> {
+        self.offset.map(|o| (o.1.start, o.1.end))
     }
 }
 
@@ -182,10 +182,10 @@ fn json_st(depth: u32) -> impl Strategy<Value = serde_json::Value> {
 }
 
 pub fn offset_st(size: usize) -> impl Strategy<Value = Option<Offset>> {
-    proptest::option::of((0..size).prop_flat_map(|o| {
+    proptest::option::of((1..size).prop_flat_map(|o| {
         (
-            proptest::num::u8::ANY.prop_map(|k| k as u64),
-            Just(o as u64),
+            proptest::num::u8::ANY.prop_map(|k| FileId::from(k as u64)),
+            (0..o).prop_map(move |start| (start as u64, o as u64).try_into().unwrap()),
         )
     }))
 }

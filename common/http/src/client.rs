@@ -2,7 +2,6 @@ use std::convert::TryInto;
 use std::time::{Duration, Instant};
 
 use crate::limit::RateLimiter;
-use crate::offsets::Offset;
 use crate::retry::{self, RetrySender};
 use crate::types::body::IngestBodyBuffer;
 use crate::types::client::Client as HttpClient;
@@ -11,7 +10,7 @@ use crate::types::request::RequestTemplate;
 use crate::types::response::Response;
 
 use metrics::Metrics;
-use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
+use state::{FileOffsetFlushHandle, FileOffsetWriteHandle, OffsetMap};
 
 /// Http(s) client used to send logs to the Ingest API
 pub struct Client {
@@ -66,21 +65,24 @@ impl Client {
     pub async fn send<T>(
         &self,
         body: IngestBodyBuffer,
-        file_offsets: Option<&[Offset]>,
+        file_offsets: Option<OffsetMap>,
     ) -> Result<SendStatus, ClientError<T>>
     where
         T: Send + 'static,
         ClientError<T>: From<HttpError<IngestBodyBuffer>>,
     {
         Metrics::http().add_request_size(body.len().try_into().unwrap());
-        if let (Some(wh), Some(offsets)) = (self.state_write.as_ref(), file_offsets) {
-            for (key, offset) in offsets {
-                trace!("Updating offset for {:?} to {}", key, offset);
-                if let Err(e) = wh.update(&[(*key, *offset)]).await {
-                    error!("Unable to write offsets. error: {}", e);
-                }
-            }
-        }
+        let update_key =
+            if let (Some(wh), Some(offsets)) = (self.state_write.as_ref(), file_offsets.as_ref()) {
+                wh.update(offsets.clone())
+                    .await
+                    .map_err(|e| {
+                        error!("Unable to write offsets. error: {}", e);
+                    })
+                    .ok()
+            } else {
+                None
+            };
         let sf = self.state_flush.as_ref();
         let start = Instant::now();
         match self
@@ -112,7 +114,7 @@ impl Client {
                 Metrics::http().add_request_success(start);
                 if let Some(sf) = sf {
                     // Flush the state
-                    sf.flush().await?
+                    sf.flush(update_key).await?
                 }
                 Ok(SendStatus::Sent)
             } //success
