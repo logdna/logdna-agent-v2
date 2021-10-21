@@ -95,6 +95,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-lock"
+version = "2.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e6a8ea61bf9947a1007c5cada31e647dbc77b103c679858150003ba697ea798b"
+dependencies = [
+ "event-listener",
+]
+
+[[package]]
 name = "async-stream"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2596,12 +2605,14 @@ name = "state"
 version = "0.1.0"
 dependencies = [
  "async-channel",
+ "async-lock",
  "bytes",
  "derivative",
  "env_logger",
  "futures",
  "log",
  "rocksdb",
+ "slotmap",
  "tempfile",
  "thiserror",
  "tokio",

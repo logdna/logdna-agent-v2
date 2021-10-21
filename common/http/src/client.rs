@@ -76,7 +76,7 @@ impl Client {
         if let (Some(wh), Some(offsets)) = (self.state_write.as_ref(), file_offsets) {
             for (key, offset) in offsets {
                 trace!("Updating offset for {:?} to {}", key, offset);
-                if let Err(e) = wh.update(key, *offset).await {
+                if let Err(e) = wh.update(&[(*key, *offset)]).await {
                     error!("Unable to write offsets. error: {}", e);
                 }
             }

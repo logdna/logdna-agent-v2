@@ -21,7 +21,7 @@ use serde_json::Value;
 
 use bytes::Bytes;
 use std::collections::HashMap;
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::fs::OpenOptions;
 use std::ops::DerefMut;
 use std::os::unix::fs::MetadataExt;
@@ -646,7 +646,7 @@ impl TailedFile<LazyLineSerializer> {
                                     let ret = (0..paths.len()).map({
                                         let paths = paths.clone();
                                         let rc_reader = rc_reader.clone();
-                                        let current_offset = (*inode, *offset);
+                                        let current_offset = (*inode, initial_offset, *offset);
                                         move |path_idx| {
                                             LazyLineSerializer::new(
                                                 rc_reader.clone(),
