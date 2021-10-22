@@ -10,14 +10,12 @@ use state::GetOffset;
 use chrono::Utc;
 use metrics::Metrics;
 
-use futures::io::AsyncBufRead;
+use futures::io::AsyncBufReadExt;
 use futures::lock::Mutex;
-use futures::task::{Context, Poll};
-use futures::{ready, Stream, StreamExt};
+use futures::{stream, Stream, StreamExt};
 
 use async_channel::Sender;
 use async_trait::async_trait;
-use pin_project_lite::pin_project;
 
 use serde_json::Value;
 
@@ -25,9 +23,6 @@ use bytes::Bytes;
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::fs::OpenOptions;
-use std::io;
-use std::mem;
-use std::num::NonZeroUsize;
 use std::ops::DerefMut;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -35,162 +30,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 use tokio::io::{AsyncSeekExt, BufReader, SeekFrom};
 use tokio_util::compat::{Compat, TokioAsyncReadCompatExt};
-
-fn read_until_internal<R: AsyncBufRead + ?Sized>(
-    mut reader: Pin<&mut R>,
-    cx: &mut Context<'_>,
-    byte: u8,
-    buf: &mut Vec<u8>,
-    read: &mut usize,
-) -> Poll<io::Result<Option<NonZeroUsize>>> {
-    loop {
-        let (done, used) = {
-            let available = ready!(reader.as_mut().poll_fill_buf(cx))?;
-            if let Some(i) = memchr::memchr(byte, available) {
-                buf.extend_from_slice(&available[..=i]);
-                (true, i + 1)
-            } else {
-                buf.extend_from_slice(available);
-                (false, available.len())
-            }
-        };
-        reader.as_mut().consume(used);
-        *read += used;
-        if done {
-            debug_assert!(*read > 0);
-            return Poll::Ready(Ok(Some(
-                NonZeroUsize::new(mem::replace(read, 0))
-                    .expect("No such thing as a line 0 bytes long"),
-            )));
-        }
-        if used == 0 {
-            // We've hit the end of the file and not finished a line
-            Metrics::fs().increment_partial_reads();
-            return Poll::Ready(Ok(None));
-        }
-    }
-}
-
-fn read_line_lossy<R: AsyncBufRead + ?Sized>(
-    reader: Pin<&mut R>,
-    cx: &mut Context<'_>,
-    bytes: &mut Vec<u8>,
-    read: &mut usize,
-) -> Poll<io::Result<Option<(String, NonZeroUsize)>>> {
-    match ready!(read_until_internal(reader, cx, b'\n', bytes, read))? {
-        Some(count) => {
-            let ret = String::from_utf8_lossy(bytes).to_string();
-            bytes.clear();
-            Poll::Ready(Ok(Some((ret, count))))
-        }
-        None => Poll::Ready(Ok(None)),
-    }
-}
-
-pin_project! {
-    #[derive(Debug)]
-    #[must_use = "streams do nothing unless polled"]
-    pub struct LineBuilderLines {
-        #[pin]
-        reader: Arc<Mutex<TailedFileInner>>,
-        read: usize,
-    }
-}
-
-impl LineBuilderLines {
-    pub fn new(reader: Arc<Mutex<TailedFileInner>>) -> Self {
-        Self { reader, read: 0 }
-    }
-}
-
-impl Stream for LineBuilderLines {
-    type Item = io::Result<String>;
-
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        let this = self.project();
-        let mut borrow = this.reader.try_lock().unwrap();
-        let TailedFileInner {
-            ref mut reader,
-            ref mut buf,
-            ref mut offset,
-            ..
-        } = borrow.deref_mut();
-
-        let pinned_reader = Pin::new(reader);
-        let (mut s, n) = match ready!(read_line_lossy(pinned_reader, cx, buf, this.read)) {
-            Ok(Some((s, n))) => (s, n),
-            Err(e) => return Poll::Ready(Some(Err(e))),
-            Ok(None) => return Poll::Ready(None),
-        };
-        let n: u64 = n.get().try_into().unwrap();
-        if s.ends_with('\n') {
-            s.pop();
-            if s.ends_with('\r') {
-                s.pop();
-            }
-        }
-
-        *offset += n;
-
-        Metrics::fs().add_bytes(n);
-        Poll::Ready(Some(Ok(s)))
-    }
-}
-
-pub struct LazyLines {
-    reader: Arc<Mutex<TailedFileInner>>,
-    current_offset: Option<(u64, u64)>,
-    read: usize,
-    path: usize,
-    total_read: usize,
-    target_read: Option<usize>,
-    paths: Vec<String>,
-    resume_channel_send: Option<async_channel::Sender<(u64, chrono::DateTime<chrono::Utc>)>>,
-}
-
-impl LazyLines {
-    pub async fn new(
-        reader: Arc<Mutex<TailedFileInner>>,
-        paths: Vec<String>,
-        resume_channel_send: Option<Sender<(u64, chrono::DateTime<chrono::Utc>)>>,
-    ) -> Self {
-        let (initial_end, initial_offset): (Option<u64>, Option<u64>) = {
-            let inner = &mut reader.lock().await.reader;
-
-            let inner = inner.get_mut().get_mut();
-            let initial_end = match inner.metadata().await.map(|m| m.len()) {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    error!("unable to stat {:?}: {:?}", &paths[0], e);
-                    None
-                }
-            };
-            let initial_offset = match inner.seek(SeekFrom::Current(0)).await {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    error!("unable to get current file offset {:?}: {:?}", &paths[0], e);
-                    None
-                }
-            };
-
-            (initial_end, initial_offset)
-        };
-        let target_read: Option<usize> = match (initial_end, initial_offset) {
-            (Some(e), Some(o)) => (e - o).try_into().ok(),
-            _ => None,
-        };
-        Self {
-            reader,
-            current_offset: None,
-            read: 0,
-            path: 0,
-            total_read: 0,
-            target_read,
-            paths,
-            resume_channel_send,
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct LazyLineSerializer {
@@ -461,99 +300,11 @@ impl GetOffset for LazyLineSerializer {
     }
 }
 
-impl Stream for LazyLines {
-    type Item = LazyLineSerializer;
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        // TODO: Work out how to signal file done, None line and Some(0) read?
-
-        let LazyLines {
-            reader,
-            ref mut read,
-            ref mut current_offset,
-            ref mut path,
-            ref mut total_read,
-            ref target_read,
-            paths,
-            ref resume_channel_send,
-            ..
-        } = self.get_mut();
-        let rc_reader = reader;
-        loop {
-            if current_offset.is_some() && *path < paths.len() {
-                let ret = LazyLineSerializer::new(
-                    rc_reader.clone(),
-                    paths[*path].clone(),
-                    (*current_offset).unwrap(),
-                );
-                *path += 1;
-                Metrics::fs().increment_lines();
-                break Poll::Ready(Some(ret));
-            }
-
-            // Get the next line
-            let mut borrow = rc_reader.try_lock().unwrap();
-            let TailedFileInner {
-                ref mut reader,
-                ref mut buf,
-                ref mut offset,
-                ref inode,
-                ..
-            } = borrow.deref_mut();
-
-            if *path >= paths.len() {
-                debug_assert_eq!(*read, 0);
-                *current_offset = None;
-                *path = 0;
-                buf.clear();
-            }
-
-            // If we've read more than a 16 KB from this one event and reached the end
-            // of the file as it was when we started break to prevent starvation
-            if *total_read > (1024 * 16) {
-                if let Some(target_read) = target_read {
-                    if *total_read > *target_read {
-                        debug!("read 16KB from a single event, returning");
-
-                        // put event on watch stream to ensure processing completes
-                        if let Some(sender) = resume_channel_send {
-                            if let Err(e) = sender.try_send((*inode, chrono::offset::Utc::now())) {
-                                warn!("Couldn't send tailer continuation event: {}", e);
-                            };
-                        }
-                        break Poll::Ready(None);
-                    }
-                }
-            }
-
-            let pinned_reader = Pin::new(reader);
-            let result = ready!(read_until_internal(pinned_reader, cx, b'\n', buf, read));
-            match result {
-                Ok(Some(count)) => {
-                    *total_read += count.get();
-                    // Got a line
-                    debug_assert_eq!(*read, 0);
-                    debug!("tailer sendings lines for {:?}", &paths);
-                    let count = TryInto::<u64>::try_into(count.get()).unwrap();
-                    Metrics::fs().add_bytes(count);
-                    *offset += count;
-                    *current_offset = Some((*inode, *offset))
-                }
-                // We got an error, should we propagate this up somehow? calls to TailedFile::tail
-                // will implicitly retry
-                Err(e) => warn!("{}", e),
-                // Reached the end of the file, but havn't hit a newline yet
-                Ok(None) => break Poll::Ready(None),
-            }
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct TailedFileInner {
     reader: Compat<tokio::io::BufReader<tokio::fs::File>>,
     buf: Vec<u8>,
     offset: u64,
-    file_path: PathBuf,
     inode: u64,
 }
 
@@ -577,7 +328,6 @@ impl<T> TailedFile<T> {
                 .compat(),
                 buf: Vec::new(),
                 offset: 0,
-                file_path: path.into(),
                 inode: path.metadata()?.ino(),
             })),
             resume_events_sender,
@@ -653,31 +403,119 @@ impl TailedFile<LineBuilder> {
         }
 
         Some(
-            LineBuilderLines::new(self.inner.clone())
-                .filter_map({
-                    let paths = paths.clone();
-                    move |line_res| {
-                        let paths = paths.clone();
-                        async move {
-                            let paths = paths.clone();
-                            line_res.ok().map({
-                                move |line| {
-                                    debug!("tailer sendings lines for {:?}", paths);
-                                    futures::stream::iter(paths.into_iter().map({
-                                        move |path| {
-                                            Metrics::fs().increment_lines();
-                                            LineBuilder::new()
-                                                .line(line.clone())
-                                                .file(path.to_str().unwrap_or("").to_string())
-                                        }
-                                    }))
-                                }
-                            })
+            stream::unfold(self.inner.clone(), move |rc_reader| async move {
+                let reader = rc_reader.clone();
+                let mut borrow = reader.try_lock().unwrap();
+                let TailedFileInner {
+                    ref mut reader,
+                    ref mut buf,
+                    ref mut offset,
+                    ..
+                } = borrow.deref_mut();
+
+                let res = {
+                    let mut pinned_reader = Pin::new(reader);
+                    if let Some(c) = buf.last() {
+                        if *c == b'\n' {
+                            buf.clear();
                         }
                     }
-                })
-                .flatten(),
+                    pinned_reader.read_until(b'\n', buf).await
+                };
+                let c = match res {
+                    Ok(c) if c == 0 => return None,
+                    Ok(n) => n,
+                    Err(e) => {
+                        warn!("error encountered while tailing file: {}", e);
+                        return Some((Err(e), rc_reader));
+                    }
+                };
+                let n: u64 = c.try_into().unwrap();
+                *offset += n;
+                let mut s = String::from_utf8_lossy(&buf[..c]).to_string();
+                if s.ends_with('\n') {
+                    s.pop();
+                    if s.ends_with('\r') {
+                        s.pop();
+                    }
+                    Metrics::fs().add_bytes(n);
+                    Some((Ok(s), rc_reader))
+                } else {
+                    None
+                }
+            })
+            .filter_map({
+                let paths = paths.clone();
+                move |line_res| {
+                    let paths = paths.clone();
+                    async move {
+                        let paths = paths.clone();
+                        line_res.ok().map({
+                            move |line| {
+                                debug!("tailer sendings lines for {:?}", paths);
+                                stream::iter(paths.into_iter().map({
+                                    move |path| {
+                                        Metrics::fs().increment_lines();
+                                        LineBuilder::new()
+                                            .line(line.clone())
+                                            .file(path.to_str().unwrap_or("").to_string())
+                                    }
+                                }))
+                            }
+                        })
+                    }
+                }
+            })
+            .flatten(),
         )
+    }
+}
+pub struct LazyLines {
+    reader: Arc<Mutex<TailedFileInner>>,
+    total_read: usize,
+    target_read: Option<usize>,
+    paths: Arc<Vec<String>>,
+    resume_channel_send: Option<async_channel::Sender<(u64, chrono::DateTime<chrono::Utc>)>>,
+}
+
+impl LazyLines {
+    pub async fn new(
+        reader: Arc<Mutex<TailedFileInner>>,
+        paths: Vec<String>,
+        resume_channel_send: Option<Sender<(u64, chrono::DateTime<chrono::Utc>)>>,
+    ) -> Self {
+        let (initial_end, initial_offset): (Option<u64>, Option<u64>) = {
+            let inner = &mut reader.lock().await.reader;
+
+            let inner = inner.get_mut().get_mut();
+            let initial_end = match inner.metadata().await.map(|m| m.len()) {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    error!("unable to stat {:?}: {:?}", &paths[0], e);
+                    None
+                }
+            };
+            let initial_offset = match inner.seek(SeekFrom::Current(0)).await {
+                Ok(v) => Some(v),
+                Err(e) => {
+                    error!("unable to get current file offset {:?}: {:?}", &paths[0], e);
+                    None
+                }
+            };
+
+            (initial_end, initial_offset)
+        };
+        let target_read: Option<usize> = match (initial_end, initial_offset) {
+            (Some(e), Some(o)) => (e - o).try_into().ok(),
+            _ => None,
+        };
+        Self {
+            reader,
+            total_read: 0,
+            target_read,
+            paths: Arc::new(paths),
+            resume_channel_send,
+        }
     }
 }
 
@@ -733,16 +571,113 @@ impl TailedFile<LazyLineSerializer> {
                 }
             }
         }
+
         Some(
-            LazyLines::new(
-                self.inner.clone(),
-                paths
-                    .into_iter()
-                    .map(|path| path.to_string_lossy().into())
-                    .collect(),
-                self.resume_events_sender.clone(),
+            stream::unfold(
+                LazyLines::new(
+                    self.inner.clone(),
+                    paths
+                        .into_iter()
+                        .map(|path| path.to_string_lossy().into())
+                        .collect(),
+                    self.resume_events_sender.clone(),
+                )
+                .await,
+                |mut lazy_lines| async move {
+                    let LazyLines {
+                        ref reader,
+                        ref mut total_read,
+                        ref target_read,
+                        ref paths,
+                        ref resume_channel_send,
+                        ..
+                    } = lazy_lines;
+
+                    let rc_reader = reader.clone();
+                    // Get the next line
+                    let mut borrow = rc_reader.try_lock().unwrap();
+                    let TailedFileInner {
+                        ref mut reader,
+                        ref mut buf,
+                        ref mut offset,
+                        ref inode,
+                        ..
+                    } = borrow.deref_mut();
+
+                    if let Some(c) = buf.last() {
+                        if *c == b'\n' {
+                            buf.clear();
+                        }
+                    }
+
+                    let mut pinned_reader = Pin::new(reader);
+                    // If we've read more than a 16 KB from this one event and reached the end
+                    // of the file as it was when we started break to prevent starvation
+                    if *total_read > (1024 * 16) {
+                        if let Some(target_read) = target_read {
+                            if *total_read > *target_read {
+                                debug!("read 16KB from a single event, returning");
+
+                                // put event on watch stream to ensure processing completes
+                                if let Some(sender) = resume_channel_send {
+                                    if let Err(e) =
+                                        sender.try_send((*inode, chrono::offset::Utc::now()))
+                                    {
+                                        warn!("Couldn't send tailer continuation event: {}", e);
+                                    };
+                                }
+                                return None;
+                            }
+                        }
+                    }
+
+                    // Read a line into the internal buffer
+                    let result = pinned_reader.read_until(b'\n', buf).await;
+                    match result {
+                        Ok(count) if count > 0 => {
+                            if let Some(c) = buf.last() {
+                                if *c == b'\n' {
+                                    *total_read += count;
+                                    debug!("tailer sendings lines for {:?}", &paths);
+                                    let count = TryInto::<u64>::try_into(count).unwrap();
+                                    Metrics::fs().increment_lines();
+                                    Metrics::fs().add_bytes(count);
+                                    *offset += count;
+                                    let ret = (0..paths.len()).map({
+                                        let paths = paths.clone();
+                                        let rc_reader = rc_reader.clone();
+                                        let current_offset = (*inode, *offset);
+                                        move |path_idx| {
+                                            LazyLineSerializer::new(
+                                                rc_reader.clone(),
+                                                paths[path_idx].clone(),
+                                                current_offset,
+                                            )
+                                        }
+                                    });
+                                    Some((Ok(stream::iter(ret)), lazy_lines))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                None
+                            }
+                        }
+                        Ok(_) => None,
+                        // We got an io error, should we propagate this up somehow? calls to TailedFile::tail
+                        // will implicitly retry
+                        Err(e) => {
+                            warn!("{}", e);
+                            Some((Err(e), lazy_lines))
+                        }
+                    }
+                },
             )
-            .await,
+            .filter_map(move |line_res| async move {
+                // Discard errors
+                line_res.ok()
+            })
+            .flatten(),
         )
     }
 }
@@ -750,7 +685,7 @@ impl TailedFile<LazyLineSerializer> {
 /// Returns a Bytes using a copy of the line without the last char.
 fn line_bytes(buf: &[u8]) -> Bytes {
     // This method can be removed once we re-implement a line reader
-    Bytes::copy_from_slice(&buf[..buf.len() - 1])
+    Bytes::copy_from_slice(&buf[..buf.len().saturating_sub(1)])
 }
 
 #[cfg(test)]
@@ -811,7 +746,6 @@ mod tests {
             .compat(),
             buf: Vec::new(),
             offset: 0,
-            file_path,
             inode: 0,
         }));
         LazyLineSerializer::new(file_inner, "file/path.log".to_owned(), (0, 0))
