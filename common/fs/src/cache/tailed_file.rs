@@ -415,7 +415,11 @@ impl TailedFile<LineBuilder> {
 
                 let res = {
                     let mut pinned_reader = Pin::new(reader);
-                    buf.clear();
+                    if let Some(c) = buf.last() {
+                        if *c == b'\n' {
+                            buf.clear();
+                        }
+                    }
                     pinned_reader.read_until(b'\n', buf).await
                 };
                 let c = match res {
@@ -434,9 +438,11 @@ impl TailedFile<LineBuilder> {
                     if s.ends_with('\r') {
                         s.pop();
                     }
+                    Metrics::fs().add_bytes(n);
+                    Some((Ok(s), rc_reader))
+                } else {
+                    None
                 }
-                Metrics::fs().add_bytes(n);
-                Some((Ok(s), rc_reader))
             })
             .filter_map({
                 let paths = paths.clone();
@@ -598,7 +604,11 @@ impl TailedFile<LazyLineSerializer> {
                         ..
                     } = borrow.deref_mut();
 
-                    buf.clear();
+                    if let Some(c) = buf.last() {
+                        if *c == b'\n' {
+                            buf.clear();
+                        }
+                    }
 
                     let mut pinned_reader = Pin::new(reader);
                     // If we've read more than a 16 KB from this one event and reached the end
@@ -625,25 +635,33 @@ impl TailedFile<LazyLineSerializer> {
                     let result = pinned_reader.read_until(b'\n', buf).await;
                     match result {
                         Ok(count) if count > 0 => {
-                            *total_read += count;
-                            debug!("tailer sendings lines for {:?}", &paths);
-                            let count = TryInto::<u64>::try_into(count).unwrap();
-                            Metrics::fs().increment_lines();
-                            Metrics::fs().add_bytes(count);
-                            *offset += count;
-                            let ret = (0..paths.len()).map({
-                                let paths = paths.clone();
-                                let rc_reader = rc_reader.clone();
-                                let current_offset = (*inode, *offset);
-                                move |path_idx| {
-                                    LazyLineSerializer::new(
-                                        rc_reader.clone(),
-                                        paths[path_idx].clone(),
-                                        current_offset,
-                                    )
+                            if let Some(c) = buf.last() {
+                                if *c == b'\n' {
+                                    *total_read += count;
+                                    debug!("tailer sendings lines for {:?}", &paths);
+                                    let count = TryInto::<u64>::try_into(count).unwrap();
+                                    Metrics::fs().increment_lines();
+                                    Metrics::fs().add_bytes(count);
+                                    *offset += count;
+                                    let ret = (0..paths.len()).map({
+                                        let paths = paths.clone();
+                                        let rc_reader = rc_reader.clone();
+                                        let current_offset = (*inode, *offset);
+                                        move |path_idx| {
+                                            LazyLineSerializer::new(
+                                                rc_reader.clone(),
+                                                paths[path_idx].clone(),
+                                                current_offset,
+                                            )
+                                        }
+                                    });
+                                    Some((Ok(stream::iter(ret)), lazy_lines))
+                                } else {
+                                    None
                                 }
-                            });
-                            Some((Ok(stream::iter(ret)), lazy_lines))
+                            } else {
+                                None
+                            }
                         }
                         Ok(_) => None,
                         // We got an io error, should we propagate this up somehow? calls to TailedFile::tail
