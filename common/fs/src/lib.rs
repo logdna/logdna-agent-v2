@@ -15,6 +15,8 @@ pub mod source;
 /// Defines the tailer used to tail directories or single files
 pub mod tail;
 
+pub mod stream_utils;
+
 #[cfg(test)]
 pub mod test {
     lazy_static! {
