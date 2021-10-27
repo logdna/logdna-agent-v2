@@ -143,7 +143,6 @@ async fn main() {
 
     executor.init();
 
-    let mut fs_tailer_buf = [0u8; 4096];
     let mut fs_source = FSSource::new(
         config.log.dirs,
         config.log.rules,
@@ -178,7 +177,7 @@ async fn main() {
     }
 
     let fs_source = fs_source
-        .process(&mut fs_tailer_buf)
+        .process()
         .expect("except Failed to create FS Tailer")
         .filter_map(|r| async {
             match r {

@@ -77,6 +77,7 @@ pub struct Tailer {
     fs_cache: Arc<Mutex<FileSystem>>,
     initial_offsets: Option<HashMap<FileId, u64>>,
     event_times: SyncHashMap<EntryKey, (usize, chrono::DateTime<chrono::Utc>)>,
+    buf: [u8; 4096],
 }
 
 impl Tailer {
@@ -92,6 +93,7 @@ impl Tailer {
             fs_cache: Arc::new(Mutex::new(FileSystem::new(watched_dirs, rules))),
             initial_offsets,
             event_times: Arc::new(Mutex::new(HashMap::new())),
+            buf: [0u8; 4096],
         }
     }
 
@@ -307,12 +309,11 @@ impl Tailer {
 
     /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
     pub fn process<'a>(
-        &mut self,
-        buf: &'a mut [u8],
+        &'a mut self,
     ) -> Result<impl Stream<Item = Result<LazyLineSerializer, CacheError>> + 'a, std::io::Error>
     {
         let events = {
-            match FileSystem::stream_events(self.fs_cache.clone(), buf) {
+            match FileSystem::stream_events(self.fs_cache.clone(), &mut self.buf) {
                 Ok(events) => events,
                 Err(e) => {
                     warn!("tailer stream raised exception: {:?}", e);
@@ -373,14 +374,19 @@ impl Tailer {
                                 )
                                 .await;
 
-                                let line = line.map(|option_val| option_val.map(Ok).right_stream());
+                                // let line =
+                                //     line.map(move |option_val| option_val.map(Ok).right_stream());
 
                                 if let Some((key, _)) = key_and_previous_event_time {
                                     let mut event_times = event_times.lock().await;
                                     let new_event_time = chrono::offset::Utc::now();
                                     event_times.insert(key, (event_idx, new_event_time));
                                 }
-                                line
+
+                                match line {
+                                    None => None,
+                                    Some(line) => Some(line.map(Ok).right_stream()),
+                                }
                             }
                         }
                     }
@@ -451,10 +457,9 @@ mod test {
                     Lookback::None,
                     None,
                 );
-                let mut buf = [0u8; 4096];
 
                 let stream = tailer
-                    .process(&mut buf)
+                    .process()
                     .expect("failed to read events")
                     .timeout(std::time::Duration::from_millis(500));
 
@@ -501,10 +506,9 @@ mod test {
                     Lookback::SmallFiles,
                     None,
                 );
-                let mut buf = [0u8; 4096];
 
                 let stream = tailer
-                    .process(&mut buf)
+                    .process()
                     .expect("failed to read events")
                     .timeout(std::time::Duration::from_millis(500));
 
@@ -553,10 +557,8 @@ mod test {
                     None,
                 );
 
-                let mut buf = [0u8; 4096];
-
                 let stream = tailer
-                    .process(&mut buf)
+                    .process()
                     .expect("failed to read events")
                     .timeout(std::time::Duration::from_millis(500));
 
