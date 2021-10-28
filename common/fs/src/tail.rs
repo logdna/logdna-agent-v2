@@ -308,10 +308,9 @@ impl Tailer {
     }
 
     /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
-    pub fn process<'a>(
-        &'a mut self,
-    ) -> Result<impl Stream<Item = Result<LazyLineSerializer, CacheError>> + 'a, std::io::Error>
-    {
+    pub fn process(
+        &mut self,
+    ) -> Result<impl Stream<Item = Result<LazyLineSerializer, CacheError>> + '_, std::io::Error> {
         let events = {
             match FileSystem::stream_events(self.fs_cache.clone(), &mut self.buf) {
                 Ok(events) => events,
@@ -374,8 +373,7 @@ impl Tailer {
                                 )
                                 .await;
 
-                                // let line =
-                                //     line.map(move |option_val| option_val.map(Ok).right_stream());
+                                let line = line.map(|option_val| option_val.map(Ok).right_stream());
 
                                 if let Some((key, _)) = key_and_previous_event_time {
                                     let mut event_times = event_times.lock().await;
@@ -383,10 +381,7 @@ impl Tailer {
                                     event_times.insert(key, (event_idx, new_event_time));
                                 }
 
-                                match line {
-                                    None => None,
-                                    Some(line) => Some(line.map(Ok).right_stream()),
-                                }
+                                line
                             }
                         }
                     }

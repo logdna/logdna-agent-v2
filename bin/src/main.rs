@@ -71,7 +71,7 @@ async fn main() {
     let mut offset_state = None;
     let mut initial_offsets = None;
 
-    if let DbPath::Path(db_path) = config.log.db_path {
+    if let DbPath::Path(db_path) = &config.log.db_path {
         match AgentState::new(db_path) {
             Ok(agent_state) => {
                 let _offset_state = agent_state.get_offset_state();
@@ -143,13 +143,6 @@ async fn main() {
 
     executor.init();
 
-    let mut fs_source = FSSource::new(
-        config.log.dirs,
-        config.log.rules,
-        config.log.lookback,
-        initial_offsets,
-    );
-
     #[cfg(feature = "libjournald")]
     let (journalctl_source, journald_source) = if config.journald.paths.is_empty() {
         let journalctl_source = create_journalctl_source()
@@ -175,6 +168,13 @@ async fn main() {
     if let Some(offset_state) = offset_state {
         tokio::spawn(offset_state.run().unwrap());
     }
+
+    let mut fs_source = FSSource::new(
+        config.log.dirs,
+        config.log.rules,
+        config.log.lookback,
+        initial_offsets,
+    );
 
     let fs_source = fs_source
         .process()
