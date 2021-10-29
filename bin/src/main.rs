@@ -82,7 +82,7 @@ async fn main() {
                     Ok(os) => {
                         initial_offsets = Some(
                             os.into_iter()
-                                .map(|fo| (fo.key, fo.offsets.last().unwrap().end))
+                                .map(|fo| (fo.key, fo.offsets.first().unwrap().end))
                                 .collect(),
                         );
                     }
