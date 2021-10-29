@@ -258,6 +258,16 @@ pub struct FileOffsetState {
     tx: async_channel::Sender<FileOffsetEvent>,
 }
 
+type OffsetStreamState = (
+    Option<WriteBatch>,
+    (
+        HashMap<FileId, SpanVec>,
+        SlotMap<DefaultKey, OffsetMap>,
+        HashMap<FileId, SpanVec>,
+        Vec<u8>,
+    ),
+);
+
 impl FileOffsetState {
     fn new(db: Arc<DB>, cf_opts: Options) -> Self {
         let (tx, rx) = async_channel::unbounded();
@@ -340,8 +350,16 @@ impl FileOffsetState {
         let db = self.db.clone();
         Ok(rx
             .fold(
-                (Some(WriteBatch::default()), (HashMap::<FileId, SpanVec>::new(), SlotMap::<DefaultKey, OffsetMap>::new(), HashMap::<FileId, SpanVec>::new(), Vec::new()/* scratch space */)),
-                move |(wb, (mut state, mut pending, mut span_buf, mut bytes_buf)), event| {
+                (
+                    Some(WriteBatch::default()),
+                    (
+                        HashMap::<FileId, SpanVec>::new(),
+                        SlotMap::<DefaultKey, OffsetMap>::new(),
+                        HashMap::<FileId, SpanVec>::new(),
+                        Vec::new(), /* scratch space */
+                    ),
+                ),
+                move |stream_state: OffsetStreamState, event: FileOffsetEvent| {
                     let db = db.clone();
                     async move {
                         match db.cf_handle(OFFSET_NAME).ok_or_else(|| {
@@ -349,88 +367,134 @@ impl FileOffsetState {
                                 "Failed to get ColumnFamily handle".into(),
                             )
                         }) {
-                            Ok(cf_handle) => match (wb, event) {
-                                (wb, FileOffsetEvent::Flush(key)) => {
-                                    let mut wb = wb.unwrap_or_default();
-                                    if let Some(key) = key {
-                                        if let Some(batch) = pending.get_mut(key) {
-
-                                            // Should be clear anyway
-                                            debug_assert!(span_buf.is_empty());
-                                            span_buf.clear();
-
-                                            for (file_id, offset) in batch.iter() {
-                                                // Get the working span_v for this file
-                                                let mut span_v = {
-                                                    if let Some(span_v) = span_buf.remove(file_id){
-                                                        span_v
-                                                    } else {
-                                                        state.remove(file_id).unwrap_or_default()
-                                                    }
-                                                };
-                                                span_v.insert(*offset);
-                                                span_buf.insert(*file_id, span_v);
-                                            }
-                                            for (file_id, span_v) in span_buf.drain() {
-                                                if let Some(first) = span_v.first().map(|o| o.end) {
-                                                    bytes_buf.clear();
-                                                    bytes_buf.extend_from_slice(&u64::to_be_bytes(first));
-                                                    // Minimum completed end
-                                                    for offset in span_v.iter() {
-                                                        // Start
-                                                        bytes_buf.extend_from_slice(&u64::to_be_bytes(offset.start));
-                                                        // End
-                                                        bytes_buf.extend_from_slice(&u64::to_be_bytes(offset.end));
-                                                    }
-                                                    wb.put_cf(cf_handle, u64::to_be_bytes(file_id.0), &bytes_buf);
-
-                                                    // Put the updated span back into the state
-                                                    state.insert(file_id, span_v);
-                                                }
-                                            }
-
-                                        };
-                                    };
-                                    match db.write(wb).map(|_| ()) {
-                                        Ok(_) => Ok((None, (state, pending, span_buf, bytes_buf))),
-                                        Err(e) => Err((e.into(), (None, (state, pending, span_buf, bytes_buf)))),
-                                    }
-
-                                }
-                                (wb, FileOffsetEvent::Update(e)) => {
-                                    match e {
-                                        FileOffsetUpdate::Update(offsets, tx) => {
-                                            let key = pending.insert(offsets);
-                                            match tx.send(key) {
-                                                Ok(_) => Ok((wb, (state, pending, span_buf, bytes_buf))),
-                                                Err(_) => Err((FileOffsetStateError::StageUpdateFail, (wb, (state, pending, span_buf, bytes_buf)))),
-                                            }
-                                        }
-                                        FileOffsetUpdate::Delete(key) => {
-                                            let mut wb = wb.unwrap_or_default();
-                                            state.remove(&key);
-                                            wb.delete_cf(cf_handle, u64::to_be_bytes(key.0));
-                                            Ok((Some(wb), (state, pending, span_buf, bytes_buf)))
+                            Ok(cf_handle) => {
+                                match handle_file_offset_event(event, cf_handle, stream_state) {
+                                    Ok(EventAction::Write((Some(wb), rest_of_state))) => {
+                                        match db.write(wb).map(|_| ()) {
+                                            Ok(_) => Ok((None, rest_of_state)),
+                                            Err(e) => Err((e.into(), (None, rest_of_state))),
                                         }
                                     }
+                                    Ok(EventAction::Write((None, rest_of_state))) => {
+                                        warn!("Got a write with an empty write buffer");
+                                        Ok((None, rest_of_state))
+                                    }
+                                    Ok(EventAction::Nop(stream_state)) => Ok(stream_state),
+                                    Err((e, state)) => Err((e, state)),
                                 }
-                                (_, FileOffsetEvent::Clear) => {
-                                    pending.clear();
-                                    Ok((None, (state, pending, span_buf, bytes_buf)))
-                                },
-                            },
-                            Err(e) => Err((e, (wb, (state, pending, span_buf, bytes_buf)))),
+                            }
+                            Err(e) => Err((e, stream_state)),
                         }
-                        .or_else(move |(e, (wb, (state, pending, span_buf, bytes_buf)))| -> Result<_, FileOffsetStateError> {
-                            error!("{:?}", e);
-                            Ok((wb, (state, pending, span_buf, bytes_buf)))
-                        })
+                        .or_else(
+                            move |(e, stream_state)| -> Result<_, FileOffsetStateError> {
+                                error!("{:?}", e);
+                                Ok(stream_state)
+                            },
+                        )
                         // Safe to unwrap as the or_else impl returns a valid (Option<_>, Vec<u8>)
                         .unwrap()
                     }
                 },
             )
             .map(|_| ()))
+    }
+}
+
+enum EventAction {
+    Write(OffsetStreamState),
+    Nop(OffsetStreamState),
+}
+
+fn handle_file_offset_flush(
+    key: Option<DefaultKey>,
+    cf_handle: &rocksdb::ColumnFamily,
+    state: OffsetStreamState,
+) -> OffsetStreamState {
+    let (wb, (mut state, mut pending, mut span_buf, mut bytes_buf)) = state;
+    let mut wb = wb.unwrap_or_default();
+    if let Some(key) = key {
+        if let Some(batch) = pending.get_mut(key) {
+            // Should be clear anyway
+            debug_assert!(span_buf.is_empty());
+            span_buf.clear();
+
+            for (file_id, offset) in batch.iter() {
+                // Get the working span_v for this file
+                let mut span_v = {
+                    if let Some(span_v) = span_buf.remove(file_id) {
+                        span_v
+                    } else {
+                        state.remove(file_id).unwrap_or_default()
+                    }
+                };
+                span_v.insert(*offset);
+                span_buf.insert(*file_id, span_v);
+            }
+            for (file_id, span_v) in span_buf.drain() {
+                if let Some(first) = span_v.first().map(|o| o.end) {
+                    bytes_buf.clear();
+                    bytes_buf.extend_from_slice(&u64::to_be_bytes(first));
+                    // Minimum completed end
+                    for offset in span_v.iter() {
+                        // Start
+                        bytes_buf.extend_from_slice(&u64::to_be_bytes(offset.start));
+                        // End
+                        bytes_buf.extend_from_slice(&u64::to_be_bytes(offset.end));
+                    }
+                    wb.put_cf(cf_handle, u64::to_be_bytes(file_id.0), &bytes_buf);
+
+                    // Put the updated span back into the state
+                    state.insert(file_id, span_v);
+                }
+            }
+        };
+    };
+    (Some(wb), (state, pending, span_buf, bytes_buf))
+}
+
+fn handle_file_offset_event(
+    event: FileOffsetEvent,
+    cf_handle: &rocksdb::ColumnFamily,
+    stream_state: OffsetStreamState,
+) -> Result<EventAction, (FileOffsetStateError, OffsetStreamState)> {
+    let (wb, (mut state, mut pending, span_buf, bytes_buf)) = stream_state;
+    match (wb, event) {
+        (wb, FileOffsetEvent::Flush(key)) => Ok(EventAction::Write(handle_file_offset_flush(
+            key,
+            cf_handle,
+            (wb, (state, pending, span_buf, bytes_buf)),
+        ))),
+        (wb, FileOffsetEvent::Update(e)) => match e {
+            FileOffsetUpdate::Update(offsets, tx) => {
+                let key = pending.insert(offsets);
+                match tx.send(key) {
+                    Ok(_) => Ok(EventAction::Nop((
+                        wb,
+                        (state, pending, span_buf, bytes_buf),
+                    ))),
+                    Err(_) => Err((
+                        FileOffsetStateError::StageUpdateFail,
+                        (wb, (state, pending, span_buf, bytes_buf)),
+                    )),
+                }
+            }
+            FileOffsetUpdate::Delete(key) => {
+                let mut wb = wb.unwrap_or_default();
+                state.remove(&key);
+                wb.delete_cf(cf_handle, u64::to_be_bytes(key.0));
+                Ok(EventAction::Nop((
+                    Some(wb),
+                    (state, pending, span_buf, bytes_buf),
+                )))
+            }
+        },
+        (_, FileOffsetEvent::Clear) => {
+            pending.clear();
+            Ok(EventAction::Nop((
+                None,
+                (state, pending, span_buf, bytes_buf),
+            )))
+        }
     }
 }
 
