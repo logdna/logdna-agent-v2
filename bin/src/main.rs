@@ -6,7 +6,7 @@ use futures::Stream;
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
 use config::{Config, DbPath};
 use env_logger::Env;
-use fs::tail::Tailer as FSSource;
+use fs::tail;
 use futures::StreamExt;
 use http::batch::TimedRequestBatcherStreamExt;
 use http::client::{Client, ClientError, SendStatus};
@@ -169,15 +169,14 @@ async fn main() {
         tokio::spawn(offset_state.run().unwrap());
     }
 
-    let mut fs_source = FSSource::new(
+    let mut fs_source = tail::Tailer::new(
         config.log.dirs,
         config.log.rules,
         config.log.lookback,
         initial_offsets,
     );
 
-    let fs_source = fs_source
-        .process()
+    let fs_source = tail::process(&mut fs_source)
         .expect("except Failed to create FS Tailer")
         .filter_map(|r| async {
             match r {
