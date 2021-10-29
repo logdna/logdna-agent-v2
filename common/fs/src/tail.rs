@@ -310,7 +310,8 @@ impl Tailer {
     /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
     pub fn process(
         &mut self,
-    ) -> Result<impl Stream<Item = Result<LazyLineSerializer, CacheError>> + '_, std::io::Error> {
+    ) -> Result<impl Stream<Item = Result<LazyLineSerializer, CacheError>> + '_, std::io::Error>
+    {
         let events = {
             match FileSystem::stream_events(self.fs_cache.clone(), &mut self.buf) {
                 Ok(events) => events,
@@ -395,7 +396,7 @@ impl Tailer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::rule::{GlobRule, Rules};
+    use crate::rule::{RuleDef, Rules};
     use crate::test::LOGGER;
 
     use http::types::body::LineBufferMut;
@@ -430,7 +431,7 @@ mod test {
         run_test(|| {
             tokio_test::block_on(async {
                 let mut rules = Rules::new();
-                rules.add_inclusion(GlobRule::new(r"**").unwrap());
+                rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
 
                 let log_lines = "This is a test log line";
                 debug!("{}", log_lines.as_bytes().len());
@@ -479,7 +480,7 @@ mod test {
         run_test(|| {
             tokio_test::block_on(async {
                 let mut rules = Rules::new();
-                rules.add_inclusion(GlobRule::new(r"**").unwrap());
+                rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
 
                 let log_lines1 = "This is a test log line";
                 debug!("{}", log_lines1.as_bytes().len());
@@ -535,7 +536,7 @@ mod test {
         run_test(|| {
             tokio_test::block_on(async {
                 let mut rules = Rules::new();
-                rules.add_inclusion(GlobRule::new(r"**").unwrap());
+                rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
 
                 let log_lines = "This is a test log line";
                 let dir = tempdir().expect("Couldn't create temp dir...");

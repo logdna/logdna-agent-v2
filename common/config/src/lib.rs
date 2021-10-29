@@ -10,7 +10,7 @@ use sysinfo::{RefreshKind, System, SystemExt};
 
 use async_compression::Level;
 
-use fs::rule::{GlobRule, RegexRule, Rules};
+use fs::rule::{RuleDef, Rules};
 use fs::tail::{DirPathBuf, Lookback};
 use http::types::request::{Encoding, RequestTemplate, Schema};
 use k8s::K8sTrackingConf;
@@ -288,21 +288,21 @@ impl TryFrom<RawConfig> for Config {
 
         if let Some(rules) = raw.log.include {
             for glob in rules.glob {
-                log.rules.add_inclusion(GlobRule::new(&*glob)?)
+                log.rules.add_inclusion(RuleDef::glob_rule(&*glob)?)
             }
 
             for regex in rules.regex {
-                log.rules.add_inclusion(RegexRule::new(&*regex)?)
+                log.rules.add_inclusion(RuleDef::regex_rule(&*regex)?)
             }
         }
 
         if let Some(rules) = raw.log.exclude {
             for glob in rules.glob {
-                log.rules.add_exclusion(GlobRule::new(&*glob)?)
+                log.rules.add_exclusion(RuleDef::glob_rule(&*glob)?)
             }
 
             for regex in rules.regex {
-                log.rules.add_exclusion(RegexRule::new(&*regex)?)
+                log.rules.add_exclusion(RuleDef::regex_rule(&*regex)?)
             }
         }
 

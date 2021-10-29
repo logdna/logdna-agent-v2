@@ -1,18 +1,45 @@
 use std::fmt::Debug;
 use std::path::Path;
-use std::str::FromStr;
 
 use globber::{Error as PatternError, Pattern};
 use pcre2::{bytes::Regex, Error as RegexError};
 use std::os::unix::ffi::OsStrExt;
 
-/// A list of rules
-pub type RuleList = Vec<Box<dyn Rule + Send>>;
-
 /// A trait for implementing a rule, see GlobRule/RegexRule for an example
-pub trait Rule: Debug {
+pub trait Rule {
     /// Takes a value and returns true or false based on if it matches
     fn matches(&self, value: &Path) -> bool;
+}
+
+#[derive(Debug, Clone)]
+pub enum RuleDef {
+    RegexRule(Regex),
+    GlobRule(Pattern),
+}
+
+impl RuleDef {
+    /// Creates a new RegexRule from a pattern
+    pub fn regex_rule<'a, T: Into<&'a str>>(pattern: T) -> Result<Self, RuleError> {
+        Ok(Self::RegexRule(
+            Regex::new(pattern.into()).map_err(RuleError::Regex)?,
+        ))
+    }
+
+    /// Creates a new GlobRule from a pattern
+    pub fn glob_rule<'a, T: Into<&'a str>>(pattern: T) -> Result<Self, RuleError> {
+        Ok(Self::GlobRule(
+            Pattern::new(pattern.into()).map_err(RuleError::Pattern)?,
+        ))
+    }
+}
+
+impl Rule for RuleDef {
+    fn matches(&self, value: &Path) -> bool {
+        match self {
+            Self::RegexRule(re) => re.is_match(value.as_os_str().as_bytes()).unwrap_or(false),
+            Self::GlobRule(p) => p.matches(&value.to_string_lossy()),
+        }
+    }
 }
 
 /// Used for representing matches on Rules
@@ -42,10 +69,10 @@ impl Status {
 }
 
 /// Holds both exclusion and inclusion rules
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub struct Rules {
-    inclusion: RuleList,
-    exclusion: RuleList,
+    inclusion: Vec<RuleDef>,
+    exclusion: Vec<RuleDef>,
 }
 
 impl Rules {
@@ -83,12 +110,12 @@ impl Rules {
         self.excluded(value)
     }
     /// Adds an inclusion rule
-    pub fn add_inclusion<T: Rule + Send + 'static>(&mut self, rule: T) {
-        self.inclusion.push(Box::new(rule))
+    pub fn add_inclusion(&mut self, rule: RuleDef) {
+        self.inclusion.push(rule)
     }
     /// Adds an exclusion rule
-    pub fn add_exclusion<T: Rule + Send + 'static>(&mut self, rule: T) {
-        self.exclusion.push(Box::new(rule))
+    pub fn add_exclusion(&mut self, rule: RuleDef) {
+        self.exclusion.push(rule)
     }
     /// Appends all rules from another instance of rules
     pub fn add_all<T: Into<Rules>>(&mut self, rules: T) {
@@ -97,71 +124,11 @@ impl Rules {
         self.inclusion.append(&mut rules.inclusion);
     }
     /// Getter for inclusion list
-    pub fn inclusion_list(&self) -> &RuleList {
+    pub fn inclusion_list(&self) -> &Vec<RuleDef> {
         &self.inclusion
     }
     /// Getter for exclusion list
-    pub fn exclusion_list(&self) -> &RuleList {
+    pub fn exclusion_list(&self) -> &Vec<RuleDef> {
         &self.exclusion
-    }
-}
-
-/// A rule the matches it's input based on a Regex
-#[derive(Debug)]
-pub struct RegexRule {
-    inner: Regex,
-}
-
-impl RegexRule {
-    /// Creates a new RegexRule from a pattern
-    pub fn new<'a, T: Into<&'a str>>(pattern: T) -> Result<Self, RuleError> {
-        Ok(Self {
-            inner: Regex::new(pattern.into()).map_err(RuleError::Regex)?,
-        })
-    }
-}
-
-impl Rule for RegexRule {
-    fn matches(&self, value: &Path) -> bool {
-        self.inner
-            .is_match(value.as_os_str().as_bytes())
-            .unwrap_or(false)
-    }
-}
-
-impl FromStr for RegexRule {
-    type Err = RuleError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        RegexRule::new(s)
-    }
-}
-
-/// A rule the matches it's input based on a Glob pattern, note extended glob is not supported
-#[derive(Debug)]
-pub struct GlobRule {
-    inner: Pattern,
-}
-
-impl GlobRule {
-    /// Creates a new GlobRule from a pattern
-    pub fn new<'a, T: Into<&'a str>>(pattern: T) -> Result<Self, RuleError> {
-        Ok(Self {
-            inner: Pattern::new(pattern.into()).map_err(RuleError::Pattern)?,
-        })
-    }
-}
-
-impl Rule for GlobRule {
-    fn matches(&self, value: &Path) -> bool {
-        self.inner.matches(&value.to_string_lossy())
-    }
-}
-
-impl FromStr for GlobRule {
-    type Err = RuleError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        GlobRule::new(s)
     }
 }

@@ -2,7 +2,7 @@ use crate::cache::entry::Entry;
 use crate::cache::event::Event;
 use crate::cache::tailed_file::TailedFile;
 use crate::cache::watch::{WatchEvent, Watcher};
-use crate::rule::{GlobRule, Rules, Status};
+use crate::rule::{RuleDef, Rules, Status};
 
 use std::cell::RefCell;
 use std::collections::hash_map::Entry as HashMapEntry;
@@ -1118,13 +1118,13 @@ fn into_rules(path: PathBuf) -> Rules {
 // Attach rules for all sub paths for a path
 fn append_rules(rules: &mut Rules, mut path: PathBuf) {
     rules.add_inclusion(
-        GlobRule::new(path.join(r"**").to_str().expect("invalid unicode in path"))
+        RuleDef::glob_rule(path.join(r"**").to_str().expect("invalid unicode in path"))
             .expect("invalid glob rule format"),
     );
 
     loop {
         rules.add_inclusion(
-            GlobRule::new(path.to_str().expect("invalid unicode in path"))
+            RuleDef::glob_rule(path.to_str().expect("invalid unicode in path"))
                 .expect("invalid glob rule format"),
         );
         if !path.pop() {
@@ -1136,7 +1136,7 @@ fn append_rules(rules: &mut Rules, mut path: PathBuf) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rule::{GlobRule, Rules};
+    use crate::rule::{RuleDef, Rules};
     use crate::test::LOGGER;
     use std::convert::TryInto;
     use std::fs::{copy, create_dir, hard_link, remove_dir_all, remove_file, rename, File};
@@ -1180,7 +1180,7 @@ mod tests {
     ) -> FileSystem {
         let rules = rules.unwrap_or_else(|| {
             let mut rules = Rules::new();
-            rules.add_inclusion(GlobRule::new(r"**").unwrap());
+            rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
             rules
         });
         FileSystem::new(
@@ -1971,11 +1971,12 @@ mod tests {
             let path = tempdir.path().to_path_buf();
 
             let mut rules = Rules::new();
-            rules.add_inclusion(GlobRule::new("*.log").unwrap());
+            rules.add_inclusion(RuleDef::glob_rule("*.log").unwrap());
             rules.add_inclusion(
-                GlobRule::new(&*format!("{}{}", tempdir.path().to_str().unwrap(), "*")).unwrap(),
+                RuleDef::glob_rule(&*format!("{}{}", tempdir.path().to_str().unwrap(), "*"))
+                    .unwrap(),
             );
-            rules.add_exclusion(GlobRule::new("*.tmp").unwrap());
+            rules.add_exclusion(RuleDef::glob_rule("*.tmp").unwrap());
 
             let file_path = path.join("test.tmp");
             let sym_path = path.join("test.log");
