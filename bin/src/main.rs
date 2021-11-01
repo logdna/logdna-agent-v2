@@ -169,35 +169,41 @@ async fn main() {
         tokio::spawn(offset_state.run().unwrap());
     }
 
-    let mut fs_source = tail::Tailer::new(
-        config.log.dirs,
-        config.log.rules,
-        config.log.lookback,
-        initial_offsets,
-    );
-
-    let fs_source = tail::process(&mut fs_source)
-        .expect("except Failed to create FS Tailer")
-        .filter_map(|r| async {
-            match r {
-                Err(e) => {
-                    match e {
-                        fs::cache::Error::WatchOverflow => {
-                            error!("{}", e);
-                            panic!("overflowed kernel queue");
-                        }
-                        fs::cache::Error::PathNotValid(path) => {
-                            debug!("Path is not longer valid: {:?}", path);
-                        }
-                        _ => {
-                            warn!("Processing inotify event resulted in error: {}", e);
-                        }
-                    };
-                    None
-                }
-                Ok(lazy_lin_ser) => Some(StrictOrLazyLineBuilder::Lazy(lazy_lin_ser)),
+    let fs_source = tail::RestartingTailer::new(
+        tail::Tailer::new(
+            config.log.dirs,
+            config.log.rules,
+            config.log.lookback,
+            initial_offsets,
+        ),
+        |item| match item {
+            Err(fs::cache::Error::WatchOverflow) => {
+                warn!("overflowed kernel queue, restarting stream");
+                return true;
             }
-        });
+            _ => false,
+        },
+        |state: &mut tail::Tailer| async {
+            tail::process(state).expect("except Failed to create FS Tailer")
+        },
+    )
+    .await
+    .filter_map(|r| async {
+        match r {
+            Err(e) => {
+                match e {
+                    fs::cache::Error::PathNotValid(path) => {
+                        debug!("Path is not longer valid: {:?}", path);
+                    }
+                    _ => {
+                        warn!("Processing inotify event resulted in error: {}", e);
+                    }
+                };
+                None
+            }
+            Ok(lazy_lin_ser) => Some(StrictOrLazyLineBuilder::Lazy(lazy_lin_ser)),
+        }
+    });
 
     let k8s_event_stream = match config.log.log_k8s_events {
         K8sTrackingConf::Never => None,

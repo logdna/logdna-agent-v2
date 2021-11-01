@@ -410,9 +410,9 @@ pin_project! {
 impl<C, F, S: Stream, T, Fut> RestartingTailer<C, F, S, Fut>
 where
     C: Fn(&T) -> bool,
-    F: FnMut(&mut Tailer) -> Fut,
+    F: for<'a> FnMut(&'a mut Tailer) -> Fut + 'a,
     S: Stream<Item = T>,
-    Fut: Future<Output = S>,
+    Fut<'b>: Future<Output = S + 'b>,
 {
     pub async fn new(mut state: Tailer, restart: C, mut f: F) -> Self {
         let stream = f(&mut state).await;
@@ -429,7 +429,7 @@ where
 impl<C, F, S: Stream, T, Fut> Stream for RestartingTailer<C, F, S, Fut>
 where
     C: Fn(&T) -> bool,
-    F: FnMut(&mut Tailer) -> Fut,
+    F: for<'a> FnMut(&'a mut Tailer) -> Fut + 'a,
     S: Stream<Item = T>,
     Fut: Future<Output = S>,
 {

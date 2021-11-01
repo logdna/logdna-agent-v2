@@ -263,7 +263,6 @@ mod tests {
         assert_eq!(input, lines);
     }
 
-    #[ignore]
     #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
     async fn message_batchs() {
         let input = vec![
