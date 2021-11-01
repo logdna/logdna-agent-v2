@@ -917,7 +917,8 @@ async fn test_partial_fsynced_lines() {
         {
             let map = received.lock().await;
             // The ingester should not have received any lines yet
-            assert!(map.get(file_path.to_str().unwrap()).is_none());
+            let line = map.get(file_path.to_str().unwrap());
+            assert!(line.is_none(), "{:?}", line);
         }
 
         write!(file, "{}", " third part\n").unwrap();

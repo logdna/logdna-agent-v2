@@ -396,6 +396,9 @@ mod test {
     use super::*;
     use crate::rule::{GlobRule, Rules};
     use crate::test::LOGGER;
+
+    use http::types::body::LineBufferMut;
+
     use std::convert::TryInto;
     use std::fs::File;
     use std::io::Write;
@@ -508,18 +511,22 @@ mod test {
                     .expect("failed to read events")
                     .timeout(std::time::Duration::from_millis(500));
 
+                let log_lines2 = "This is a test log line2";
                 let write_files = async move {
                     tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
 
-                    let log_lines2 = "This is a test log line2";
                     writeln!(file, "{}", log_lines2).expect("Couldn't write to temp log file...");
                     file.sync_all().expect("Failed to sync file");
                 };
                 let (_, events) =
-                    futures::join!(tokio::spawn(write_files), take_events!(stream, 2));
-                let events = events.iter().flatten().collect::<Vec<_>>();
-                assert_eq!(events.len(), 1);
-                debug!("{:?}, {:?}", events.len(), &events);
+                    futures::join!(tokio::spawn(write_files), take_events!(stream, 1));
+                let mut events = events.into_iter().flatten().collect::<Vec<_>>();
+                assert_eq!(events.len(), 1, "{:?}, {:?}", events.len(), &events);
+                let event = events[0].as_mut().unwrap();
+                let line = std::str::from_utf8(event.get_line_buffer().unwrap())
+                    .unwrap()
+                    .to_string();
+                assert_eq!(line, log_lines2, "events: {:?}\nline: {:?}", events, line);
             });
         });
     }
