@@ -18,6 +18,10 @@ use futures::{Stream, StreamExt};
 use std::fmt;
 use thiserror::Error;
 
+use pin_project_lite::pin_project;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
 #[derive(Clone, std::fmt::Debug, PartialEq)]
 pub enum Lookback {
     Start,
@@ -390,6 +394,90 @@ impl Tailer {
     }
 }
 
+pin_project! {
+    #[must_use = "streams do nothing unless polled"]
+    pub struct RestartingTailer<C, F, S: Stream> {
+        state: Tailer,
+        restart: C,
+        f: F,
+        #[pin]
+        stream: S,
+    }
+}
+
+impl<C, F, S: Stream, T> RestartingTailer<C, F, S>
+where
+    C: Fn(&T) -> bool,
+    F: FnMut(&mut Tailer) -> S,
+    S: Stream<Item = T>,
+{
+    pub fn new(mut state: Tailer, restart: C, mut f: F) -> Self {
+        let stream = f(&mut state);
+        Self {
+            state,
+            restart,
+            f,
+            stream,
+        }
+    }
+}
+
+impl<C, F, S: Stream, T> Stream for RestartingTailer<C, F, S>
+where
+    C: Fn(&T) -> bool,
+    F: FnMut(&mut Tailer) -> S,
+    S: Stream<Item = T>,
+{
+    type Item = T;
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        self.stream.size_hint()
+    }
+
+    // fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<T>> {
+    //     let mut this = self.project();
+
+    //     Poll::Ready(loop {
+    //         if let Some(p) = this.pending.as_mut().as_pin_mut() {
+    //             // We have an item in progress, poll that until it's done
+    //             let stream = ready!(p.poll(cx));
+    //             this.pending.set(None);
+    //             this.stream.set(stream);
+    //         } else if let Some(item) = ready!(this.stream.as_mut().poll_next(cx)) {
+    //             match (this.r)(&item) {
+    //                 RequiresRestart::Yes => {
+    //                     this.pending.set(Some((this.f)()));
+    //                 }
+    //                 RequiresRestart::No => {
+    //                     break Some(item);
+    //                 }
+    //             }
+    //         } else {
+    //             break None;
+    //         }
+    //     })
+    // }
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<T>> {
+        let mut this = self.project();
+
+        let ret = this.stream.as_mut().poll_next(cx);
+        if let Poll::Ready(Some(value)) = &ret {
+            if (this.restart)(&value) {
+                let s = (this.f)(&mut this.state);
+                this.stream.set(s);
+
+                // Notify caller that they should poll the stream again now that the underlying
+                // stream was recreated.
+                let waker = cx.waker().clone();
+                waker.wake();
+                return Poll::Pending;
+            }
+        }
+
+        return ret;
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -398,10 +486,12 @@ mod test {
 
     use http::types::body::LineBufferMut;
 
+    use std::cell::Cell;
     use std::convert::TryInto;
     use std::fs::File;
     use std::io::Write;
     use std::panic;
+    use std::rc::Rc;
     use tempfile::tempdir;
     use tokio_stream::StreamExt;
 
@@ -577,5 +667,127 @@ mod test {
                 debug!("{:?}, {:?}", events.len(), &events);
             })
         })
+    }
+
+    #[test]
+    fn restart_tailer_with_empty_stream() {
+        let mut rules = Rules::new();
+        rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
+
+        let dir = tempdir().expect("Couldn't create temp dir...");
+        let watched_dirs = vec![dir
+            .path()
+            .try_into()
+            .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))];
+
+        let tailer = Tailer::new(watched_dirs, rules, Lookback::None, None);
+        let rt = RestartingTailer::new(
+            tailer,
+            |_: &String| false,
+            |&mut _| futures::stream::empty(),
+        );
+
+        let result = tokio_test::block_on(rt.collect::<Vec<String>>());
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn restart_tailer_exhausting_stream() {
+        let mut rules = Rules::new();
+        rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
+
+        let dir = tempdir().expect("Couldn't create temp dir...");
+        let watched_dirs = vec![dir
+            .path()
+            .try_into()
+            .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))];
+
+        let tailer = Tailer::new(watched_dirs, rules, Lookback::None, None);
+        let rt = RestartingTailer::new(
+            tailer,
+            |_: &usize| false,
+            |&mut _| futures::stream::iter(vec![1, 2, 3]),
+        );
+
+        let result = tokio_test::block_on(rt.collect::<Vec<usize>>());
+        assert_eq!(result, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn restart_tailer_multiple_recoveries() {
+        let mut rules = Rules::new();
+        rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
+
+        let dir = tempdir().expect("Couldn't create temp dir...");
+        let watched_dirs = vec![dir
+            .path()
+            .try_into()
+            .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))];
+
+        let tailer = Tailer::new(watched_dirs, rules, Lookback::None, None);
+
+        let global_stream_count: Rc<Cell<usize>> = Rc::new(Cell::new(1));
+        let rt = RestartingTailer::new(
+            tailer,
+            // For this test, any number divisible by 4 should trigger the recovery behavior.
+            // Those values will be dropped from the collected output.
+            |n: &usize| *n % 4 == 0,
+            // Builds a closure to produce a stream of incrementing integers using a global
+            // state such that a number is only produced once. A number, once produced, will
+            // never be produced again across all instances of streams obtained from the closure.
+            |&mut _| {
+                let state = global_stream_count.clone();
+                Box::pin(futures::stream::unfold(state, |state| async {
+                    let cur = state.get();
+                    state.set(cur + 1);
+                    Some((cur, state))
+                }))
+            },
+        );
+
+        // // Limit the recovery stream to producing 9 elements. The value at 4 and 8 will be skipped
+        // // which verifies that the stream was able to correctly recover more than once.
+        let result = tokio_test::block_on(rt.take(8).collect::<Vec<usize>>());
+        assert_eq!(result, vec![1, 2, 3, 5, 6, 7, 9, 10]);
+    }
+
+    #[test]
+    fn restart_tailer_successive_recoveries() {
+        let mut rules = Rules::new();
+        rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
+
+        let dir = tempdir().expect("Couldn't create temp dir...");
+        let watched_dirs = vec![dir
+            .path()
+            .try_into()
+            .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))];
+
+        let tailer = Tailer::new(watched_dirs, rules, Lookback::None, None);
+
+        let global_stream_count: Rc<Cell<usize>> = Rc::new(Cell::new(1));
+        let rt = RestartingTailer::new(
+            tailer,
+            // For this test, the recovery is triggered on both 2 and 3. This will cause two recovery
+            // attempts in succession.
+            |n: &usize| *n == 2 || *n == 3,
+            // Builds a closure to produce a stream of incrementing integers up to 6, exclusive,
+            // using a global state such that a number is only produced once. A number, once produced,
+            // will never be produced again across all instances of streams obtained from the closure.
+            |&mut _| {
+                let state = global_stream_count.clone();
+                Box::pin(futures::stream::unfold(state, |state| async {
+                    let cur = state.get();
+                    if cur < 6 {
+                        state.set(cur + 1);
+                        Some((cur, state))
+                    } else {
+                        None
+                    }
+                }))
+            },
+        );
+
+        let result = tokio_test::block_on(rt.collect::<Vec<usize>>());
+        assert_eq!(result, vec![1, 4, 5]);
     }
 }
