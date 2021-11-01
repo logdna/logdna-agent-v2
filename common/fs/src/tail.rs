@@ -13,7 +13,7 @@ use std::path::Path;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use futures::{Stream, StreamExt};
+use futures::{ready, Future, Stream, StreamExt};
 
 use std::fmt;
 use thiserror::Error;
@@ -396,37 +396,42 @@ impl Tailer {
 
 pin_project! {
     #[must_use = "streams do nothing unless polled"]
-    pub struct RestartingTailer<C, F, S: Stream> {
+    pub struct RestartingTailer<C, F, S: Stream, Fut> {
         state: Tailer,
         restart: C,
         f: F,
         #[pin]
         stream: S,
+        #[pin]
+        pending: Option<Fut>
     }
 }
 
-impl<C, F, S: Stream, T> RestartingTailer<C, F, S>
+impl<C, F, S: Stream, T, Fut> RestartingTailer<C, F, S, Fut>
 where
     C: Fn(&T) -> bool,
-    F: FnMut(&mut Tailer) -> S,
+    F: FnMut(&mut Tailer) -> Fut,
     S: Stream<Item = T>,
+    Fut: Future<Output = S>,
 {
-    pub fn new(mut state: Tailer, restart: C, mut f: F) -> Self {
-        let stream = f(&mut state);
+    pub async fn new(mut state: Tailer, restart: C, mut f: F) -> Self {
+        let stream = f(&mut state).await;
         Self {
             state,
             restart,
             f,
             stream,
+            pending: None,
         }
     }
 }
 
-impl<C, F, S: Stream, T> Stream for RestartingTailer<C, F, S>
+impl<C, F, S: Stream, T, Fut> Stream for RestartingTailer<C, F, S, Fut>
 where
     C: Fn(&T) -> bool,
-    F: FnMut(&mut Tailer) -> S,
+    F: FnMut(&mut Tailer) -> Fut,
     S: Stream<Item = T>,
+    Fut: Future<Output = S>,
 {
     type Item = T;
 
@@ -434,47 +439,25 @@ where
         self.stream.size_hint()
     }
 
-    // fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<T>> {
-    //     let mut this = self.project();
-
-    //     Poll::Ready(loop {
-    //         if let Some(p) = this.pending.as_mut().as_pin_mut() {
-    //             // We have an item in progress, poll that until it's done
-    //             let stream = ready!(p.poll(cx));
-    //             this.pending.set(None);
-    //             this.stream.set(stream);
-    //         } else if let Some(item) = ready!(this.stream.as_mut().poll_next(cx)) {
-    //             match (this.r)(&item) {
-    //                 RequiresRestart::Yes => {
-    //                     this.pending.set(Some((this.f)()));
-    //                 }
-    //                 RequiresRestart::No => {
-    //                     break Some(item);
-    //                 }
-    //             }
-    //         } else {
-    //             break None;
-    //         }
-    //     })
-    // }
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<T>> {
         let mut this = self.project();
 
-        let ret = this.stream.as_mut().poll_next(cx);
-        if let Poll::Ready(Some(value)) = &ret {
-            if (this.restart)(&value) {
-                let s = (this.f)(&mut this.state);
-                this.stream.set(s);
-
-                // Notify caller that they should poll the stream again now that the underlying
-                // stream was recreated.
-                let waker = cx.waker().clone();
-                waker.wake();
-                return Poll::Pending;
+        Poll::Ready(loop {
+            if let Some(p) = this.pending.as_mut().as_pin_mut() {
+                let stream = ready!(p.poll(cx));
+                this.pending.set(None);
+                this.stream.set(stream);
+            } else if let Some(value) = ready!(this.stream.as_mut().poll_next(cx)) {
+                if (this.restart)(&value) {
+                    let stream_fut = (this.f)(this.state);
+                    this.pending.set(Some(stream_fut));
+                } else {
+                    break Some(value);
+                }
+            } else {
+                break None;
             }
-        }
-
-        return ret;
+        })
     }
 }
 
@@ -669,8 +652,8 @@ mod test {
         })
     }
 
-    #[test]
-    fn restart_tailer_with_empty_stream() {
+    #[tokio::test]
+    async fn restart_tailer_with_empty_stream() {
         let mut rules = Rules::new();
         rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
 
@@ -684,15 +667,16 @@ mod test {
         let rt = RestartingTailer::new(
             tailer,
             |_: &String| false,
-            |&mut _| futures::stream::empty(),
-        );
+            |&mut _| async { futures::stream::empty() },
+        )
+        .await;
 
-        let result = tokio_test::block_on(rt.collect::<Vec<String>>());
+        let result = rt.collect::<Vec<String>>().await;
         assert!(result.is_empty());
     }
 
-    #[test]
-    fn restart_tailer_exhausting_stream() {
+    #[tokio::test]
+    async fn restart_tailer_exhausting_stream() {
         let mut rules = Rules::new();
         rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
 
@@ -706,15 +690,16 @@ mod test {
         let rt = RestartingTailer::new(
             tailer,
             |_: &usize| false,
-            |&mut _| futures::stream::iter(vec![1, 2, 3]),
-        );
+            |&mut _| async { futures::stream::iter(vec![1, 2, 3]) },
+        )
+        .await;
 
-        let result = tokio_test::block_on(rt.collect::<Vec<usize>>());
+        let result = rt.collect::<Vec<usize>>().await;
         assert_eq!(result, vec![1, 2, 3]);
     }
 
-    #[test]
-    fn restart_tailer_multiple_recoveries() {
+    #[tokio::test]
+    async fn restart_tailer_multiple_recoveries() {
         let mut rules = Rules::new();
         rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
 
@@ -735,7 +720,7 @@ mod test {
             // Builds a closure to produce a stream of incrementing integers using a global
             // state such that a number is only produced once. A number, once produced, will
             // never be produced again across all instances of streams obtained from the closure.
-            |&mut _| {
+            |&mut _| async {
                 let state = global_stream_count.clone();
                 Box::pin(futures::stream::unfold(state, |state| async {
                     let cur = state.get();
@@ -743,16 +728,17 @@ mod test {
                     Some((cur, state))
                 }))
             },
-        );
+        )
+        .await;
 
         // // Limit the recovery stream to producing 9 elements. The value at 4 and 8 will be skipped
         // // which verifies that the stream was able to correctly recover more than once.
-        let result = tokio_test::block_on(rt.take(8).collect::<Vec<usize>>());
+        let result = rt.take(8).collect::<Vec<usize>>().await;
         assert_eq!(result, vec![1, 2, 3, 5, 6, 7, 9, 10]);
     }
 
-    #[test]
-    fn restart_tailer_successive_recoveries() {
+    #[tokio::test]
+    async fn restart_tailer_successive_recoveries() {
         let mut rules = Rules::new();
         rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
 
@@ -773,7 +759,7 @@ mod test {
             // Builds a closure to produce a stream of incrementing integers up to 6, exclusive,
             // using a global state such that a number is only produced once. A number, once produced,
             // will never be produced again across all instances of streams obtained from the closure.
-            |&mut _| {
+            |&mut _| async {
                 let state = global_stream_count.clone();
                 Box::pin(futures::stream::unfold(state, |state| async {
                     let cur = state.get();
@@ -785,9 +771,10 @@ mod test {
                     }
                 }))
             },
-        );
+        )
+        .await;
 
-        let result = tokio_test::block_on(rt.collect::<Vec<usize>>());
+        let result = rt.collect::<Vec<usize>>().await;
         assert_eq!(result, vec![1, 4, 5]);
     }
 }
