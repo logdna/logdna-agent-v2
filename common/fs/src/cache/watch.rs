@@ -75,21 +75,19 @@ impl Watcher {
         self.inotify.rm_watch(wd)
     }
 
-    pub fn event_stream<'a>(
-        &mut self,
-        buffer: &'a mut [u8],
-    ) -> std::io::Result<WatchEventStream<'a>> {
+    pub fn event_stream(&mut self) -> std::io::Result<WatchEventStream> {
+        let buffer = vec![0; 4096].into_boxed_slice();
         Ok(WatchEventStream {
             event_stream: self.inotify.event_stream(buffer)?,
         })
     }
 }
 
-pub struct WatchEventStream<'a> {
-    event_stream: inotify::EventStream<&'a mut [u8]>,
+pub struct WatchEventStream {
+    event_stream: inotify::EventStream<Box<[u8]>>,
 }
 
-impl<'a> WatchEventStream<'a> {
+impl WatchEventStream {
     pub fn into_stream(
         self,
     ) -> impl Stream<
@@ -97,7 +95,7 @@ impl<'a> WatchEventStream<'a> {
             Result<WatchEvent, std::io::Error>,
             chrono::DateTime<chrono::Utc>,
         ),
-    > + 'a {
+    > {
         let unmatched_move_to: Arc<Mutex<Vec<(Instant, WatchEvent)>>> =
             Arc::new(Mutex::new(Vec::new()));
         let unmatched_move_from: Arc<Mutex<Vec<(Instant, WatchEvent)>>> =

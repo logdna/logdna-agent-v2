@@ -260,14 +260,12 @@ impl FileSystem {
 
     pub fn stream_events(
         fs: Arc<Mutex<FileSystem>>,
-        buf: &mut [u8],
-    ) -> Result<impl Stream<Item = (Result<Event, Error>, EventTimestamp)> + '_, std::io::Error>
-    {
+    ) -> Result<impl Stream<Item = (Result<Event, Error>, EventTimestamp)>, std::io::Error> {
         let events_stream = match fs
             .try_lock()
             .expect("could not lock filesystem cache")
             .watcher
-            .event_stream(buf)
+            .event_stream()
         {
             Ok(events) => events,
             Err(e) => {
@@ -1147,11 +1145,10 @@ mod tests {
     macro_rules! take_events {
         ( $x:expr, $y: expr ) => {{
             use tokio_stream::StreamExt;
-            let mut buf = [0u8; 4096];
 
             tokio_test::block_on(async {
                 futures::StreamExt::collect::<Vec<_>>(futures::StreamExt::take(
-                    FileSystem::stream_events($x.clone(), &mut buf)
+                    FileSystem::stream_events($x.clone())
                         .expect("failed to read events")
                         .timeout(std::time::Duration::from_millis(500)),
                     $y,
