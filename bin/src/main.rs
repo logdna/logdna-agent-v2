@@ -169,13 +169,15 @@ async fn main() {
         tokio::spawn(offset_state.run().unwrap());
     }
 
+    let ds_source_params = (
+        config.log.dirs.clone(),
+        config.log.rules.clone(),
+        config.log.lookback.clone(),
+        initial_offsets.clone(),
+    );
+
     let fs_source = tail::RestartingTailer::new(
-        tail::Tailer::new(
-            config.log.dirs,
-            config.log.rules,
-            config.log.lookback,
-            initial_offsets,
-        ),
+        ds_source_params,
         |item| match item {
             Err(fs::cache::Error::WatchOverflow) => {
                 warn!("overflowed kernel queue, restarting stream");
@@ -183,8 +185,13 @@ async fn main() {
             }
             _ => false,
         },
-        |state: &mut tail::Tailer| async {
-            tail::process(state).expect("except Failed to create FS Tailer")
+        |params| {
+            let watched_dirs = params.0.clone();
+            let rules = params.1.clone();
+            let lookback = params.2.clone();
+            let offsets = params.3.clone();
+            let tailer = tail::Tailer::new(watched_dirs, rules, lookback, offsets);
+            async move { tail::process(tailer).expect("except Failed to create FS Tailer") }
         },
     )
     .await
