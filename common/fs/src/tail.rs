@@ -313,7 +313,7 @@ pub fn process(
             let fs = state.fs_cache.clone();
             let lookback_config = state.lookback_config.clone();
             let initial_offsets = state.initial_offsets.clone();
-            let event_times = state.event_times.clone();
+            let event_times = state.event_times;
 
             move |(event_idx, (event_result, event_time))| {
                 let fs = fs.clone();
@@ -447,7 +447,7 @@ where
                 this.stream.set(stream);
             } else if let Some(value) = ready!(this.stream.as_mut().poll_next(cx)) {
                 if (this.restart)(&value) {
-                    let stream_fut = (this.f)(&this.params);
+                    let stream_fut = (this.f)(this.params);
                     this.pending.set(Some(stream_fut));
                 } else {
                     break Some(value);

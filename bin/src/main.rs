@@ -181,7 +181,7 @@ async fn main() {
         |item| match item {
             Err(fs::cache::Error::WatchOverflow) => {
                 warn!("overflowed kernel queue, restarting stream");
-                return true;
+                true
             }
             _ => false,
         },
