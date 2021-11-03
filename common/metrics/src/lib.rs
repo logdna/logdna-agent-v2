@@ -44,6 +44,13 @@ lazy_static! {
         exponential_buckets(500.0, 2.0, 13).unwrap()
     )
     .unwrap();
+    static ref INGEST_REQUEST_DURATION_SECONDS: HistogramVec = register_histogram_vec!(
+        "logdna_agent_ingest_request_duration_seconds",
+        "Latency of the requests made to http ingestion service, in seconds",
+        &["outcome"],
+        exponential_buckets(0.0001, 4.0, 10).unwrap()
+    )
+    .unwrap();
     static ref INGEST_REQUEST_DURATION: HistogramVec = register_histogram_vec!(
         "logdna_agent_ingest_request_duration_millis",
         "Latency of the requests made to http ingestion service",
@@ -280,19 +287,28 @@ impl Http {
     pub fn add_request_success(&self, start: Instant) {
         INGEST_REQUEST_DURATION
             .with_label_values(&[labels::SUCCESS])
-            .observe(elapsed(start))
+            .observe(elapsed(start));
+        INGEST_REQUEST_DURATION_SECONDS
+            .with_label_values(&[labels::SUCCESS])
+            .observe(elapsed_seconds(start))
     }
 
     pub fn add_request_failure(&self, start: Instant) {
         INGEST_REQUEST_DURATION
             .with_label_values(&[labels::FAILURE])
-            .observe(elapsed(start))
+            .observe(elapsed(start));
+        INGEST_REQUEST_DURATION_SECONDS
+            .with_label_values(&[labels::FAILURE])
+            .observe(elapsed_seconds(start))
     }
 
     pub fn add_request_timeout(&self, start: Instant) {
         INGEST_REQUEST_DURATION
             .with_label_values(&[labels::TIMEOUT])
-            .observe(elapsed(start))
+            .observe(elapsed(start));
+        INGEST_REQUEST_DURATION_SECONDS
+            .with_label_values(&[labels::TIMEOUT])
+            .observe(elapsed_seconds(start))
     }
 
     pub fn increment_retries(&self) {
@@ -336,6 +352,9 @@ impl Journald {
 
 fn elapsed(start: Instant) -> f64 {
     start.elapsed().as_micros() as f64 / 1_000.0
+}
+fn elapsed_seconds(start: Instant) -> f64 {
+    start.elapsed().as_secs_f64()
 }
 
 #[cfg(test)]
