@@ -779,6 +779,7 @@ dependencies = [
  "metrics",
  "middleware",
  "pcre2",
+ "pin-project-lite",
  "serde_json",
  "slotmap",
  "smallvec",

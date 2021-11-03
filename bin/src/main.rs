@@ -6,7 +6,7 @@ use futures::Stream;
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
 use config::{Config, DbPath};
 use env_logger::Env;
-use fs::tail::Tailer as FSSource;
+use fs::tail;
 use futures::StreamExt;
 use http::batch::TimedRequestBatcherStreamExt;
 use http::client::{Client, ClientError, SendStatus};
@@ -71,7 +71,7 @@ async fn main() {
     let mut offset_state = None;
     let mut initial_offsets = None;
 
-    if let DbPath::Path(db_path) = config.log.db_path {
+    if let DbPath::Path(db_path) = &config.log.db_path {
         match AgentState::new(db_path) {
             Ok(agent_state) => {
                 let _offset_state = agent_state.get_offset_state();
@@ -143,14 +143,6 @@ async fn main() {
 
     executor.init();
 
-    let mut fs_tailer_buf = [0u8; 4096];
-    let mut fs_source = FSSource::new(
-        config.log.dirs,
-        config.log.rules,
-        config.log.lookback,
-        initial_offsets,
-    );
-
     #[cfg(feature = "libjournald")]
     let (journalctl_source, journald_source) = if config.journald.paths.is_empty() {
         let journalctl_source = create_journalctl_source()
@@ -177,29 +169,48 @@ async fn main() {
         tokio::spawn(offset_state.run().unwrap());
     }
 
-    let fs_source = fs_source
-        .process(&mut fs_tailer_buf)
-        .expect("except Failed to create FS Tailer")
-        .filter_map(|r| async {
-            match r {
-                Err(e) => {
-                    match e {
-                        fs::cache::Error::WatchOverflow => {
-                            error!("{}", e);
-                            panic!("overflowed kernel queue");
-                        }
-                        fs::cache::Error::PathNotValid(path) => {
-                            debug!("Path is not longer valid: {:?}", path);
-                        }
-                        _ => {
-                            warn!("Processing inotify event resulted in error: {}", e);
-                        }
-                    };
-                    None
-                }
-                Ok(lazy_lin_ser) => Some(StrictOrLazyLineBuilder::Lazy(lazy_lin_ser)),
+    let ds_source_params = (
+        config.log.dirs.clone(),
+        config.log.rules.clone(),
+        config.log.lookback.clone(),
+        initial_offsets.clone(),
+    );
+
+    let fs_source = tail::RestartingTailer::new(
+        ds_source_params,
+        |item| match item {
+            Err(fs::cache::Error::WatchOverflow) => {
+                warn!("overflowed kernel queue, restarting stream");
+                true
             }
-        });
+            _ => false,
+        },
+        |params| {
+            let watched_dirs = params.0.clone();
+            let rules = params.1.clone();
+            let lookback = params.2.clone();
+            let offsets = params.3.clone();
+            let tailer = tail::Tailer::new(watched_dirs, rules, lookback, offsets);
+            async move { tail::process(tailer).expect("except Failed to create FS Tailer") }
+        },
+    )
+    .await
+    .filter_map(|r| async {
+        match r {
+            Err(e) => {
+                match e {
+                    fs::cache::Error::PathNotValid(path) => {
+                        debug!("Path is not longer valid: {:?}", path);
+                    }
+                    _ => {
+                        warn!("Processing inotify event resulted in error: {}", e);
+                    }
+                };
+                None
+            }
+            Ok(lazy_lin_ser) => Some(StrictOrLazyLineBuilder::Lazy(lazy_lin_ser)),
+        }
+    });
 
     let k8s_event_stream = match config.log.log_k8s_events {
         K8sTrackingConf::Never => None,

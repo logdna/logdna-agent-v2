@@ -2,7 +2,7 @@ use crate::cache::entry::Entry;
 use crate::cache::event::Event;
 use crate::cache::tailed_file::TailedFile;
 use crate::cache::watch::{WatchEvent, Watcher};
-use crate::rule::{GlobRule, Rules, Status};
+use crate::rule::{RuleDef, Rules, Status};
 
 use std::cell::RefCell;
 use std::collections::hash_map::Entry as HashMapEntry;
@@ -260,14 +260,12 @@ impl FileSystem {
 
     pub fn stream_events(
         fs: Arc<Mutex<FileSystem>>,
-        buf: &mut [u8],
-    ) -> Result<impl Stream<Item = (Result<Event, Error>, EventTimestamp)> + '_, std::io::Error>
-    {
+    ) -> Result<impl Stream<Item = (Result<Event, Error>, EventTimestamp)>, std::io::Error> {
         let events_stream = match fs
             .try_lock()
             .expect("could not lock filesystem cache")
             .watcher
-            .event_stream(buf)
+            .event_stream()
         {
             Ok(events) => events,
             Err(e) => {
@@ -1118,13 +1116,13 @@ fn into_rules(path: PathBuf) -> Rules {
 // Attach rules for all sub paths for a path
 fn append_rules(rules: &mut Rules, mut path: PathBuf) {
     rules.add_inclusion(
-        GlobRule::new(path.join(r"**").to_str().expect("invalid unicode in path"))
+        RuleDef::glob_rule(path.join(r"**").to_str().expect("invalid unicode in path"))
             .expect("invalid glob rule format"),
     );
 
     loop {
         rules.add_inclusion(
-            GlobRule::new(path.to_str().expect("invalid unicode in path"))
+            RuleDef::glob_rule(path.to_str().expect("invalid unicode in path"))
                 .expect("invalid glob rule format"),
         );
         if !path.pop() {
@@ -1136,7 +1134,7 @@ fn append_rules(rules: &mut Rules, mut path: PathBuf) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rule::{GlobRule, Rules};
+    use crate::rule::{RuleDef, Rules};
     use crate::test::LOGGER;
     use std::convert::TryInto;
     use std::fs::{copy, create_dir, hard_link, remove_dir_all, remove_file, rename, File};
@@ -1147,11 +1145,10 @@ mod tests {
     macro_rules! take_events {
         ( $x:expr, $y: expr ) => {{
             use tokio_stream::StreamExt;
-            let mut buf = [0u8; 4096];
 
             tokio_test::block_on(async {
                 futures::StreamExt::collect::<Vec<_>>(futures::StreamExt::take(
-                    FileSystem::stream_events($x.clone(), &mut buf)
+                    FileSystem::stream_events($x.clone())
                         .expect("failed to read events")
                         .timeout(std::time::Duration::from_millis(500)),
                     $y,
@@ -1180,7 +1177,7 @@ mod tests {
     ) -> FileSystem {
         let rules = rules.unwrap_or_else(|| {
             let mut rules = Rules::new();
-            rules.add_inclusion(GlobRule::new(r"**").unwrap());
+            rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
             rules
         });
         FileSystem::new(
@@ -1971,11 +1968,12 @@ mod tests {
             let path = tempdir.path().to_path_buf();
 
             let mut rules = Rules::new();
-            rules.add_inclusion(GlobRule::new("*.log").unwrap());
+            rules.add_inclusion(RuleDef::glob_rule("*.log").unwrap());
             rules.add_inclusion(
-                GlobRule::new(&*format!("{}{}", tempdir.path().to_str().unwrap(), "*")).unwrap(),
+                RuleDef::glob_rule(&*format!("{}{}", tempdir.path().to_str().unwrap(), "*"))
+                    .unwrap(),
             );
-            rules.add_exclusion(GlobRule::new("*.tmp").unwrap());
+            rules.add_exclusion(RuleDef::glob_rule("*.tmp").unwrap());
 
             let file_path = path.join("test.tmp");
             let sym_path = path.join("test.log");
