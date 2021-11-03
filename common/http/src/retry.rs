@@ -22,8 +22,8 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
 use uuid::Uuid;
 
-use crate::offsets::Offset;
 use crate::types::body::{IngestBody, IngestBodyBuffer, IntoIngestBodyBuffer};
+use state::OffsetMap;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -51,18 +51,18 @@ pub struct Retry {
 
 #[derive(Deserialize)]
 struct DiskRead {
-    offsets: Option<Vec<Offset>>,
+    offsets: Option<OffsetMap>,
     body: IngestBody,
 }
 
 pub struct RetryItem {
     pub body_buffer: IngestBodyBuffer,
-    pub offsets: Option<Vec<Offset>>,
+    pub offsets: Option<OffsetMap>,
     pub path: PathBuf,
 }
 
 impl RetryItem {
-    fn new(body_buffer: IngestBodyBuffer, offsets: Option<Vec<Offset>>, path: PathBuf) -> Self {
+    fn new(body_buffer: IngestBodyBuffer, offsets: Option<OffsetMap>, path: PathBuf) -> Self {
         Self {
             body_buffer,
             offsets,
@@ -120,7 +120,7 @@ impl Retry {
         Ok(())
     }
 
-    async fn read_from_disk(path: &Path) -> Result<(Option<Vec<Offset>>, IngestBody), Error> {
+    async fn read_from_disk(path: &Path) -> Result<(Option<OffsetMap>, IngestBody), Error> {
         let mut file = BufReader::new(File::open(path).await?);
         let mut data = String::new();
         file.read_to_string(&mut data).await?;
@@ -181,7 +181,7 @@ impl RetrySender {
 
     pub async fn retry(
         &self,
-        offsets: Option<&[Offset]>,
+        offsets: Option<OffsetMap>,
         body: &IngestBodyBuffer,
     ) -> Result<(), Error> {
         Metrics::http().increment_retries();
@@ -212,7 +212,6 @@ impl RetrySender {
                     // Get the std::fs::File out of the tokio BufWriter
                     file.flush().await?;
                     let mut std_file = std::io::BufWriter::new(file.into_inner().into_std().await);
-                    let offsets = offsets.to_vec();
                     move || -> Result<std::fs::File, std::io::Error> {
                         // Serialise the offsets to the std::io::BufWriter
                         serde_json::to_writer(&mut std_file, &offsets)?;
@@ -271,6 +270,12 @@ mod tests {
 
     use test_types::strategies::{line_st, offset_st};
 
+    #[test]
+    fn simple_roundtrip() {
+        let inp = "{\"offsets\":{\"68\":{\"start\":73,\"end\":124},\"74\":{\"start\":77,\"end\":97}},\"body\":{\"lines\":[]}}";
+        let _: DiskRead = serde_json::from_str(inp).unwrap();
+    }
+
     proptest! {
         #![proptest_config(ProptestConfig {
           cases: 10, .. ProptestConfig::default()
@@ -279,7 +284,6 @@ mod tests {
 
         #[test]
         fn roundtrip(
-
             inp in (0..1024usize)
                 .prop_flat_map(|size|(Just(size),
                                       proptest::collection::vec(line_st(offset_st(1024)), size)
@@ -290,7 +294,7 @@ mod tests {
 
             let (size, lines) = inp;
             let (retrier, retry_stream) = retry(dir_path.clone().into(), Duration::from_millis(1000), Duration::from_millis(0));
-            let (results, retry_results) =
+            let (results, retry_results): (_, Vec<_>) =
                 tokio_test::block_on({
                     let dir_path = dir_path.clone();
 
@@ -303,7 +307,7 @@ mod tests {
                         // Retry all the results and assert they come off the stream
                         for (idx, body_offsets) in results.iter().enumerate() {
                             let (body, offsets) = body_offsets.as_ref().unwrap();
-                            retrier.retry(Some(offsets.items_as_ref()), body).await.unwrap();
+                            retrier.retry(Some(offsets.clone()), body).await.unwrap();
                             // Check there are the right number of retry files
                             assert_eq!(std::fs::read_dir(&dir_path).unwrap().count(), idx + 1);
                         }

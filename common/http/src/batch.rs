@@ -10,9 +10,8 @@ use futures::StreamExt;
 use thiserror::Error;
 use tokio::time;
 
-use state::GetOffset;
+use state::{GetOffset, OffsetMap};
 
-use crate::offsets::OffsetMap;
 use crate::types::body::IngestBodyBuffer;
 use crate::types::serialize::{
     body_serializer_source, IngestBodySerializer, IngestLineSerialize, IngestLineSerializeError,
@@ -279,7 +278,7 @@ mod tests {
         ];
 
         let stream = stream::iter(input.iter());
-        let batch_stream = stream.timed_request_batches(200, Duration::new(0, 250));
+        let batch_stream = stream.timed_request_batches(200, Duration::new(5, 0));
         let result = batch_stream.collect::<Vec<_>>().await;
 
         let mut buf = String::new();

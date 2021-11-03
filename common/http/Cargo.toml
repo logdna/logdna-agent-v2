@@ -20,16 +20,13 @@ bytes = "1"
 crossbeam = "0.8"
 hyper = { version = "0.14", features = ["http1", "server"] }
 uuid = { version = "0.8", features = ["v4"] }
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
 chrono = "0.4"
 thiserror = "1"
 futures = "0.3"
 futures-timer = "3"
-pin-project-lite = "0.2"
 prometheus = { version = "0.12", features = ["process"] }
-vec-collections = "0.3.5"
-smallvec = "1.4"
 
 [dev-dependencies]
 tempfile = "3"

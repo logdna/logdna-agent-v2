@@ -6,7 +6,6 @@ edition = "2018"
 
 [dependencies]
 lazy_static = "1.0"
-chrono = "0.4"
 jemalloc-ctl = "0.3"
 json = "0.12"
 log = "0.4"

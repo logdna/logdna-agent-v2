@@ -21,7 +21,7 @@ use serde_json::Value;
 
 use bytes::Bytes;
 use std::collections::HashMap;
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::fs::OpenOptions;
 use std::ops::DerefMut;
 use std::os::unix::fs::MetadataExt;
@@ -43,7 +43,7 @@ pub struct LazyLineSerializer {
     path: String,
     line_buffer: Option<Bytes>,
 
-    file_offset: (u64, u64),
+    file_offset: (u64, u64, u64),
 
     reader: Arc<Mutex<TailedFileInner>>,
 }
@@ -189,7 +189,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
 }
 
 impl LazyLineSerializer {
-    pub fn new(reader: Arc<Mutex<TailedFileInner>>, path: String, offset: (u64, u64)) -> Self {
+    pub fn new(reader: Arc<Mutex<TailedFileInner>>, path: String, offset: (u64, u64, u64)) -> Self {
         Self {
             reader,
             path,
@@ -292,8 +292,8 @@ impl LineBufferMut for LazyLineSerializer {
 }
 
 impl GetOffset for LazyLineSerializer {
-    fn get_offset(&self) -> Option<u64> {
-        Some(self.file_offset.1)
+    fn get_offset(&self) -> Option<(u64, u64)> {
+        Some((self.file_offset.1, self.file_offset.2))
     }
     fn get_key(&self) -> Option<u64> {
         Some(self.file_offset.0)
@@ -604,9 +604,13 @@ impl TailedFile<LazyLineSerializer> {
                         ..
                     } = borrow.deref_mut();
 
+                    let mut initial_offset = *offset;
                     if let Some(c) = buf.last() {
                         if *c == b'\n' {
                             buf.clear();
+                        } else {
+                            initial_offset -= u64::try_from(buf.len())
+                                .expect("Couldn't convert buffer length to u64")
                         }
                     }
 
@@ -646,7 +650,7 @@ impl TailedFile<LazyLineSerializer> {
                                     let ret = (0..paths.len()).map({
                                         let paths = paths.clone();
                                         let rc_reader = rc_reader.clone();
-                                        let current_offset = (*inode, *offset);
+                                        let current_offset = (*inode, initial_offset, *offset);
                                         move |path_idx| {
                                             LazyLineSerializer::new(
                                                 rc_reader.clone(),
@@ -748,6 +752,6 @@ mod tests {
             offset: 0,
             inode: 0,
         }));
-        LazyLineSerializer::new(file_inner, "file/path.log".to_owned(), (0, 0))
+        LazyLineSerializer::new(file_inner, "file/path.log".to_owned(), (0, 0, 0))
     }
 }
