@@ -1078,10 +1078,10 @@ async fn test_lookback_restarting_agent() {
     server_result.unwrap();
 }
 
-#[ignore]
 #[tokio::test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
-#[cfg_attr(not(target_os = "linux"), ignore)]
+#[ignore]
+//#[cfg_attr(not(feature = "integration_tests"), ignore)]
+//#[cfg_attr(not(target_os = "linux"), ignore)]
 async fn test_symlink_initialization_both_included() {
     let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
