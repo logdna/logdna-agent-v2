@@ -1,0 +1,15 @@
+[Unit]
+Description=Logdna Agent
+Documentation=https://docs.logdna.com
+
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/logdna-agent
+Restart=on-failure
+EnvironmentFile=-/etc/logdna.env
+StateDirectory=logdna
+
+[Install]
+WantedBy=multi-user.target

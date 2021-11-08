@@ -29,6 +29,7 @@ DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
 export CARGO_CACHE ?= $(shell pwd)/.cargo_cache
 RUST_COMMAND := $(DOCKER_DISPATCH) $(RUST_IMAGE)
 UNCACHED_RUST_COMMAND := CACHE_TARGET="false" $(DOCKER_DISPATCH) $(RUST_IMAGE)
+DEB_COMMAND := CACHE_TARGET="false" $(DOCKER_DISPATCH) alanfranz/fpm-within-docker:debian-bullseye
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
@@ -316,6 +317,35 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg VCS_URL=$(VCS_URL) \
 		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION)
+
+DEB_VERSION=1
+DEB_ARCH_NAME_x86_64=amd64
+DEB_ARCH_NAME_aarch64=arm64
+
+.PHONY:build-deb
+build-deb: build-image
+	$(DEB_COMMAND) "" 'package_version="$(BUILD_VERSION)"; \
+		iteration="${DEB_VERSION}"; \
+		echo "Generating deb package for version ${BUILD_VERSION} as $${package_version}-$${iteration}"; \
+		chmod +x "logdna-agent"; \
+		fpm \
+				-a "${ARCH}" \
+				--input-type dir \
+				--output-type deb \
+				-p "/build/target/${TARGET}/logdna-agent_$${package_version}-$${iteration}_${DEB_ARCH_NAME_${ARCH}}.deb" \
+				--name "logdna-agent" \
+				--version "$${package_version}" \
+				--iteration "$${iteration}" \
+				--license MIT \
+				--vendor "LogDNA, Inc." \
+				--description "LogDNA Agent for Linux" \
+				--url "https://logdna.com/" \
+				--maintainer "LogDNA <support@logdna.com>" \
+				--before-remove packaging/linux/before-remove \
+				--after-upgrade packaging/linux/after-upgrade \
+				--force --deb-no-default-config-files \
+				"/build/target/${TARGET}/release/logdna-agent=/usr/bin/logdna-agent" \
+				"packaging/linux/logdna-agent.service=/lib/systemd/system/logdna-agent.service"'
 
 .PHONY: publish-s3-binary
 publish-s3-binary:
