@@ -7,7 +7,7 @@ use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use slotmap::{DefaultKey, SlotMap};
 
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 
 use std::collections::HashMap;
 use std::convert::{AsRef, Into, TryInto};
