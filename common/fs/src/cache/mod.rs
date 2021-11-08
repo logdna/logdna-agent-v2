@@ -2,7 +2,10 @@ use crate::cache::entry::Entry;
 use crate::cache::event::Event;
 use crate::cache::tailed_file::TailedFile;
 use crate::cache::watch::{WatchEvent, Watcher};
+use crate::lookback::Lookback;
 use crate::rule::{RuleDef, Rules, Status};
+
+use state::{FileId, Span, SpanVec};
 
 use std::cell::RefCell;
 use std::collections::hash_map::Entry as HashMapEntry;
@@ -158,12 +161,21 @@ pub struct FileSystem {
     initial_dir_rules: Rules,
 
     initial_events: Vec<Event>,
+
+    lookback_config: Lookback,
+    initial_offsets: HashMap<FileId, SpanVec>,
+
     resume_events_recv: async_channel::Receiver<(u64, EventTimestamp)>,
     resume_events_send: async_channel::Sender<(u64, EventTimestamp)>,
 }
 
 impl FileSystem {
-    pub fn new(initial_dirs: Vec<DirPathBuf>, rules: Rules) -> Self {
+    pub fn new(
+        initial_dirs: Vec<DirPathBuf>,
+        initial_offsets: HashMap<FileId, SpanVec>,
+        lookback_config: Lookback,
+        rules: Rules,
+    ) -> Self {
         let (resume_events_send, resume_events_recv) = async_channel::unbounded();
 
         initial_dirs.iter().for_each(|path| {
@@ -196,6 +208,8 @@ impl FileSystem {
             master_rules: rules,
             initial_dirs: initial_dirs.clone(),
             initial_dir_rules,
+            lookback_config,
+            initial_offsets,
             watcher,
             initial_events: Vec::new(),
             resume_events_recv,
@@ -435,6 +449,40 @@ impl FileSystem {
             .map(move |_| events)
     }
 
+    fn get_initial_offset(&self, path: &Path, inode: FileId) -> SpanVec {
+        fn _lookup_offset(
+            initial_offsets: &HashMap<FileId, SpanVec>,
+            key: &FileId,
+            path: &Path,
+        ) -> Option<SpanVec> {
+            if let Some(offset) = initial_offsets.get(key) {
+                debug!("Got offset {:?} from state using key {:?}", offset, path);
+                Some(offset.clone())
+            } else {
+                None
+            }
+        }
+        match self.lookback_config {
+            Lookback::Start => {
+                _lookup_offset(&self.initial_offsets, &inode, path).unwrap_or_default()
+            }
+            Lookback::SmallFiles => {
+                // Check the actual file len
+                let file_len = path.metadata().map(|m| m.len()).unwrap_or(0);
+                let smallfiles_offset = if file_len < 8192 {
+                    SpanVec::new()
+                } else {
+                    [Span::new(0, file_len).unwrap()].iter().collect()
+                };
+                _lookup_offset(&self.initial_offsets, &inode, path).unwrap_or(smallfiles_offset)
+            }
+            Lookback::None => path
+                .metadata()
+                .map(|m| [Span::new(0, m.len()).unwrap()].iter().collect())
+                .unwrap_or_default(),
+        }
+    }
+
     pub fn resolve_direct_path(&self, entry: &Entry, _entries: &EntryMap) -> PathBuf {
         // TODO: extract these Vecs or replace with SmallVec
         let mut components = Vec::new();
@@ -580,16 +628,21 @@ impl FileSystem {
 
                 let inode = path.metadata().map_err(Error::File)?.ino();
                 self.wd_by_inode.insert(inode, wd.clone());
+
+                let offsets = self.get_initial_offset(path, inode.into());
+                let initial_offset = offsets.first().map(|offset| offset.end).unwrap_or(0);
+
+                let tf = TailedFile::new(path, offsets, Some(self.resume_events_send.clone()))
+                    .map_err(Error::File)?;
+
+                info!("initialized {:?} with offset {}", path, initial_offset);
+
                 let new_entry = Entry::File {
                     name: component,
                     parent: parent_ref,
                     wd,
-                    data: RefCell::new(
-                        TailedFile::new(path, Some(self.resume_events_send.clone()))
-                            .map_err(Error::File)?,
-                    ),
+                    data: RefCell::new(tf),
                 };
-
                 Metrics::fs().increment_tracked_files();
 
                 let new_key = self.register_as_child(parent_ref, new_entry, _entries)?;
@@ -1185,6 +1238,8 @@ mod tests {
                 .as_path()
                 .try_into()
                 .unwrap_or_else(|_| panic!("{:?} is not a directory!", path))],
+            HashMap::new(),
+            Lookback::Start,
             rules,
         )
     }

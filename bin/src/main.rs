@@ -26,8 +26,9 @@ use middleware::line_rules::LineRules;
 use middleware::Executor;
 
 use pin_utils::pin_mut;
-use state::AgentState;
+use state::{AgentState, FileId, SpanVec};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::str::FromStr;
@@ -69,7 +70,7 @@ async fn main() {
 
     let mut _agent_state = None;
     let mut offset_state = None;
-    let mut initial_offsets = None;
+    let mut initial_offsets: Option<HashMap<FileId, SpanVec>> = None;
 
     if let DbPath::Path(db_path) = &config.log.db_path {
         match AgentState::new(db_path) {
@@ -80,11 +81,8 @@ async fn main() {
                 offset_state = Some(_offset_state);
                 match offsets {
                     Ok(os) => {
-                        initial_offsets = Some(
-                            os.into_iter()
-                                .map(|fo| (fo.key, fo.offsets.first().unwrap().end))
-                                .collect(),
-                        );
+                        initial_offsets =
+                            Some(os.into_iter().map(|fo| (fo.key, fo.offsets)).collect());
                     }
                     Err(e) => warn!("couldn't retrieve offsets from agent state, {:?}", e),
                 }

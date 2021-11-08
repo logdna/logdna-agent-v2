@@ -1,5 +1,5 @@
 use crate::raw::{Config as RawConfig, Rules};
-use fs::tail::Lookback;
+use fs::lookback::Lookback;
 use http::types::params::{Params, Tags};
 use k8s::K8sTrackingConf;
 use std::env::var as env_var;
