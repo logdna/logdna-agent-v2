@@ -141,6 +141,7 @@ impl Service<Request<Body>> for Svc {
                 let _ = fut.await;
             };
 
+            let mut files = files.lock().await;
             for line in ingest_body.lines {
                 if let Some(mut raw_line) = line.line {
                     if !raw_line.ends_with('\n') {
@@ -151,7 +152,6 @@ impl Service<Request<Body>> for Svc {
                     let orig_file_name = line.file.unwrap_or_else(|| " unknown".into());
                     let file_name = orig_file_name.replace("/", "-").clone();
 
-                    let mut files = files.lock().await;
                     let file_info = files.entry(orig_file_name).or_insert_with(move || {
                         info!("creating {}", file_name);
                         FileInfo {
