@@ -1,0 +1,19 @@
+echo "Running LogDNA Agent after upgrade steps"
+
+[ -f /var/run/logdna-agent.pid ] && {
+  # Remove logdna-agent v2 and below manually if still present
+  echo "Legacy LogDNA Agent pid found"
+  previous_pid=$(cat /var/run/logdna-agent.pid);
+  if ps "${previous_pid}" > /dev/null 2>&1; then
+    echo "Legacy LogDNA Agent process found"
+    kill "${previous_pid}" || true;
+    sleep 2;
+    kill -9 "${previous_pid}" > /dev/null 2>&1 || true;
+    rm -f /var/run/logdna-agent.pid || true;
+    rm -f /var/log/logdna-agent.log || true;
+    echo "Legacy LogDNA removed";
+  fi
+}
+
+systemctl daemon-reload
+systemctl restart logdna-agent.service
