@@ -323,7 +323,7 @@ DEB_ARCH_NAME_x86_64=amd64
 DEB_ARCH_NAME_aarch64=arm64
 
 .PHONY:build-deb
-build-deb: build-image
+build-deb: build-release
 	$(DEB_COMMAND) "" 'package_version="$(BUILD_VERSION)"; \
 		iteration="${DEB_VERSION}"; \
 		echo "Generating deb package for version ${BUILD_VERSION} as $${package_version}-$${iteration}"; \
