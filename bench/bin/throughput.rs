@@ -10,8 +10,10 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use file_rotate::{FileRotate, RotationMode};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use memmap2::MmapOptions;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
@@ -37,6 +39,10 @@ struct Opt {
     #[structopt(parse(from_os_str), short)]
     out_dir: PathBuf,
 
+    /// Output directory
+    #[structopt(long)]
+    profile: bool,
+
     /// Number of files to retain during rotation
     #[structopt(long)]
     file_history: usize,
@@ -44,6 +50,14 @@ struct Opt {
     /// Cut of Bytes before rotation
     #[structopt(long)]
     file_size: usize,
+
+    /// Number of lines to write
+    #[structopt(long)]
+    line_count: usize,
+
+    /// Ingester delay
+    #[structopt(long)]
+    ingester_delay: Option<u64>,
 }
 
 pub fn get_available_port() -> Option<u16> {
@@ -76,10 +90,9 @@ fn start_ingester(
     )
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), std::io::Error> {
     let opt = Opt::from_args();
-    println!("{:?}", opt);
 
     // Parse mmap into Vec<&str>
     let words = OwningHandle::new_with_fn(
@@ -97,7 +110,8 @@ async fn main() -> Result<(), std::io::Error> {
     let mut manifest_path = std::path::PathBuf::from(std::env::var(CARGO_MANIFEST_DIR).unwrap());
     manifest_path.pop();
     manifest_path.push("bin/Cargo.toml");
-    println!("{:?}", manifest_path);
+
+    println!("Building Agent");
 
     let cargo_build = escargot::CargoBuild::new()
         .manifest_path(manifest_path)
@@ -107,18 +121,49 @@ async fn main() -> Result<(), std::io::Error> {
         .run()
         .unwrap();
 
+    println!("Agent Built");
+
+    let line_count = opt.line_count;
+    fs::create_dir(&opt.out_dir).await.unwrap_or(());
+
+    println!("starting progress bars...");
+    let m = Arc::new(MultiProgress::new());
+    let sty = ProgressStyle::default_bar()
+        .template("[{msg} {elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {per_sec}")
+        .progress_chars("##-");
+    let wpb = m.add(ProgressBar::new(line_count as u64));
+    wpb.set_style(sty.clone());
+    wpb.set_message("Logged Lines:");
+    wpb.tick();
+
+    let rpb = m.add(ProgressBar::new(line_count as u64));
+    rpb.set_style(sty.clone());
+    rpb.set_message("Received:    ");
+    rpb.tick();
+
+    let mp = tokio::task::spawn_blocking({
+        let mp = m.clone();
+        move || mp.join().unwrap()
+    });
+
+    //println!("ticked bars");
+
     let ingestion_key = "thisIsAnApiKeyNot123456";
     let mut agent_cmd = cargo_build.command();
 
     let line_counter = std::sync::Arc::new(AtomicU64::new(0));
 
     let (server, _, shutdown_handle, address) = start_ingester(Box::new({
+        let ingester_delay = opt.ingester_delay.unwrap_or(1000);
         let line_counter = line_counter.clone();
+        let rpb1 = rpb.clone();
         move |body| {
-            Some(Box::pin({
-                line_counter.fetch_add(body.lines.len().try_into().unwrap(), Ordering::Relaxed);
-                tokio::time::sleep(std::time::Duration::from_millis(200))
-            }))
+            let lines = body.lines.len();
+            rpb1.inc(lines.try_into().unwrap());
+            line_counter.fetch_add(lines.try_into().unwrap(), Ordering::SeqCst);
+            Some(Box::pin(tokio::time::sleep(
+                std::time::Duration::from_millis(ingester_delay),
+            )))
         }
     }));
 
@@ -132,112 +177,151 @@ async fn main() -> Result<(), std::io::Error> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    println!("Spawning agent");
     let mut agent_handle = agent_cmd.spawn().unwrap();
+    let agent_pid = agent_handle.id().try_into().unwrap();
+    wpb.println(format!("Spawned agent, pid: {}", agent_pid));
 
     let agent_stdout = agent_handle.stdout.take().unwrap();
     let stdout_reader = std::io::BufReader::new(agent_stdout);
-    std::thread::spawn(move || for _line in stdout_reader.lines() {});
-
-    let agent_stderr = agent_handle.stderr.take().unwrap();
-    let stderr_reader = std::io::BufReader::new(agent_stderr);
-    std::thread::spawn(move || {
-        for _line in stderr_reader.lines() {
-            //()
-            eprintln!("Agent STDERR: {}", _line.unwrap())
+    std::thread::spawn({
+        let wpb1 = wpb.clone();
+        move || {
+            for _line in stdout_reader.lines() {
+                wpb1.println(format!("Agent STDOUT: {}", _line.unwrap()));
+            }
         }
     });
 
-    println!("Spawning flamegraph");
-    let mut flamegraph_cmd = std::process::Command::new("flamegraph");
-    let flamegraph_cmd = flamegraph_cmd
-        .args([
-            "-p",
-            &format!("{}", agent_handle.id()),
-            "-o",
-            "/tmp/flamegraph.svg",
-        ])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    let agent_stderr = agent_handle.stderr.take().unwrap();
+    let stderr_reader = std::io::BufReader::new(agent_stderr);
+    std::thread::spawn({
+        let wpb1 = wpb.clone();
+        move || {
+            for _line in stderr_reader.lines() {
+                wpb1.println(format!("Agent STDOUT: {}", _line.unwrap()));
+            }
+        }
+    });
 
-    let mut flamegraph_handle = flamegraph_cmd.spawn().unwrap();
+    let flamegraph_handle = if opt.profile {
+        wpb.println("Spawning flamegraph");
+        let mut flamegraph_cmd = std::process::Command::new("flamegraph");
+        let flamegraph_cmd = flamegraph_cmd
+            .args([
+                "-p",
+                &format!("{}", agent_handle.id()),
+                "-o",
+                "/tmp/flamegraph.svg",
+            ])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
 
-    println!("Waiting for mock ingester");
+        Some(flamegraph_cmd.spawn().unwrap())
+    } else {
+        None
+    };
+
+    wpb.println("Waiting for mock ingester");
     let (server_result, _) = tokio::join!(server, {
         let out_dir = opt.out_dir.clone();
         let file_size = opt.file_size;
         let file_history = opt.file_history;
 
+        let line_counter = line_counter.clone();
         async move {
             let mut out_file: PathBuf = out_dir.clone();
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             out_file.push("test.log");
 
-            fs::create_dir(out_dir).await.unwrap();
-
-            let line_count = 10_000_000;
             tokio::task::spawn_blocking({
                 let out_file = out_file.clone();
+                let wpb = wpb.clone();
                 move || {
                     let mut count = 0;
-                    let mut log = FileRotate::new(
+                    let mut log = std::io::BufWriter::new(FileRotate::new(
                         out_file.clone(),
                         RotationMode::BytesSurpassed(file_size),
                         file_history,
-                    );
+                    ));
 
+                    // Write first 5% of logs
                     for word in words.iter().cycle().take(line_count / 20) {
                         count += 1;
-                        if count % 10000 == 0 {
-                            std::thread::sleep(std::time::Duration::from_millis(10));
+                        if count % 10_000 == 0 {
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                            wpb.inc(10_000);
+                            if count % 100_000 == 0 {
+                                log.flush().unwrap();
+                            }
                         }
                         writeln!(log, "{}", word).unwrap();
                     }
 
-                    println!("Written lines: {}", count);
-                    std::thread::sleep(std::time::Duration::from_secs(10));
+                    //println!("Written lines: {}", count);
+                    //std::thread::sleep(std::time::Duration::from_secs(100));
 
+                    // Write the rest of the logs
                     for word in words.iter().cycle().take(line_count - line_count / 20) {
                         count += 1;
-                        if count % 10000 == 0 {
-                            std::thread::sleep(std::time::Duration::from_millis(10));
+                        if count % 10_000 == 0 {
+                            wpb.inc(10_000);
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+                            if count % 100_000 == 0 {
+                                log.flush().unwrap();
+                            }
                         }
                         writeln!(log, "{}", word).unwrap();
                     }
 
-                    println!("Written lines: {}", count);
+                    //println!("Written lines: {}", count);
                 }
             })
             .await
             .unwrap();
-            println!("waiting for 60 seconds");
-            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
 
-            let lines = line_counter.load(Ordering::Relaxed);
-            println!("Lines: {:#?}", lines);
+            let mut no_progress_count = 0;
+            let mut last_count = 0;
+            wpb.println("Waiting for agent to stop uploading");
+            while line_counter.load(Ordering::SeqCst) < line_count as u64 {
+                let lines = line_counter.load(Ordering::SeqCst);
+                if last_count == lines {
+                    no_progress_count += 1;
+                    if no_progress_count > 5 {
+                        wpb.println(format!("Final agent upload count: {}", lines));
+                        break;
+                    }
+                }
+                last_count = lines;
+                tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            }
+            wpb.finish_at_current_pos();
+            println!("Finished up wpb");
             shutdown_handle();
         }
     });
 
     server_result.unwrap();
+    rpb.finish_at_current_pos();
+    mp.await.unwrap();
 
-    let agent_pid = agent_handle.id().try_into().unwrap();
+    println!("Finished up rpb");
+
     let proc_info = procfs::process::Process::new(agent_pid).unwrap();
     let stat = proc_info.stat().unwrap();
     let io = proc_info.io().unwrap();
 
-    println!("Killing Agent");
+    println!("Killing agent pid {}", agent_pid);
     signal::kill(Pid::from_raw(agent_pid), Signal::SIGTERM).unwrap();
 
-    println!("Waiting for agent");
+    println!("Waiting for agent pid {}", agent_pid);
     agent_handle.wait().unwrap();
 
     println!("/proc Stat:\n{:#?}", stat);
     println!("/proc IO:\n{:#?}", io);
 
-    println!("Waiting on flamegraph");
-    println!("{:#?}", flamegraph_handle.wait().unwrap());
-
-    // rt.shutdown_timeout(std::time::Duration::from_millis(100));
-
+    if let Some(mut flamegraph_handle) = flamegraph_handle {
+        println!("Waiting on flamegraph, this might take a while.");
+        println!("{:#?}", flamegraph_handle.wait().unwrap());
+    }
     Ok(())
 }
