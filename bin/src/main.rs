@@ -30,6 +30,7 @@ use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal::*;
 
@@ -100,8 +101,18 @@ async fn main() {
         config.http.retry_base_delay,
         config.http.retry_step_delay,
     );
-    let mut client = Box::new(Client::new(config.http.template, retry, handles));
-    client.set_timeout(config.http.timeout);
+
+    let concurrency_limit = Some(100);
+    let mut client = Arc::new(Client::new(
+        config.http.template,
+        retry,
+        concurrency_limit,
+        handles,
+    ));
+
+    if let Some(client) = Arc::get_mut(&mut client) {
+        client.set_timeout(config.http.timeout);
+    }
 
     let mut executor = Executor::new();
     if config.log.use_k8s_enrichment == K8sTrackingConf::Always
