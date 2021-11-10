@@ -69,7 +69,8 @@ impl Client {
     ) -> Result<SendStatus, ClientError<T>>
     where
         T: Send + 'static,
-        ClientError<T>: From<HttpError<IngestBodyBuffer>>,
+        ClientError<T>: From<HttpError<IngestBodyBuffer>> + Send + 'static,
+        SendStatus: Send + 'static,
     {
         Metrics::http().add_request_size(body.len().try_into().unwrap());
         let update_key =
