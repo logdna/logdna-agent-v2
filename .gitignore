@@ -6,3 +6,4 @@
 .cargo_cache/
 **.profraw
 .DS_Store
+*.stamp
