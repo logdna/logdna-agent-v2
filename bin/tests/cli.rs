@@ -1861,6 +1861,7 @@ async fn test_tight_writes_with_slow_ingester() {
 
         // Wait for the data to be received by the mock ingester
         writeln!(file, "And we're done").unwrap();
+        file.flush()?;
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
         let map = received.lock().await;
