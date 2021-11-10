@@ -48,6 +48,7 @@ impl Client {
     pub fn new(
         template: RequestTemplate,
         retry: RetrySender,
+        concurrency_limit: Option<usize>,
         state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
     ) -> Self {
         let (state_write, state_flush) = state_handles
@@ -55,7 +56,7 @@ impl Client {
             .unwrap_or((None, None));
         Self {
             inner: HttpClient::new(template),
-            limiter: RateLimiter::new(10),
+            limiter: RateLimiter::new(concurrency_limit.unwrap_or(10)),
             retry,
             state_write,
             state_flush,
@@ -69,7 +70,8 @@ impl Client {
     ) -> Result<SendStatus, ClientError<T>>
     where
         T: Send + 'static,
-        ClientError<T>: From<HttpError<IngestBodyBuffer>>,
+        ClientError<T>: From<HttpError<IngestBodyBuffer>> + Send + 'static,
+        SendStatus: Send + 'static,
     {
         Metrics::http().add_request_size(body.len().try_into().unwrap());
         let update_key =
@@ -87,7 +89,7 @@ impl Client {
         let start = Instant::now();
         match self
             .inner
-            .send(self.limiter.get_slot(body).as_ref().clone())
+            .send(self.limiter.get_slot(body).await.as_ref().clone())
             .await
         {
             Ok(Response::Failed(_, s, r)) => {

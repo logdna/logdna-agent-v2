@@ -30,6 +30,7 @@ use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal::*;
 
@@ -100,8 +101,18 @@ async fn main() {
         config.http.retry_base_delay,
         config.http.retry_step_delay,
     );
-    let mut client = Box::new(Client::new(config.http.template, retry, handles));
-    client.set_timeout(config.http.timeout);
+
+    let concurrency_limit = Some(100);
+    let mut client = Arc::new(Client::new(
+        config.http.template,
+        retry,
+        concurrency_limit,
+        handles,
+    ));
+
+    if let Some(client) = Arc::get_mut(&mut client) {
+        client.set_timeout(config.http.timeout);
+    }
 
     let mut executor = Executor::new();
     if config.log.use_k8s_enrichment == K8sTrackingConf::Always
@@ -348,40 +359,57 @@ async fn main() {
         }
     }
 
-    let lines_driver = body_offsets_stream.for_each_concurrent(9, |body_offsets| async {
-        match body_offsets {
-            Ok((body, offsets)) => match client.send(body, Some(offsets)).await {
-                Ok(s) => handle_send_status(s),
-                Err(e) => handle_client_error(e),
-            },
-            Err(e) => error!("Couldn't batch lines {:?}", e),
+    let lines_client = client.clone();
+    let lines_driver = body_offsets_stream.for_each_concurrent(None, {
+        move |body_offsets| {
+            let client = lines_client.clone();
+            async {
+                tokio::spawn(async move {
+                    match body_offsets {
+                        Ok((body, offsets)) => match client.send(body, Some(offsets)).await {
+                            Ok(s) => handle_send_status(s),
+                            Err(e) => handle_client_error(e),
+                        },
+                        Err(e) => error!("Couldn't batch lines {:?}", e),
+                    }
+                })
+                .await
+                .expect("Join Error")
+            }
         }
     });
 
     let retry_driver = retry_stream
         .into_stream()
-        .for_each_concurrent(1, |body_offsets| async {
-            match body_offsets {
-                Ok(item) => {
-                    let RetryItem {
-                        body_buffer,
-                        offsets,
-                        path,
-                    } = item;
-                    match client.send(body_buffer, offsets).await {
-                        Ok(s) => match s {
-                            SendStatus::Sent => {
-                                debug!("cleaned up retry file");
-                                if let Err(e) = std::fs::remove_file(path) {
-                                    error!("couldn't clean up retry file {}", e)
-                                }
+        .for_each_concurrent(None, move |body_offsets| {
+            let client = client.clone();
+            async {
+                tokio::spawn(async move {
+                    match body_offsets {
+                        Ok(item) => {
+                            let RetryItem {
+                                body_buffer,
+                                offsets,
+                                path,
+                            } = item;
+                            match client.send(body_buffer, offsets).await {
+                                Ok(s) => match s {
+                                    SendStatus::Sent => {
+                                        debug!("cleaned up retry file");
+                                        if let Err(e) = std::fs::remove_file(path) {
+                                            error!("couldn't clean up retry file {}", e)
+                                        }
+                                    }
+                                    _ => handle_send_status(s),
+                                },
+                                Err(e) => handle_client_error(e),
                             }
-                            _ => handle_send_status(s),
-                        },
-                        Err(e) => handle_client_error(e),
+                        }
+                        Err(e) => error!("Couldn't batch lines {:?}", e),
                     }
-                }
-                Err(e) => error!("Couldn't batch lines {:?}", e),
+                })
+                .await
+                .expect("Join Error")
             }
         });
 
