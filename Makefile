@@ -1,5 +1,7 @@
 REPO := logdna-agent-v2
 
+SHELLFLAGS:=-ic
+
 # The image repo and tag can be modified e.g.
 # `make build RUST_IMAGE=docker.io/rust:latest
 RUST_IMAGE_REPO ?= docker.io/logdna/build-images
