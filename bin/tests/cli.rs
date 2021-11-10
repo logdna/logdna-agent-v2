@@ -1801,14 +1801,14 @@ async fn test_tight_writes() {
     agent_handle.kill().expect("Could not kill process");
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_tight_writes_with_slow_ingester() {
     let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
 
     let (server, received, shutdown_handle, addr) = start_ingester(Box::new(|_| {
-        Some(Box::pin(tokio::time::sleep(Duration::from_millis(2000))))
+        Some(Box::pin(tokio::time::sleep(Duration::from_millis(2500))))
     }));
 
     let file_path = dir.join("test.log");
@@ -1825,15 +1825,17 @@ async fn test_tight_writes_with_slow_ingester() {
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
         let line = "Nice short message";
-        let lines = 500_000;
-        let sync_every = 5_000;
+        let lines = 1_000_000;
+        let sync_every = 50_000;
 
-        let mut file = OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(&file_path)?;
+        let mut file = std::io::BufWriter::new(
+            OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&file_path)?,
+        );
 
-        let delay_count = 30;
+        let delay_count = 45;
         for i in 0..lines - delay_count {
             if let Err(e) = writeln!(file, "{}", line) {
                 eprintln!("Couldn't write to file: {}", e);
@@ -1841,10 +1843,10 @@ async fn test_tight_writes_with_slow_ingester() {
             }
 
             if i % sync_every == 0 {
-                file.sync_all()?;
+                file.flush()?;
             }
         }
-        file.sync_all()?;
+        file.flush()?;
 
         common::force_client_to_flush(&dir).await;
 
@@ -1854,12 +1856,12 @@ async fn test_tight_writes_with_slow_ingester() {
                 eprintln!("Couldn't write to file: {}", e);
                 return Err(e);
             }
-            file.sync_all()?;
+            file.flush()?;
         }
 
         // Wait for the data to be received by the mock ingester
         writeln!(file, "And we're done").unwrap();
-        tokio::time::sleep(tokio::time::Duration::from_millis(2500)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
         let map = received.lock().await;
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();
