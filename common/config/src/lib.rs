@@ -10,8 +10,9 @@ use sysinfo::{RefreshKind, System, SystemExt};
 
 use async_compression::Level;
 
+use fs::lookback::Lookback;
 use fs::rule::{RuleDef, Rules};
-use fs::tail::{DirPathBuf, Lookback};
+use fs::tail::DirPathBuf;
 use http::types::request::{Encoding, RequestTemplate, Schema};
 use k8s::K8sTrackingConf;
 

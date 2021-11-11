@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use thiserror::Error;
 
-use crate::{FileId, Span};
+use crate::{FileId, Span, SpanVec};
 
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +20,7 @@ pub enum OffsetMapError {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct OffsetMap {
-    inner: Arc<vec_collections::VecMap<[Offset; 4]>>,
+    inner: Arc<vec_collections::VecMap<[(FileId, SpanVec); 4]>>,
 }
 
 impl OffsetMap {
@@ -30,29 +30,30 @@ impl OffsetMap {
         }
     }
 
-    pub fn insert(
-        &mut self,
-        key: u64,
-        value: (u64, u64),
-    ) -> Result<Option<(u64, u64)>, OffsetMapError> {
-        Ok(Arc::get_mut(&mut self.inner)
-            .ok_or(OffsetMapError::NonUnique)?
-            .insert(
-                FileId::from(key),
-                value.try_into().map_err(OffsetMapError::SpanError)?,
-            )
-            .map(|span| (span.start, span.end)))
+    pub fn insert(&mut self, key: u64, value: (u64, u64)) -> Result<(), OffsetMapError> {
+        let value = value.try_into().map_err(OffsetMapError::SpanError)?;
+        let map = Arc::get_mut(&mut self.inner).ok_or(OffsetMapError::NonUnique)?;
+
+        let key = FileId::from(key);
+        if let Some(span_v) = map.get_mut(&key) {
+            span_v.insert(value);
+        } else {
+            let mut span_v = SpanVec::new();
+            span_v.insert(value);
+            map.insert(key, span_v);
+        }
+        Ok(())
     }
 
-    pub fn items_as_ref(&self) -> &[Offset] {
+    pub fn items_as_ref(&self) -> &[(FileId, SpanVec)] {
         self.inner.as_ref().as_ref()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Offset> {
+    pub fn iter(&self) -> impl Iterator<Item = &(FileId, SpanVec)> {
         self.inner.as_ref().iter()
     }
 
-    pub fn into_inner(self) -> Arc<vec_collections::VecMap<[Offset; 4]>> {
+    pub fn into_inner(self) -> Arc<vec_collections::VecMap<[(FileId, SpanVec); 4]>> {
         self.inner
     }
 }

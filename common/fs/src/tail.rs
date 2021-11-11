@@ -3,83 +3,28 @@ use crate::cache::event::Event;
 use crate::cache::tailed_file::LazyLineSerializer;
 pub use crate::cache::DirPathBuf;
 use crate::cache::{EntryKey, Error as CacheError, FileSystem, EVENT_STREAM_BUFFER_COUNT};
+use crate::lookback::Lookback;
 use crate::rule::Rules;
+
 use metrics::Metrics;
-use state::FileId;
+use state::{FileId, SpanVec};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
-use std::path::Path;
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use futures::{ready, Future, Stream, StreamExt};
 
-use std::fmt;
-use thiserror::Error;
-
 use pin_project_lite::pin_project;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-
-#[derive(Clone, std::fmt::Debug, PartialEq)]
-pub enum Lookback {
-    Start,
-    SmallFiles,
-    None,
-}
-
-#[derive(Error, Debug)]
-pub enum ParseLookbackError {
-    #[error("Unknown lookback strategy: {0}")]
-    Unknown(String),
-}
-
-impl std::str::FromStr for Lookback {
-    type Err = ParseLookbackError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s
-            .to_lowercase()
-            .split_whitespace()
-            .collect::<String>()
-            .as_str()
-        {
-            "start" => Ok(Lookback::Start),
-            "smallfiles" => Ok(Lookback::SmallFiles),
-            "none" => Ok(Lookback::None),
-            _ => Err(ParseLookbackError::Unknown(s.into())),
-        }
-    }
-}
-
-impl fmt::Display for Lookback {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Lookback::Start => "start",
-                Lookback::SmallFiles => "smallfiles",
-                Lookback::None => "none",
-            }
-        )
-    }
-}
-
-impl Default for Lookback {
-    fn default() -> Self {
-        Lookback::None
-    }
-}
 
 type SyncHashMap<K, V> = Arc<Mutex<HashMap<K, V>>>;
 
 /// Tails files on a filesystem by inheriting events from a Watcher
 pub struct Tailer {
-    lookback_config: Lookback,
     fs_cache: Arc<Mutex<FileSystem>>,
-    initial_offsets: Option<HashMap<FileId, u64>>,
     event_times: SyncHashMap<EntryKey, (usize, chrono::DateTime<chrono::Utc>)>,
 }
 
@@ -97,68 +42,8 @@ fn get_file_for_path(fs: &FileSystem, next_path: &std::path::Path) -> Option<Ent
     None
 }
 
-async fn get_initial_offset(
-    target: &Path,
-    fs: &FileSystem,
-    initial_offsets: Option<HashMap<FileId, u64>>,
-    lookback_config: Lookback,
-) -> Option<(EntryKey, u64)> {
-    fn _lookup_offset(
-        initial_offsets: &HashMap<FileId, u64>,
-        key: &FileId,
-        path: &Path,
-    ) -> Option<u64> {
-        if let Some(offset) = initial_offsets.get(key).copied() {
-            debug!("Got offset {} from state using key {:?}", offset, path);
-            Some(offset)
-        } else {
-            None
-        }
-    }
-    let entry_key = fs.lookup(target, &fs.entries.borrow())?;
-    let entries = fs.entries.borrow();
-    let entry = &entries.get(entry_key)?;
-    let path = fs.resolve_direct_path(entry, &fs.entries.borrow());
-    if let Entry::File { data, .. } = entry {
-        let inode: FileId = { (&data.borrow().deref().get_inode().await).into() };
-        Some((
-            entry_key,
-            match lookback_config {
-                Lookback::Start => match initial_offsets.as_ref() {
-                    Some(initial_offsets) => {
-                        _lookup_offset(initial_offsets, &inode, &path).unwrap_or(0)
-                    }
-                    None => 0,
-                },
-                Lookback::SmallFiles => {
-                    // Check the actual file len
-                    let file_len = path.metadata().map(|m| m.len()).unwrap_or(0);
-                    let smallfiles_offset = if file_len < 8192 { 0 } else { file_len };
-
-                    match initial_offsets.as_ref() {
-                        Some(initial_offsets) => _lookup_offset(initial_offsets, &inode, &path)
-                            .unwrap_or(smallfiles_offset),
-                        None => {
-                            debug!(
-                                "Smallfiles lookback {} from len using key {:?}",
-                                file_len, path
-                            );
-                            smallfiles_offset
-                        }
-                    }
-                }
-                Lookback::None => path.metadata().map(|m| m.len()).unwrap_or(0),
-            },
-        ))
-    } else {
-        None
-    }
-}
-
 async fn handle_event(
     event: Event,
-    initial_offsets: Option<HashMap<FileId, u64>>,
-    lookback_config: Lookback,
     fs: &FileSystem,
 ) -> Option<impl Stream<Item = LazyLineSerializer>> {
     match event {
@@ -172,14 +57,6 @@ async fn handle_event(
                 Entry::File { name, data, .. } => {
                     // If the file's passes the rules tail it
                     info!("initialize event for file {:?}, target {:?}", name, path);
-                    let (_, offset) =
-                        get_initial_offset(&path, fs, initial_offsets, lookback_config).await?;
-                    data.borrow_mut()
-                        .deref_mut()
-                        .seek(offset)
-                        .await
-                        .unwrap_or_else(|e| error!("error seeking {:?}", e));
-                    info!("initialized {:?} with offset {}", name, offset);
 
                     if fs.is_initial_dir_target(&path) {
                         return data.borrow_mut().tail(vec![path]).await;
@@ -197,18 +74,10 @@ async fn handle_event(
                     let path =
                         fs.resolve_direct_path(entries.get(final_target)?, &fs.entries.borrow());
 
-                    let (entry_key, offset) =
-                        get_initial_offset(&path, fs, initial_offsets, lookback_config).await?;
+                    let entry_key = get_file_for_path(fs, &path)?;
                     if let Entry::File { data, .. } = &entries.get(entry_key)? {
-                        info!(
-                            "initialized symlink {:?} as {:?} with offset {}",
-                            name, final_target, offset
-                        );
+                        info!("initialized symlink {:?} as {:?}", name, final_target);
                         let mut data = data.borrow_mut();
-                        data.deref_mut()
-                            .seek(offset)
-                            .await
-                            .unwrap_or_else(|e| error!("error seeking {:?}", e));
                         return data.tail(vec![sym_path]).await;
                     }
                 }
@@ -305,20 +174,14 @@ pub fn process(
         }
     };
 
-    debug!("Tailer starting with lookback: {:?}", state.lookback_config);
-
     Ok(events
         .enumerate()
         .then({
             let fs = state.fs_cache.clone();
-            let lookback_config = state.lookback_config.clone();
-            let initial_offsets = state.initial_offsets.clone();
             let event_times = state.event_times;
 
             move |(event_idx, (event_result, event_time))| {
                 let fs = fs.clone();
-                let lookback_config = lookback_config.clone();
-                let initial_offsets = initial_offsets.clone();
                 let event_times = event_times.clone();
 
                 async move {
@@ -349,13 +212,7 @@ pub fn process(
                                 }
                             }
 
-                            let line = handle_event(
-                                event,
-                                initial_offsets,
-                                lookback_config,
-                                fs.lock().await.deref(),
-                            )
-                            .await;
+                            let line = handle_event(event, fs.lock().await.deref()).await;
 
                             let line = line.map(|option_val| option_val.map(Ok).right_stream());
 
@@ -381,12 +238,15 @@ impl Tailer {
         watched_dirs: Vec<DirPathBuf>,
         rules: Rules,
         lookback_config: Lookback,
-        initial_offsets: Option<HashMap<FileId, u64>>,
+        initial_offsets: Option<HashMap<FileId, SpanVec>>,
     ) -> Self {
         Self {
-            lookback_config,
-            fs_cache: Arc::new(Mutex::new(FileSystem::new(watched_dirs, rules))),
-            initial_offsets,
+            fs_cache: Arc::new(Mutex::new(FileSystem::new(
+                watched_dirs,
+                initial_offsets.unwrap_or_default(),
+                lookback_config,
+                rules,
+            ))),
             event_times: Arc::new(Mutex::new(HashMap::new())),
         }
     }

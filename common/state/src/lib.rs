@@ -418,7 +418,7 @@ fn handle_file_offset_flush(
             debug_assert!(span_buf.is_empty());
             span_buf.clear();
 
-            for (file_id, offset) in batch.iter() {
+            for (file_id, offsets) in batch.iter() {
                 // Get the working span_v for this file
                 let mut span_v = {
                     if let Some(span_v) = span_buf.remove(file_id) {
@@ -427,7 +427,9 @@ fn handle_file_offset_flush(
                         state.remove(file_id).unwrap_or_default()
                     }
                 };
-                span_v.insert(*offset);
+                for offset in offsets.iter() {
+                    span_v.insert(*offset);
+                }
                 span_buf.insert(*file_id, span_v);
             }
             for (file_id, span_v) in span_buf.drain() {
@@ -560,18 +562,22 @@ mod test {
 
                         let mut updates = OffsetMap::default();
                         for path in paths.iter() {
-                            updates.insert(*path, (0, 13)).unwrap();
+                            updates.insert(*path, (0, 2)).unwrap();
                         }
-                        let key = wh.update(updates).await.unwrap();
-                        fh.flush(Some(key)).await.unwrap();
-                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                        for path in paths.iter() {
+                            updates.insert(*path, (2, 13)).unwrap();
+                        }
+                        let key1 = wh.update(updates).await.unwrap();
 
                         let mut updates = OffsetMap::default();
                         for path in paths[..2].iter() {
                             updates.insert(*path, (0, 14)).unwrap();
                         }
-                        let key = wh.update(updates).await.unwrap();
-                        fh.flush(Some(key)).await.unwrap();
+                        let key2 = wh.update(updates).await.unwrap();
+                        fh.flush(Some(key1)).await.unwrap();
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+
+                        fh.flush(Some(key2)).await.unwrap();
                         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
                         for path in paths[..2].iter() {

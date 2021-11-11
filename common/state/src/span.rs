@@ -1,6 +1,7 @@
 use std::convert::TryFrom;
 
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 
 use thiserror::Error;
 
@@ -134,19 +135,22 @@ impl TryFrom<&(u64, u64)> for Span {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(transparent)]
 pub struct SpanVec {
-    spans: Vec<Span>,
+    spans: SmallVec<[Span; 4]>,
 }
 
 impl SpanVec {
     pub fn new() -> Self {
-        SpanVec { spans: Vec::new() }
+        SpanVec {
+            spans: SmallVec::new(),
+        }
     }
 
     pub fn with_capacity(cap: usize) -> Self {
         SpanVec {
-            spans: Vec::with_capacity(cap),
+            spans: SmallVec::with_capacity(cap),
         }
     }
 
@@ -156,6 +160,14 @@ impl SpanVec {
 
     pub fn len(&self) -> usize {
         self.spans.len()
+    }
+
+    pub fn pop_first(&mut self) -> Option<Span> {
+        if !self.is_empty() {
+            Some(self.spans.remove(0))
+        } else {
+            None
+        }
     }
 
     pub fn first(&self) -> Option<&Span> {
@@ -193,7 +205,7 @@ impl SpanVec {
         // Utility funciton to actuall merge in changes
         // Returns Some((rightmost_changed_idx, Span)) when the merge results in a modification
         fn merge_in_span(
-            spans: &mut Vec<Span>,
+            spans: &mut SmallVec<[Span; 4]>,
             elem: Span,
             insert_idx: usize,
         ) -> Option<(usize, Span)> {
@@ -294,6 +306,40 @@ impl SpanVec {
 impl Default for SpanVec {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl std::iter::FromIterator<Span> for SpanVec {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = Span>,
+    {
+        let iter = iter.into_iter();
+        let mut ret = SpanVec::with_capacity(iter.size_hint().0);
+        for s in iter {
+            ret.insert(s);
+        }
+        ret
+    }
+}
+
+impl<'a> std::iter::FromIterator<&'a Span> for SpanVec {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = &'a Span>,
+    {
+        let iter = iter.into_iter();
+        let mut ret = SpanVec::with_capacity(iter.size_hint().0);
+        for s in iter {
+            ret.insert(*s);
+        }
+        ret
+    }
+}
+
+impl From<&[Span]> for SpanVec {
+    fn from(spans: &[Span]) -> SpanVec {
+        spans.iter().cloned().collect()
     }
 }
 

@@ -7,7 +7,7 @@ use std::thread::{self, sleep};
 use std::time::Duration;
 use wait_timeout::ChildExt;
 
-use crate::common::{consume_output, AgentSettings};
+use crate::common::{consume_output, start_ingester, AgentSettings};
 
 use assert_cmd::prelude::*;
 use futures::FutureExt;
@@ -1079,8 +1079,9 @@ async fn test_lookback_restarting_agent() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
-#[cfg_attr(not(target_os = "linux"), ignore)]
+#[ignore]
+//#[cfg_attr(not(feature = "integration_tests"), ignore)]
+//#[cfg_attr(not(target_os = "linux"), ignore)]
 async fn test_symlink_initialization_both_included() {
     let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
@@ -1788,6 +1789,80 @@ async fn test_tight_writes() {
         tokio::time::sleep(tokio::time::Duration::from_millis(20000)).await;
         writeln!(file, "And we're done").unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        let map = received.lock().await;
+        let file_info = map.get(file_path.to_str().unwrap()).unwrap();
+        assert_eq!(file_info.lines, lines + 1);
+        shutdown_handle();
+        Ok(())
+    });
+
+    server_result.unwrap();
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_tight_writes_with_slow_ingester() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+
+    let (server, received, shutdown_handle, addr) = start_ingester(Box::new(|_| {
+        Some(Box::pin(tokio::time::sleep(Duration::from_millis(2500))))
+    }));
+
+    let file_path = dir.join("test.log");
+    File::create(&file_path).expect("Couldn't create temp log file...");
+    let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &addr);
+    settings.log_level = Some("info");
+    let mut agent_handle = common::spawn_agent(settings);
+    let agent_stderr = agent_handle.stderr.take().unwrap();
+    let mut stderr_reader = BufReader::new(agent_stderr);
+    common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
+    let agent_stderr = stderr_reader.into_inner();
+    consume_output(agent_stderr);
+
+    let (server_result, _) = tokio::join!(server, async {
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        let line = "Nice short message";
+        let lines = 1_000_000;
+        let sync_every = 50_000;
+
+        let mut file = std::io::BufWriter::new(
+            OpenOptions::new()
+                .append(true)
+                .create(true)
+                .open(&file_path)?,
+        );
+
+        let delay_count = 45;
+        for i in 0..lines - delay_count {
+            if let Err(e) = writeln!(file, "{}", line) {
+                eprintln!("Couldn't write to file: {}", e);
+                return Err(e);
+            }
+
+            if i % sync_every == 0 {
+                file.flush()?;
+            }
+        }
+        file.flush()?;
+
+        common::force_client_to_flush(&dir).await;
+
+        for _ in 0..delay_count {
+            tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+            if let Err(e) = writeln!(file, "{}", line) {
+                eprintln!("Couldn't write to file: {}", e);
+                return Err(e);
+            }
+            file.flush()?;
+        }
+
+        // Wait for the data to be received by the mock ingester
+        writeln!(file, "And we're done").unwrap();
+        file.flush()?;
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
         let map = received.lock().await;
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();

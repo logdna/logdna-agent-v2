@@ -1,5 +1,7 @@
 REPO := logdna-agent-v2
 
+SHELLFLAGS:=-ic
+
 # The image repo and tag can be modified e.g.
 # `make build RUST_IMAGE=docker.io/rust:latest
 RUST_IMAGE_REPO ?= docker.io/logdna/build-images
@@ -109,7 +111,7 @@ TEST_RULES=
 define TEST_RULE
 TEST_RULES=$(TEST_RULES)test-$(1): <> Run unit tests for $(1) crate\\n
 test-$(1):
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=1" "cargo test -p $(1) $(TESTS)"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=1 --env RUST_LOG=$(RUST_LOG)" "cargo test -p $(1) $(TESTS) -- --nocapture"
 endef
 
 CRATES=$(shell sed -e '/members/,/]/!d' Cargo.toml | tail -n +2 | $(_TAC) | tail -n +2 | $(_TAC) | sed 's/,//' | xargs -n1 -I{} sh -c 'grep -E "^name *=" {}/Cargo.toml | tail -n1' | sed 's/name *= *"\([A-Za-z0-9_\-]*\)"/\1/' | awk '!/journald/{print $0}')

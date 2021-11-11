@@ -13,7 +13,7 @@ pub enum ConfigError {
     Glob(globber::Error),
     Regex(fs::rule::RuleError),
     NotADirectory(fs::cache::DirPathBufError),
-    Lookback(fs::tail::ParseLookbackError),
+    Lookback(fs::lookback::ParseLookbackError),
 }
 
 impl Display for ConfigError {
@@ -77,8 +77,8 @@ impl From<fs::cache::DirPathBufError> for ConfigError {
     }
 }
 
-impl From<fs::tail::ParseLookbackError> for ConfigError {
-    fn from(e: fs::tail::ParseLookbackError) -> Self {
+impl From<fs::lookback::ParseLookbackError> for ConfigError {
+    fn from(e: fs::lookback::ParseLookbackError) -> Self {
         ConfigError::Lookback(e)
     }
 }

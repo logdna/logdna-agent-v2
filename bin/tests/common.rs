@@ -129,6 +129,7 @@ pub struct AgentSettings<'a> {
     pub line_redact_regex: Option<&'a str>,
     pub ingest_timeout: Option<&'a str>,
     pub ingest_buffer_size: Option<&'a str>,
+    pub log_level: Option<&'a str>,
 }
 
 impl<'a> AgentSettings<'a> {
@@ -179,7 +180,7 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
     assert_ne!(ingestion_key, "", "Ingestion key not set. Set LOGDNA_INGESTION_KEY in your local env or update the test to use a mock ingestor.");
 
     let agent = cmd
-        .env("RUST_LOG", "debug")
+        .env("RUST_LOG", settings.log_level.unwrap_or("debug"))
         .env("RUST_BACKTRACE", "full")
         .env("LOGDNA_LOG_DIRS", settings.log_dirs)
         .env("LOGDNA_INGESTION_KEY", ingestion_key)

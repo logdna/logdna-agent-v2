@@ -5,7 +5,7 @@ use http::types::serialize::{
     SerializeUtf8, SerializeValue,
 };
 
-use state::GetOffset;
+use state::{GetOffset, SpanVec};
 
 use chrono::Utc;
 use metrics::Metrics;
@@ -22,10 +22,9 @@ use serde_json::Value;
 use bytes::Bytes;
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
-use std::fs::OpenOptions;
 use std::ops::DerefMut;
 use std::os::unix::fs::MetadataExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::io::{AsyncSeekExt, BufReader, SeekFrom};
@@ -304,6 +303,7 @@ impl GetOffset for LazyLineSerializer {
 pub struct TailedFileInner {
     reader: Compat<tokio::io::BufReader<tokio::fs::File>>,
     buf: Vec<u8>,
+    initial_offsets: SpanVec,
     offset: u64,
     inode: u64,
 }
@@ -317,37 +317,24 @@ pub struct TailedFile<T> {
 
 impl<T> TailedFile<T> {
     pub(crate) fn new(
-        path: &Path,
+        path: &std::path::Path,
+        initial_offsets: SpanVec,
         resume_events_sender: Option<Sender<(u64, chrono::DateTime<chrono::Utc>)>>,
     ) -> Result<Self, std::io::Error> {
         Ok(Self {
             inner: Arc::new(Mutex::new(TailedFileInner {
                 reader: BufReader::new(tokio::fs::File::from_std(
-                    OpenOptions::new().read(true).open(path)?,
+                    std::fs::OpenOptions::new().read(true).open(path)?,
                 ))
                 .compat(),
                 buf: Vec::new(),
                 offset: 0,
+                initial_offsets,
                 inode: path.metadata()?.ino(),
             })),
             resume_events_sender,
             _phantom: std::marker::PhantomData::<T>,
         })
-    }
-    pub(crate) async fn seek(&mut self, offset: u64) -> Result<(), std::io::Error> {
-        let mut inner = self.inner.lock().await;
-        inner.offset = offset;
-        inner
-            .reader
-            .get_mut()
-            .get_mut()
-            .seek(SeekFrom::Start(offset))
-            .await?;
-        Ok(())
-    }
-    pub(crate) async fn get_inode(&self) -> u64 {
-        let inner = self.inner.lock().await;
-        inner.inode
     }
 }
 
@@ -370,6 +357,19 @@ impl TailedFile<LineBuilder> {
                     error!("unable to stat {:?}: {:?}", &paths[0], e);
                     return None;
                 }
+            };
+
+            if let Some(initial_offset) = inner.initial_offsets.pop_first().map(|offset| offset.end)
+            {
+                inner.offset = inner
+                    .reader
+                    .get_mut()
+                    .get_mut()
+                    .seek(SeekFrom::Start(initial_offset))
+                    .await
+                    .map_err(|e| error!("{:?}", e))
+                    .unwrap_or(0);
+                info!("initial_offset {} for {}", inner.offset, inner.inode);
             };
 
             // if we are at the end of the file there's no work to do
@@ -482,24 +482,30 @@ impl LazyLines {
     pub async fn new(
         reader: Arc<Mutex<TailedFileInner>>,
         paths: Vec<String>,
+        target_read: Option<u64>,
         resume_channel_send: Option<Sender<(u64, chrono::DateTime<chrono::Utc>)>>,
     ) -> Self {
         let (initial_end, initial_offset): (Option<u64>, Option<u64>) = {
             let inner = &mut reader.lock().await.reader;
 
             let inner = inner.get_mut().get_mut();
-            let initial_end = match inner.metadata().await.map(|m| m.len()) {
-                Ok(v) => Some(v),
-                Err(e) => {
-                    error!("unable to stat {:?}: {:?}", &paths[0], e);
-                    None
-                }
-            };
             let initial_offset = match inner.seek(SeekFrom::Current(0)).await {
                 Ok(v) => Some(v),
                 Err(e) => {
                     error!("unable to get current file offset {:?}: {:?}", &paths[0], e);
                     None
+                }
+            };
+
+            let initial_end = if target_read.is_some() {
+                target_read
+            } else {
+                match inner.metadata().await.map(|m| m.len()) {
+                    Ok(v) => Some(v),
+                    Err(e) => {
+                        error!("unable to stat {:?}: {:?}", &paths[0], e);
+                        None
+                    }
                 }
             };
 
@@ -525,7 +531,7 @@ impl TailedFile<LazyLineSerializer> {
         &mut self,
         paths: Vec<PathBuf>,
     ) -> Option<impl Stream<Item = LazyLineSerializer>> {
-        {
+        let target_read = {
             let mut inner = self.inner.lock().await;
             let len = match inner
                 .reader
@@ -541,6 +547,20 @@ impl TailedFile<LazyLineSerializer> {
                     return None;
                 }
             };
+
+            if let Some(initial_offset) = inner.initial_offsets.pop_first().map(|offset| offset.end)
+            {
+                inner.offset = inner
+                    .reader
+                    .get_mut()
+                    .get_mut()
+                    .seek(SeekFrom::Start(initial_offset))
+                    .await
+                    .map_err(|e| error!("{:?}", e))
+                    .unwrap_or(0)
+            };
+
+            let target_read = inner.initial_offsets.first().map(|offsets| offsets.start);
 
             // if we are at the end of the file there's no work to do
             if inner.offset == len {
@@ -570,7 +590,8 @@ impl TailedFile<LazyLineSerializer> {
                     return None;
                 }
             }
-        }
+            target_read
+        };
 
         Some(
             stream::unfold(
@@ -580,6 +601,7 @@ impl TailedFile<LazyLineSerializer> {
                         .into_iter()
                         .map(|path| path.to_string_lossy().into())
                         .collect(),
+                    target_read,
                     self.resume_events_sender.clone(),
                 )
                 .await,
@@ -699,6 +721,8 @@ mod tests {
     use middleware::{Middleware, Status};
     use tempfile::tempdir;
 
+    use std::fs::OpenOptions;
+
     #[test]
     fn lazy_lines_should_get_set_line_with_rules() {
         let mut l = get_line();
@@ -750,6 +774,7 @@ mod tests {
             .compat(),
             buf: Vec::new(),
             offset: 0,
+            initial_offsets: SpanVec::new(),
             inode: 0,
         }));
         LazyLineSerializer::new(file_inner, "file/path.log".to_owned(), (0, 0, 0))

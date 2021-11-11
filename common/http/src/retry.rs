@@ -270,12 +270,6 @@ mod tests {
 
     use test_types::strategies::{line_st, offset_st};
 
-    #[test]
-    fn simple_roundtrip() {
-        let inp = "{\"offsets\":{\"68\":{\"start\":73,\"end\":124},\"74\":{\"start\":77,\"end\":97}},\"body\":{\"lines\":[]}}";
-        let _: DiskRead = serde_json::from_str(inp).unwrap();
-    }
-
     proptest! {
         #![proptest_config(ProptestConfig {
           cases: 10, .. ProptestConfig::default()
