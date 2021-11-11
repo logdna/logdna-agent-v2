@@ -395,12 +395,23 @@ async fn main() {
                             match client.send(body_buffer, offsets).await {
                                 Ok(s) => match s {
                                     SendStatus::Sent => {
-                                        debug!("cleaned up retry file");
-                                        if let Err(e) = std::fs::remove_file(path) {
-                                            error!("couldn't clean up retry file {}", e)
+                                        Metrics::http().increment_retries_success();
+                                        match std::fs::remove_file(path.clone()) {
+                                            Ok(()) => debug!(
+                                                "cleaned up retry file {}",
+                                                path.to_string_lossy()
+                                            ),
+                                            Err(e) => error!(
+                                                "couldn't clean up retry file {}, reason={}",
+                                                path.to_string_lossy(),
+                                                e
+                                            ),
                                         }
                                     }
-                                    _ => handle_send_status(s),
+                                    _ => {
+                                        Metrics::http().increment_retries_failure();
+                                        handle_send_status(s)
+                                    }
                                 },
                                 Err(e) => handle_client_error(e),
                             }

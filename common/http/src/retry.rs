@@ -17,7 +17,7 @@ use metrics::Metrics;
 use serde::Deserialize;
 use thiserror::Error;
 
-use tokio::fs::{read_dir, remove_file, rename, File, OpenOptions};
+use tokio::fs::{metadata, read_dir, remove_file, rename, File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
 
 use uuid::Uuid;
@@ -89,6 +89,7 @@ impl Retry {
 
     async fn fill_waiting(&self) -> Result<(), Error> {
         let mut files = read_dir(&self.directory).await?;
+        let mut retry_disk_used = 0u64;
         while let Some(file) = files.next_entry().await? {
             let path = file.path();
             if path.is_dir() {
@@ -110,13 +111,28 @@ impl Retry {
                     .and_then(|s| FromStr::from_str(s).ok())
                     .ok_or_else(|| Error::InvalidFileName(file_name.clone()))?;
 
+                let file_size = match metadata(path.clone()).await {
+                    Ok(md) => md.len(),
+                    Err(e) => {
+                        warn!(
+                            "retry file size unknown, metrics may be skewed; reason={}",
+                            e
+                        );
+                        0
+                    }
+                };
+
+                retry_disk_used += file_size;
+
                 if Utc::now().timestamp() - timestamp < self.retry_base_delay_secs {
                     continue;
                 }
+                Metrics::retry().inc_pending();
                 self.waiting.push(path);
             }
         }
 
+        Metrics::retry().report_storage_used(retry_disk_used);
         Ok(())
     }
 
@@ -148,6 +164,7 @@ impl Retry {
                 }
 
                 if let Some(path) = state.waiting.pop() {
+                    Metrics::retry().dec_pending();
                     // Step delay
                     Delay::new(state.retry_step_delay).await;
                     match Retry::read_from_disk(&path).await {
