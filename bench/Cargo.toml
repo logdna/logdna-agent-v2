@@ -16,7 +16,7 @@ file-rotate = "0.4"
 indicatif = "0.16"
 logdna_mock_ingester = { package = "logdna-mock-ingester", path = "../common/test/mock-ingester" }
 memmap2 = "0.3"
-nix = "0.22"
+nix = "0.23"
 owning_ref = "0.4"
 procfs = "0.9"
 rand = "0.8"
