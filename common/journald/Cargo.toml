@@ -11,7 +11,7 @@ metrics = { package = "metrics", path = "../metrics" }
 tokio = { package = "tokio", version = "1", features = ["macros", "process", "rt-multi-thread", "time"] }
 futures = "0.3"
 log = "0.4"
-chrono = "0.4"
+time = "0.3"
 
 # journalctl
 combine = { package = "combine", version = "4" }

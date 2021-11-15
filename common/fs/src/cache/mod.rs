@@ -25,6 +25,7 @@ use inotify::WatchDescriptor;
 use slotmap::{DefaultKey, SlotMap};
 use smallvec::SmallVec;
 use thiserror::Error;
+use time::OffsetDateTime;
 use tokio::sync::Mutex;
 
 pub mod dir_path;
@@ -71,7 +72,7 @@ pub enum Error {
     File(io::Error),
 }
 
-type EventTimestamp = chrono::DateTime<chrono::Utc>;
+type EventTimestamp = time::OffsetDateTime;
 
 /// Turns an inotify event into an event stream
 fn as_event_stream(
@@ -112,7 +113,7 @@ fn as_event_stream(
 fn get_initial_events(
     fs: &Arc<Mutex<FileSystem>>,
 ) -> impl Stream<Item = (Result<Event, Error>, EventTimestamp)> {
-    let init_time = chrono::offset::Utc::now();
+    let init_time = OffsetDateTime::now_utc();
     let initial_events = {
         let mut fs = fs.try_lock().expect("could not lock filesystem cache");
 
