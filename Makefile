@@ -32,6 +32,7 @@ export CARGO_CACHE ?= $(shell pwd)/.cargo_cache
 RUST_COMMAND := $(DOCKER_DISPATCH) $(RUST_IMAGE)
 UNCACHED_RUST_COMMAND := CACHE_TARGET="false" $(DOCKER_DISPATCH) $(RUST_IMAGE)
 DEB_COMMAND := CACHE_TARGET="false" $(DOCKER_DISPATCH) alanfranz/fpm-within-docker:debian-bullseye
+RPM_COMMAND := CACHE_TARGET="false" $(DOCKER_DISPATCH) alanfranz/fpm-within-docker:centos-8
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
@@ -346,6 +347,36 @@ build-deb: build-release
 				--before-remove packaging/linux/before-remove \
 				--after-upgrade packaging/linux/after-upgrade \
 				--force --deb-no-default-config-files \
+				"/build/target/${TARGET}/release/logdna-agent=/usr/bin/logdna-agent" \
+				"packaging/linux/logdna-agent.service=/lib/systemd/system/logdna-agent.service"'
+
+RPM_VERSION=1
+RPM_ARCH_NAME_x86_64=amd64
+RPM_ARCH_NAME_aarch64=arm64
+
+.PHONY:build-rpm
+build-rpm: build-release
+	$(RPM_COMMAND) "" 'package_version="$(BUILD_VERSION)"; \
+		iteration="${RPM_VERSION}"; \
+		echo "Generating rpm package for version ${BUILD_VERSION} as $${package_version}-$${iteration}"; \
+		chmod +x "logdna-agent"; \
+		fpm \
+				-a "${ARCH}" \
+				--verbose \
+				--input-type dir \
+				--output-type rpm \
+				-p "/build/target/${TARGET}/logdna-agent-$${package_version}-$${iteration}.${RPM_ARCH_NAME_${ARCH}}.rpm" \
+				--name "logdna-agent" \
+				--version "$${package_version}" \
+				--iteration "$${iteration}" \
+				--license MIT \
+				--vendor "LogDNA, Inc." \
+				--description "LogDNA Agent for Linux" \
+				--url "https://logdna.com/" \
+				--maintainer "LogDNA <support@logdna.com>" \
+				--before-remove packaging/linux/before-remove \
+				--after-upgrade packaging/linux/after-upgrade \
+				--force \
 				"/build/target/${TARGET}/release/logdna-agent=/usr/bin/logdna-agent" \
 				"packaging/linux/logdna-agent.service=/lib/systemd/system/logdna-agent.service"'
 
