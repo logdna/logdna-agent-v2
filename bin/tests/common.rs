@@ -1,5 +1,6 @@
 use core::time;
 
+use hyper::{Client, StatusCode};
 use rand::seq::IteratorRandom;
 use std::fs;
 use std::fs::OpenOptions;
@@ -434,4 +435,28 @@ pub fn start_ingester(
         shutdown_handle,
         format!("localhost:{}", port),
     )
+}
+
+// The compiler/linter believes this function isn't used anywhere but it is currently
+// used in the retries and cli integration tests. This flag disables that false positive.
+#[allow(dead_code)]
+pub async fn fetch_agent_metrics(
+    metrics_port: u16,
+) -> Result<(StatusCode, Option<String>), hyper::Error> {
+    let client = Client::new();
+    let url = format!("http://127.0.0.1:{}/metrics", metrics_port)
+        .parse()
+        .unwrap();
+
+    let resp = client.get(url).await?;
+    let status = resp.status();
+    let body = if status == StatusCode::OK {
+        let buf = hyper::body::to_bytes(resp).await?;
+        let body_str = std::str::from_utf8(&buf).unwrap().to_string();
+        Some(body_str)
+    } else {
+        None
+    };
+
+    Ok((status, body))
 }

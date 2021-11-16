@@ -2,7 +2,8 @@ use jemalloc_ctl::stats::{active, active_mib, allocated, allocated_mib, resident
 use jemalloc_ctl::{epoch, epoch_mib};
 use json::object;
 use lazy_static::lazy_static;
-use log::info;
+use log::{info, warn};
+use num::traits::FromPrimitive;
 use prometheus::{
     exponential_buckets, register_histogram, register_histogram_vec, register_int_counter,
     register_int_counter_vec, register_int_gauge, Histogram, HistogramVec, IntCounter,
@@ -32,6 +33,14 @@ lazy_static! {
         "Retry attempts made to the http ingestion service"
     )
     .unwrap();
+    static ref INGEST_RETRIES_SUCCESS: IntCounter = register_int_counter!(
+        "logdna_agent_ingest_retries_success",
+        "Retry attempts made to the http ingestion service that succeeded"
+    ).unwrap();
+    static ref INGEST_RETRIES_FAILURE: IntCounter = register_int_counter!(
+        "logdna_agent_ingest_retries_failure",
+        "Retry attempts made to the http ingestion service that failed"
+    ).unwrap();
     static ref INGEST_RATE_LIMIT_HITS: IntCounter = register_int_counter!(
         "logdna_agent_ingest_rate_limit_hits",
         "Number of times the http request was delayed due to the rate limiter"
@@ -72,6 +81,8 @@ lazy_static! {
         "Size of the Journald log entries read"
     )
     .unwrap();
+    static ref RETRY_PENDING: IntGauge = register_int_gauge!("logdna_agent_retry_pending", "Number of lines currently waiting to be retried.").unwrap();
+    static ref RETRY_STORAGE_USED: IntGauge = register_int_gauge!("logdna_agent_retry_storage_used", "Amount of disk space, in bytes, used to store retry data.").unwrap();
 }
 
 mod labels {
@@ -89,6 +100,7 @@ pub struct Metrics {
     http: Http,
     k8s: K8s,
     journald: Journald,
+    retry: Retry,
 }
 
 impl Metrics {
@@ -99,6 +111,7 @@ impl Metrics {
             http: Http::new(),
             k8s: K8s::new(),
             journald: Journald::new(),
+            retry: Retry::new(),
         }
     }
 
@@ -127,6 +140,10 @@ impl Metrics {
 
     pub fn journald() -> &'static Journald {
         &METRICS.journald
+    }
+
+    pub fn retry() -> &'static Retry {
+        &METRICS.retry
     }
 
     pub fn print() -> String {
@@ -165,6 +182,8 @@ impl Metrics {
                 "requests_size" => INGEST_REQUEST_SIZE.get_sample_sum(),
                 "rate_limits" => INGEST_RATE_LIMIT_HITS.get(),
                 "retries" => INGEST_RETRIES.get(),
+                "retries_success" => INGEST_RETRIES_SUCCESS.get(),
+                "retries_failure" => INGEST_RETRIES_FAILURE.get(),
                 // The request duration is exported as a histogram in Prometheus,
                 // in this output is a simple sum
                 "requests_duration" => latency_success.get_sample_sum() + latency_failure.get_sample_sum() + latency_timeout.get_sample_sum(),
@@ -182,6 +201,10 @@ impl Metrics {
                 "lines" => JOURNAL_RECORDS.get_sample_count(),
                 "bytes" => JOURNAL_RECORDS.get_sample_sum(),
             },
+            "retry" => object!{
+                "pending" => RETRY_PENDING.get(),
+                "storage_used" => RETRY_STORAGE_USED.get(),
+            }
         };
 
         object.to_string()
@@ -314,6 +337,14 @@ impl Http {
     pub fn increment_retries(&self) {
         INGEST_RETRIES.inc();
     }
+
+    pub fn increment_retries_success(&self) {
+        INGEST_RETRIES_SUCCESS.inc();
+    }
+
+    pub fn increment_retries_failure(&self) {
+        INGEST_RETRIES_FAILURE.inc();
+    }
 }
 
 #[derive(Default)]
@@ -357,6 +388,33 @@ fn elapsed_seconds(start: Instant) -> f64 {
     start.elapsed().as_secs_f64()
 }
 
+#[derive(Default)]
+pub struct Retry {}
+
+impl Retry {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub fn inc_pending(&self) {
+        RETRY_PENDING.inc();
+    }
+
+    pub fn dec_pending(&self) {
+        RETRY_PENDING.dec();
+    }
+
+    pub fn report_storage_used(&self, file_size: u64) {
+        match i64::from_u64(file_size) {
+            Some(fs) => RETRY_STORAGE_USED.set(fs),
+            None => warn!(
+                "detected loss of file size precision; retry storage usage may be inaccurate, file_size={}",
+                file_size
+            ),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -383,10 +441,16 @@ mod tests {
             .add_request_timeout(Instant::now().sub(Duration::from_micros(20137)));
         METRICS.http.increment_limit_hits();
         METRICS.http.increment_retries();
+        METRICS.http.increment_retries_success();
+        METRICS.http.increment_retries_failure();
         METRICS.journald.add_bytes(32);
         METRICS.k8s.increment_lines();
         METRICS.k8s.increment_deletes();
         METRICS.k8s.increment_creates();
+        METRICS.retry.inc_pending();
+        METRICS.retry.inc_pending();
+        METRICS.retry.dec_pending();
+        METRICS.retry.report_storage_used(123456);
         let result = Metrics::print();
         assert!(result.starts_with('{') && result.ends_with('}'));
     }
