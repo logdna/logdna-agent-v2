@@ -351,8 +351,6 @@ build-deb: build-release
 				"packaging/linux/logdna-agent.service=/lib/systemd/system/logdna-agent.service"'
 
 RPM_VERSION=1
-RPM_ARCH_NAME_x86_64=amd64
-RPM_ARCH_NAME_aarch64=arm64
 
 .PHONY:build-rpm
 build-rpm: build-release
@@ -365,7 +363,7 @@ build-rpm: build-release
 				--verbose \
 				--input-type dir \
 				--output-type rpm \
-				-p "/build/target/${TARGET}/logdna-agent-$${package_version}-$${iteration}.${RPM_ARCH_NAME_${ARCH}}.rpm" \
+				-p "/build/target/${TARGET}/logdna-agent-$${package_version}-$${iteration}.${ARCH}.rpm" \
 				--name "logdna-agent" \
 				--version "$${package_version}" \
 				--iteration "$${iteration}" \
