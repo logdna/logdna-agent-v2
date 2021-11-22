@@ -38,7 +38,7 @@ mod dep_audit;
 mod stream_adapter;
 
 #[global_allocator]
-static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
+static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 // Statically include the CARGO_PKG_NAME and CARGO_PKG_VERSIONs in the binary
 // and export under the PKG_NAME and PKG_VERSION symbols.
