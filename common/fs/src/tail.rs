@@ -25,7 +25,7 @@ type SyncHashMap<K, V> = Arc<Mutex<HashMap<K, V>>>;
 /// Tails files on a filesystem by inheriting events from a Watcher
 pub struct Tailer {
     fs_cache: Arc<Mutex<FileSystem>>,
-    event_times: SyncHashMap<EntryKey, (usize, chrono::DateTime<chrono::Utc>)>,
+    event_times: SyncHashMap<EntryKey, (usize, time::OffsetDateTime)>,
 }
 
 fn get_file_for_path(fs: &FileSystem, next_path: &std::path::Path) -> Option<EntryKey> {
@@ -218,7 +218,7 @@ pub fn process(
 
                             if let Some((key, _)) = key_and_previous_event_time {
                                 let mut event_times = event_times.lock().await;
-                                let new_event_time = chrono::offset::Utc::now();
+                                let new_event_time = time::OffsetDateTime::now_utc();
                                 event_times.insert(key, (event_idx, new_event_time));
                             }
 

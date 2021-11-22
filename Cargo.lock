@@ -336,15 +336,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "chrono-humanize"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8164ae3089baf04ff71f32aeb70213283dcd236dce8bc976d00b17a458f5f71c"
-dependencies = [
- "chrono",
-]
-
-[[package]]
 name = "clang-sys"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -759,7 +750,6 @@ dependencies = [
  "async-channel",
  "async-trait",
  "bytes",
- "chrono",
  "env_logger",
  "futures",
  "futures-core",
@@ -780,6 +770,7 @@ dependencies = [
  "state",
  "tempfile",
  "thiserror",
+ "time 0.3.4",
  "tokio",
  "tokio-stream",
  "tokio-test",
@@ -957,7 +948,6 @@ version = "0.1.0"
 dependencies = [
  "async-compat",
  "bytes",
- "chrono",
  "crossbeam",
  "futures",
  "futures-timer",
@@ -974,6 +964,7 @@ dependencies = [
  "state",
  "tempfile",
  "thiserror",
+ "time 0.3.4",
  "tokio",
  "tokio-test",
  "types",
@@ -1173,7 +1164,6 @@ name = "journald"
 version = "0.1.0"
 dependencies = [
  "bytes",
- "chrono",
  "combine",
  "futures",
  "http 0.1.0",
@@ -1183,6 +1173,7 @@ dependencies = [
  "partial-io",
  "serial_test",
  "systemd",
+ "time 0.3.4",
  "tokio",
  "tokio-test",
  "tokio-util",
@@ -1231,11 +1222,11 @@ version = "0.1.0"
 dependencies = [
  "backoff",
  "chrono",
- "chrono-humanize",
  "crossbeam",
  "futures",
  "http 0.1.0",
  "http 0.2.5",
+ "humantime",
  "k8s-openapi",
  "kube",
  "kube-runtime",
@@ -1426,7 +1417,6 @@ dependencies = [
  "auditable",
  "auditable-build",
  "bytes",
- "chrono",
  "config",
  "env_logger",
  "escargot",
@@ -1462,6 +1452,7 @@ dependencies = [
  "systemd",
  "tempfile",
  "tikv-jemallocator",
+ "time 0.3.4",
  "tokio",
  "tokio-stream",
  "tokio-test",
