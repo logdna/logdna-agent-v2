@@ -146,8 +146,6 @@ async fn main() -> Result<(), std::io::Error> {
         move || mp.join().unwrap()
     });
 
-    //println!("ticked bars");
-
     let ingestion_key = "thisIsAnApiKeyNot123456";
     let mut agent_cmd = cargo_build.command();
 
@@ -257,9 +255,6 @@ async fn main() -> Result<(), std::io::Error> {
                         writeln!(log, "{}", word).unwrap();
                     }
 
-                    //println!("Written lines: {}", count);
-                    //std::thread::sleep(std::time::Duration::from_secs(100));
-
                     // Write the rest of the logs
                     for word in words.iter().cycle().take(line_count - line_count / 20) {
                         count += 1;
@@ -272,8 +267,6 @@ async fn main() -> Result<(), std::io::Error> {
                         }
                         writeln!(log, "{}", word).unwrap();
                     }
-
-                    //println!("Written lines: {}", count);
                 }
             })
             .await
