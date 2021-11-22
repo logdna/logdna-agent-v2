@@ -1,5 +1,3 @@
-use tikv_jemalloc_ctl::stats::{active, active_mib, allocated, allocated_mib, resident, resident_mib};
-use tikv_jemalloc_ctl::{epoch, epoch_mib};
 use json::object;
 use lazy_static::lazy_static;
 use log::{info, warn};
@@ -10,6 +8,10 @@ use prometheus::{
     IntCounterVec, IntGauge,
 };
 use std::time::{Duration, Instant};
+use tikv_jemalloc_ctl::stats::{
+    active, active_mib, allocated, allocated_mib, resident, resident_mib,
+};
+use tikv_jemalloc_ctl::{epoch, epoch_mib};
 use tokio::time::sleep;
 
 lazy_static! {
