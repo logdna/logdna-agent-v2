@@ -18,7 +18,7 @@ thiserror = "1.0"
 
 #utils
 bytes = "1"
-chrono = "0.4"
+time = "0.3"
 pcre2 = { git = "https://github.com/logdna/rust-pcre2.git", branch="0.2", version = "0.2" }
 globber = "0.1"
 slotmap = "1"

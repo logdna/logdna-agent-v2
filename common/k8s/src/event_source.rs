@@ -8,7 +8,6 @@ use backoff::ExponentialBackoff;
 use crossbeam::atomic::AtomicCell;
 
 use chrono::Duration;
-use chrono_humanize::HumanTime;
 
 use futures::{stream::try_unfold, Stream, StreamExt, TryStreamExt};
 
@@ -99,7 +98,7 @@ impl From<Event> for EventLog {
 
         let duration = age.map(|age| {
             if age > Duration::weeks(0) {
-                HumanTime::from(age).to_string()
+                age.to_std().map(|d|humantime::format_duration(d).to_string()).unwrap(/*Safe to unwrap as we checked it's positive*/)
             } else {
                 "just now".to_string()
             }
