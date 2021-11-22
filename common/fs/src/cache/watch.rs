@@ -8,9 +8,10 @@ use std::sync::Arc;
 use futures::future::Either;
 use futures::{Stream, StreamExt};
 use smallvec::SmallVec;
-use tokio::time::Instant;
 
+use time::OffsetDateTime;
 use tokio::sync::Mutex;
+use tokio::time::Instant;
 
 const INOTIFY_EVENT_GRACE_PERIOD_MS: u64 = 10;
 
@@ -90,12 +91,7 @@ pub struct WatchEventStream {
 impl WatchEventStream {
     pub fn into_stream(
         self,
-    ) -> impl Stream<
-        Item = (
-            Result<WatchEvent, std::io::Error>,
-            chrono::DateTime<chrono::Utc>,
-        ),
-    > {
+    ) -> impl Stream<Item = (Result<WatchEvent, std::io::Error>, time::OffsetDateTime)> {
         let unmatched_move_to: Arc<Mutex<Vec<(Instant, WatchEvent)>>> =
             Arc::new(Mutex::new(Vec::new()));
         let unmatched_move_from: Arc<Mutex<Vec<(Instant, WatchEvent)>>> =
@@ -403,7 +399,7 @@ impl WatchEventStream {
                     event => Some(event.map(|e| e.unwrap())),
                 }
             })
-            .map(|event| (event, chrono::offset::Utc::now()))
+            .map(|event| (event, OffsetDateTime::now_utc()))
     }
 }
 

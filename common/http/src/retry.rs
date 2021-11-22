@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use async_compat::CompatExt;
 
-use chrono::prelude::Utc;
 use crossbeam::queue::SegQueue;
+use time::OffsetDateTime;
 
 use futures::stream::{self, Stream};
 use futures_timer::Delay;
@@ -124,7 +124,9 @@ impl Retry {
 
                 retry_disk_used += file_size;
 
-                if Utc::now().timestamp() - timestamp < self.retry_base_delay_secs {
+                if OffsetDateTime::now_utc().unix_timestamp() - timestamp
+                    < self.retry_base_delay_secs
+                {
                     continue;
                 }
                 Metrics::retry().inc_pending();
@@ -203,7 +205,7 @@ impl RetrySender {
     ) -> Result<(), Error> {
         Metrics::http().increment_retries();
 
-        let fn_ts = Utc::now().timestamp();
+        let fn_ts = OffsetDateTime::now_utc().unix_timestamp();
         let fn_uuid = Uuid::new_v4().to_string();
 
         // Write to a partial file to avoid concurrently reading from a file that's not been written

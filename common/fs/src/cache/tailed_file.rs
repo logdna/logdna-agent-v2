@@ -1,3 +1,11 @@
+use std::collections::HashMap;
+use std::convert::{TryFrom, TryInto};
+use std::ops::DerefMut;
+use std::os::unix::fs::MetadataExt;
+use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::Arc;
+
 use http::types::body::{KeyValueMap, LineBufferMut, LineBuilder, LineMeta, LineMetaMut};
 use http::types::error::LineMetaError;
 use http::types::serialize::{
@@ -7,26 +15,20 @@ use http::types::serialize::{
 
 use state::{GetOffset, SpanVec};
 
-use chrono::Utc;
 use metrics::Metrics;
+
+use async_channel::Sender;
+use async_trait::async_trait;
+
+use bytes::Bytes;
 
 use futures::io::AsyncBufReadExt;
 use futures::lock::Mutex;
 use futures::{stream, Stream, StreamExt};
 
-use async_channel::Sender;
-use async_trait::async_trait;
-
 use serde_json::Value;
 
-use bytes::Bytes;
-use std::collections::HashMap;
-use std::convert::{TryFrom, TryInto};
-use std::ops::DerefMut;
-use std::os::unix::fs::MetadataExt;
-use std::path::PathBuf;
-use std::pin::Pin;
-use std::sync::Arc;
+use time::OffsetDateTime;
 use tokio::io::{AsyncSeekExt, BufReader, SeekFrom};
 use tokio_util::compat::{Compat, TokioAsyncReadCompatExt};
 
@@ -169,7 +171,9 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
     where
         S: SerializeI64 + std::marker::Send,
     {
-        writer.serialize_i64(&Utc::now().timestamp()).await?;
+        writer
+            .serialize_i64(&OffsetDateTime::now_utc().unix_timestamp())
+            .await?;
 
         Ok(())
     }
@@ -311,7 +315,7 @@ pub struct TailedFileInner {
 #[derive(Debug, Clone)]
 pub struct TailedFile<T> {
     inner: Arc<Mutex<TailedFileInner>>,
-    resume_events_sender: Option<Sender<(u64, chrono::DateTime<chrono::Utc>)>>,
+    resume_events_sender: Option<Sender<(u64, OffsetDateTime)>>,
     _phantom: std::marker::PhantomData<T>,
 }
 
@@ -319,7 +323,7 @@ impl<T> TailedFile<T> {
     pub(crate) fn new(
         path: &std::path::Path,
         initial_offsets: SpanVec,
-        resume_events_sender: Option<Sender<(u64, chrono::DateTime<chrono::Utc>)>>,
+        resume_events_sender: Option<Sender<(u64, OffsetDateTime)>>,
     ) -> Result<Self, std::io::Error> {
         Ok(Self {
             inner: Arc::new(Mutex::new(TailedFileInner {
@@ -475,7 +479,7 @@ pub struct LazyLines {
     total_read: usize,
     target_read: Option<usize>,
     paths: Arc<Vec<String>>,
-    resume_channel_send: Option<async_channel::Sender<(u64, chrono::DateTime<chrono::Utc>)>>,
+    resume_channel_send: Option<async_channel::Sender<(u64, OffsetDateTime)>>,
 }
 
 impl LazyLines {
@@ -483,7 +487,7 @@ impl LazyLines {
         reader: Arc<Mutex<TailedFileInner>>,
         paths: Vec<String>,
         target_read: Option<u64>,
-        resume_channel_send: Option<Sender<(u64, chrono::DateTime<chrono::Utc>)>>,
+        resume_channel_send: Option<Sender<(u64, OffsetDateTime)>>,
     ) -> Self {
         let (initial_end, initial_offset): (Option<u64>, Option<u64>) = {
             let inner = &mut reader.lock().await.reader;
@@ -647,7 +651,7 @@ impl TailedFile<LazyLineSerializer> {
                                 // put event on watch stream to ensure processing completes
                                 if let Some(sender) = resume_channel_send {
                                     if let Err(e) =
-                                        sender.try_send((*inode, chrono::offset::Utc::now()))
+                                        sender.try_send((*inode, OffsetDateTime::now_utc()))
                                     {
                                         warn!("Couldn't send tailer continuation event: {}", e);
                                     };

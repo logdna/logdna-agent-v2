@@ -31,13 +31,13 @@ journald = { package = "journald", path = "../common/journald" }
 state = { package = "state", path = "../common/state" }
 
 bytes = "1"
-chrono = "0.4"
+time = "0.3"
 async-trait = "0.1"
 log = "0.4"
 env_logger = "0.8"
 anyhow = "1"
 serde_yaml = "0.8"
-jemallocator = { version = "0.3", default-features = false, features = ["stats"] }
+tikv-jemallocator  = { version = "0.4.1", default-features = false, features = ["stats"] }
 futures = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "signal"] }
 tokio-stream = "0.1"
@@ -49,7 +49,7 @@ miniz_oxide = "0.4"
 [features]
 default = []
 integration_tests = []
-profiling = ["jemallocator/profiling"]
+profiling = ["tikv-jemallocator/profiling"]
 k8s_tests = []
 libjournald = ["journald/libjournald"]
 journald_tests = ["journald/journald_tests"]
