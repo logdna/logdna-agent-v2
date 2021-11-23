@@ -401,11 +401,19 @@ async fn main() {
                                                 "cleaned up retry file {}",
                                                 path.to_string_lossy()
                                             ),
-                                            Err(e) => error!(
-                                                "couldn't clean up retry file {}, reason={}",
-                                                path.to_string_lossy(),
-                                                e
-                                            ),
+                                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                                                debug!(
+                                                    "cleanup {}: not found err, skipping",
+                                                    path.to_string_lossy()
+                                                );
+                                            }
+                                            Err(e) => {
+                                                error!(
+                                                    "couldn't clean up retry file {}, reason={}",
+                                                    path.to_string_lossy(),
+                                                    e
+                                                )
+                                            }
                                         }
                                     }
                                     _ => {
