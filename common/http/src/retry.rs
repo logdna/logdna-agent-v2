@@ -142,7 +142,18 @@ impl Retry {
         let mut file = BufReader::new(File::open(path).await?);
         let mut data = String::new();
         file.read_to_string(&mut data).await?;
-        remove_file(&path).await?;
+
+        if let Err(e) = remove_file(&path).await {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                debug!(
+                    "remove_file err=not found for {}; ignoring",
+                    &path.to_string_lossy()
+                );
+            } else {
+                return Err(Error::from(e));
+            }
+        }
+
         let DiskRead { offsets, body } = serde_json::from_str(&data)?;
         Ok((offsets, body))
     }
