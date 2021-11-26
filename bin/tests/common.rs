@@ -369,22 +369,13 @@ pub fn self_signed_https_ingester(
 
     let cert_bytes = cert.serialize_pem().unwrap();
     let certs = rustls_pemfile::certs(&mut std::io::BufReader::new(cert_bytes.as_bytes()))
-        .map(|certs| {
-            certs
-                .into_iter()
-                .map(|bytes| rustls::Certificate(bytes))
-                .collect()
-        })
+        .map(|certs| certs.into_iter().map(rustls::Certificate).collect())
         .unwrap();
 
     let key_bytes = cert.serialize_private_key_pem();
     let keys: Vec<rustls::PrivateKey> =
         rustls_pemfile::pkcs8_private_keys(&mut std::io::BufReader::new(key_bytes.as_bytes()))
-            .map(|keys| {
-                keys.into_iter()
-                    .map(|bytes| rustls::PrivateKey(bytes))
-                    .collect()
-            })
+            .map(|keys| keys.into_iter().map(rustls::PrivateKey).collect())
             .unwrap();
 
     let port = get_available_port().expect("No ports free");

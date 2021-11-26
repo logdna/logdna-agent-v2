@@ -6,7 +6,6 @@ use hyper::service::Service;
 use hyper::{Body, Request, Response};
 use serde::{Deserialize, Serialize};
 
-use rustls::internal::msgs::codec::Codec;
 use thiserror::Error;
 use tokio::macros::support::{Future, Pin};
 use tokio::sync::Mutex;
@@ -419,12 +418,7 @@ pub fn load_certs(filename: &str) -> io::Result<Vec<rustls::Certificate>> {
     // Load and return certificate.
     rustls_pemfile::certs(&mut reader)
         .map_err(|_| error("failed to load certificate".into()))
-        .map(|certs| {
-            certs
-                .into_iter()
-                .map(|bytes| rustls::Certificate::read_bytes(&bytes).unwrap())
-                .collect()
-        })
+        .map(|certs| certs.into_iter().map(rustls::Certificate).collect())
 }
 
 // Load private key from file.
@@ -436,11 +430,7 @@ pub fn load_private_key(filename: &str) -> io::Result<rustls::PrivateKey> {
 
     // Load and return a single private key.
     let keys: Vec<rustls::PrivateKey> = rustls_pemfile::rsa_private_keys(&mut reader)
-        .map(|keys| {
-            keys.into_iter()
-                .map(|bytes| rustls::PrivateKey(bytes))
-                .collect()
-        })
+        .map(|keys| keys.into_iter().map(rustls::PrivateKey).collect())
         .map_err(|_| error("failed to load private key".into()))?;
     if keys.len() != 1 {
         return Err(error("expected a single private key".into()));
