@@ -7,7 +7,7 @@ use std::thread::{self, sleep};
 use std::time::Duration;
 use wait_timeout::ChildExt;
 
-use crate::common::{consume_output, start_ingester, AgentSettings};
+use crate::common::{consume_output, AgentSettings};
 
 use assert_cmd::prelude::*;
 use futures::FutureExt;
@@ -728,7 +728,8 @@ proptest! {
         let dir = tempdir().expect("Couldn't create temp dir...");
 
         let dir_path = format!("{}/", dir.path().to_str().unwrap());
-        let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
+        let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester(
+             Some(common::HttpVersion::Http1), None);
 
         let file_path = dir.path().join("test.log");
         let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
@@ -815,7 +816,8 @@ fn lookback_none_lines_are_delivered() {
     let dir = tempdir().expect("Couldn't create temp dir...");
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
 
-    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
+    let (server, received, shutdown_handle, cert_file, addr) =
+        common::self_signed_https_ingester(Some(common::HttpVersion::Http2), None);
     let log_lines = "This is a test log line";
 
     let file_path = dir.path().join("test.log");
@@ -1244,7 +1246,8 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
     let db_dir = tempdir().expect("Couldn't create temp dir...");
     let db_dir_path = db_dir.path();
 
-    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
+    let (server, received, shutdown_handle, cert_file, addr) =
+        common::self_signed_https_ingester(None, None);
 
     let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let excluded_dir = tempdir().expect("Couldn't create temp dir...").into_path();
@@ -1391,7 +1394,8 @@ async fn test_symlink_initialization_with_stateful_lookback() {
     let db_dir = tempdir().expect("Couldn't create temp dir...");
     let db_dir_path = db_dir.path();
 
-    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
+    let (server, received, shutdown_handle, cert_file, addr) =
+        common::self_signed_https_ingester(None, None);
 
     let file_path = excluded_dir.join("test.log");
     let symlink_path = log_dir.join("test-symlink.log");
@@ -1631,7 +1635,8 @@ fn lookback_stateful_lines_are_delivered() {
 
     // Write initial lines
     debug!("First agent run");
-    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
+    let (server, received, shutdown_handle, cert_file, addr) =
+        common::self_signed_https_ingester(None, None);
     thread::sleep(std::time::Duration::from_millis(250));
     let file_path1 = file_path.clone();
     let file_path_clone = file_path.clone();
@@ -1689,7 +1694,8 @@ fn lookback_stateful_lines_are_delivered() {
     debug!("Second agent run");
     // Make sure the agent starts where it left off
     let file_path_clone = file_path.clone();
-    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester();
+    let (server, received, shutdown_handle, cert_file, addr) =
+        common::self_signed_https_ingester(None, None);
     thread::sleep(std::time::Duration::from_millis(250));
     tokio_test::block_on(async {
         let (line_count, _, server) = tokio::join!(
@@ -1807,14 +1813,19 @@ async fn test_tight_writes_with_slow_ingester() {
     let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
 
-    let (server, received, shutdown_handle, addr) = start_ingester(Box::new(|_| {
-        Some(Box::pin(tokio::time::sleep(Duration::from_millis(2500))))
-    }));
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester(
+        None,
+        Some(Box::new(|_| {
+            Some(Box::pin(tokio::time::sleep(Duration::from_millis(2500))))
+        })),
+    );
 
     let file_path = dir.join("test.log");
     File::create(&file_path).expect("Couldn't create temp log file...");
     let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &addr);
-    settings.log_level = Some("info");
+    settings.use_ssl = true;
+    settings.ssl_cert_file = Some(cert_file.path());
+    settings.log_level = Some("rustls::client::hs=debug,info");
     let mut agent_handle = common::spawn_agent(settings);
     let agent_stderr = agent_handle.stderr.take().unwrap();
     let mut stderr_reader = BufReader::new(agent_stderr);

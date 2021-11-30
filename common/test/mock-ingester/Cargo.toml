@@ -10,17 +10,18 @@ name = "https_ingester"
 path = "src/bin/https_ingester.rs"
 
 [dependencies]
-async-compression = { version ="0.3", features = ["tokio", "gzip"]}
-hyper = { version = "0.14", features = ["http1", "server", "stream", "tcp"] }
+async-compression = { version ="0.3", features = ["tokio", "gzip"] }
+hyper = { version = "0.14", features = ["http1", "server", "stream", "tcp", "http2"] }
 bytes = "*"
 futures = "0.3"
+hyper-rustls = { version = "0.23", features = ["http2"] }
 rcgen = "0.8"
-rustls = "0.19"
-rustls-native-certs = { version = "0.5", optional = true }
+rustls = "0.20"
+rustls-pemfile = "0.2"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.6", features = ["io"] }
 tokio-stream = { version = "0.1", features = ["net"] }
-tokio-rustls = "0.22.0"
+tokio-rustls = "0.23"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 env_logger = "0.8"

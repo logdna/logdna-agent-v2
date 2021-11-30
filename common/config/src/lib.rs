@@ -73,6 +73,7 @@ pub struct HttpConfig {
     pub template: RequestTemplate,
     pub timeout: Duration,
     pub body_size: usize,
+    pub require_ssl: bool,
 
     // Development only settings
     pub retry_base_delay: Duration,
@@ -236,6 +237,7 @@ impl TryFrom<RawConfig> for Config {
             retry_step_delay: Duration::from_millis(
                 raw.http.retry_step_delay_ms.unwrap_or(50) as u64
             ),
+            require_ssl: raw.http.use_ssl.unwrap_or(true),
         };
 
         let mut log = LogConfig {

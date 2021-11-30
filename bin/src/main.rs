@@ -106,6 +106,7 @@ async fn main() {
     let mut client = Arc::new(Client::new(
         config.http.template,
         retry,
+        Some(config.http.require_ssl),
         concurrency_limit,
         handles,
     ));

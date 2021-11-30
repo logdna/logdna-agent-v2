@@ -48,6 +48,7 @@ impl Client {
     pub fn new(
         template: RequestTemplate,
         retry: RetrySender,
+        require_ssl: Option<bool>,
         concurrency_limit: Option<usize>,
         state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
     ) -> Self {
@@ -55,7 +56,7 @@ impl Client {
             .map(|(sw, sf)| (Some(sw), Some(sf)))
             .unwrap_or((None, None));
         Self {
-            inner: HttpClient::new(template),
+            inner: HttpClient::new(template, require_ssl),
             limiter: RateLimiter::new(concurrency_limit.unwrap_or(10)),
             retry,
             state_write,
