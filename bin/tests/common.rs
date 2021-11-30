@@ -2,6 +2,7 @@ use core::time;
 
 use hyper::{Client, StatusCode};
 use rand::seq::IteratorRandom;
+
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::{BufRead, Write};
@@ -16,12 +17,13 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use futures::Future;
 use log::debug;
 use logdna_mock_ingester::{
-    http_ingester, http_ingester_with_processors, https_ingester, FileLineCounter, IngestError,
-    ProcessFn,
+    http_ingester, http_ingester_with_processors, https_ingester_with_processors, FileLineCounter,
+    IngestError, ProcessFn,
 };
 
+pub use logdna_mock_ingester::HttpVersion;
+
 use rcgen::generate_simple_self_signed;
-use rustls::internal::pemfile;
 
 pub static LINE: &str = "Nov 30 09:14:47 sample-host-name sampleprocess[1204]: Hello from process";
 
@@ -351,7 +353,10 @@ pub fn get_available_port() -> Option<u16> {
     }
 }
 
-pub fn self_signed_https_ingester() -> (
+pub fn self_signed_https_ingester(
+    http_version: Option<HttpVersion>,
+    process_fn: Option<ProcessFn>,
+) -> (
     impl Future<Output = std::result::Result<(), IngestError>>,
     FileLineCounter,
     impl FnOnce(),
@@ -361,11 +366,17 @@ pub fn self_signed_https_ingester() -> (
     let subject_alt_names = vec!["logdna.com".to_string(), "localhost".to_string()];
 
     let cert = generate_simple_self_signed(subject_alt_names).unwrap();
-    // The certificate is now valid for localhost and the domain "hello.world.example"
-    let certs =
-        pemfile::certs(&mut cert.serialize_pem().unwrap().as_bytes()).expect("couldn't load certs");
-    let key = pemfile::pkcs8_private_keys(&mut cert.serialize_private_key_pem().as_bytes())
-        .expect("couldn't load rsa_private_key");
+
+    let cert_bytes = cert.serialize_pem().unwrap();
+    let certs = rustls_pemfile::certs(&mut std::io::BufReader::new(cert_bytes.as_bytes()))
+        .map(|certs| certs.into_iter().map(rustls::Certificate).collect())
+        .unwrap();
+
+    let key_bytes = cert.serialize_private_key_pem();
+    let keys: Vec<rustls::PrivateKey> =
+        rustls_pemfile::pkcs8_private_keys(&mut std::io::BufReader::new(key_bytes.as_bytes()))
+            .map(|keys| keys.into_iter().map(rustls::PrivateKey).collect())
+            .unwrap();
 
     let port = get_available_port().expect("No ports free");
 
@@ -376,7 +387,13 @@ pub fn self_signed_https_ingester() -> (
         .write_all(cert.serialize_pem().unwrap().as_bytes())
         .expect("Couldn't write cert file");
 
-    let (server, received, shutdown_handle) = https_ingester(addr, certs, key[0].clone());
+    let (server, received, shutdown_handle) = https_ingester_with_processors(
+        addr,
+        certs,
+        keys[0].clone(),
+        http_version,
+        process_fn.unwrap_or_else(|| Box::new(|_| None)),
+    );
     debug!("Started https ingester on port {}", port);
     (
         server,
@@ -396,7 +413,7 @@ pub fn start_http_ingester() -> (
     let port = get_available_port().expect("No ports free");
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
 
-    let (server, received, shutdown_handle) = http_ingester(address);
+    let (server, received, shutdown_handle) = http_ingester(address, None);
     (
         server,
         received,
@@ -428,7 +445,8 @@ pub fn start_ingester(
     let port = get_available_port().expect("No ports free");
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
 
-    let (server, received, shutdown_handle) = http_ingester_with_processors(address, process_fn);
+    let (server, received, shutdown_handle) =
+        http_ingester_with_processors(address, None, process_fn);
     (
         server,
         received,

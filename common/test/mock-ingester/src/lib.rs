@@ -4,14 +4,8 @@ extern crate log;
 use futures::{future, Stream, StreamExt, TryFutureExt, TryStreamExt};
 use hyper::service::Service;
 use hyper::{Body, Request, Response};
-use rustls::internal::pemfile;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::convert::From;
-use std::net::SocketAddr;
-use std::sync::Arc;
-use std::task::{Context, Poll};
-use std::{fs, io};
+
 use thiserror::Error;
 use tokio::macros::support::{Future, Pin};
 use tokio::sync::Mutex;
@@ -21,6 +15,13 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::server::TlsStream;
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::wrappers::TcpListenerStream;
+
+use std::collections::HashMap;
+use std::convert::From;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::task::{Context, Poll};
+use std::{fs, io};
 
 const ROOT: &str = "/logs/agent";
 
@@ -212,18 +213,26 @@ impl<T> Service<T> for MakeSvc {
     }
 }
 
+pub enum HttpVersion {
+    Http1,
+    Http2,
+    Any,
+}
+
 pub fn http_ingester(
     addr: SocketAddr,
+    http_version: Option<HttpVersion>,
 ) -> (
     impl Future<Output = std::result::Result<(), IngestError>>,
     FileLineCounter,
     impl FnOnce(),
 ) {
-    http_ingester_with_processors(addr, Box::new(|_| None))
+    http_ingester_with_processors(addr, http_version, Box::new(|_| None))
 }
 
 pub fn http_ingester_with_processors(
     addr: SocketAddr,
+    http_version: Option<HttpVersion>,
     process_fn: ProcessFn,
 ) -> (
     impl Future<Output = std::result::Result<(), IngestError>>,
@@ -243,15 +252,24 @@ pub fn http_ingester_with_processors(
             let incoming_stream = TcpListenerStream::new(tcp)
                 .map_err(|e| error(format!("Incoming failed: {:?}", e)))
                 .boxed();
-            hyper::server::Server::builder(HyperAcceptor {
+
+            let server_builder = hyper::server::Server::builder(HyperAcceptor {
                 acceptor: incoming_stream,
-            })
-            .serve(mk_svc)
-            .with_graceful_shutdown(async {
-                rx.await.ok();
-            })
-            .await
-            .map_err(IngestError::HyperError)
+            });
+
+            let server_builder = match http_version {
+                Some(HttpVersion::Http1) => server_builder.http1_only(true),
+                Some(HttpVersion::Http2) => server_builder.http2_only(true),
+                _ => server_builder,
+            };
+
+            server_builder
+                .serve(mk_svc)
+                .with_graceful_shutdown(async {
+                    rx.await.ok();
+                })
+                .await
+                .map_err(IngestError::HyperError)
         },
         received,
         move || tx.send(()).expect("Couldn't terminate server"),
@@ -266,6 +284,27 @@ pub fn https_ingester(
     addr: SocketAddr,
     server_cert: Vec<rustls::Certificate>,
     private_key: rustls::PrivateKey,
+    http_version: Option<HttpVersion>,
+) -> (
+    impl Future<Output = std::result::Result<(), IngestError>>,
+    FileLineCounter,
+    impl FnOnce(),
+) {
+    https_ingester_with_processors(
+        addr,
+        server_cert,
+        private_key,
+        http_version,
+        Box::new(|_| None),
+    )
+}
+
+pub fn https_ingester_with_processors(
+    addr: SocketAddr,
+    server_cert: Vec<rustls::Certificate>,
+    private_key: rustls::PrivateKey,
+    http_version: Option<HttpVersion>,
+    process_fn: ProcessFn,
 ) -> (
     impl Future<Output = std::result::Result<(), IngestError>>,
     FileLineCounter,
@@ -273,20 +312,25 @@ pub fn https_ingester(
 ) {
     info!("creating https_ingester");
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-    let mk_svc = MakeSvc::new(Box::new(|_| None));
+    let mk_svc = MakeSvc::new(process_fn);
     let received = mk_svc.files.clone();
     (
         async move {
             // Build TLS configuration.
             let tls_cfg = {
                 // Do not use client certificate authentication.
-                let mut cfg = rustls::ServerConfig::new(rustls::NoClientAuth::new());
-                // Select a certificate to use.
-                cfg.set_single_cert(server_cert, private_key)
-                    .map_err(|e| error(format!("{}", e)))
-                    .unwrap();
+                let mut cfg = rustls::ServerConfig::builder()
+                    .with_safe_defaults()
+                    .with_no_client_auth()
+                    .with_single_cert(server_cert, private_key)
+                    .map_err(|e| error(format!("{}", e)))?;
                 // Configure ALPN to accept HTTP/2, HTTP/1.1 in that order.
-                cfg.set_protocols(&[b"h2".to_vec(), b"http/1.1".to_vec()]);
+                cfg.alpn_protocols = match http_version {
+                    Some(HttpVersion::Http1) => vec![b"http/1.1".to_vec()],
+                    Some(HttpVersion::Http2) => vec![b"h2".to_vec()],
+                    _ => vec![b"h2".to_vec(), b"http/1.1".to_vec()],
+                };
+                info!("ingester alpn_protocols: {:#?}", cfg.alpn_protocols);
                 Arc::new(cfg)
             };
 
@@ -297,7 +341,7 @@ pub fn https_ingester(
             info!("ingester listening at {:?}", addr);
             let tls_acceptor = TlsAcceptor::from(tls_cfg);
             // Prepare a long-running future stream to accept and serve cients.
-            //
+
             let incoming_tls_stream = TcpListenerStream::new(tcp)
                 .map_err(|e| error(format!("Incoming failed: {:?}", e)))
                 .and_then(move |s| {
@@ -309,15 +353,23 @@ pub fn https_ingester(
                     })
                 })
                 .boxed();
-            hyper::server::Server::builder(HyperTlsAcceptor {
+            let server_builder = hyper::server::Server::builder(HyperTlsAcceptor {
                 acceptor: incoming_tls_stream,
-            })
-            .serve(mk_svc)
-            .with_graceful_shutdown(async {
-                rx.await.ok();
-            })
-            .await
-            .map_err(IngestError::HyperError)
+            });
+
+            let server_builder = match http_version {
+                Some(HttpVersion::Http1) => server_builder.http1_only(true),
+                Some(HttpVersion::Http2) => server_builder.http2_only(true),
+                _ => server_builder,
+            };
+
+            server_builder
+                .serve(mk_svc)
+                .with_graceful_shutdown(async {
+                    rx.await.ok();
+                })
+                .await
+                .map_err(IngestError::HyperError)
         },
         received,
         move || tx.send(()).expect("Couldn't terminate server"),
@@ -364,7 +416,9 @@ pub fn load_certs(filename: &str) -> io::Result<Vec<rustls::Certificate>> {
     let mut reader = io::BufReader::new(certfile);
 
     // Load and return certificate.
-    pemfile::certs(&mut reader).map_err(|_| error("failed to load certificate".into()))
+    rustls_pemfile::certs(&mut reader)
+        .map_err(|_| error("failed to load certificate".into()))
+        .map(|certs| certs.into_iter().map(rustls::Certificate).collect())
 }
 
 // Load private key from file.
@@ -375,7 +429,8 @@ pub fn load_private_key(filename: &str) -> io::Result<rustls::PrivateKey> {
     let mut reader = io::BufReader::new(keyfile);
 
     // Load and return a single private key.
-    let keys = pemfile::rsa_private_keys(&mut reader)
+    let keys: Vec<rustls::PrivateKey> = rustls_pemfile::rsa_private_keys(&mut reader)
+        .map(|keys| keys.into_iter().map(rustls::PrivateKey).collect())
         .map_err(|_| error("failed to load private key".into()))?;
     if keys.len() != 1 {
         return Err(error("expected a single private key".into()));
