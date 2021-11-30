@@ -10,7 +10,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "0.0.0.0:1337".parse()?;
     info!("Listening on http://{}", addr);
 
-    let (server, _, shutdown_handle) = http_ingester(addr);
+    let (server, _, shutdown_handle) = http_ingester(addr, None);
     tokio::join!(
         async {
             tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
