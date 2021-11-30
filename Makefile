@@ -11,7 +11,9 @@ RUST_IMAGE_BASE ?= buster
 RUST_IMAGE_TAG ?= rust-$(RUST_IMAGE_BASE)-1-stable
 RUST_IMAGE ?= $(RUST_IMAGE_REPO):$(RUST_IMAGE_TAG)-$(ARCH)
 
-BENCH_IMAGE_STAMP = .logdna-rust-bench-image.stamp
+BENCH_IMAGE_BASE ?= bullseye
+BENCH_IMAGE_TAG ?= rust-$(BENCH_IMAGE_BASE)-1-stable
+BENCH_IMAGE ?= $(RUST_IMAGE_REPO):$(BENCH_IMAGE_TAG)-$(ARCH)
 
 HADOLINT_IMAGE_REPO ?= hadolint/hadolint
 HADOLINT_IMAGE_TAG ?= v1.18.0-debian
@@ -164,12 +166,8 @@ test-journald: ## Run journald unit tests
 	$(eval FEATURES := $(FEATURES) journald_tests)
 	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald -- --nocapture"
 
-$(BENCH_IMAGE_STAMP): Dockerfile.bench # Build bench image
-	docker build --iidfile $(BENCH_IMAGE_STAMP) -f Dockerfile.bench . || rm $(BENCH_IMAGE_STAMP) 2>&1 > /dev/null
-
 .PHONY:bench
-bench: $(BENCH_IMAGE_STAMP)
-	$(eval BENCH_IMAGE = $(shell cat $(BENCH_IMAGE_STAMP)))
+bench:
 	$(BENCH_COMMAND) "--privileged --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo run --release --manifest-path bench/Cargo.toml --bin=throughput dict.txt -o /tmp/out $(PROFILE) --file-history 3 --line-count 10000000 --file-size 20000000 && mv /tmp/flamegraph.svg ."
 
 .PHONY:clean

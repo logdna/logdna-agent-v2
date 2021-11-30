@@ -81,7 +81,8 @@ fn start_ingester(
     let port = get_available_port().expect("No ports free");
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
 
-    let (server, received, shutdown_handle) = http_ingester_with_processors(address, process_fn);
+    let (server, received, shutdown_handle) =
+        http_ingester_with_processors(address, None, process_fn);
     (
         server,
         received,
