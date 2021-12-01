@@ -32,6 +32,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal::*;
+use tokio::sync::Mutex;
 
 mod dep_audit;
 mod stream_adapter;
@@ -328,13 +329,20 @@ async fn main() {
         .map(|b| async { b })
         .buffered(10);
 
-    fn handle_client_error<T>(e: ClientError<T>)
-    where
+    async fn handle_client_error<T>(
+        e: ClientError<T>,
+        shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
+    ) where
         T: Send + 'static,
     {
         match e {
             ClientError::BadRequest(s) => {
-                warn!("bad http request: {}", s);
+                if s.is_client_error() {
+                    error!("bad request, check configuration: {}", s);
+                    shutdown_tx.lock().await.take().unwrap().send(()).unwrap();
+                } else {
+                    warn!("bad http request: {}", s);
+                }
             }
             ClientError::Http(e) => {
                 warn!("failed sending http request: {}", e);
@@ -360,16 +368,21 @@ async fn main() {
         }
     }
 
+    let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
+    let shutdown_tx = Arc::new(Mutex::new(Some(shutdown_tx)));
+
     let lines_client = client.clone();
     let lines_driver = body_offsets_stream.for_each_concurrent(None, {
+        let shutdown_tx = shutdown_tx.clone();
         move |body_offsets| {
             let client = lines_client.clone();
+            let shutdown_tx = shutdown_tx.clone();
             async {
                 tokio::spawn(async move {
                     match body_offsets {
                         Ok((body, offsets)) => match client.send(body, Some(offsets)).await {
                             Ok(s) => handle_send_status(s),
-                            Err(e) => handle_client_error(e),
+                            Err(e) => handle_client_error(e, shutdown_tx).await,
                         },
                         Err(e) => error!("Couldn't batch lines {:?}", e),
                     }
@@ -383,28 +396,35 @@ async fn main() {
     let retry_driver = retry_stream
         .into_stream()
         .for_each_concurrent(None, move |body_offsets| {
+            let shutdown_tx = shutdown_tx.clone();
             let client = client.clone();
-            async {
-                tokio::spawn(async move {
-                    match body_offsets {
-                        Ok(item) => {
-                            let RetryItem {
-                                body_buffer,
-                                offsets,
-                                path: _,
-                            } = item;
-                            match client.send(body_buffer, offsets).await {
-                                Ok(s) => match s {
-                                    SendStatus::Sent => Metrics::http().increment_retries_success(),
-                                    _ => {
-                                        Metrics::http().increment_retries_failure();
-                                        handle_send_status(s)
-                                    }
-                                },
-                                Err(e) => handle_client_error(e),
+
+            async move {
+                tokio::spawn({
+                    let shutdown_tx = shutdown_tx.clone();
+                    async move {
+                        match body_offsets {
+                            Ok(item) => {
+                                let RetryItem {
+                                    body_buffer,
+                                    offsets,
+                                    path: _,
+                                } = item;
+                                match client.send(body_buffer, offsets).await {
+                                    Ok(s) => match s {
+                                        SendStatus::Sent => {
+                                            Metrics::http().increment_retries_success()
+                                        }
+                                        _ => {
+                                            Metrics::http().increment_retries_failure();
+                                            handle_send_status(s)
+                                        }
+                                    },
+                                    Err(e) => handle_client_error(e, shutdown_tx).await,
+                                }
                             }
+                            Err(e) => error!("Couldn't batch lines {:?}", e),
                         }
-                        Err(e) => error!("Couldn't batch lines {:?}", e),
                     }
                 })
                 .await
@@ -430,6 +450,7 @@ async fn main() {
     tokio::select! {
         _ = lines_driver => {}
         _ = retry_driver => {}
+        _ = &mut shutdown_rx => {}
         signal_name = get_signal() => {
             info!("Received {} signal, shutting down", signal_name)
         }
