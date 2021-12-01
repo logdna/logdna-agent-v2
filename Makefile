@@ -11,6 +11,10 @@ RUST_IMAGE_BASE ?= buster
 RUST_IMAGE_TAG ?= rust-$(RUST_IMAGE_BASE)-1-stable
 RUST_IMAGE ?= $(RUST_IMAGE_REPO):$(RUST_IMAGE_TAG)-$(ARCH)
 
+BENCH_IMAGE_BASE ?= bullseye
+BENCH_IMAGE_TAG ?= rust-$(BENCH_IMAGE_BASE)-1-stable
+BENCH_IMAGE ?= $(RUST_IMAGE_REPO):$(BENCH_IMAGE_TAG)-$(ARCH)
+
 HADOLINT_IMAGE_REPO ?= hadolint/hadolint
 HADOLINT_IMAGE_TAG ?= v1.18.0-debian
 HADOLINT_IMAGE ?= $(HADOLINT_IMAGE_REPO):$(HADOLINT_IMAGE_TAG)
@@ -35,6 +39,7 @@ RUST_COMMAND := $(DOCKER_DISPATCH) $(RUST_IMAGE)
 UNCACHED_RUST_COMMAND := CACHE_TARGET="false" $(DOCKER_DISPATCH) $(RUST_IMAGE)
 DEB_COMMAND := CACHE_TARGET="false" $(DOCKER_DISPATCH) alanfranz/fpm-within-docker:debian-bullseye
 RPM_COMMAND := CACHE_TARGET="false" $(DOCKER_DISPATCH) alanfranz/fpm-within-docker:centos-8
+BENCH_COMMAND = CACHE_TARGET="false" $(DOCKER_DISPATCH) $(BENCH_IMAGE)
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
@@ -84,6 +89,9 @@ ifeq ($(STATIC), 1)
 else
 	RUSTFLAGS:=
 endif
+
+# Should we profile the benchmarks
+PROFILE?=--profile
 
 CHANGE_BIN_VERSION = awk '{sub(/^version = ".+"$$/, "version = \"$(1)\"")}1' bin/Cargo.toml >> bin/Cargo.toml.tmp && mv bin/Cargo.toml.tmp bin/Cargo.toml
 
@@ -157,6 +165,10 @@ k8s-test: ## Run integration tests using k8s kind
 test-journald: ## Run journald unit tests
 	$(eval FEATURES := $(FEATURES) journald_tests)
 	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald -- --nocapture"
+
+.PHONY:bench
+bench:
+	$(BENCH_COMMAND) "--privileged --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo run --release --manifest-path bench/Cargo.toml --bin=throughput dict.txt -o /tmp/out $(PROFILE) --file-history 3 --line-count 10000000 --file-size 20000000 && mv /tmp/flamegraph.svg ."
 
 .PHONY:clean
 clean: ## Clean all artifacts from the build process

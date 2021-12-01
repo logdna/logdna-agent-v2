@@ -40,11 +40,6 @@ pipeline {
             error("A maintainer needs to approve this PR for CI by commenting")
           }
         }
-        stage('Pull Build Image') {
-            steps {
-                sh "docker pull ${RUST_IMAGE_REPO}:${RUST_IMAGE_TAG}"
-            }
-        }
         stage('Lint and Test') {
             environment {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
