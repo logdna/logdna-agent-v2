@@ -13,7 +13,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (server, _, shutdown_handle) = http_ingester(addr);
     tokio::join!(
         async {
-            tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
             info!("Shutting down");
             shutdown_handle();
         },

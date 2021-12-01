@@ -14,7 +14,9 @@ use std::task::{Context, Poll};
 use std::{fs, io};
 use tokio::macros::support::{Future, Pin};
 use tokio::sync::Mutex;
+use tokio_stream::wrappers::TcpListenerStream;
 
+use tokio::io::AsyncReadExt;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::server::TlsStream;
 use tokio_rustls::TlsAcceptor;
@@ -90,20 +92,17 @@ impl Service<Request<Body>> for Svc {
                 })
                 .unwrap_or_else(HashMap::new);
 
-            let mut body = req.into_body();
+            let body = req.into_body();
+            let mut body = tokio_util::io::StreamReader::new(
+                body.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
+            );
             match encoding {
                 Some(encoding) if encoding == "gzip" => {
-                    let mut decoder = async_compression::stream::GzipDecoder::new(
-                        body.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
-                    );
-                    while let Some(Ok(chunk)) = decoder.next().await {
-                        bytes.extend_from_slice(&chunk);
-                    }
+                    let mut decoder = async_compression::tokio::bufread::GzipDecoder::new(body);
+                    decoder.read_to_end(&mut bytes).await.unwrap();
                 }
                 _ => {
-                    while let Some(Ok(chunk)) = body.next().await {
-                        bytes.extend_from_slice(&chunk);
-                    }
+                    body.read_to_end(&mut bytes).await.unwrap();
                 }
             }
 
@@ -192,12 +191,11 @@ pub fn http_ingester(
     (
         async move {
             // Create a TCP listener via tokio.
-            let mut tcp = TcpListener::bind(&addr)
+            let tcp = TcpListener::bind(&addr)
                 .await
                 .unwrap_or_else(|_| panic!("Couldn't bind to {:?}", addr));
             // Prepare a long-running future stream to accept and serve cients.
-            let incoming_stream = tcp
-                .incoming()
+            let incoming_stream = TcpListenerStream::new(tcp)
                 .map_err(|e| error(format!("Incoming failed: {:?}", e)))
                 .boxed();
             hyper::Server::builder(HyperAcceptor {
@@ -247,14 +245,13 @@ pub fn https_ingester(
             };
 
             // Create a TCP listener via tokio.
-            let mut tcp = TcpListener::bind(&addr)
+            let tcp = TcpListener::bind(&addr)
                 .await
                 .unwrap_or_else(|_| panic!("Couldn't bind to {:?}", addr));
             info!("ingester listening at {:?}", addr);
             let tls_acceptor = TlsAcceptor::from(tls_cfg);
             // Prepare a long-running future stream to accept and serve cients.
-            let incoming_tls_stream = tcp
-                .incoming()
+            let incoming_tls_stream = TcpListenerStream::new(tcp)
                 .map_err(|e| error(format!("Incoming failed: {:?}", e)))
                 .and_then(move |s| {
                     tls_acceptor.accept(s).map_err(|e| {

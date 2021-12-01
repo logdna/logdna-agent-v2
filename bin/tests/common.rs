@@ -92,7 +92,7 @@ pub fn append_to_file(file_path: &Path, lines: i32, sync_every: i32) -> Result<(
 
 pub async fn force_client_to_flush(dir_path: &Path) {
     // Client flushing delay
-    tokio::time::delay_for(tokio::time::Duration::from_millis(300)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
     // Append to a dummy file
     append_to_file(&dir_path.join("force_flush.log"), 1, 1).unwrap();
 }

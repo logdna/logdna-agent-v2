@@ -332,10 +332,10 @@ mod test {
             tokio_test::block_on(async {
                 let _ = tokio::join!(
                     async {
-                        tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
                         assert_eq!(4, offset_state.offsets().unwrap().len());
-                        tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                         assert_eq!(4, offset_state.offsets().unwrap().len());
                         assert_eq!(
                             13 * 2 + 14 * 2,
@@ -345,23 +345,23 @@ mod test {
                                 .iter()
                                 .fold(0, |a, fo| a + fo.offset)
                         );
-                        tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                         assert_eq!(2, offset_state.offsets().unwrap().len());
                         sh.shutdown();
                     },
                     async move {
-                        tokio::time::delay_for(tokio::time::Duration::from_millis(100)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                         for path in paths.iter() {
                             wh.update(path, 13).await.unwrap();
                         }
                         fh.flush().await.unwrap();
-                        tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
                         for path in paths[..2].iter() {
                             wh.update(path, 14).await.unwrap();
                         }
                         fh.flush().await.unwrap();
-                        tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
                         for path in paths[..2].iter() {
                             wh.delete(path).await.unwrap();
