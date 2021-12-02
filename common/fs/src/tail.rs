@@ -309,7 +309,7 @@ mod test {
     use std::io::Write;
     use std::panic;
     use tempfile::tempdir;
-    use tokio::stream::StreamExt;
+    use tokio_stream::StreamExt;
 
     macro_rules! take_events {
         ( $x:expr, $y: expr ) => {{
@@ -366,7 +366,7 @@ mod test {
                     .timeout(std::time::Duration::from_millis(500));
 
                 let write_files = async move {
-                    tokio::time::delay_for(tokio::time::Duration::from_millis(250)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
                     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
                     file.sync_all().expect("Failed to sync file");
                 };
@@ -415,7 +415,7 @@ mod test {
                     .timeout(std::time::Duration::from_millis(500));
 
                 let write_files = async move {
-                    tokio::time::delay_for(tokio::time::Duration::from_millis(250)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
                     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
                     file.sync_all().expect("Failed to sync file");
                 };
@@ -464,7 +464,7 @@ mod test {
                     .timeout(std::time::Duration::from_millis(500));
 
                 let write_files = async move {
-                    tokio::time::delay_for(tokio::time::Duration::from_millis(250)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
                     (0..5).for_each(|_| {
                         writeln!(file, "{}", log_lines)
                             .expect("Couldn't write to temp log file...");
