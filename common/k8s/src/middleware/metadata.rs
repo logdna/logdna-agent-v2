@@ -13,7 +13,7 @@ use metrics::Metrics;
 use middleware::{Middleware, Status};
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::convert::TryFrom;
+use std::convert::{TryFrom, TryInto};
 use std::env;
 use thiserror::Error;
 use tokio::runtime::{Builder, Runtime};
@@ -37,10 +37,9 @@ pub struct K8sMetadata {
 // TODO refactor to use kube-rs Reflector instead of manually managing hashmap
 impl K8sMetadata {
     pub fn new() -> Result<Self, K8sError> {
-        let mut runtime = match Builder::new()
-            .threaded_scheduler()
+        let runtime = match Builder::new_multi_thread()
             .enable_all()
-            .core_threads(2)
+            .worker_threads(2)
             .build()
         {
             Ok(v) => v,
@@ -61,7 +60,7 @@ impl K8sMetadata {
                     )))
                 }
             };
-            let client = Client::new(config);
+            let client = Client::new(config.try_into()?);
 
             let mut params = ListParams::default();
             if let Ok(node) = env::var("NODE_NAME") {
@@ -153,7 +152,7 @@ impl K8sMetadata {
 
 impl Middleware for K8sMetadata {
     fn run(&self) {
-        let mut runtime = self
+        let runtime = self
             .runtime
             .lock()
             .take()
