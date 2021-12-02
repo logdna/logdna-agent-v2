@@ -29,22 +29,25 @@ async fn test_retry_after_timeout() {
 
     let attempts_counter = Arc::new(AtomicI64::new(0));
     let counter = attempts_counter.clone();
-    let (server, received, shutdown_handle, address) = start_ingester(Box::new(move |body| {
-        if body
-            .lines
-            .iter()
-            .any(|l| l.file.as_deref().unwrap().contains("test.log"))
-        {
-            counter.fetch_add(1, Ordering::SeqCst);
-            if counter.load(Ordering::SeqCst) < attempts {
-                // Sleep enough time to mark the request as timed out by the client
-                return Some(Box::pin(tokio::time::sleep(Duration::from_millis(
-                    timeout + 20,
-                ))));
+    let (server, received, shutdown_handle, address) = start_ingester(
+        Box::new(|_| None),
+        Box::new(move |body| {
+            if body
+                .lines
+                .iter()
+                .any(|l| l.file.as_deref().unwrap().contains("test.log"))
+            {
+                counter.fetch_add(1, Ordering::SeqCst);
+                if counter.load(Ordering::SeqCst) < attempts {
+                    // Sleep enough time to mark the request as timed out by the client
+                    return Some(Box::pin(tokio::time::sleep(Duration::from_millis(
+                        timeout + 20,
+                    ))));
+                }
             }
-        }
-        None
-    }));
+            None
+        }),
+    );
 
     let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &address);
     settings.config_file = config_file_path.to_str();
@@ -106,20 +109,23 @@ async fn test_retry_is_not_made_before_retry_base_delay_ms() {
 
     let attempts_counter = Arc::new(AtomicUsize::new(0));
     let counter = attempts_counter.clone();
-    let (server, _, shutdown_handle, address) = start_ingester(Box::new(move |body| {
-        if body
-            .lines
-            .iter()
-            .any(|l| l.file.as_deref().unwrap().contains("test.log"))
-        {
-            counter.fetch_add(1, Ordering::SeqCst);
-            // Sleep enough time to mark the request as timed out by the client
-            return Some(Box::pin(tokio::time::sleep(Duration::from_millis(
-                timeout + 20,
-            ))));
-        }
-        None
-    }));
+    let (server, _, shutdown_handle, address) = start_ingester(
+        Box::new(|_| None),
+        Box::new(move |body| {
+            if body
+                .lines
+                .iter()
+                .any(|l| l.file.as_deref().unwrap().contains("test.log"))
+            {
+                counter.fetch_add(1, Ordering::SeqCst);
+                // Sleep enough time to mark the request as timed out by the client
+                return Some(Box::pin(tokio::time::sleep(Duration::from_millis(
+                    timeout + 20,
+                ))));
+            }
+            None
+        }),
+    );
 
     let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &address);
     settings.config_file = config_file_path.to_str();
@@ -246,7 +252,7 @@ async fn test_retry_metrics_emitted() {
     // Generate a mock ingestion service that can be toggled between normal speed and slow running
     // Slow responses should trigger a retry when the agent is set with small timeout values.
     let simulate_ingest_problems = Arc::new(AtomicBool::new(false));
-    let (server, _, shutdown_ingest, address) = start_ingester({
+    let (server, _, shutdown_ingest, address) = start_ingester(Box::new(|_| None), {
         let simulate_ingest_problems = simulate_ingest_problems.clone();
         Box::new(move |body| {
             if body

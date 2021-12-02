@@ -733,7 +733,12 @@ proptest! {
 
         let dir_path = format!("{}/", dir.path().to_str().unwrap());
         let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester(
-             Some(common::HttpVersion::Http1), None);
+             Some(common::HttpVersion::Http1),
+             Some(Box::new(|req| {
+                 assert_eq!(req.version(), hyper::Version::HTTP_11);
+                 None
+             })),
+             None);
 
         let file_path = dir.path().join("test.log");
         let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
@@ -820,8 +825,14 @@ fn lookback_none_lines_are_delivered() {
     let dir = tempdir().expect("Couldn't create temp dir...");
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
 
-    let (server, received, shutdown_handle, cert_file, addr) =
-        common::self_signed_https_ingester(Some(common::HttpVersion::Http2), None);
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester(
+        Some(common::HttpVersion::Http2),
+        Some(Box::new(|req| {
+            assert_eq!(req.version(), hyper::Version::HTTP_2);
+            None
+        })),
+        None,
+    );
     let log_lines = "This is a test log line";
 
     let file_path = dir.path().join("test.log");
@@ -1249,7 +1260,7 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
     let db_dir_path = db_dir.path();
 
     let (server, received, shutdown_handle, cert_file, addr) =
-        common::self_signed_https_ingester(None, None);
+        common::self_signed_https_ingester(None, None, None);
 
     let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let excluded_dir = tempdir().expect("Couldn't create temp dir...").into_path();
@@ -1397,7 +1408,7 @@ async fn test_symlink_initialization_with_stateful_lookback() {
     let db_dir_path = db_dir.path();
 
     let (server, received, shutdown_handle, cert_file, addr) =
-        common::self_signed_https_ingester(None, None);
+        common::self_signed_https_ingester(None, None, None);
 
     let file_path = excluded_dir.join("test.log");
     let symlink_path = log_dir.join("test-symlink.log");
@@ -1638,7 +1649,7 @@ fn lookback_stateful_lines_are_delivered() {
     // Write initial lines
     debug!("First agent run");
     let (server, received, shutdown_handle, cert_file, addr) =
-        common::self_signed_https_ingester(None, None);
+        common::self_signed_https_ingester(None, None, None);
     thread::sleep(std::time::Duration::from_millis(250));
     let file_path1 = file_path.clone();
     let file_path_clone = file_path.clone();
@@ -1697,7 +1708,7 @@ fn lookback_stateful_lines_are_delivered() {
     // Make sure the agent starts where it left off
     let file_path_clone = file_path.clone();
     let (server, received, shutdown_handle, cert_file, addr) =
-        common::self_signed_https_ingester(None, None);
+        common::self_signed_https_ingester(None, None, None);
     thread::sleep(std::time::Duration::from_millis(250));
     tokio_test::block_on(async {
         let (line_count, _, server) = tokio::join!(
@@ -1817,6 +1828,10 @@ async fn test_tight_writes_with_slow_ingester() {
 
     let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester(
         None,
+        Some(Box::new(|req| {
+            assert_eq!(req.version(), hyper::Version::HTTP_2);
+            None
+        })),
         Some(Box::new(|_| {
             Some(Box::pin(tokio::time::sleep(Duration::from_millis(2500))))
         })),
@@ -1897,7 +1912,7 @@ async fn test_endurance_writes() {
 
     let line_count = Arc::new(AtomicUsize::new(0));
 
-    let (server, received, shutdown_handle, addr) = common::start_ingester({
+    let (server, received, shutdown_handle, addr) = common::start_ingester(Box::new(|_| None), {
         let counter = line_count.clone();
         Box::new(move |body| {
             counter.fetch_add(body.lines.len(), Ordering::SeqCst);

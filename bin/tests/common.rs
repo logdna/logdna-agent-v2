@@ -18,7 +18,7 @@ use futures::Future;
 use log::debug;
 use logdna_mock_ingester::{
     http_ingester, http_ingester_with_processors, https_ingester_with_processors, FileLineCounter,
-    IngestError, ProcessFn,
+    IngestError, ProcessFn, ReqFn,
 };
 
 pub use logdna_mock_ingester::HttpVersion;
@@ -355,6 +355,7 @@ pub fn get_available_port() -> Option<u16> {
 
 pub fn self_signed_https_ingester(
     http_version: Option<HttpVersion>,
+    req_fn: Option<ReqFn>,
     process_fn: Option<ProcessFn>,
 ) -> (
     impl Future<Output = std::result::Result<(), IngestError>>,
@@ -392,6 +393,7 @@ pub fn self_signed_https_ingester(
         certs,
         keys[0].clone(),
         http_version,
+        req_fn.unwrap_or_else(|| Box::new(|_| None)),
         process_fn.unwrap_or_else(|| Box::new(|_| None)),
     );
     debug!("Started https ingester on port {}", port);
@@ -435,6 +437,7 @@ pub fn consume_output(stderr_handle: std::process::ChildStderr) {
 // used in the retries and http integration tests. This flag disables that false positive.
 #[allow(dead_code)]
 pub fn start_ingester(
+    req_fn: ReqFn,
     process_fn: ProcessFn,
 ) -> (
     impl Future<Output = std::result::Result<(), IngestError>>,
@@ -446,7 +449,7 @@ pub fn start_ingester(
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
 
     let (server, received, shutdown_handle) =
-        http_ingester_with_processors(address, None, process_fn);
+        http_ingester_with_processors(address, None, req_fn, process_fn);
     (
         server,
         received,
