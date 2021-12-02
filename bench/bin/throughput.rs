@@ -23,7 +23,7 @@ use structopt::StructOpt;
 use tokio::fs::{self};
 
 use logdna_mock_ingester::{
-    http_ingester_with_processors, FileLineCounter, IngestError, ProcessFn,
+    http_ingester_with_processors, FileLineCounter, IngestError, ProcessFn, ReqFn,
 };
 
 const CARGO_MANIFEST_DIR: &str = "CARGO_MANIFEST_DIR";
@@ -71,6 +71,7 @@ pub fn get_available_port() -> Option<u16> {
 }
 
 fn start_ingester(
+    req_fn: ReqFn,
     process_fn: ProcessFn,
 ) -> (
     impl Future<Output = std::result::Result<(), IngestError>>,
@@ -82,7 +83,7 @@ fn start_ingester(
     let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), port);
 
     let (server, received, shutdown_handle) =
-        http_ingester_with_processors(address, None, process_fn);
+        http_ingester_with_processors(address, None, req_fn, process_fn);
     (
         server,
         received,
@@ -152,19 +153,22 @@ async fn main() -> Result<(), std::io::Error> {
 
     let line_counter = std::sync::Arc::new(AtomicU64::new(0));
 
-    let (server, _, shutdown_handle, address) = start_ingester(Box::new({
-        let ingester_delay = opt.ingester_delay.unwrap_or(1000);
-        let line_counter = line_counter.clone();
-        let rpb1 = rpb.clone();
-        move |body| {
-            let lines = body.lines.len();
-            rpb1.inc(lines.try_into().unwrap());
-            line_counter.fetch_add(lines.try_into().unwrap(), Ordering::SeqCst);
-            Some(Box::pin(tokio::time::sleep(
-                std::time::Duration::from_millis(ingester_delay),
-            )))
-        }
-    }));
+    let (server, _, shutdown_handle, address) = start_ingester(
+        Box::new(|_| None),
+        Box::new({
+            let ingester_delay = opt.ingester_delay.unwrap_or(1000);
+            let line_counter = line_counter.clone();
+            let rpb1 = rpb.clone();
+            move |body| {
+                let lines = body.lines.len();
+                rpb1.inc(lines.try_into().unwrap());
+                line_counter.fetch_add(lines.try_into().unwrap(), Ordering::SeqCst);
+                Some(Box::pin(tokio::time::sleep(
+                    std::time::Duration::from_millis(ingester_delay),
+                )))
+            }
+        }),
+    );
 
     let agent_cmd = agent_cmd
         .env("LOGDNA_LOG_DIRS", opt.out_dir.clone())

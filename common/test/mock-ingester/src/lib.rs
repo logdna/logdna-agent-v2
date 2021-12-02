@@ -30,6 +30,17 @@ pub type ProcessFn = Box<
     dyn (Fn(&IngestBody) -> Option<Pin<Box<dyn Future<Output = ()> + Send + Sync>>>) + Send + Sync,
 >;
 
+pub type ReqFn = Box<
+    dyn (Fn(
+            &Request<Body>,
+        ) -> Option<
+            Pin<
+                Box<dyn Future<Output = Option<Result<Response<Body>, IngestError>>> + Send + Sync>,
+            >,
+        >) + Send
+        + Sync,
+>;
+
 #[derive(Debug)]
 pub struct FileInfo {
     pub tags: Option<String>,
@@ -67,6 +78,7 @@ pub struct Line {
 // #[derive(Debug)]
 pub struct Svc {
     files: FileLineCounter,
+    req_fn: Arc<ReqFn>,
     process_fn: Arc<ProcessFn>,
 }
 
@@ -85,9 +97,16 @@ impl Service<Request<Body>> for Svc {
     fn call(&mut self, req: Request<Body>) -> Self::Future {
         debug!("Received {:?}", req);
         let files = self.files.clone();
+        let req_fn = self.req_fn.clone();
         let process_fn = self.process_fn.clone();
         Box::pin(async move {
             let rsp = Response::builder();
+
+            if let Some(fut) = req_fn(&req) {
+                if let Some(rsp) = fut.await {
+                    return rsp;
+                }
+            }
 
             let uri = req.uri();
             if uri.path() != ROOT {
@@ -179,12 +198,14 @@ impl Service<Request<Body>> for Svc {
 pub struct MakeSvc {
     files: FileLineCounter,
     process_fn: Arc<ProcessFn>,
+    req_fn: Arc<ReqFn>,
 }
 
 impl MakeSvc {
-    pub fn new(process_fn: ProcessFn) -> Self {
+    pub fn new(req_fn: ReqFn, process_fn: ProcessFn) -> Self {
         MakeSvc {
             files: Arc::new(Mutex::new(HashMap::new())),
+            req_fn: Arc::new(req_fn),
             process_fn: Arc::new(process_fn),
         }
     }
@@ -192,7 +213,7 @@ impl MakeSvc {
 
 impl Default for MakeSvc {
     fn default() -> Self {
-        Self::new(Box::new(|_| None))
+        Self::new(Box::new(|_| None), Box::new(|_| None))
     }
 }
 
@@ -209,6 +230,7 @@ impl<T> Service<T> for MakeSvc {
         future::ok(Svc {
             files: self.files.clone(),
             process_fn: self.process_fn.clone(),
+            req_fn: self.req_fn.clone(),
         })
     }
 }
@@ -227,12 +249,13 @@ pub fn http_ingester(
     FileLineCounter,
     impl FnOnce(),
 ) {
-    http_ingester_with_processors(addr, http_version, Box::new(|_| None))
+    http_ingester_with_processors(addr, http_version, Box::new(|_| None), Box::new(|_| None))
 }
 
 pub fn http_ingester_with_processors(
     addr: SocketAddr,
     http_version: Option<HttpVersion>,
+    req_fn: ReqFn,
     process_fn: ProcessFn,
 ) -> (
     impl Future<Output = std::result::Result<(), IngestError>>,
@@ -240,7 +263,7 @@ pub fn http_ingester_with_processors(
     impl FnOnce(),
 ) {
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-    let mk_svc = MakeSvc::new(process_fn);
+    let mk_svc = MakeSvc::new(req_fn, process_fn);
     let received = mk_svc.files.clone();
     (
         async move {
@@ -296,6 +319,7 @@ pub fn https_ingester(
         private_key,
         http_version,
         Box::new(|_| None),
+        Box::new(|_| None),
     )
 }
 
@@ -304,6 +328,7 @@ pub fn https_ingester_with_processors(
     server_cert: Vec<rustls::Certificate>,
     private_key: rustls::PrivateKey,
     http_version: Option<HttpVersion>,
+    req_fn: ReqFn,
     process_fn: ProcessFn,
 ) -> (
     impl Future<Output = std::result::Result<(), IngestError>>,
@@ -312,7 +337,7 @@ pub fn https_ingester_with_processors(
 ) {
     info!("creating https_ingester");
     let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-    let mk_svc = MakeSvc::new(process_fn);
+    let mk_svc = MakeSvc::new(req_fn, process_fn);
     let received = mk_svc.files.clone();
     (
         async move {
