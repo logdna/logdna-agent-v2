@@ -508,7 +508,7 @@ async fn test_journald_support() {
         }
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         let map = received.lock().await;
         let file_info = map.values().next().unwrap();
@@ -558,7 +558,7 @@ proptest! {
         tokio_test::block_on(async {
             let ((line_count, lines), _, server) = tokio::join!(
                 async {
-                    tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                     let mut handle = common::spawn_agent(AgentSettings {
                         log_dirs: &dir_path,
                         exclusion_regex: Some(r"/var\w*"),
@@ -573,7 +573,7 @@ proptest! {
                         stderr_reader.lines().for_each(|line| debug!("{:?}", line))
                     });
 
-                    tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
                     handle.kill().unwrap();
 
@@ -590,12 +590,12 @@ proptest! {
                     (line_count, lines)
                 },
                 async {
-                    tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     log_lines[lines_write_count..lines_write_count + 5].iter().for_each(|log_line| {
                         writeln!(file, "{}", log_line).expect("Couldn't write to temp log file...");
                         file.sync_all().expect("Failed to sync file");
                     });
-                    tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     file.sync_all().expect("Failed to sync file");
                 },
                 server
@@ -647,7 +647,7 @@ fn lookback_none_lines_are_delivered() {
     tokio_test::block_on(async {
         let (line_count, _, server) = tokio::join!(
             async {
-                tokio::time::delay_for(tokio::time::Duration::from_millis(100)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                 let mut handle = common::spawn_agent(AgentSettings {
                     log_dirs: &dir_path,
                     exclusion_regex: Some(r"^/var.*"),
@@ -663,7 +663,7 @@ fn lookback_none_lines_are_delivered() {
                     stderr_reader.lines().for_each(|line| debug!("{:?}", line))
                 });
 
-                tokio::time::delay_for(tokio::time::Duration::from_millis(3000)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
 
                 handle.kill().unwrap();
 
@@ -679,7 +679,7 @@ fn lookback_none_lines_are_delivered() {
                 line_count
             },
             async move {
-                tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
                 (0..5).for_each(|_| {
                     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
                     file.sync_all().expect("Failed to sync file");
@@ -718,7 +718,7 @@ async fn test_partial_fsynced_lines() {
 
         file.sync_all().unwrap();
         common::force_client_to_flush(&dir).await;
-        tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         {
             let map = received.lock().await;
@@ -731,7 +731,7 @@ async fn test_partial_fsynced_lines() {
 
         file.sync_all().unwrap();
         common::force_client_to_flush(&dir).await;
-        tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         {
             let map = received.lock().await;
@@ -770,7 +770,7 @@ async fn test_tags() {
         common::force_client_to_flush(&dir).await;
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         let map = received.lock().await;
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();
@@ -829,10 +829,10 @@ async fn test_lookback_restarting_agent() {
         let mut agent_handle = common::spawn_agent(settings.clone());
         let agent_stderr = agent_handle.stderr.take().unwrap();
         consume_output(agent_stderr);
-        tokio::time::delay_for(tokio::time::Duration::from_millis(1_000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(1_000)).await;
 
         while line_count.load(Ordering::SeqCst) < line_count_target {
-            tokio::time::delay_for(tokio::time::Duration::from_millis(1_000)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(1_000)).await;
             agent_handle.kill().expect("Could not kill process");
             // Restart it back again
             debug!("Running next agent");
@@ -847,7 +847,7 @@ async fn test_lookback_restarting_agent() {
             .unwrap();
 
         // Give the agent a chance to catch up
-        tokio::time::delay_for(tokio::time::Duration::from_millis(10_000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
         let map = received.lock().await;
         assert!(map.len() > 0);
@@ -890,20 +890,20 @@ async fn test_symlink_initialization_both_included() {
     }
     file.sync_all().unwrap();
     std::os::unix::fs::symlink(&file_path, &symlink_path).unwrap();
-    tokio::time::delay_for(tokio::time::Duration::from_millis(1000)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     let (server_result, _) = tokio::join!(server, async {
         let settings = AgentSettings::with_mock_ingester(&log_dir.to_str().unwrap(), &addr);
         let mut agent_handle = common::spawn_agent(settings);
         let stderr_reader = agent_handle.stderr.take().unwrap();
         consume_output(stderr_reader);
-        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
         for i in 10..20 {
             writeln!(file, "SAMPLE {}", i).unwrap();
         }
         file.sync_all().unwrap();
         common::force_client_to_flush(&log_dir).await;
         // Wait for the data to be received by the mock ingester
-        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
         let map = received.lock().await;
         debug!("--TEST MAP KEYS: {:?}", map.keys());
         let file_info = map
@@ -945,21 +945,21 @@ async fn test_symlink_initialization_excluded_file() {
     }
     file.sync_all().unwrap();
     std::os::unix::fs::symlink(&file_path, &symlink_path).unwrap();
-    tokio::time::delay_for(tokio::time::Duration::from_millis(1000)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     let (server_result, _) = tokio::join!(server, async {
         let settings = AgentSettings::with_mock_ingester(&log_dir.to_str().unwrap(), &addr);
         let mut agent_handle = common::spawn_agent(settings);
         let stderr_reader = agent_handle.stderr.take().unwrap();
         // Consume output
         consume_output(stderr_reader);
-        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
         for i in 10..20 {
             writeln!(file, "SAMPLE {}", i).unwrap();
         }
         file.sync_all().unwrap();
         common::force_client_to_flush(&log_dir).await;
         // Wait for the data to be received by the mock ingester
-        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
         let map = received.lock().await;
         let file_info = map
             .get(symlink_path.to_str().unwrap())
@@ -996,21 +996,21 @@ async fn test_symlink_to_symlink_initialization_excluded_file() {
     file.sync_all().unwrap();
     std::os::unix::fs::symlink(&file_path, &excluded_symlink_path).unwrap();
     std::os::unix::fs::symlink(&excluded_symlink_path, &symlink_path).unwrap();
-    tokio::time::delay_for(tokio::time::Duration::from_millis(1000)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     let (server_result, _) = tokio::join!(server, async {
         let settings = AgentSettings::with_mock_ingester(&log_dir.to_str().unwrap(), &addr);
         let mut agent_handle = common::spawn_agent(settings);
         let stderr_reader = agent_handle.stderr.take().unwrap();
         // Consume output
         consume_output(stderr_reader);
-        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
         for i in 10..20 {
             writeln!(file, "SAMPLE {}", i).unwrap();
         }
         file.sync_all().unwrap();
         common::force_client_to_flush(&log_dir).await;
         // Wait for the data to be received by the mock ingester
-        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
         let map = received.lock().await;
         let file_info = map
             .get(symlink_path.to_str().unwrap())
@@ -1078,7 +1078,7 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
     );
 
     let (server_result, _) = tokio::join!(server, async {
-        tokio::time::delay_for(tokio::time::Duration::from_millis(1000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
         let settings = AgentSettings {
             log_dirs: &log_dir.to_str().unwrap(),
@@ -1094,14 +1094,14 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
         let stderr_reader = agent_handle.stderr.take().unwrap();
         // Consume output
         consume_output(stderr_reader);
-        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
         for i in 10..20 {
             writeln!(file, "SAMPLE {}", i).unwrap();
         }
         file.sync_all().unwrap();
         common::force_client_to_flush(&log_dir).await;
         // Wait for the data to be received by the mock ingester
-        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
         {
             let map = received.lock().await;
             let file_info = map
@@ -1113,7 +1113,7 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
         }
         agent_handle.kill().expect("Could not kill process");
 
-        tokio::time::delay_for(tokio::time::Duration::from_millis(1000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
         // move 2nd symlink to point to hardlink
         std::fs::remove_file(&excluded_symlink_path).unwrap();
@@ -1144,14 +1144,14 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
         let stderr_reader = agent_handle.stderr.take().unwrap();
         // Consume output
         consume_output(stderr_reader);
-        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
         for i in 20..30 {
             writeln!(file, "SAMPLE {}", i).unwrap();
         }
         file.sync_all().unwrap();
         common::force_client_to_flush(&log_dir).await;
         // Wait for the data to be received by the mock ingester
-        tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
         let map = received.lock().await;
         let file_info = map
             .get(symlink_path.to_str().unwrap())
@@ -1164,7 +1164,7 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
             assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
         }
         agent_handle.kill().expect("Could not kill process");
-        tokio::time::delay_for(tokio::time::Duration::from_millis(1000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
         shutdown_handle();
     });
     server_result.unwrap();
@@ -1209,7 +1209,7 @@ async fn test_symlink_initialization_with_stateful_lookback() {
             common::force_client_to_flush(&log_dir).await;
 
             // Wait for the data to be received by the mock ingester
-            tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
             let map = received.lock().await;
             let file_info = map
@@ -1221,7 +1221,7 @@ async fn test_symlink_initialization_with_stateful_lookback() {
             shutdown_handle();
         },
         async {
-            tokio::time::delay_for(tokio::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             let settings = AgentSettings {
                 log_dirs: &log_dir.to_str().unwrap(),
                 exclusion_regex: Some(r"/var\w*"),
@@ -1236,14 +1236,14 @@ async fn test_symlink_initialization_with_stateful_lookback() {
             // Consume output
             consume_output(stderr_reader);
 
-            tokio::time::delay_for(tokio::time::Duration::from_millis(2000)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
             agent_handle.kill().expect("Could not kill process");
 
             let mut agent_handle = common::spawn_agent(settings);
             let stderr_reader = agent_handle.stderr.take().unwrap();
             // Consume output
             consume_output(stderr_reader);
-            tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
     );
 
@@ -1281,7 +1281,7 @@ fn lookback_stateful_lines_are_delivered() {
     tokio_test::block_on(async {
         let (line_count, _, server) = tokio::join!(
             async {
-                tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                 let mut handle = common::spawn_agent(AgentSettings {
                     log_dirs: &dir_path,
                     exclusion_regex: Some(r"/var\w*"),
@@ -1294,7 +1294,7 @@ fn lookback_stateful_lines_are_delivered() {
 
                 consume_output(handle.stderr.take().unwrap());
 
-                tokio::time::delay_for(tokio::time::Duration::from_millis(5000)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
                 handle.kill().unwrap();
 
@@ -1311,7 +1311,7 @@ fn lookback_stateful_lines_are_delivered() {
                 line_count
             },
             async move {
-                tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                 let mut file = OpenOptions::new()
                     .append(true)
                     .open(&file_path_clone)
@@ -1320,7 +1320,7 @@ fn lookback_stateful_lines_are_delivered() {
                     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
                     file.sync_all().expect("Failed to sync file");
                 });
-                tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                 file.sync_all().expect("Failed to sync file");
             },
             server
@@ -1337,7 +1337,7 @@ fn lookback_stateful_lines_are_delivered() {
     tokio_test::block_on(async {
         let (line_count, _, server) = tokio::join!(
             async {
-                tokio::time::delay_for(tokio::time::Duration::from_millis(200)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                 let mut handle = common::spawn_agent(AgentSettings {
                     log_dirs: &dir_path,
                     exclusion_regex: Some(r"/var\w*"),
@@ -1350,7 +1350,7 @@ fn lookback_stateful_lines_are_delivered() {
 
                 let stderr_reader = handle.stderr.take().unwrap();
                 consume_output(stderr_reader);
-                tokio::time::delay_for(tokio::time::Duration::from_millis(3000)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
 
                 handle.kill().unwrap();
 
@@ -1367,7 +1367,7 @@ fn lookback_stateful_lines_are_delivered() {
                 line_count
             },
             async move {
-                tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                 let mut file = OpenOptions::new()
                     .append(true)
                     .create(false)
@@ -1377,7 +1377,7 @@ fn lookback_stateful_lines_are_delivered() {
                     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
                     file.sync_all().expect("Failed to sync file");
                 });
-                tokio::time::delay_for(tokio::time::Duration::from_millis(500)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                 file.sync_all().expect("Failed to sync file");
             },
             server

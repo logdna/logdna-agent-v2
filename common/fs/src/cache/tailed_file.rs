@@ -31,8 +31,8 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::io::{BufReader, SeekFrom};
-use tokio_util::compat::{Compat, Tokio02AsyncReadCompatExt};
+use tokio::io::{AsyncSeekExt, BufReader, SeekFrom};
+use tokio_util::compat::{Compat, TokioAsyncReadCompatExt};
 
 fn read_until_internal<R: AsyncBufRead + ?Sized>(
     mut reader: Pin<&mut R>,

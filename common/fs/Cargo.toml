@@ -11,13 +11,13 @@ metrics = { package = "metrics", path = "../metrics" }
 state = { package = "state", path = "../state" }
 
 #i
-inotify = "0.8"
+inotify = "0.9"
 
 #error
 thiserror = "1.0"
 
 #utils
-bytes = "0.5"
+bytes = "1"
 chrono = "0.4"
 pcre2 = "0.2"
 globber = "0.1"
@@ -34,8 +34,9 @@ lazy_static = "1.4"
 
 #async
 async-trait = "0.1"
-tokio = {version= "0.2", features= ["fs"]}
-tokio-util = {version= "0.3", features= ["compat"]}
+tokio = {version= "1", features= ["fs", "io-util"]}
+tokio-util = {version= "0.6", features= ["compat"]}
+tokio-stream = "0.1"
 futures = "0.3"
 futures-core = "0.3"
 futures-util = "0.3"
@@ -43,4 +44,4 @@ pin-project-lite = "0.1"
 
 [dev-dependencies]
 tempfile = "3.1"
-tokio-test = "0.2"
+tokio-test = "0.4"
