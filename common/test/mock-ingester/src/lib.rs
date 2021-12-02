@@ -355,7 +355,6 @@ pub fn https_ingester_with_processors(
                     Some(HttpVersion::Http2) => vec![b"h2".to_vec()],
                     _ => vec![b"h2".to_vec(), b"http/1.1".to_vec()],
                 };
-                info!("ingester alpn_protocols: {:#?}", cfg.alpn_protocols);
                 Arc::new(cfg)
             };
 
