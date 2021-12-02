@@ -105,8 +105,8 @@ impl<'a> WatchEventStream<'a> {
 
         let events = futures::stream::select(
             self.event_stream.map(EventOrInterval::Event),
-            tokio::time::interval(tokio::time::Duration::from_millis(
-                INOTIFY_EVENT_GRACE_PERIOD_MS,
+            tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(
+                tokio::time::Duration::from_millis(INOTIFY_EVENT_GRACE_PERIOD_MS),
             ))
             .map(EventOrInterval::Interval),
         );

@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use sysinfo::{RefreshKind, System, SystemExt};
 
-use flate2::Compression;
+use async_compression::Level;
 
 use fs::rule::{GlobRule, RegexRule, Rules};
 use fs::tail::{DirPathBuf, Lookback};
@@ -125,7 +125,7 @@ impl TryFrom<RawConfig> for Config {
         })?;
 
         if use_compression {
-            template_builder.encoding(Encoding::GzipJson(Compression::new(gzip_level)));
+            template_builder.encoding(Encoding::GzipJson(Level::Precise(gzip_level)));
         } else {
             template_builder.encoding(Encoding::Json);
         }
