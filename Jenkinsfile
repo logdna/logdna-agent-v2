@@ -12,7 +12,9 @@ pipeline {
     }
     triggers {
         issueCommentTrigger(TRIGGER_PATTERN)
-        cron(env.BRANCH_NAME ==~ /\d\.\d/ ? 'H 8 * * 1' : '')
+        parameterizedCron(
+            env.BRANCH_NAME ==~ /\d\.\d/ ? 'H 8 * * 1 % PUBLISH_GCR_IMAGE=true;PUBLISH_ICR_IMAGE=true' : ''
+        )
     }
     environment {
         RUST_IMAGE_REPO = 'us.gcr.io/logdna-k8s/rust'
@@ -20,6 +22,10 @@ pipeline {
         SCCACHE_BUCKET = 'logdna-sccache-us-west-2'
         SCCACHE_REGION = 'us-west-2'
         CARGO_INCREMENTAL = 'false'
+    }
+    parameters {
+        booleanParam(name: 'PUBLISH_GCR_IMAGE', description: 'Publish docker image to Google Container Registry (GCR)', defaultValue: false)
+        booleanParam(name: 'PUBLISH_ICR_IMAGE', description: 'Publish docker image to IBM Container Registry (ICR) and Dockerhub', defaultValue: false)
     }
     stages {
         stage('Validate PR Source') {
@@ -103,56 +109,18 @@ pipeline {
                         sysdig engineCredentialsId: 'sysdig-secure-api-credentials', name: 'sysdig_secure_images', inlineScanning: true
                     }
                 }
-                stage('Check Publish GCR Image or Timeout') {
-                    steps {
-                        script {
-                            publishGCRImage = true
-                            if (currentBuild.getBuildCauses('hudson.triggers.TimerTrigger$TimerTriggerCause')) {
-                                echo "started by timer, publishing"
-                            } else {
-                                echo "not started by timer"
-                                try {
-                                    timeout(time: 5, unit: 'MINUTES') {
-                                        input(message: 'Should we publish the versioned image?')
-                                    }
-                                } catch (err) {
-                                    publishGCRImage = false
-                                }
-                            }
-                        }
-                    }
-                }
                 stage('Publish GCR images') {
-                    when {
-                        expression { return publishGCRImage == true }
+                    when {                        
+                        environment name: 'PUBLISH_GCR_IMAGE', value: 'true'
                     }
                     steps {
                         // Publish to gcr, jenkins is logged into gcr globally
                         sh 'make publish-image-gcr'
                     }
                 }
-                stage('Check Publish Dockerhub and ICR Image or Timeout') {
-                    steps {
-                        script {
-                            publishDockerhubICRImages = true
-                            if (currentBuild.getBuildCauses('hudson.triggers.TimerTrigger$TimerTriggerCause')) {
-                                echo "started by timer, publishing"
-                            } else {
-                                echo "not started by timer"
-                                try {
-                                    timeout(time: 5, unit: 'MINUTES') {
-                                        input(message: 'Should we publish the versioned images to dockerhub/icr?')
-                                    }
-                                } catch (err) {
-                                    publishDockerhubICRImages = false
-                                }
-                            }
-                        }
-                    }
-                }
                 stage('Publish Dockerhub and ICR images') {
                     when {
-                        expression { return publishDockerhubICRImages == true }
+                        environment name: 'PUBLISH_ICR_IMAGE', value: 'true'
                     }
                     steps {
                         script {
