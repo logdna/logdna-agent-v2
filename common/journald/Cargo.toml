@@ -9,7 +9,7 @@ http = { package = "http", path = "../http" }
 metrics = { package = "metrics", path = "../metrics" }
 
 systemd = "0.7"
-tokio = { package = "tokio", version = "0.2", features = ["macros", "rt-threaded", "time"] }
+tokio = { package = "tokio", version = "1", features = ["macros", "rt-multi-thread", "time"] }
 futures = "0.3"
 log = "0.4"
 mio = "0.6"

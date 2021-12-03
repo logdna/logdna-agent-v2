@@ -93,7 +93,7 @@ fn main() {
         ),
     };
     // Create the runtime
-    let mut rt = Runtime::new().unwrap();
+    let rt = Runtime::new().unwrap();
 
     // Execute the future, blocking the current thread until completion
     rt.block_on(async move {
@@ -135,7 +135,7 @@ fn main() {
                 if let Some(lines) = executor.process(lines) {
                     for line in lines {
                         // TODO upgrade to async hyper
-                        client.borrow_mut().send(line)
+                        client.borrow_mut().send(line).await
                     }
                 }
             })

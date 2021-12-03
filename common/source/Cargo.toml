@@ -8,4 +8,4 @@ edition = "2018"
 #local
 http = { package = "http", path = "../http" }
 
-tokio = "0.2"
+tokio = "1"

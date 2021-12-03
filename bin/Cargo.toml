@@ -35,7 +35,8 @@ anyhow = "1.0"
 serde_yaml = "0.8"
 jemallocator = "0.3"
 futures = "0.3"
-tokio = { version = "0.2", features = ["rt-threaded"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+tokio-stream = "0.1"
 pin-utils = "0.1"
 
 auditable = "0.1"
