@@ -74,6 +74,7 @@ pub struct HttpConfig {
     pub timeout: Duration,
     pub body_size: usize,
     pub require_ssl: bool,
+    pub retry_dir: PathBuf,
 
     // Development only settings
     pub retry_base_delay: Duration,
@@ -231,6 +232,10 @@ impl TryFrom<RawConfig> for Config {
                 .http
                 .body_size
                 .ok_or(ConfigError::MissingField("http.body_size"))?,
+            retry_dir: raw
+                .http
+                .retry_dir
+                .ok_or(ConfigError::MissingField("http.retry_dir"))?,
             retry_base_delay: Duration::from_millis(
                 raw.http.retry_base_delay_ms.unwrap_or(15_000) as u64
             ),

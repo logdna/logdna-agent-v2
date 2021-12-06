@@ -186,6 +186,8 @@ pub struct HttpConfig {
     pub params: Option<Params>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body_size: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_dir: Option<PathBuf>,
 
     // Mostly for development, these settings are hidden from the user
     // There's no guarantee that these settings will exist in the future
@@ -291,6 +293,7 @@ impl Default for HttpConfig {
                 .build()
                 .ok(),
             body_size: Some(2 * 1024 * 1024),
+            retry_dir: Some(PathBuf::from("/tmp/logdna")),
             retry_base_delay_ms: None,
             retry_step_delay_ms: None,
         }
@@ -311,6 +314,7 @@ impl Merge for HttpConfig {
             .merge(&other.ingestion_key, &default.ingestion_key);
         self.params.merge(&other.params, &default.params);
         self.body_size.merge(&other.body_size, &default.body_size);
+        self.retry_dir.merge(&other.retry_dir, &default.retry_dir);
         self.retry_base_delay_ms
             .merge(&other.retry_base_delay_ms, &default.retry_base_delay_ms);
         self.retry_step_delay_ms
@@ -875,6 +879,7 @@ ingest_buffer_size = 3145728
                 .build()
                 .ok(),
             body_size: Some(1337),
+            retry_dir: Some(PathBuf::from("/tmp/logdna/left")),
             retry_base_delay_ms: Some(10_000),
             retry_step_delay_ms: Some(10_000),
         };
@@ -892,6 +897,7 @@ ingest_buffer_size = 3145728
                 .build()
                 .ok(),
             body_size: Some(7331),
+            retry_dir: Some(PathBuf::from("/tmp/logdna/right")),
             retry_base_delay_ms: Some(2_000),
             retry_step_delay_ms: Some(2_000),
         };
@@ -910,6 +916,10 @@ ingest_buffer_size = 3145728
             Some("right.local".to_string())
         );
         assert_eq!(left_conf.body_size, Some(7331));
+        assert_eq!(
+            left_conf.retry_dir,
+            Some(PathBuf::from("/tmp/logdna/right"))
+        );
         assert_eq!(left_conf.retry_base_delay_ms, Some(2_000));
         assert_eq!(left_conf.retry_step_delay_ms, Some(2_000));
     }

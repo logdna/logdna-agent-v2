@@ -50,6 +50,7 @@ fn test_command_line_arguments_help() {
         "--include-regex",
         "--include",
         "--ingest-buffer-size",
+        "--retry-dir",
         "--ingest-timeout",
         "--ip",
         "--journald-paths",
@@ -272,7 +273,8 @@ fn test_command_line_arguments_should_set_config() {
                 .args(&["--line-inclusion", "z_inc"])
                 .args(&["--line-redact", "a@b.com"])
                 .args(&["--ingest-buffer-size", "123456"])
-                .args(&["--ingest-timeout", "9876"]);
+                .args(&["--ingest-timeout", "9876"])
+                .args(&["--retry-dir", "/tmp/logdna/argv"]);
         },
         |d| {
             assert!(contains("tags: \"a,b\"").eval(d));
@@ -305,6 +307,7 @@ fn test_command_line_arguments_should_set_config() {
                 .eval(d));
             assert!(contains("body_size: 123456").eval(d));
             assert!(contains("timeout: 9876").eval(d));
+            assert!(contains("retry_dir: /tmp/logdna/argv").eval(d));
         },
     );
 }
@@ -351,7 +354,8 @@ fn test_environment_variables_should_set_config() {
                 .env("LOGDNA_LINE_INCLUSION_REGEX", "inc_re")
                 .env("LOGDNA_REDACT_REGEX", "c@d.com")
                 .env("LOGDNA_INGEST_TIMEOUT", "123456")
-                .env("LOGDNA_INGEST_BUFFER_SIZE", "987654");
+                .env("LOGDNA_INGEST_BUFFER_SIZE", "987654")
+                .env("LOGDNA_RETRY_DIR", "/tmp/logdna/env");
         },
         |d| {
             assert!(contains("tags: \"d,e,f\"").eval(d));
@@ -388,6 +392,7 @@ fn test_environment_variables_should_set_config() {
                 .eval(d));
             assert!(contains("timeout: 123456").eval(d));
             assert!(contains("body_size: 987654").eval(d));
+            assert!(contains("retry_dir: /tmp/logdna/env").eval(d));
         },
     );
 }
