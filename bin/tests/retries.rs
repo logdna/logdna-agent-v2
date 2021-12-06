@@ -471,7 +471,7 @@ fn get_config_file(
 
     let retry_dir_line = retry_dir
         .map(|p| format!("  retry_dir: {}", p.to_string_lossy()))
-        .unwrap_or("".to_string());
+        .unwrap_or_default();
 
     write!(
         config_file,
