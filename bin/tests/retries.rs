@@ -65,12 +65,9 @@ async fn test_retry_location() {
         gen_log_data(&mut log_file).await;
 
         // Check that a retry file was created in the retry dir
-        let matches = std::fs::read_dir(retry_dir)
-            .unwrap()
-            .filter(|result| match result {
-                Ok(path) if path.file_name().to_string_lossy().ends_with("\\.retry") => false,
-                _ => true,
-            });
+        let matches = std::fs::read_dir(retry_dir).unwrap().filter(
+            |r| !matches!(r, Ok(path) if path.file_name().to_string_lossy().ends_with("\\.retry")),
+        );
         assert!(matches.count() > 0);
 
         shutdown_ingest();
