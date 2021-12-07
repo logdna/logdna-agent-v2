@@ -35,7 +35,7 @@ async fn test_retry_location() {
                 .any(|l| l.file.as_deref().unwrap().contains("test.log"))
             {
                 return Some(Box::pin(tokio::time::sleep(Duration::from_millis(
-                    timeout + 20,
+                    timeout * 2,
                 ))));
             }
             None
@@ -65,13 +65,12 @@ async fn test_retry_location() {
         gen_log_data(&mut log_file).await;
 
         // Check that a retry file was created in the retry dir
-        let matches = std::fs::read_dir(retry_dir).unwrap().filter(|result| {
-            if let Ok(path) = result {
-                path.file_name().to_string_lossy().ends_with("\\.retry")
-            } else {
-                false
-            }
-        });
+        let matches = std::fs::read_dir(retry_dir)
+            .unwrap()
+            .filter(|result| match result {
+                Ok(path) if path.file_name().to_string_lossy().ends_with("\\.retry") => false,
+                _ => true,
+            });
         assert!(matches.count() > 0);
 
         shutdown_ingest();
