@@ -29,7 +29,6 @@ use pin_utils::pin_mut;
 use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal::*;
@@ -97,7 +96,7 @@ async fn main() {
         .map(|os| (os.write_handle(), os.flush_handle()));
 
     let (retry, retry_stream) = retry(
-        PathBuf::from_str("/tmp/logdna").expect("Failed to create retry stream"),
+        config.http.retry_dir,
         config.http.retry_base_delay,
         config.http.retry_step_delay,
     );

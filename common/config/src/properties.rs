@@ -47,6 +47,7 @@ from_env_name!(LINE_INCLUSION);
 from_env_name!(REDACT);
 from_env_name!(INGEST_TIMEOUT);
 from_env_name!(INGEST_BUFFER_SIZE);
+from_env_name!(RETRY_DIR);
 
 enum Key {
     FromEnv(&'static str),
@@ -165,6 +166,10 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
         result.http.body_size = Some(value.parse().map_err(|e| {
             ConfigError::PropertyInvalid(format!("ingest_buffer_size is invalid: {}", e))
         })?);
+    }
+
+    if let Some(value) = map.get(&RETRY_DIR) {
+        result.http.retry_dir = Some(PathBuf::from(value));
     }
 
     if let Some(log_dirs) = map.get(&LOG_DIRS) {
