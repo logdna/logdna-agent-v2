@@ -188,6 +188,8 @@ pub struct HttpConfig {
     pub body_size: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_dir: Option<PathBuf>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_disk_limit: Option<u64>,
 
     // Mostly for development, these settings are hidden from the user
     // There's no guarantee that these settings will exist in the future
@@ -294,6 +296,7 @@ impl Default for HttpConfig {
                 .ok(),
             body_size: Some(2 * 1024 * 1024),
             retry_dir: Some(PathBuf::from("/tmp/logdna")),
+            retry_disk_limit: None,
             retry_base_delay_ms: None,
             retry_step_delay_ms: None,
         }
@@ -315,6 +318,8 @@ impl Merge for HttpConfig {
         self.params.merge(&other.params, &default.params);
         self.body_size.merge(&other.body_size, &default.body_size);
         self.retry_dir.merge(&other.retry_dir, &default.retry_dir);
+        self.retry_disk_limit
+            .merge(&other.retry_disk_limit, &default.retry_disk_limit);
         self.retry_base_delay_ms
             .merge(&other.retry_base_delay_ms, &default.retry_base_delay_ms);
         self.retry_step_delay_ms
@@ -880,6 +885,7 @@ ingest_buffer_size = 3145728
                 .ok(),
             body_size: Some(1337),
             retry_dir: Some(PathBuf::from("/tmp/logdna/left")),
+            retry_disk_limit: Some(12345),
             retry_base_delay_ms: Some(10_000),
             retry_step_delay_ms: Some(10_000),
         };
@@ -898,6 +904,7 @@ ingest_buffer_size = 3145728
                 .ok(),
             body_size: Some(7331),
             retry_dir: Some(PathBuf::from("/tmp/logdna/right")),
+            retry_disk_limit: Some(98765),
             retry_base_delay_ms: Some(2_000),
             retry_step_delay_ms: Some(2_000),
         };
@@ -920,6 +927,7 @@ ingest_buffer_size = 3145728
             left_conf.retry_dir,
             Some(PathBuf::from("/tmp/logdna/right"))
         );
+        assert_eq!(left_conf.retry_disk_limit, Some(98765));
         assert_eq!(left_conf.retry_base_delay_ms, Some(2_000));
         assert_eq!(left_conf.retry_step_delay_ms, Some(2_000));
     }

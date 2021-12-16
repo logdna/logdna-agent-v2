@@ -99,6 +99,7 @@ async fn main() {
         config.http.retry_dir,
         config.http.retry_base_delay,
         config.http.retry_step_delay,
+        config.http.retry_disk_limit,
     );
 
     let concurrency_limit = Some(100);
@@ -390,32 +391,11 @@ async fn main() {
                             let RetryItem {
                                 body_buffer,
                                 offsets,
-                                path,
+                                path: _,
                             } = item;
                             match client.send(body_buffer, offsets).await {
                                 Ok(s) => match s {
-                                    SendStatus::Sent => {
-                                        Metrics::http().increment_retries_success();
-                                        match std::fs::remove_file(path.clone()) {
-                                            Ok(()) => debug!(
-                                                "cleaned up retry file {}",
-                                                path.to_string_lossy()
-                                            ),
-                                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                                                debug!(
-                                                    "cleanup {}: not found err, skipping",
-                                                    path.to_string_lossy()
-                                                );
-                                            }
-                                            Err(e) => {
-                                                error!(
-                                                    "couldn't clean up retry file {}, reason={}",
-                                                    path.to_string_lossy(),
-                                                    e
-                                                )
-                                            }
-                                        }
-                                    }
+                                    SendStatus::Sent => Metrics::http().increment_retries_success(),
                                     _ => {
                                         Metrics::http().increment_retries_failure();
                                         handle_send_status(s)

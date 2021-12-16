@@ -2,7 +2,10 @@ use std::convert::TryInto;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
+use Ordering::SeqCst;
 
 use async_compat::CompatExt;
 
@@ -39,6 +42,8 @@ pub enum Error {
     NonUtf8(std::path::PathBuf),
     #[error("{0} is not a valid file name")]
     InvalidFileName(std::string::String),
+    #[error("Failed to persist retry file to disk - {0}")]
+    RetryLimitError(std::string::String),
 }
 
 #[derive(Default)]
@@ -47,6 +52,7 @@ pub struct Retry {
     waiting: SegQueue<PathBuf>,
     retry_base_delay_secs: i64,
     retry_step_delay: Duration,
+    disk_used: Arc<AtomicU64>,
 }
 
 #[derive(Deserialize)]
@@ -76,6 +82,7 @@ impl Retry {
         directory: PathBuf,
         retry_base_delay: Duration,
         retry_step_delay: Duration,
+        disk_used: Arc<AtomicU64>,
     ) -> Retry {
         std::fs::create_dir_all(&directory)
             .unwrap_or_else(|_| panic!("can't create {:#?}", &directory));
@@ -84,12 +91,12 @@ impl Retry {
             waiting: SegQueue::new(),
             retry_base_delay_secs: retry_base_delay.as_secs() as i64,
             retry_step_delay,
+            disk_used,
         }
     }
 
     async fn fill_waiting(&self) -> Result<(), Error> {
         let mut files = read_dir(&self.directory).await?;
-        let mut retry_disk_used = 0u64;
         while let Some(file) = files.next_entry().await? {
             let path = file.path();
             if path.is_dir() {
@@ -111,19 +118,6 @@ impl Retry {
                     .and_then(|s| FromStr::from_str(s).ok())
                     .ok_or_else(|| Error::InvalidFileName(file_name.clone()))?;
 
-                let file_size = match metadata(path.clone()).await {
-                    Ok(md) => md.len(),
-                    Err(e) => {
-                        warn!(
-                            "retry file size unknown, metrics may be skewed; reason={}",
-                            e
-                        );
-                        0
-                    }
-                };
-
-                retry_disk_used += file_size;
-
                 if OffsetDateTime::now_utc().unix_timestamp() - timestamp
                     < self.retry_base_delay_secs
                 {
@@ -134,14 +128,21 @@ impl Retry {
             }
         }
 
-        Metrics::retry().report_storage_used(retry_disk_used);
         Ok(())
     }
 
-    async fn read_from_disk(path: &Path) -> Result<(Option<OffsetMap>, IngestBody), Error> {
+    async fn read_from_disk(&self, path: &Path) -> Result<(Option<OffsetMap>, IngestBody), Error> {
         let mut file = BufReader::new(File::open(path).await?);
         let mut data = String::new();
         file.read_to_string(&mut data).await?;
+
+        let file_size = match metadata(&path).await {
+            Ok(md) => md.len(),
+            Err(e) => {
+                debug!("retry file size err, metrics may be skewed; reason={}", e);
+                0
+            }
+        };
 
         if let Err(e) = remove_file(&path).await {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -153,6 +154,9 @@ impl Retry {
                 return Err(Error::from(e));
             }
         }
+
+        self.disk_used.fetch_sub(file_size, SeqCst);
+        Metrics::retry().report_storage_used(self.disk_used.load(SeqCst));
 
         let DiskRead { offsets, body } = serde_json::from_str(&data)?;
         Ok((offsets, body))
@@ -180,7 +184,7 @@ impl Retry {
                     Metrics::retry().dec_pending();
                     // Step delay
                     Delay::new(state.retry_step_delay).await;
-                    match Retry::read_from_disk(&path).await {
+                    match state.read_from_disk(&path).await {
                         Ok((offsets, ingest_body)) => {
                             match IntoIngestBodyBuffer::into(ingest_body).await {
                                 Ok(body_buffer) => {
@@ -202,11 +206,29 @@ impl Retry {
 
 pub struct RetrySender {
     directory: PathBuf,
+    disk_limit: Option<u64>,
+    disk_used: Arc<AtomicU64>,
 }
 
 impl RetrySender {
-    pub fn new(directory: PathBuf) -> Self {
-        Self { directory }
+    pub fn new(directory: PathBuf, disk_limit: Option<u64>) -> Self {
+        // there might be retry files from prior execution due to shutdown or crash that
+        // need to be accounted for in the disk usage tracking.
+        let disk_used = match std::fs::read_dir(directory.clone()) {
+            Ok(read_dir) => Arc::new(AtomicU64::new(read_dir.fold(0, |acc, entry| match entry {
+                Ok(entry) if entry.path().extension() == Some(std::ffi::OsStr::new("retry")) => {
+                    acc + entry.metadata().map(|md| md.len()).unwrap_or_default()
+                }
+                _ => acc,
+            }))),
+            _ => Arc::new(AtomicU64::new(0)),
+        };
+
+        Self {
+            directory,
+            disk_limit,
+            disk_used,
+        }
     }
 
     pub async fn retry(
@@ -262,10 +284,58 @@ impl RetrySender {
         file.write_all(b"}").await?;
         file.flush().await?;
 
+        let file_size = match metadata(&file_name).await {
+            Ok(md) => md.len(),
+            Err(e) => {
+                debug!("retry file size err, metrics may be skewed; reason={}", e);
+                0
+            }
+        };
+
+        let new_disk_used = if let Some(disk_limit) = self.disk_limit {
+            // Since this block could be executed in multiple async contexts, this code
+            // uses compare and swap constructs to ensure that the check was done on the
+            // most recent value for disk_used. If the update still cannot succeed after
+            // a number of attempts, the code enforces a hard limit and returns an error
+            // to the caller.
+            let mut attempts = 1;
+            loop {
+                let cur_used = self.disk_used.load(SeqCst);
+                let needed = cur_used + file_size;
+                if needed > disk_limit {
+                    warn!(
+                            "retry file not saved; disk limit reached: current={}, required={}, limit={}",
+                            cur_used, needed, disk_limit
+                        );
+                    return Ok(remove_file(file_name).await?);
+                }
+
+                if self
+                    .disk_used
+                    .compare_exchange(cur_used, needed, SeqCst, SeqCst)
+                    .is_ok()
+                {
+                    break needed;
+                } else if attempts > 10 {
+                    remove_file(file_name).await?;
+                    return Err(Error::RetryLimitError(
+                        "failed to update disk_used after 10 attempts".to_string(),
+                    ));
+                }
+
+                attempts += 1;
+            }
+        } else {
+            self.disk_used.fetch_add(file_size, SeqCst);
+            self.disk_used.load(SeqCst)
+        };
+
+        Metrics::retry().report_storage_used(new_disk_used);
+
         let mut new_file_name = self.directory.clone();
         new_file_name.push(format!("{}_{}.retry", fn_ts, fn_uuid));
 
-        Ok(rename(file_name, new_file_name).await?)
+        return Ok(rename(file_name, new_file_name).await?);
     }
 }
 
@@ -273,11 +343,16 @@ pub fn retry(
     dir: PathBuf,
     retry_base_delay: Duration,
     retry_step_delay: Duration,
+    disk_limit: Option<u64>,
 ) -> (RetrySender, Retry) {
-    (
-        RetrySender::new(dir.clone()),
-        Retry::new(dir, retry_base_delay, retry_step_delay),
-    )
+    let sender = RetrySender::new(dir.clone(), disk_limit);
+    let consumer = Retry::new(
+        dir,
+        retry_base_delay,
+        retry_step_delay,
+        sender.disk_used.clone(),
+    );
+    (sender, consumer)
 }
 
 #[cfg(test)]
@@ -317,7 +392,7 @@ mod tests {
             let dir_path = format!("{}/", dir.path().to_str().unwrap());
 
             let (size, lines) = inp;
-            let (retrier, retry_stream) = retry(dir_path.clone().into(), Duration::from_millis(1000), Duration::from_millis(0));
+            let (retrier, retry_stream) = retry(dir_path.clone().into(), Duration::from_millis(1000), Duration::from_millis(0), None);
             let (results, retry_results): (_, Vec<_>) =
                 tokio_test::block_on({
                     let dir_path = dir_path.clone();
@@ -397,5 +472,34 @@ mod tests {
             assert_eq!(retry_results.len(), size);
             assert_eq!(lines_set, r);
         }
+    }
+
+    #[tokio::test]
+    async fn retry_sender_existing_files() -> std::io::Result<()> {
+        let retry_dir = tempdir()?.into_path();
+        let fn_ts = OffsetDateTime::now_utc().unix_timestamp();
+        let fn_uuid = Uuid::new_v4().to_string();
+
+        let mut existing_file_path = retry_dir.clone();
+        existing_file_path.push(format!("{}_{}.retry", fn_ts, fn_uuid));
+
+        let mut existing_file = BufWriter::new(
+            OpenOptions::new()
+                .create(true)
+                .write(true)
+                .open(&existing_file_path)
+                .await?,
+        );
+
+        existing_file
+            .write_all(b"abcdefghijklmnopqrstuvwxyz1234567890")
+            .await?;
+        existing_file.flush().await?;
+
+        let expected_size = metadata(existing_file_path).await?.len();
+        let sender = RetrySender::new(retry_dir, None);
+        assert_eq!(sender.disk_used.load(SeqCst), expected_size);
+
+        Ok(())
     }
 }

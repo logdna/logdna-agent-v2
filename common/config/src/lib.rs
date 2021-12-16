@@ -75,6 +75,7 @@ pub struct HttpConfig {
     pub body_size: usize,
     pub require_ssl: bool,
     pub retry_dir: PathBuf,
+    pub retry_disk_limit: Option<u64>,
 
     // Development only settings
     pub retry_base_delay: Duration,
@@ -236,6 +237,7 @@ impl TryFrom<RawConfig> for Config {
                 .http
                 .retry_dir
                 .unwrap_or_else(|| PathBuf::from("/tmp/logdna")),
+            retry_disk_limit: raw.http.retry_disk_limit,
             retry_base_delay: Duration::from_millis(
                 raw.http.retry_base_delay_ms.unwrap_or(15_000) as u64
             ),

@@ -48,6 +48,7 @@ from_env_name!(REDACT);
 from_env_name!(INGEST_TIMEOUT);
 from_env_name!(INGEST_BUFFER_SIZE);
 from_env_name!(RETRY_DIR);
+from_env_name!(RETRY_DISK_LIMIT);
 
 enum Key {
     FromEnv(&'static str),
@@ -170,6 +171,13 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
 
     if let Some(value) = map.get(&RETRY_DIR) {
         result.http.retry_dir = Some(PathBuf::from(value));
+    }
+
+    if let Some(value) = map.get(&RETRY_DISK_LIMIT) {
+        let limit = u64::from_str(value).map_err(|e| {
+            ConfigError::PropertyInvalid(format!("retry disk limit property is invalid: {}", e))
+        })?;
+        result.http.retry_disk_limit = Some(limit);
     }
 
     if let Some(log_dirs) = map.get(&LOG_DIRS) {

@@ -40,6 +40,7 @@ pub mod env {
     pub const INGEST_TIMEOUT: &str = "LOGDNA_INGEST_TIMEOUT";
     pub const INGEST_BUFFER_SIZE: &str = "LOGDNA_INGEST_BUFFER_SIZE";
     pub const RETRY_DIR: &str = "LOGDNA_RETRY_DIR";
+    pub const RETRY_DISK_LIMIT: &str = "LOGDNA_RETRY_DISK_LIMIT";
 
     pub const INGESTION_KEY_ALTERNATE: &str = "LOGDNA_AGENT_KEY";
     pub const CONFIG_FILE_DEPRECATED: &str = "DEFAULT_CONF_FILE";
@@ -207,6 +208,11 @@ pub struct ArgumentOptions {
     /// Defaults to /tmp/logdna.
     #[structopt(long, env = env::RETRY_DIR)]
     retry_dir: Option<String>,
+
+    /// When set, limits the amount of disk space the agent will use to store log lines that
+    /// need to be resent to the ingestion API.
+    #[structopt(long, env = env::RETRY_DISK_LIMIT)]
+    retry_disk_limit: Option<u64>,
 }
 
 impl ArgumentOptions {
@@ -279,6 +285,10 @@ impl ArgumentOptions {
 
         if self.retry_dir.is_some() {
             raw.http.retry_dir = self.retry_dir.map(PathBuf::from);
+        }
+
+        if self.retry_disk_limit.is_some() {
+            raw.http.retry_disk_limit = self.retry_disk_limit;
         }
 
         if !self.log_dirs.is_empty() {
@@ -636,6 +646,7 @@ mod test {
             ingest_timeout: Some(1111111),
             ingest_buffer_size: Some(222222),
             retry_dir: some_string!("/tmp/argv"),
+            retry_disk_limit: Some(123456),
             ..ArgumentOptions::default()
         };
         let config = argv.merge(RawConfig::default());
@@ -647,6 +658,7 @@ mod test {
         assert_eq!(config.http.timeout, Some(1111111));
         assert_eq!(config.http.body_size, Some(222222));
         assert_eq!(config.http.retry_dir, Some(PathBuf::from("/tmp/argv")));
+        assert_eq!(config.http.retry_disk_limit, Some(123456));
         let params = config.http.params.unwrap();
         assert_eq!(params.hostname, "my_host");
         assert_eq!(params.tags, Some(Tags::from(vec_strings!("a", "b"))));
