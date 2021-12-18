@@ -3,6 +3,7 @@ use crate::error::ConfigError;
 use crate::raw::{Config, Rules};
 use crate::{argv, get_hostname};
 use http::types::params::{Params, Tags};
+use humanize_rs::bytes::Bytes;
 use java_properties::PropertiesIter;
 use std::collections::HashMap;
 use std::fs::File;
@@ -174,10 +175,10 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
     }
 
     if let Some(value) = map.get(&RETRY_DISK_LIMIT) {
-        let limit = u64::from_str(value).map_err(|e| {
+        let limit = Bytes::<u64>::from_str(value).map_err(|e| {
             ConfigError::PropertyInvalid(format!("retry disk limit property is invalid: {}", e))
         })?;
-        result.http.retry_disk_limit = Some(limit);
+        result.http.retry_disk_limit = Some(limit.size());
     }
 
     if let Some(log_dirs) = map.get(&LOG_DIRS) {

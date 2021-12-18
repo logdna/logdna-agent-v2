@@ -276,7 +276,7 @@ fn test_command_line_arguments_should_set_config() {
                 .args(&["--ingest-buffer-size", "123456"])
                 .args(&["--ingest-timeout", "9876"])
                 .args(&["--retry-dir", "/tmp/logdna/argv"])
-                .args(&["--retry-disk-limit", "9876543"]);
+                .args(&["--retry-disk-limit", "9 MB"]);
         },
         |d| {
             assert!(contains("tags: \"a,b\"").eval(d));
@@ -310,7 +310,7 @@ fn test_command_line_arguments_should_set_config() {
             assert!(contains("body_size: 123456").eval(d));
             assert!(contains("timeout: 9876").eval(d));
             assert!(contains("retry_dir: /tmp/logdna/argv").eval(d));
-            assert!(contains("retry_disk_limit: 9876543").eval(d));
+            assert!(contains("retry_disk_limit: 9000000").eval(d));
         },
     );
 }
@@ -359,7 +359,7 @@ fn test_environment_variables_should_set_config() {
                 .env("LOGDNA_INGEST_TIMEOUT", "123456")
                 .env("LOGDNA_INGEST_BUFFER_SIZE", "987654")
                 .env("LOGDNA_RETRY_DIR", "/tmp/logdna/env")
-                .env("LOGDNA_RETRY_DISK_LIMIT", "7654321");
+                .env("LOGDNA_RETRY_DISK_LIMIT", "7 KB");
         },
         |d| {
             assert!(contains("tags: \"d,e,f\"").eval(d));
@@ -397,7 +397,7 @@ fn test_environment_variables_should_set_config() {
             assert!(contains("timeout: 123456").eval(d));
             assert!(contains("body_size: 987654").eval(d));
             assert!(contains("retry_dir: /tmp/logdna/env").eval(d));
-            assert!(contains("retry_disk_limit: 7654321").eval(d));
+            assert!(contains("retry_disk_limit: 7000").eval(d));
         },
     );
 }

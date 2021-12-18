@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate log;
+extern crate humanize_rs;
 
 use std::convert::{TryFrom, TryInto};
 use std::fs::File;
