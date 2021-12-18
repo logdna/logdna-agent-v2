@@ -155,8 +155,8 @@ impl Retry {
             }
         }
 
-        self.disk_used.fetch_sub(file_size, SeqCst);
-        Metrics::retry().report_storage_used(self.disk_used.load(SeqCst));
+        let prev_du = self.disk_used.fetch_sub(file_size, SeqCst);
+        Metrics::retry().report_storage_used(prev_du - file_size); // avoid atomic op by subtracting again
 
         let DiskRead { offsets, body } = serde_json::from_str(&data)?;
         Ok((offsets, body))
