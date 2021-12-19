@@ -1,0 +1,10 @@
+#!/bin/bash
+set -e
+OWN_PATH=$(readlink -f "$0")
+OWN_DIR=$(dirname "$OWN_PATH")
+pushd "$OWN_DIR/.."
+export DOCKER_BUILDKIT=1
+time make ARCH="${ARCH:-$(uname -m)}" "$@"
+echo
+echo @@@@@@  SUCCESS  @@@@@@
+echo
