@@ -1,11 +1,74 @@
 use crate::error::ConfigError;
 use crate::{argv, get_hostname, properties};
 use http::types::params::Params;
+use humanize_rs::bytes::Bytes;
+use serde::de::{Deserializer, Error, Unexpected, Visitor};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::vec::Vec;
+
+pub fn filesize_deser<'de, D>(d: D) -> Result<Option<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct BytesVisitor;
+    impl<'de> Visitor<'de> for BytesVisitor {
+        type Value = u64;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("expecting byte-size")
+        }
+
+        fn visit_str<E>(self, s: &str) -> Result<u64, E>
+        where
+            E: Error,
+        {
+            let bytes = s
+                .parse::<Bytes<u64>>()
+                .map_err(|_| Error::invalid_value(Unexpected::Str(s), &self))?;
+
+            Ok(bytes.size())
+        }
+    }
+
+    struct OptionVisitor;
+    impl<'de> Visitor<'de> for OptionVisitor {
+        type Value = Option<u64>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("expecting option")
+        }
+
+        #[inline]
+        fn visit_unit<E>(self) -> Result<Option<u64>, E>
+        where
+            E: Error,
+        {
+            Ok(None)
+        }
+
+        #[inline]
+        fn visit_none<E>(self) -> Result<Option<u64>, E>
+        where
+            E: Error,
+        {
+            Ok(None)
+        }
+
+        #[inline]
+        fn visit_some<D>(self, deserializer: D) -> Result<Option<u64>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            deserializer.deserialize_str(BytesVisitor).map(Some)
+        }
+    }
+
+    d.deserialize_option(OptionVisitor)
+}
 
 fn merge_all_confs(
     confs: impl Iterator<Item = Result<Config, ConfigError>>,
@@ -188,7 +251,11 @@ pub struct HttpConfig {
     pub body_size: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_dir: Option<PathBuf>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "filesize_deser",
+        default
+    )]
     pub retry_disk_limit: Option<u64>,
 
     // Mostly for development, these settings are hidden from the user
@@ -614,6 +681,7 @@ http:
     tags: tag1,tag2
     now: 0
   body_size: 2097152
+  retry_disk_limit: 3 MiB
 log:
   dirs:
     - /var/log1/
@@ -629,6 +697,7 @@ journald: {}
         assert_eq!(config.http.endpoint, some_string!("/path/to/endpoint1"));
         assert_eq!(config.http.use_compression, Some(true));
         assert_eq!(config.http.timeout, Some(12000));
+        assert_eq!(config.http.retry_disk_limit, Some(3_145_728));
         let params = config.http.params.unwrap();
         assert_eq!(params.tags, Some(Tags::from("tag1,tag2")));
         assert_eq!(
