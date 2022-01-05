@@ -15,6 +15,75 @@ mod common;
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+async fn test_retry_disk_limit() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+    let timeout = 200;
+    let base_delay_ms = 2000; // set high to cause retries to pile up
+    let step_delay_ms = 500;
+    let disk_limit = 7 * 1024;
+
+    let log_dir = tempdir().unwrap().into_path();
+    let log_file_path = log_dir.join("test.log");
+    let mut log_file = File::create(&log_file_path).expect("Couldn't create temp log file...");
+
+    // Simulate a slow ingest API
+    let (server, _, shutdown_ingest, address) = start_ingester(Box::new(|_| None), {
+        Box::new(move |body| {
+            if body
+                .lines
+                .iter()
+                .any(|l| l.file.as_deref().unwrap().contains("test.log"))
+            {
+                return Some(Box::pin(tokio::time::sleep(Duration::from_millis(timeout))));
+            }
+            None
+        })
+    });
+
+    // Agent Process
+    let retry_dir = tempdir().unwrap().into_path();
+    let mut settings = AgentSettings::with_mock_ingester(log_dir.to_str().unwrap(), &address);
+    let config_file_path = get_config_file(
+        timeout,
+        base_delay_ms,
+        step_delay_ms,
+        Some(retry_dir.clone()),
+        Some(disk_limit),
+    );
+    settings.config_file = config_file_path.to_str();
+
+    let mut agent_handle = common::spawn_agent(settings);
+    let agent_stderr = agent_handle.stderr.take().unwrap();
+    common::consume_output(agent_stderr);
+
+    let (server_result, _) = tokio::join!(server, async move {
+        // Wait for the agent to bootstrap and then start generating some log data
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        for _ in 0..5 {
+            gen_log_data(&mut log_file).await;
+        }
+
+        // Check that a retry file was created in the retry dir
+        let used = std::fs::read_dir(retry_dir).unwrap().filter(
+            |r| !matches!(r, Ok(path) if path.file_name().to_string_lossy().ends_with("\\.retry")),
+        ).fold(0u64, |acc, result|
+            match result {
+                Ok(entry) => {
+                    acc + entry.metadata().map(|md| md.len()).unwrap_or_default()
+                },
+                _ => acc,
+            });
+
+        assert!(used < disk_limit);
+        shutdown_ingest();
+    });
+
+    server_result.unwrap();
+    agent_handle.kill().unwrap();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_retry_location() {
     let _ = env_logger::Builder::from_default_env().try_init();
     let timeout = 200;
@@ -51,6 +120,7 @@ async fn test_retry_location() {
         base_delay_ms,
         step_delay_ms,
         Some(retry_dir.clone()),
+        None,
     );
     settings.config_file = config_file_path.to_str();
     settings.metrics_port = Some(metrics_port);
@@ -85,7 +155,9 @@ async fn test_retry_after_timeout() {
     let base_delay_ms = 300;
     let step_delay_ms = 100;
     let attempts = 10;
-    let config_file_path = get_config_file(timeout, base_delay_ms, step_delay_ms, None);
+    let retry_dir = tempdir().unwrap().into_path();
+    let config_file_path =
+        get_config_file(timeout, base_delay_ms, step_delay_ms, Some(retry_dir), None);
 
     let dir = tempdir().unwrap().into_path();
     let file_path = dir.join("test.log");
@@ -165,7 +237,8 @@ async fn test_retry_is_not_made_before_retry_base_delay_ms() {
     // Use a large base delay
     let base_delay_ms = 300_000;
     let timeout = 200;
-    let config_file_path = get_config_file(timeout, base_delay_ms, 100, None);
+    let retry_dir = tempdir().unwrap().into_path();
+    let config_file_path = get_config_file(timeout, base_delay_ms, 100, Some(retry_dir), None);
 
     let dir = tempdir().unwrap().into_path();
     let file_path = dir.join("test.log");
@@ -309,9 +382,9 @@ async fn test_retry_metrics_emitted() {
     let step_delay_ms = 100;
     let metrics_port = 9881;
 
-    let dir = tempdir().unwrap().into_path();
-    let file_path = dir.join("test.log");
-    let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
+    let log_dir = tempdir().unwrap().into_path();
+    let log_file_path = log_dir.join("test.log");
+    let mut log_file = File::create(&log_file_path).expect("Couldn't create temp log file...");
 
     // Generate a mock ingestion service that can be toggled between normal speed and slow running
     // Slow responses should trigger a retry when the agent is set with small timeout values.
@@ -334,8 +407,10 @@ async fn test_retry_metrics_emitted() {
     });
 
     // Agent Process
-    let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &address);
-    let config_file_path = get_config_file(timeout, base_delay_ms, step_delay_ms, None);
+    let mut settings = AgentSettings::with_mock_ingester(log_dir.to_str().unwrap(), &address);
+    let retry_dir = tempdir().unwrap().into_path();
+    let config_file_path =
+        get_config_file(timeout, base_delay_ms, step_delay_ms, Some(retry_dir), None);
     settings.config_file = config_file_path.to_str();
     settings.metrics_port = Some(metrics_port);
 
@@ -370,17 +445,18 @@ async fn test_retry_metrics_emitted() {
     let (server_result, _, _) = tokio::join!(server, metrics_handle, async move {
         // Wait for the agent to bootstrap and then start generating some log data
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-        gen_log_data(&mut file).await;
+        gen_log_data(&mut log_file).await;
 
         // Signal to the mock ingestor to start doing random rejections on log data.
         simulate_ingest_problems.store(true, Ordering::Relaxed);
-        gen_log_data(&mut file).await;
-        gen_log_data(&mut file).await;
+        gen_log_data(&mut log_file).await;
+        gen_log_data(&mut log_file).await;
 
         // Signal to the mock ingestor to stop doing random rejections
         simulate_ingest_problems.store(false, Ordering::Relaxed);
+        gen_log_data(&mut log_file).await;
         tokio::time::sleep(tokio::time::Duration::from_millis(6000)).await;
-        gen_log_data(&mut file).await;
+        gen_log_data(&mut log_file).await;
 
         // Shut down the scraper and ingest server
         scrape_metrics.store(false, Ordering::Relaxed);
@@ -460,6 +536,7 @@ fn get_config_file(
     retry_base_delay_ms: u64,
     retry_step_delay_ms: u64,
     retry_dir: Option<PathBuf>,
+    retry_disk_limit: Option<u64>,
 ) -> PathBuf {
     let config_dir = tempdir().unwrap().into_path();
     let config_file_path = config_dir.join("config.yaml");
@@ -467,6 +544,10 @@ fn get_config_file(
 
     let retry_dir_line = retry_dir
         .map(|p| format!("  retry_dir: {}", p.to_string_lossy()))
+        .unwrap_or_default();
+
+    let disk_limit_line = retry_disk_limit
+        .map(|u| format!("  retry_disk_limit: {}", u))
         .unwrap_or_default();
 
     write!(
@@ -486,6 +567,7 @@ http:
   retry_base_delay_ms: {}
   retry_step_delay_ms: {}
 {}
+{}
 log:
   dirs:
   - /var/log/
@@ -500,7 +582,7 @@ log:
     regex: []
 journald: {{}}
 ",
-        timeout, retry_base_delay_ms, retry_step_delay_ms, retry_dir_line
+        timeout, retry_base_delay_ms, retry_step_delay_ms, retry_dir_line, disk_limit_line
     )
     .unwrap();
 

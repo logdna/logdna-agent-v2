@@ -11,6 +11,7 @@ pub trait Rule {
     fn matches(&self, value: &Path) -> bool;
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone)]
 pub enum RuleDef {
     RegexRule(Regex),

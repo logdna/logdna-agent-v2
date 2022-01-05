@@ -161,6 +161,7 @@ options are available:
 |`LOGDNA_INGEST_TIMEOUT`|The timeout of the API calls to the ingest API in milliseconds|`10000`|
 |`LOGDNA_INGEST_BUFFER_SIZE`|The size, in bytes, of the ingest data buffer used to batch log data with.|`2097152`|
 |`LOGDNA_RETRY_DIR`|The directory used by the agent to store data temporarily while retrying calls to the ingestion API.|`/tmp/logdna`|
+|`LOGDNA_RETRY_DISK_LIMIT`|The maximum amount of disk space the agent will use to store retry data. The value can be the total number of bytes or a human representation of space using suffixes "KB", "MB", "GB" or "TB", e.g. `10 MB` If left unset, the agent will not limit disk usage. If set to `0`, no retry data will be stored on disk.||
 
 All regular expressions use [Perl-style syntax][regex-syntax] with case sensitivity by default. If you don't
 want to differentiate between capital and lower-case letters, use non-capturing groups with a flag: `(?flags:exp)`,

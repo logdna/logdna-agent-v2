@@ -32,16 +32,9 @@ const KEY_SYSLOG_IDENTIFIER: &str = "SYSLOG_IDENTIFIER";
 const KEY_CONTAINER_NAME: &str = "CONTAINER_NAME";
 const DEFAULT_APP: &str = "UNKNOWN_SYSTEMD_APP";
 
+#[derive(Default)]
 pub struct JournaldExportDecoder {
     state: AnyPartialState,
-}
-
-impl Default for JournaldExportDecoder {
-    fn default() -> Self {
-        JournaldExportDecoder {
-            state: Default::default(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
