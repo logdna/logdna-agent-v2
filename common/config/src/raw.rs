@@ -1,11 +1,74 @@
 use crate::error::ConfigError;
 use crate::{argv, get_hostname, properties};
 use http::types::params::Params;
+use humanize_rs::bytes::Bytes;
+use serde::de::{Deserializer, Error, Unexpected, Visitor};
 use serde::{Deserialize, Serialize};
+use std::fmt;
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::vec::Vec;
+
+pub fn filesize_deser<'de, D>(d: D) -> Result<Option<u64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct BytesVisitor;
+    impl<'de> Visitor<'de> for BytesVisitor {
+        type Value = u64;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("expecting byte-size")
+        }
+
+        fn visit_str<E>(self, s: &str) -> Result<u64, E>
+        where
+            E: Error,
+        {
+            let bytes = s
+                .parse::<Bytes<u64>>()
+                .map_err(|_| Error::invalid_value(Unexpected::Str(s), &self))?;
+
+            Ok(bytes.size())
+        }
+    }
+
+    struct OptionVisitor;
+    impl<'de> Visitor<'de> for OptionVisitor {
+        type Value = Option<u64>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("expecting option")
+        }
+
+        #[inline]
+        fn visit_unit<E>(self) -> Result<Option<u64>, E>
+        where
+            E: Error,
+        {
+            Ok(None)
+        }
+
+        #[inline]
+        fn visit_none<E>(self) -> Result<Option<u64>, E>
+        where
+            E: Error,
+        {
+            Ok(None)
+        }
+
+        #[inline]
+        fn visit_some<D>(self, deserializer: D) -> Result<Option<u64>, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            deserializer.deserialize_str(BytesVisitor).map(Some)
+        }
+    }
+
+    d.deserialize_option(OptionVisitor)
+}
 
 fn merge_all_confs(
     confs: impl Iterator<Item = Result<Config, ConfigError>>,
@@ -188,6 +251,12 @@ pub struct HttpConfig {
     pub body_size: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_dir: Option<PathBuf>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "filesize_deser",
+        default
+    )]
+    pub retry_disk_limit: Option<u64>,
 
     // Mostly for development, these settings are hidden from the user
     // There's no guarantee that these settings will exist in the future
@@ -269,6 +338,7 @@ impl Default for HttpConfig {
                 .ok(),
             body_size: Some(2 * 1024 * 1024),
             retry_dir: Some(PathBuf::from("/tmp/logdna")),
+            retry_disk_limit: None,
             retry_base_delay_ms: None,
             retry_step_delay_ms: None,
         }
@@ -290,6 +360,8 @@ impl Merge for HttpConfig {
         self.params.merge(&other.params, &default.params);
         self.body_size.merge(&other.body_size, &default.body_size);
         self.retry_dir.merge(&other.retry_dir, &default.retry_dir);
+        self.retry_disk_limit
+            .merge(&other.retry_disk_limit, &default.retry_disk_limit);
         self.retry_base_delay_ms
             .merge(&other.retry_base_delay_ms, &default.retry_base_delay_ms);
         self.retry_step_delay_ms
@@ -584,6 +656,7 @@ http:
     tags: tag1,tag2
     now: 0
   body_size: 2097152
+  retry_disk_limit: 3 MiB
 log:
   dirs:
     - /var/log1/
@@ -599,6 +672,7 @@ journald: {}
         assert_eq!(config.http.endpoint, some_string!("/path/to/endpoint1"));
         assert_eq!(config.http.use_compression, Some(true));
         assert_eq!(config.http.timeout, Some(12000));
+        assert_eq!(config.http.retry_disk_limit, Some(3_145_728));
         let params = config.http.params.unwrap();
         assert_eq!(params.tags, Some(Tags::from("tag1,tag2")));
         assert_eq!(
@@ -855,6 +929,7 @@ ingest_buffer_size = 3145728
                 .ok(),
             body_size: Some(1337),
             retry_dir: Some(PathBuf::from("/tmp/logdna/left")),
+            retry_disk_limit: Some(12345),
             retry_base_delay_ms: Some(10_000),
             retry_step_delay_ms: Some(10_000),
         };
@@ -873,6 +948,7 @@ ingest_buffer_size = 3145728
                 .ok(),
             body_size: Some(7331),
             retry_dir: Some(PathBuf::from("/tmp/logdna/right")),
+            retry_disk_limit: Some(98765),
             retry_base_delay_ms: Some(2_000),
             retry_step_delay_ms: Some(2_000),
         };
@@ -895,6 +971,7 @@ ingest_buffer_size = 3145728
             left_conf.retry_dir,
             Some(PathBuf::from("/tmp/logdna/right"))
         );
+        assert_eq!(left_conf.retry_disk_limit, Some(98765));
         assert_eq!(left_conf.retry_base_delay_ms, Some(2_000));
         assert_eq!(left_conf.retry_step_delay_ms, Some(2_000));
     }

@@ -19,6 +19,7 @@ log = "0.4"
 sysinfo = "0.15"
 structopt = "0.3"
 java-properties = "1"
+humanize-rs = "0.1"
 
 [dev-dependencies]
 scopeguard = "1.0"

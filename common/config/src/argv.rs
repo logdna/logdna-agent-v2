@@ -1,6 +1,7 @@
 use crate::raw::{Config as RawConfig, Rules};
 use fs::lookback::Lookback;
 use http::types::params::{Params, Tags};
+use humanize_rs::bytes::Bytes;
 use k8s::K8sTrackingConf;
 use std::env::var as env_var;
 use std::path::PathBuf;
@@ -40,6 +41,7 @@ pub mod env {
     pub const INGEST_TIMEOUT: &str = "LOGDNA_INGEST_TIMEOUT";
     pub const INGEST_BUFFER_SIZE: &str = "LOGDNA_INGEST_BUFFER_SIZE";
     pub const RETRY_DIR: &str = "LOGDNA_RETRY_DIR";
+    pub const RETRY_DISK_LIMIT: &str = "LOGDNA_RETRY_DISK_LIMIT";
 
     pub const INGESTION_KEY_ALTERNATE: &str = "LOGDNA_AGENT_KEY";
     pub const CONFIG_FILE_DEPRECATED: &str = "DEFAULT_CONF_FILE";
@@ -207,6 +209,12 @@ pub struct ArgumentOptions {
     /// Defaults to /tmp/logdna.
     #[structopt(long, env = env::RETRY_DIR)]
     retry_dir: Option<String>,
+
+    /// When set, limits the amount of disk space the agent will use to store log lines that
+    /// need to be resent to the ingestion API. Values can be defined with units of KB, MB, GB,
+    /// etc. Numbers need to be integer values.
+    #[structopt(long, env = env::RETRY_DISK_LIMIT)]
+    retry_disk_limit: Option<Bytes<u64>>,
 }
 
 impl ArgumentOptions {
@@ -279,6 +287,10 @@ impl ArgumentOptions {
 
         if self.retry_dir.is_some() {
             raw.http.retry_dir = self.retry_dir.map(PathBuf::from);
+        }
+
+        if let Some(disk_limit) = self.retry_disk_limit {
+            raw.http.retry_disk_limit = Some(disk_limit.size());
         }
 
         if !self.log_dirs.is_empty() {
@@ -480,6 +492,7 @@ mod test {
     use super::*;
 
     use crate::raw::{Config as RawConfig, Rules};
+    use humanize_rs::bytes::Unit;
     use std::env::set_var;
 
     static EXCLUSION_GLOB_DEFAULT: &str = "/var/log/wtmp,/var/log/btmp,/var/log/utmp,/var/log/wtmpx,/var/log/btmpx,/var/log/utmpx,/var/log/asl/**,/var/log/sa/**,/var/log/sar*,/var/log/tallylog,/var/log/fluentd-buffers/**/*,/var/log/pods/**/*";
@@ -636,6 +649,7 @@ mod test {
             ingest_timeout: Some(1111111),
             ingest_buffer_size: Some(222222),
             retry_dir: some_string!("/tmp/argv"),
+            retry_disk_limit: Some(Bytes::new(123456, Unit::Byte).unwrap()),
             ..ArgumentOptions::default()
         };
         let config = argv.merge(RawConfig::default());
@@ -647,6 +661,7 @@ mod test {
         assert_eq!(config.http.timeout, Some(1111111));
         assert_eq!(config.http.body_size, Some(222222));
         assert_eq!(config.http.retry_dir, Some(PathBuf::from("/tmp/argv")));
+        assert_eq!(config.http.retry_disk_limit, Some(123456));
         let params = config.http.params.unwrap();
         assert_eq!(params.hostname, "my_host");
         assert_eq!(params.tags, Some(Tags::from(vec_strings!("a", "b"))));
