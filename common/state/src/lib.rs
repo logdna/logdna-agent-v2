@@ -252,6 +252,7 @@ impl FileOffsetShutdownHandle {
 #[derive(Clone)]
 pub struct FileOffsetState {
     db: Arc<DB>,
+    #[allow(dead_code)]
     cf_opts: Options,
     rx: std::cell::RefCell<Option<async_channel::Receiver<FileOffsetEvent>>>,
     shutdown: std::cell::RefCell<Option<async_channel::Sender<FileOffsetEvent>>>,
