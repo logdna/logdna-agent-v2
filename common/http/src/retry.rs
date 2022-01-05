@@ -335,7 +335,7 @@ impl RetrySender {
         let mut new_file_name = self.directory.clone();
         new_file_name.push(format!("{}_{}.retry", fn_ts, fn_uuid));
 
-        return Ok(rename(file_name, new_file_name).await?);
+        Ok(rename(file_name, new_file_name).await?)
     }
 }
 
