@@ -190,7 +190,7 @@ impl<T: PartialEq + Clone> Merge for Vec<T> {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
 pub struct Config {
     pub http: HttpConfig,
     pub log: LogConfig,
@@ -289,16 +289,10 @@ pub struct LogConfig {
     pub log_k8s_events: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
 pub struct JournaldConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paths: Option<Vec<PathBuf>>,
-}
-
-impl Default for JournaldConfig {
-    fn default() -> Self {
-        JournaldConfig { paths: None }
-    }
 }
 
 impl Merge for JournaldConfig {
@@ -307,35 +301,16 @@ impl Merge for JournaldConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
 pub struct Rules {
     pub glob: Vec<String>,
     pub regex: Vec<String>,
-}
-
-impl Default for Rules {
-    fn default() -> Self {
-        Rules {
-            glob: Vec::new(),
-            regex: Vec::new(),
-        }
-    }
 }
 
 impl Merge for Rules {
     fn merge(&mut self, other: &Self, default: &Self) {
         self.glob.merge(&other.glob, &default.glob);
         self.regex.merge(&other.regex, &default.regex);
-    }
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Config {
-            http: HttpConfig::default(),
-            log: LogConfig::default(),
-            journald: JournaldConfig::default(),
-        }
     }
 }
 
