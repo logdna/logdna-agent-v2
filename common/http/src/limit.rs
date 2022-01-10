@@ -99,6 +99,7 @@ impl<T> AsRef<T> for Slot<T> {
 #[derive(Debug)]
 struct InnerSlot<T> {
     inner: T,
+    #[allow(dead_code)]
     slot: usize,
     slots: Arc<AtomicUsize>,
 }
