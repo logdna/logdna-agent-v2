@@ -1,5 +1,4 @@
 use std::convert::TryInto;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -20,8 +19,11 @@ use metrics::Metrics;
 use serde::Deserialize;
 use thiserror::Error;
 
+use async_compression::tokio::bufread::GzipDecoder;
+use async_compression::tokio::write::GzipEncoder;
+use async_compression::Level;
 use tokio::fs::{metadata, read_dir, remove_file, rename, File, OpenOptions};
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader, BufWriter};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter};
 
 use uuid::Uuid;
 
@@ -132,9 +134,29 @@ impl Retry {
     }
 
     async fn read_from_disk(&self, path: &Path) -> Result<(Option<OffsetMap>, IngestBody), Error> {
-        let mut file = BufReader::new(File::open(path).await?);
         let mut data = String::new();
-        file.read_to_string(&mut data).await?;
+        // this scope block needed for file close
+        {
+            let file = BufReader::new(File::open(path).await?);
+            // try to read as gzip
+            let mut gzip_file = GzipDecoder::new(file);
+            if let Err(e) = gzip_file.read_to_string(&mut data).await {
+                if e.kind() != std::io::ErrorKind::InvalidData {
+                    warn!("GzipDecoder failed: {} for file [{}]", e, path.display());
+                    let result = Err(Error::from(e));
+                    return result;
+                }
+                // now try to read as plain text
+                warn!(
+                    "GzipDecoder failed: {} for file [{}], trying as plain text",
+                    e,
+                    path.display()
+                );
+                let mut inner_file = gzip_file.into_inner();
+                inner_file.rewind().await?;
+                inner_file.read_to_string(&mut data).await?;
+            }
+        }
 
         let file_size = match metadata(&path).await {
             Ok(md) => md.len(),
@@ -245,44 +267,44 @@ impl RetrySender {
         let mut file_name = self.directory.clone();
         file_name.push(format!("{}_{}.retry.partial", fn_ts, fn_uuid));
 
-        let mut file = BufWriter::new(
-            OpenOptions::new()
-                .create(true)
-                .write(true)
-                .open(&file_name)
-                .await?,
-        );
-
-        // Manually serialize the body and offsets
-        file.write_all(b"{").await?;
-        let mut file = if let Some(offsets) = offsets {
-            file.write_all(b"\"offsets\":").await?;
-
-            // Serde can't write to async_write, so offload this to a threadpool
-            let std_file = tokio::task::spawn_blocking(
-                {
-                    // Get the std::fs::File out of the tokio BufWriter
-                    file.flush().await?;
-                    let mut std_file = std::io::BufWriter::new(file.into_inner().into_std().await);
-                    move || -> Result<std::fs::File, std::io::Error> {
-                        // Serialise the offsets to the std::io::BufWriter
-                        serde_json::to_writer(&mut std_file, &offsets)?;
-                        std_file.flush()?;
-                        Ok(std_file.into_inner()?)
+        // this scope block needed for file close
+        {
+            let mut file = BufWriter::new(
+                OpenOptions::new()
+                    .create(true)
+                    .write(true)
+                    .open(&file_name)
+                    .await?,
+            );
+            // Use gzip compression
+            let mut file = GzipEncoder::with_quality(&mut file, Level::Fastest);
+            // Manually serialize the body and offsets
+            file.write_all(b"{").await?;
+            let mut file = if let Some(offsets) = offsets {
+                file.write_all(b"\"offsets\":").await?;
+                // Serde is CPU bound and sync only, so offload it to a thread-pool
+                let json = tokio::task::spawn_blocking({
+                    move || -> Result<String, serde_json::Error> {
+                        // Serialise the offsets to file
+                        let res = serde_json::to_string(&offsets)?;
+                        Ok(res)
                     }
-                }
-            ).await.unwrap(/*FIXME handle properly*/)?;
-            let mut file = BufWriter::new(File::from_std(std_file));
-            file.write_all(b",").await?;
-            file
-        } else {
-            file
-        };
-        file.write_all(b"\"body\":").await?;
-        let mut reader = body.reader();
-        let _bytes_written = futures::io::copy(&mut reader, &mut file.compat_mut()).await?;
-        file.write_all(b"}").await?;
-        file.flush().await?;
+                })
+                .await
+                .unwrap()?; // we treat tokio::task::joinError as fatal and allow it to panic in
+                            // unwrap(), while other errors to bubble-up as usual
+                file.write_all(json.as_bytes()).await?;
+                file.write_all(b",").await?;
+                file
+            } else {
+                file
+            };
+            file.write_all(b"\"body\":").await?;
+            let mut reader = body.reader();
+            let _bytes_written = futures::io::copy(&mut reader, &mut file.compat_mut()).await?;
+            file.write_all(b"}").await?;
+            file.shutdown().await?;
+        }
 
         let file_size = match metadata(&file_name).await {
             Ok(md) => md.len(),

@@ -28,6 +28,7 @@ time = "0.3"
 futures = "0.3"
 futures-timer = "3"
 prometheus = { version = "0.12", features = ["process"] }
+async-compression = { version = "0.3.8", features = ["tokio"] }
 
 [dev-dependencies]
 tempfile = "3"
