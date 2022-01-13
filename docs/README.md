@@ -123,6 +123,25 @@ cargo build --release
 
 The compiled binary will be built to `./target/release/logdna-agent`.
 
+
+### Helper scripts
+Some make helper scripts are located under `./scripts` folder:
+```
+* mk                    make "build" target - build Agent from rust sources
+* mk.lint               make "lint" target - run linting
+* mk.test               make "test" target - run unit tests
+* mk.integration_test   make "integration_test" target - run integration tests
+* mk.image              make "image" target - create Agent container image and publish it in local docker
+```
+#### Note:
+- all targets are using "rust-xxxx" container image from "logdna/build-images" registry, will try to use local image first.
+- to build arm64 image use:
+```
+$ ARCH=aarch64 scripts/mk.image
+```
+- "multi-arch build" in docker needs to be installed and configured before building arm64 on x86 platforms
+
+
 ## Configuration
 
 ### Options

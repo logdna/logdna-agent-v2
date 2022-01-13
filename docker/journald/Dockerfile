@@ -1,4 +1,5 @@
-FROM docker.io/logdna/build-images:rust-buster-stable
+ARG ARCH=x86_64
+FROM docker.io/logdna/build-images:rust-buster-1-stable-${ARCH}
 STOPSIGNAL SIGRTMIN+3
 
 RUN mkdir -p /var/log/journal
