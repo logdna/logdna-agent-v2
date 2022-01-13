@@ -1,9 +1,9 @@
 REPO := logdna-agent-v2
 
-SHELLFLAGS:=-ic
+SHELLFLAGS := -ic
 
 # The target architecture the agent is to be compiled for
-ARCH?=x86_64
+export ARCH ?= x86_64
 # The image repo and tag can be modified e.g.
 # `make build RUST_IMAGE=docker.io/rust:latest
 RUST_IMAGE_REPO ?= docker.io/logdna/build-images
@@ -27,9 +27,9 @@ SHELLCHECK_IMAGE := $(SHELLCHECK_IMAGE)
 
 WORKDIR :=/build
 DOCKER := DOCKER_BUILDKIT=1 docker
-DOCKER_DISPATCH := ./docker/dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
-DOCKER_JOURNALD_DISPATCH := ./docker/journald_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
-DOCKER_KIND_DISPATCH := ./docker/kind_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
+DOCKER_DISPATCH := ARCH=$(ARCH) ./docker/dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
+DOCKER_JOURNALD_DISPATCH := ARCH=$(ARCH) ./docker/journald_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
+DOCKER_KIND_DISPATCH := ARCH=$(ARCH) ./docker/kind_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
 DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/logdna-agent-v2
 DOCKER_PUBLIC_IMAGE := docker.io/logdna/logdna-agent
 DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
@@ -332,7 +332,8 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg VCS_REF=$(VCS_REF) \
 		--build-arg VCS_URL=$(VCS_URL) \
 		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
-		--build-arg SCCACHE_REGION=$(SCCACHE_REGION)
+		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
+		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
 
 DEB_VERSION=1
 DEB_ARCH_NAME_x86_64=amd64

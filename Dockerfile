@@ -9,11 +9,14 @@ ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy
 
 ARG FEATURES
 
-ARG SCCACHE_BUCKET
-ENV SCCACHE_BUCKET=${SCCACHE_BUCKET}
 
+ARG SCCACHE_BUCKET
 ARG SCCACHE_REGION
-ENV SCCACHE_REGION=${SCCACHE_REGION}
+ARG SCCACHE_ENDPOINT
+ARG SCCACHE_SERVER_PORT=4226
+ARG SCCACHE_RECACHE
+ARG AWS_ACCESS_KEY_ID
+ARG AWS_SECRET_ACCESS_KEY
 
 ARG BUILD_ENVS
 
@@ -39,7 +42,9 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     --mount=type=cache,target=/opt/logdna-agent-v2/target \
     if [ -z "$SCCACHE_BUCKET" ]; then unset RUSTC_WRAPPER; fi; \
     if [ -n "${TARGET}" ]; then export TARGET_ARG="--target ${TARGET}"; fi; \
-    export ${BUILD_ENVS?}; cargo build --manifest-path bin/Cargo.toml --no-default-features ${FEATURES} --release $TARGET_ARG && \
+    export ${BUILD_ENVS?};  \
+    if [ -z "$SCCACHE_ENDPOINT" ]; then unset SCCACHE_ENDPOINT; fi; \
+    cargo build --manifest-path bin/Cargo.toml --no-default-features ${FEATURES} --release $TARGET_ARG && \
     strip ./target/${TARGET}/release/logdna-agent && \
     cp ./target/${TARGET}/release/logdna-agent /logdna-agent && \
     sccache --show-stats
@@ -75,7 +80,7 @@ COPY --from=build /logdna-agent /work/
 WORKDIR /work/
 
 RUN microdnf update -y \
-    && microdnf install ca-certificates libcap shadow-utils.x86_64 -y \
+    && microdnf install ca-certificates libcap shadow-utils -y \
     && rm -rf /var/cache/yum \
     && chmod -R 777 . \
     && setcap "cap_dac_read_search+eip" /work/logdna-agent \

@@ -18,7 +18,9 @@ _term() {
 # shellcheck source=/dev/null
 . "$curpath/lib.sh"
 
-docker build -t "$image" -f "$curpath/journald/Dockerfile" "$curpath/.."
+echo "ARCH=$ARCH"
+
+docker build -t "$image" --build-arg "ARCH=$ARCH" -f "$curpath/journald/Dockerfile" "$curpath/.."
 
 trap _term TERM
 trap _term INT
