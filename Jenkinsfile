@@ -23,6 +23,7 @@ pipeline {
         SCCACHE_BUCKET = 'logdna-sccache-us-west-2'
         SCCACHE_REGION = 'us-west-2'
         CARGO_INCREMENTAL = 'false'
+        DOCKER_BUILDKIT = '1'
     }
     parameters {
         booleanParam(name: 'PUBLISH_GCR_IMAGE', description: 'Publish docker image to Google Container Registry (GCR)', defaultValue: false)
@@ -110,7 +111,7 @@ pipeline {
                                 echo "[default]" > ${PWD}/.aws_creds
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds
-                                make build-image AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds
+                                ARCH=x86_64 make build-image AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds
                             """
                         }
                     }
@@ -132,7 +133,7 @@ pipeline {
                                 echo "[default]" > ${PWD}/.aws_creds_static
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static
-                                STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
+                                ARCH=x86_64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
                                 ARCH=aarch64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
                                 rm ${PWD}/.aws_creds_static
                             '''
@@ -165,6 +166,7 @@ pipeline {
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static
                                 STATIC=1 make publish-s3-binary
+                                ARCH=x86_64 STATIC=1 make publish-s3-binary
                                 ARCH=aarch64 STATIC=1 make publish-s3-binary
                                 rm ${PWD}/.aws_creds_static
                             '''

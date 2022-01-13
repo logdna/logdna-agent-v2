@@ -2,8 +2,9 @@
 /common/*/target
 /bin/target
 **/*.rs.bk
-/.idea
+.idea
 .cargo_cache/
 **.profraw
 .DS_Store
 *.stamp
+/mk*
