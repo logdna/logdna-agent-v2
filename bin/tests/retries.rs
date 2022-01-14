@@ -388,6 +388,16 @@ async fn test_retry_metrics_emitted() {
         })
         .collect::<Vec<(i64, f64)>>();
 
+    let retries = metrics_result
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Counter(raw) if s.metric.as_str() == "logdna_agent_ingest_retries" => {
+                Some((s.timestamp.timestamp_millis(), raw))
+            }
+            _ => None,
+        })
+        .collect::<Vec<(i64, f64)>>();
+
     let retry_success = metrics_result
         .iter()
         .filter_map(|s| match s.value {
@@ -473,6 +483,43 @@ async fn test_retry_metrics_emitted() {
         [a, b] => a.1 <= b.1,
         _ => false,
     }));
+
+    // The total retries should be equal to or greater than the sum of successful and failed retries.
+    // Depending on when the metrics are scraped and where in the code the execution is, e.g. retry
+    // is currently in process, we may have an attempt without a success or failure. The pending
+    // count is really tracking only number of requests on disk.
+    //
+    // This assertion tries to find a common data range to compare based on timestamp since the
+    // metrics may have been running and scaped before the actual test case starts. We also track
+    // the starting count values to reset the series of data to ignore any values held prior to
+    // scraping.
+    let (attempts_start_ts, attempt_count_basis) = retries.get(0).unwrap();
+    let (success_start_ts, success_count_basis) = retry_success.get(0).unwrap();
+    let (failure_start_ts, failure_count_basis) = retry_failure.get(0).unwrap();
+    let compare_window_start = std::cmp::max(
+        std::cmp::max(*attempts_start_ts, *success_start_ts),
+        *failure_start_ts,
+    );
+
+    let attempt_counts = retries
+        .iter()
+        .filter(|(ts, _)| *ts >= compare_window_start)
+        .map(|(_, count)| *count - attempt_count_basis);
+
+    let success_counts = retry_success
+        .iter()
+        .filter(|(ts, _)| *ts >= compare_window_start)
+        .map(|(_, count)| *count - success_count_basis);
+
+    let failure_counts = retry_failure
+        .iter()
+        .filter(|(ts, _)| *ts >= compare_window_start)
+        .map(|(_, count)| *count - failure_count_basis);
+
+    assert!(success_counts
+        .zip(failure_counts)
+        .zip(attempt_counts)
+        .all(|((success, failure), total)| { success + failure <= total }));
 
     // The amount of space used for retries should increase but then eventually decrease to to zero
     // as the agent recovers. Note that zero values won't appear at first since nothing has reported
