@@ -168,7 +168,7 @@ test-journald: ## Run journald unit tests
 
 .PHONY:bench
 bench:
-	$(BENCH_COMMAND) "--privileged --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo run --release --manifest-path bench/Cargo.toml --bin=throughput dict.txt -o /tmp/out $(PROFILE) --file-history 3 --line-count 10000000 --file-size 20000000 && mv /tmp/flamegraph.svg ."
+	$(BENCH_COMMAND) "--privileged --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo run --release --manifest-path bench/Cargo.toml --bin=throughput /dict.txt -o /tmp/out $(PROFILE) --file-history 3 --line-count 10000000 --file-size 20000000 && mv /tmp/flamegraph.svg ."
 
 .PHONY:clean
 clean: ## Clean all artifacts from the build process
