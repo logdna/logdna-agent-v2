@@ -10,7 +10,7 @@ use tempfile::tempdir;
 use common::AgentSettings;
 pub use common::*;
 
-fn check_fs_bytes(samples: &Vec<Sample>) {
+fn check_fs_bytes(samples: &[Sample]) {
     let fs_bytes = samples
         .iter()
         .filter_map(|s| match s.value {
@@ -19,7 +19,7 @@ fn check_fs_bytes(samples: &Vec<Sample>) {
         })
         .collect::<Vec<f64>>();
 
-    assert!(fs_bytes.len() > 0, "no fs_byte metrics were captured");
+    assert!(!fs_bytes.is_empty(), "no fs_byte metrics were captured");
 
     assert!(
         *fs_bytes.iter().last().unwrap() > f64::EPSILON,
@@ -35,7 +35,7 @@ fn check_fs_bytes(samples: &Vec<Sample>) {
     );
 }
 
-fn check_fs_lines(samples: &Vec<Sample>) {
+fn check_fs_lines(samples: &[Sample]) {
     let fs_lines = samples
         .iter()
         .filter_map(|s| match s.value {
@@ -44,11 +44,13 @@ fn check_fs_lines(samples: &Vec<Sample>) {
         })
         .collect::<Vec<f64>>();
 
-    assert!(fs_lines.len() > 0, "no fs_line metrics were captured");
+    assert!(!fs_lines.is_empty(), "no fs_line metrics were captured");
+
     assert!(
         *fs_lines.iter().last().unwrap() > f64::EPSILON,
         "last fs_line datum should be greater than zero "
     );
+
     assert!(
         fs_lines.windows(2).all(|w| match w {
             [a, b] => a <= b,
@@ -58,7 +60,7 @@ fn check_fs_lines(samples: &Vec<Sample>) {
     );
 }
 
-fn check_fs_events(samples: &Vec<Sample>) {
+fn check_fs_events(samples: &[Sample]) {
     // logdna_agent_fs_events
     let fs_events = samples
         .iter()
@@ -70,7 +72,8 @@ fn check_fs_events(samples: &Vec<Sample>) {
         })
         .collect::<Vec<(f64, Option<&str>)>>();
 
-    assert!(fs_events.len() > 0, "no fs_events metrics were captured");
+    assert!(!fs_events.is_empty(), "no fs_events metrics were captured");
+
     assert!(
         fs_events.iter().any(|result| match result {
             &(value, Some(event_type)) => value == 1.0 && event_type == "create",
@@ -79,6 +82,7 @@ fn check_fs_events(samples: &Vec<Sample>) {
         "At least one file create event should be logged. Actual events: {:?}",
         fs_events
     );
+
     assert!(
         fs_events.iter().any(|result| match result {
             &(value, Some(event_type)) => value > 1.0 && event_type == "write",
@@ -87,6 +91,7 @@ fn check_fs_events(samples: &Vec<Sample>) {
         "At least one file write event should be logged. Actual events: {:?}",
         fs_events
     );
+
     assert!(
         fs_events.iter().any(|result| match result {
             &(value, Some(event_type)) => value == 1.0 && event_type == "delete",
@@ -97,7 +102,7 @@ fn check_fs_events(samples: &Vec<Sample>) {
     );
 }
 
-fn check_fs_files(samples: &Vec<Sample>) {
+fn check_fs_files(samples: &[Sample]) {
     // logdna_agent_fs_files
     let fs_files = samples
         .iter()
@@ -107,7 +112,7 @@ fn check_fs_files(samples: &Vec<Sample>) {
         })
         .collect::<Vec<f64>>();
 
-    assert!(fs_files.len() > 0, "no fs_files metrics were captured");
+    assert!(!fs_files.is_empty(), "no fs_files metrics were captured");
 
     let first_fs_file = *fs_files.get(0).unwrap();
     let last_fs_file = *fs_files.iter().last().unwrap();
@@ -118,7 +123,7 @@ fn check_fs_files(samples: &Vec<Sample>) {
     );
 }
 
-fn check_ingest_req_size(samples: &Vec<Sample>) {
+fn check_ingest_req_size(samples: &[Sample]) {
     let expected_bucket_boundaries = vec![
         500.0,
         1000.0,
@@ -173,7 +178,7 @@ fn data_pair_for(name: &str) -> impl Fn(&Sample) -> Option<(i64, f64)> + '_ {
     }
 }
 
-fn check_ingest_req_duration(samples: &Vec<Sample>) {
+fn check_ingest_req_duration(samples: &[Sample]) {
     let counts = samples
         .iter()
         .filter_map(data_pair_for(
@@ -183,6 +188,11 @@ fn check_ingest_req_duration(samples: &Vec<Sample>) {
             "logdna_agent_ingest_request_duration_seconds_count",
         )))
         .collect::<Vec<((i64, f64), (i64, f64))>>();
+
+    assert!(
+        !counts.is_empty(),
+        "should contain at least one duration count"
+    );
 
     assert!(
         counts
@@ -202,6 +212,11 @@ fn check_ingest_req_duration(samples: &Vec<Sample>) {
             "logdna_agent_ingest_request_duration_seconds_sum",
         )))
         .collect::<Vec<((i64, f64), (i64, f64))>>();
+
+    assert!(
+        sums.len() == counts.len(),
+        "should have equal number of count and sum metrics"
+    );
 
     assert!(
         sums.iter().all(|((ms_ts, ms_sum), (sec_ts, sec_sum))| {
