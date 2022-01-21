@@ -1,9 +1,8 @@
 use crate::libjournald::error::JournalError;
 use futures::{channel::oneshot, stream::Stream as FutureStream};
 use http::types::body::LineBuilder;
-use log::{info, warn};
+use log::{info, warn, trace};
 use metrics::Metrics;
-use std::time::Instant;
 use std::{
     mem::drop,
     path::PathBuf,
@@ -14,8 +13,9 @@ use std::{
     },
     task::{Context, Poll, Waker},
     thread::{self, JoinHandle},
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
+
 use systemd::journal::{Journal, JournalFiles, JournalRecord, JournalSeek};
 
 const KEY_MESSAGE: &str = "MESSAGE";
@@ -97,10 +97,13 @@ impl Stream {
                             );
                             break;
                         }
-
+                        trace!("received record from journal");
                         call_waker();
                     }
-                    Ok(None) => {}
+                    Ok(None) => {
+                        trace!("received empty record from journal");
+                        continue;
+                    }
                     Err(JournalError::RecordMissingField(e)) => {
                         warn!("dropping journald record: {:?}", e);
                     }
@@ -184,7 +187,7 @@ impl Drop for Stream {
 
 struct Reader {
     reader: Journal,
-    last_warn: Instant,
+    last_warn: Option<Instant>,
 }
 
 impl Reader {
@@ -203,32 +206,42 @@ impl Reader {
 
         Self {
             reader,
-            last_warn: Instant::now(),
+            last_warn: None,
         }
     }
 
     fn process_next_record(&mut self) -> Result<Option<LineBuilder>, JournalError> {
         let record = match self.reader.next_entry() {
             Ok(Some(record)) => record,
-            Ok(None) => return Ok(None),
+            Ok(None) => {
+                trace!("got empty entry from journal");
+                return Ok(None)
+            }
             Err(e) => return Err(JournalError::BadRead(e)),
         };
 
+        let now = SystemTime::now();
         match self
             .reader
             .timestamp()
             .ok()
-            .map(|timestamp| SystemTime::now().duration_since(timestamp).ok())
+            .map(|timestamp| now.duration_since(timestamp).ok())
             .flatten()
         {
             Some(duration) => {
                 // Reject any records with a timestamp older than 30 seconds
                 if duration >= Duration::from_secs(30) {
-                    if self.last_warn.elapsed() > WARN_INTERVAL {
-                        self.last_warn = Instant::now();
+                    if self.last_warn.map_or(true, |last_warn|last_warn.elapsed() > WARN_INTERVAL) {
+                        self.last_warn = Some(Instant::now());
                         info!("Received a stale journald record, reseeking pointer");
+                        trace!("stale record timestamp: {:#?} now: {:#?}", (now - duration), now)
                     }
+                    trace!("seeking to end of journal");
                     if let Err(e) = self.reader.seek(JournalSeek::Tail) {
+                        return Err(JournalError::BadRead(e));
+                    }
+                    // Hack to fix https://github.com/systemd/systemd/issues/9934
+                    if let Err(e) = self.reader.previous() {
                         return Err(JournalError::BadRead(e));
                     }
                     // Skip old records
@@ -284,6 +297,7 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn reader_gets_new_logs() {
+        let _ = env_logger::Builder::from_default_env().try_init();
         journal::print(1, "Reader got the correct line!");
         sleep(Duration::from_millis(50));
         let mut reader = Reader::new(Path::Directory(JOURNALD_LOG_PATH.into()));
@@ -302,9 +316,10 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn stream_gets_new_logs() {
-        journal::print(1, "Reader got the correct line 1!");
-        sleep(Duration::from_millis(50));
+        let _ = env_logger::Builder::from_default_env().try_init();
         let mut stream = Stream::new(Path::Directory(JOURNALD_LOG_PATH.into()));
+        sleep(Duration::from_millis(50));
+        journal::print(1, "Reader got the correct line 1!");
         sleep(Duration::from_millis(50));
         journal::print(1, "Reader got the correct line 2!");
 

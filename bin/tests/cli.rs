@@ -587,6 +587,7 @@ fn test_directory_symlinks_delete() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg_attr(not(target_os = "linux"), ignore)]
 async fn test_journald_support() {
+    let _ = env_logger::Builder::from_default_env().try_init();
     assert_eq!(journal::print(6, "Sample info"), 0);
     sleep(Duration::from_millis(1000));
     let dir = "/var/log/journal";
@@ -629,6 +630,7 @@ async fn test_journald_support() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg_attr(not(target_os = "linux"), ignore)]
 async fn test_journalctl_support() {
+    let _ = env_logger::Builder::from_default_env().try_init();
     assert_eq!(journal::print(6, "Sample info"), 0);
     sleep(Duration::from_millis(1000));
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();

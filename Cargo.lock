@@ -688,6 +688,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "env_logger"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b2cf0344971ee6c64c31be0d530793fba457d322dfec2810c453d0ef228f9c3"
+dependencies = [
+ "atty",
+ "humantime",
+ "log",
+ "regex",
+ "termcolor",
+]
+
+[[package]]
 name = "escargot"
 version = "0.5.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -782,7 +795,7 @@ dependencies = [
  "async-channel",
  "async-trait",
  "bytes",
- "env_logger",
+ "env_logger 0.8.4",
  "futures",
  "futures-core",
  "futures-util",
@@ -1240,6 +1253,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "combine",
+ "env_logger 0.9.0",
  "futures",
  "http 0.1.0",
  "log",
@@ -1493,7 +1507,7 @@ dependencies = [
  "auditable-build",
  "bytes",
  "config",
- "env_logger",
+ "env_logger 0.8.4",
  "escargot",
  "float-cmp",
  "fs",
@@ -1571,7 +1585,7 @@ version = "0.1.0"
 dependencies = [
  "async-compression",
  "bytes",
- "env_logger",
+ "env_logger 0.8.4",
  "futures",
  "hyper",
  "hyper-rustls 0.23.0",
@@ -2745,7 +2759,7 @@ version = "0.1.0"
 dependencies = [
  "async-channel",
  "derivative",
- "env_logger",
+ "env_logger 0.8.4",
  "futures",
  "log",
  "rocksdb",
@@ -2958,6 +2972,7 @@ version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41effe7cfa8af36f439fac33861b66b049edc6f9a32331e2312660529c1c24ad"
 dependencies = [
+ "itoa",
  "libc",
 ]
 
