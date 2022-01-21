@@ -1,7 +1,7 @@
 use crate::libjournald::stream::{Path, Stream};
 use futures::stream::{select_all, SelectAll, Stream as FutureStream};
 use http::types::body::LineBuilder;
-use log::{info, warn};
+use log::{debug, info, warn};
 use std::path::PathBuf;
 
 pub fn create_source(paths: &[PathBuf]) -> impl FutureStream<Item = LineBuilder> {
@@ -20,6 +20,7 @@ pub fn create_source(paths: &[PathBuf]) -> impl FutureStream<Item = LineBuilder>
         info!("monitoring journald path {:?}", path);
     }
 
+    debug!("initialising journald streams");
     let mut streams: Vec<Stream> = journal_directories
         .into_iter()
         .map(|dir| Stream::new(Path::Directory(dir)))

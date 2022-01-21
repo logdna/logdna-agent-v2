@@ -87,9 +87,12 @@ impl Stream {
                 }
             };
 
+
+            trace!("polling lines from journal");
             while let Ok(None) = stop_receiver.try_recv() {
                 match journal.process_next_record() {
                     Ok(Some(line)) => {
+                        trace!("retreived line from journal");
                         if let Err(e) = sender.send(line) {
                             warn!(
                                 "journald's worker thread unable to communicate with main thread: {}",
@@ -102,7 +105,6 @@ impl Stream {
                     }
                     Ok(None) => {
                         trace!("received empty record from journal");
-                        continue;
                     }
                     Err(JournalError::RecordMissingField(e)) => {
                         warn!("dropping journald record: {:?}", e);
@@ -286,9 +288,9 @@ mod tests {
     use super::*;
     use futures::stream::StreamExt;
     use serial_test::serial;
-    use std::{thread::sleep, time::Duration};
+    use std::time::Duration;
     use systemd::journal;
-    use tokio::time::timeout;
+    use tokio::time::{sleep, timeout};
 
     const JOURNALD_LOG_PATH: &str = "/var/log/journal";
 
@@ -299,7 +301,7 @@ mod tests {
     async fn reader_gets_new_logs() {
         let _ = env_logger::Builder::from_default_env().try_init();
         journal::print(1, "Reader got the correct line!");
-        sleep(Duration::from_millis(50));
+        sleep(Duration::from_millis(50)).await;
         let mut reader = Reader::new(Path::Directory(JOURNALD_LOG_PATH.into()));
 
         let record_status = reader.process_next_record();
@@ -317,10 +319,10 @@ mod tests {
     #[serial]
     async fn stream_gets_new_logs() {
         let _ = env_logger::Builder::from_default_env().try_init();
-        let mut stream = Stream::new(Path::Directory(JOURNALD_LOG_PATH.into()));
-        sleep(Duration::from_millis(50));
         journal::print(1, "Reader got the correct line 1!");
-        sleep(Duration::from_millis(50));
+        sleep(Duration::from_millis(50)).await;
+        let mut stream = Stream::new(Path::Directory(JOURNALD_LOG_PATH.into()));
+        sleep(Duration::from_millis(50)).await;
         journal::print(1, "Reader got the correct line 2!");
 
         let first_line = match timeout(Duration::from_millis(500), stream.next()).await {
