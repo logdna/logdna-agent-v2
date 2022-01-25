@@ -1495,6 +1495,7 @@ dependencies = [
  "config",
  "env_logger",
  "escargot",
+ "float-cmp",
  "fs",
  "futures",
  "http 0.1.0",

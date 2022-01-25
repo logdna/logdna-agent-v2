@@ -28,8 +28,6 @@ lazy_static! {
         register_int_gauge!("logdna_agent_fs_files", "Number of open files").unwrap();
     static ref FS_BYTES: IntCounter =
         register_int_counter!("logdna_agent_fs_bytes", "Number of bytes read by the Filesystem module").unwrap();
-    static ref FS_PARTIAL_READS: IntCounter =
-        register_int_counter!("logdna_agent_fs_partial_reads", "Filesystem partial reads").unwrap();
     static ref INGEST_RETRIES: IntCounter = register_int_counter!(
         "logdna_agent_ingest_retries",
         "Retry attempts made to the http ingestion service"
@@ -169,7 +167,6 @@ impl Metrics {
                 "lines" => FS_LINES.get(),
                 "bytes" => FS_BYTES.get(),
                 "files_tracked" => FS_FILES.get(),
-                "partial_reads" => FS_PARTIAL_READS.get(),
             },
             // CPU and memory metrics are exported to Prometheus by default only on linux.
             // We still rely on jemalloc stats for this periodic printing the memory metrics
@@ -248,10 +245,6 @@ impl Fs {
     pub fn add_bytes(&self, num: u64) {
         FS_BYTES.inc_by(num);
     }
-
-    pub fn increment_partial_reads(&self) {
-        FS_PARTIAL_READS.inc();
-    }
 }
 
 pub struct Memory {
@@ -310,30 +303,33 @@ impl Http {
     }
 
     pub fn add_request_success(&self, start: Instant) {
+        let duration = start.elapsed();
         INGEST_REQUEST_DURATION
             .with_label_values(&[labels::SUCCESS])
-            .observe(elapsed(start));
+            .observe(elapsed_millis(&duration));
         INGEST_REQUEST_DURATION_SECONDS
             .with_label_values(&[labels::SUCCESS])
-            .observe(elapsed_seconds(start))
+            .observe(elapsed_seconds(&duration))
     }
 
     pub fn add_request_failure(&self, start: Instant) {
+        let duration = start.elapsed();
         INGEST_REQUEST_DURATION
             .with_label_values(&[labels::FAILURE])
-            .observe(elapsed(start));
+            .observe(elapsed_millis(&duration));
         INGEST_REQUEST_DURATION_SECONDS
             .with_label_values(&[labels::FAILURE])
-            .observe(elapsed_seconds(start))
+            .observe(elapsed_seconds(&duration))
     }
 
     pub fn add_request_timeout(&self, start: Instant) {
+        let duration = start.elapsed();
         INGEST_REQUEST_DURATION
             .with_label_values(&[labels::TIMEOUT])
-            .observe(elapsed(start));
+            .observe(elapsed_millis(&duration));
         INGEST_REQUEST_DURATION_SECONDS
             .with_label_values(&[labels::TIMEOUT])
-            .observe(elapsed_seconds(start))
+            .observe(elapsed_seconds(&duration))
     }
 
     pub fn increment_retries(&self) {
@@ -383,11 +379,11 @@ impl Journald {
     }
 }
 
-fn elapsed(start: Instant) -> f64 {
-    start.elapsed().as_micros() as f64 / 1_000.0
+fn elapsed_millis(span: &Duration) -> f64 {
+    span.as_micros() as f64 / 1_000.0
 }
-fn elapsed_seconds(start: Instant) -> f64 {
-    start.elapsed().as_secs_f64()
+fn elapsed_seconds(span: &Duration) -> f64 {
+    span.as_secs_f64()
 }
 
 #[derive(Default)]
@@ -429,7 +425,6 @@ mod tests {
         METRICS.fs.increment_deletes();
         METRICS.fs.increment_writes();
         METRICS.fs.increment_lines();
-        METRICS.fs.increment_partial_reads();
         METRICS.fs.add_bytes(123);
         METRICS.http.add_request_size(12);
         METRICS
