@@ -1,13 +1,12 @@
 use common::AgentSettings;
 pub use common::*;
-use hyper::StatusCode;
-use prometheus_parse::{Sample, Scrape, Value};
+use prometheus_parse::Value;
 use rand::Rng;
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use tempfile::tempdir;
 
@@ -305,74 +304,6 @@ async fn gen_log_data(file: &mut File) {
     tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
 }
 
-#[derive(Debug)]
-struct MetricRec {
-    timestamp_ms: i64,
-    raw_value: f64,
-}
-
-impl MetricRec {
-    fn new(timestamp_ms: i64, raw_value: f64) -> Self {
-        Self {
-            timestamp_ms,
-            raw_value,
-        }
-    }
-}
-
-#[derive(Debug)]
-struct TestMetrics {
-    min_timestamp_ms: AtomicI64,
-    max_timestamp_ms: AtomicI64,
-    retry_pending: Vec<MetricRec>,
-    retry_storage_used: Vec<MetricRec>,
-    retry_success: Vec<MetricRec>,
-    retry_failure: Vec<MetricRec>,
-}
-
-impl TestMetrics {
-    fn new() -> Self {
-        TestMetrics {
-            min_timestamp_ms: AtomicI64::new(i64::MAX),
-            max_timestamp_ms: AtomicI64::new(i64::MIN),
-            retry_pending: Vec::new(),
-            retry_storage_used: Vec::new(),
-            retry_success: Vec::new(),
-            retry_failure: Vec::new(),
-        }
-    }
-
-    fn record(&mut self, sample: &Sample) {
-        let ts = sample.timestamp.timestamp_millis();
-        self.min_timestamp_ms.fetch_min(ts, Ordering::Relaxed);
-        self.max_timestamp_ms.fetch_max(ts, Ordering::Relaxed);
-
-        match sample.metric.as_str() {
-            "logdna_agent_retry_pending" => {
-                if let Value::Gauge(v) = sample.value {
-                    self.retry_pending.push(MetricRec::new(ts, v));
-                }
-            }
-            "logdna_agent_retry_storage_used" => {
-                if let Value::Gauge(v) = sample.value {
-                    self.retry_storage_used.push(MetricRec::new(ts, v));
-                }
-            }
-            "logdna_agent_ingest_retries_success" => {
-                if let Value::Counter(c) = sample.value {
-                    self.retry_success.push(MetricRec::new(ts, c));
-                }
-            }
-            "logdna_agent_ingest_retries_failure" => {
-                if let Value::Counter(c) = sample.value {
-                    self.retry_failure.push(MetricRec::new(ts, c));
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_retry_metrics_emitted() {
@@ -420,29 +351,9 @@ async fn test_retry_metrics_emitted() {
 
     // This creates a new thread that scrapes the metrics from the agent process and
     // stores all the values for the retry metrics under test.
-    let scrape_metrics = Arc::new(AtomicBool::new(true));
-    let rec_metrics = Arc::new(Mutex::new(TestMetrics::new()));
+    let recorder = MetricsRecorder::start(metrics_port, Some(Duration::from_millis(100)));
 
-    let metrics_handle = tokio::spawn({
-        let scrape_metrics = scrape_metrics.clone();
-        let rec_metrics = rec_metrics.clone();
-
-        async move {
-            while scrape_metrics.load(Ordering::Relaxed) {
-                if let Ok((StatusCode::OK, Some(data))) =
-                    common::fetch_agent_metrics(metrics_port).await
-                {
-                    let lines = data.lines().map(|l| Ok(l.to_string()));
-                    for sample in Scrape::parse(lines).unwrap().samples {
-                        rec_metrics.lock().as_mut().unwrap().record(&sample);
-                    }
-                }
-                tokio::time::sleep(Duration::from_millis(100)).await;
-            }
-        }
-    });
-
-    let (server_result, _, _) = tokio::join!(server, metrics_handle, async move {
+    let (ingest_result, metrics_result) = tokio::join!(server, async move {
         // Wait for the agent to bootstrap and then start generating some log data
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         gen_log_data(&mut log_file).await;
@@ -458,76 +369,163 @@ async fn test_retry_metrics_emitted() {
         tokio::time::sleep(tokio::time::Duration::from_millis(6000)).await;
         gen_log_data(&mut log_file).await;
 
-        // Shut down the scraper and ingest server
-        scrape_metrics.store(false, Ordering::Relaxed);
         shutdown_ingest();
+        recorder.stop().await
     });
 
-    server_result.unwrap();
+    // Shut down processes
+    ingest_result.unwrap();
     agent_handle.kill().unwrap();
+
+    // Extract a set of metrics that are revelent for this test
+    let retry_pending = metrics_result
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Gauge(raw) if s.metric.as_str() == "logdna_agent_retry_pending" => {
+                Some((s.timestamp.timestamp_millis(), raw))
+            }
+            _ => None,
+        })
+        .collect::<Vec<(i64, f64)>>();
+
+    let retries = metrics_result
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Counter(raw) if s.metric.as_str() == "logdna_agent_ingest_retries" => {
+                Some((s.timestamp.timestamp_millis(), raw))
+            }
+            _ => None,
+        })
+        .collect::<Vec<(i64, f64)>>();
+
+    let retry_success = metrics_result
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Counter(raw) if s.metric.as_str() == "logdna_agent_ingest_retries_success" => {
+                Some((s.timestamp.timestamp_millis(), raw))
+            }
+            _ => None,
+        })
+        .collect::<Vec<(i64, f64)>>();
+
+    let retry_failure = metrics_result
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Counter(raw) if s.metric.as_str() == "logdna_agent_ingest_retries_failure" => {
+                Some((s.timestamp.timestamp_millis(), raw))
+            }
+            _ => None,
+        })
+        .collect::<Vec<(i64, f64)>>();
+
+    let retry_storage_used = metrics_result
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Gauge(raw) if s.metric.as_str() == "logdna_agent_retry_storage_used" => {
+                Some((s.timestamp.timestamp_millis(), raw))
+            }
+            _ => None,
+        })
+        .collect::<Vec<(i64, f64)>>();
+
+    let min_timestamp_ms = metrics_result
+        .iter()
+        .map(|s| s.timestamp.timestamp_millis())
+        .min()
+        .unwrap();
+
+    let max_timestamp_ms = metrics_result
+        .iter()
+        .map(|s| s.timestamp.timestamp_millis())
+        .max()
+        .unwrap();
 
     // Assertions
     //
     // There should be at least 1 metric recorded for each of the retry metrics.
-    let rec_metrics = rec_metrics.lock().unwrap();
-
-    assert!(!rec_metrics.retry_pending.is_empty());
-    assert!(!rec_metrics.retry_success.is_empty());
-    assert!(!rec_metrics.retry_failure.is_empty());
-    assert!(!rec_metrics.retry_storage_used.is_empty());
+    assert!(!retry_pending.is_empty());
+    assert!(!retry_success.is_empty());
+    assert!(!retry_failure.is_empty());
+    assert!(!retry_storage_used.is_empty());
 
     // The pending count should start and end at 0 since the agent starts normal and
     // then recovers. This metric is a gauge and is allowed to move up and down.
-    let pending_first = rec_metrics.retry_pending.get(0).unwrap();
-    let pending_last = rec_metrics.retry_pending.iter().last().unwrap();
-    assert!(pending_first.raw_value < f64::EPSILON);
-    assert!(pending_last.raw_value < f64::EPSILON);
+    let pending_first = retry_pending.get(0).unwrap();
+    let pending_last = retry_pending.iter().last().unwrap();
+    assert!(pending_first.1 < f64::EPSILON);
+    assert!(pending_last.1 < f64::EPSILON);
 
     // The pending count should have some recorded value that greater than 0 if the
     // agent did actually enter a retry loop.
-    rec_metrics.retry_pending.iter().any(|r| r.raw_value > 0.0);
+    retry_pending.iter().any(|r| r.1 > 0.0);
 
     // The retry success/failure counts first metric data point should only occur after
     // the first recorded metric and continue since they are counters and counters only
     // emit on the first increment.
-    let success_first = rec_metrics.retry_success.get(0).unwrap();
-    let failure_first = rec_metrics.retry_failure.get(0).unwrap();
-    assert!(rec_metrics.min_timestamp_ms.load(Ordering::Relaxed) < success_first.timestamp_ms);
-    assert!(rec_metrics.min_timestamp_ms.load(Ordering::Relaxed) < failure_first.timestamp_ms);
+    let success_first = retry_success.get(0).unwrap();
+    let failure_first = retry_failure.get(0).unwrap();
+    assert!(min_timestamp_ms < success_first.0);
+    assert!(min_timestamp_ms < failure_first.0);
 
-    let success_last = rec_metrics.retry_success.iter().last().unwrap();
-    let failure_last = rec_metrics.retry_failure.iter().last().unwrap();
-    assert!(success_last.timestamp_ms <= rec_metrics.max_timestamp_ms.load(Ordering::Relaxed));
-    assert!(failure_last.timestamp_ms <= rec_metrics.max_timestamp_ms.load(Ordering::Relaxed));
+    let success_last = retry_success.iter().last().unwrap();
+    let failure_last = retry_failure.iter().last().unwrap();
+    assert!(success_last.0 <= max_timestamp_ms);
+    assert!(failure_last.0 <= max_timestamp_ms);
 
     // Each of the success counts should be greater than or equal to the prior count.
-    assert!(rec_metrics.retry_success.windows(2).all(|w| match w {
-        [a, b] => a.raw_value <= b.raw_value,
+    assert!(retry_success.windows(2).all(|w| match w {
+        [a, b] => a.1 <= b.1,
         _ => false,
     }));
 
     // Each of the failure counts should be greater than or equal to the prior count.
-    assert!(rec_metrics.retry_failure.windows(2).all(|w| match w {
-        [a, b] => a.raw_value <= b.raw_value,
+    assert!(retry_failure.windows(2).all(|w| match w {
+        [a, b] => a.1 <= b.1,
         _ => false,
     }));
+
+    // The total retries should be equal to or greater than the sum of successful and failed retries.
+    // Depending on when the metrics are scraped and where in the code the execution is, e.g. retry
+    // is currently in process, we may have an attempt without a success or failure. The pending
+    // count is really tracking only number of requests on disk.
+    //
+    // This assertion tries to find a common data range to compare based on timestamp since the
+    // metrics may have been running and scaped before the actual test case starts. We also track
+    // the starting count values to reset the series of data to ignore any values held prior to
+    // scraping.
+    let (attempts_start_ts, attempt_count_basis) = retries.get(0).unwrap();
+    let (success_start_ts, success_count_basis) = retry_success.get(0).unwrap();
+    let (failure_start_ts, failure_count_basis) = retry_failure.get(0).unwrap();
+    let compare_window_start = std::cmp::max(
+        std::cmp::max(*attempts_start_ts, *success_start_ts),
+        *failure_start_ts,
+    );
+
+    let attempt_counts = retries
+        .iter()
+        .filter(|(ts, _)| *ts >= compare_window_start)
+        .map(|(_, count)| *count - attempt_count_basis);
+
+    let success_counts = retry_success
+        .iter()
+        .filter(|(ts, _)| *ts >= compare_window_start)
+        .map(|(_, count)| *count - success_count_basis);
+
+    let failure_counts = retry_failure
+        .iter()
+        .filter(|(ts, _)| *ts >= compare_window_start)
+        .map(|(_, count)| *count - failure_count_basis);
+
+    assert!(success_counts
+        .zip(failure_counts)
+        .zip(attempt_counts)
+        .all(|((success, failure), total)| { success + failure <= total }));
 
     // The amount of space used for retries should increase but then eventually decrease to to zero
     // as the agent recovers. Note that zero values won't appear at first since nothing has reported
     // a metric until a retry attempt.
-    assert!(rec_metrics
-        .retry_storage_used
-        .iter()
-        .any(|r| r.raw_value > 0.0));
-    assert!(
-        rec_metrics
-            .retry_storage_used
-            .iter()
-            .last()
-            .unwrap()
-            .raw_value
-            < f64::EPSILON
-    );
+    assert!(retry_storage_used.iter().any(|r| r.1 > 0.0));
+    assert!(retry_storage_used.iter().last().unwrap().1 < f64::EPSILON);
 }
 
 /// Creates a temp config file with required fields and the provided parameters

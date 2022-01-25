@@ -205,6 +205,7 @@ impl Middleware for K8sMetadata {
         });
     }
 
+    #[allow(clippy::question_mark)]
     fn process<'a>(&self, line: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
         if let Some(file_name) = line.get_file() {
             if let Some(key) = parse_container_path(file_name) {

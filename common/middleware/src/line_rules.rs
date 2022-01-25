@@ -125,6 +125,7 @@ impl LineRules {
             redacted.extend_from_slice(&value[index..]);
         }
 
+        #[allow(clippy::question_mark)]
         if line.set_line_buffer(redacted).is_err() {
             return Status::Skip;
         }
