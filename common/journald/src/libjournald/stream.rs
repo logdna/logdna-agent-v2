@@ -1,7 +1,7 @@
 use crate::libjournald::error::JournalError;
 use futures::{channel::oneshot, stream::Stream as FutureStream};
 use http::types::body::LineBuilder;
-use log::{info, warn, trace};
+use log::{info, trace, warn};
 use metrics::Metrics;
 use std::{
     mem::drop,
@@ -86,7 +86,6 @@ impl Stream {
                     waker.wake();
                 }
             };
-
 
             trace!("polling lines from journal");
             while let Ok(None) = stop_receiver.try_recv() {
@@ -217,7 +216,7 @@ impl Reader {
             Ok(Some(record)) => record,
             Ok(None) => {
                 trace!("got empty entry from journal");
-                return Ok(None)
+                return Ok(None);
             }
             Err(e) => return Err(JournalError::BadRead(e)),
         };
@@ -233,10 +232,17 @@ impl Reader {
             Some(duration) => {
                 // Reject any records with a timestamp older than 30 seconds
                 if duration >= Duration::from_secs(30) {
-                    if self.last_warn.map_or(true, |last_warn|last_warn.elapsed() > WARN_INTERVAL) {
+                    if self
+                        .last_warn
+                        .map_or(true, |last_warn| last_warn.elapsed() > WARN_INTERVAL)
+                    {
                         self.last_warn = Some(Instant::now());
                         info!("Received a stale journald record, reseeking pointer");
-                        trace!("stale record timestamp: {:#?} now: {:#?}", (now - duration), now)
+                        trace!(
+                            "stale record timestamp: {:#?} now: {:#?}",
+                            (now - duration),
+                            now
+                        )
                     }
                     trace!("seeking to end of journal");
                     if let Err(e) = self.reader.seek(JournalSeek::Tail) {
