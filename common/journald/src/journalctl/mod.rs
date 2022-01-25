@@ -296,14 +296,10 @@ pub fn create_journalctl_source() -> Result<impl Stream<Item = LineBuilder>, std
 
 #[cfg(test)]
 mod test {
-    use super::{create_journalctl_source, JournaldExportDecoder};
-
+    use super::JournaldExportDecoder;
     use futures::prelude::*;
     use partial_io::{PartialAsyncRead, PartialOp};
     use std::io::Cursor;
-    use std::time::Duration;
-    use systemd::journal;
-    use tokio::time::{sleep, timeout};
     use tokio_util::codec::FramedRead;
 
     #[tokio::test]
@@ -492,8 +488,13 @@ _SOURCE_REALTIME_TIMESTAMP=1623323451155218
         );
     }
 
+    #[cfg(feature = "libjournald")]
     #[tokio::test]
     async fn stream_gets_new_logs() {
+        use super::create_journalctl_source;
+        use std::time::Duration;
+        use systemd::journal;
+        use tokio::time::{sleep, timeout};
         let _ = env_logger::Builder::from_default_env().try_init();
         journal::print(1, "Reader got the correct line 1!");
         sleep(Duration::from_millis(50)).await;
