@@ -11,7 +11,7 @@ path = "bin/throughput.rs"
 
 [dependencies]
 async-channel = "1.6"
-escargot = "0.5"
+escargot = { version = "0.5", features = ["print"] }
 file-rotate = "0.4"
 indicatif = "0.16"
 logdna_mock_ingester = { package = "logdna-mock-ingester", path = "../common/test/mock-ingester" }
