@@ -215,9 +215,7 @@ async fn main() -> Result<(), std::io::Error> {
                 &format!("{}", agent_handle.id()),
                 "-o",
                 "/tmp/flamegraph.svg",
-            ])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+            ]);
 
         Some(flamegraph_cmd.spawn().unwrap())
     } else {
