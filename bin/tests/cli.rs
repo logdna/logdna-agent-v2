@@ -5,7 +5,7 @@ use std::os::unix::fs::MetadataExt;
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::thread::{self, sleep};
+use std::thread;
 use std::time::Duration;
 
 use wait_timeout::ChildExt;
@@ -587,8 +587,8 @@ fn test_directory_symlinks_delete() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg_attr(not(target_os = "linux"), ignore)]
 async fn test_journald_support() {
-    assert_eq!(journal::print(6, "Sample info"), 0);
-    sleep(Duration::from_millis(1000));
+    let _ = env_logger::Builder::from_default_env().try_init();
+    tokio::time::sleep(Duration::from_millis(1000)).await;
     let dir = "/var/log/journal";
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let mut settings = AgentSettings::with_mock_ingester("/var/log/journal", &addr);
@@ -596,10 +596,14 @@ async fn test_journald_support() {
     settings.features = Some("libjournald");
     settings.exclusion_regex = Some(r"^(?!/var/log/journal).*$");
     let mut agent_handle = common::spawn_agent(settings);
-    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
 
-    common::wait_for_event("monitoring journald path", &mut stderr_reader);
-    sleep(Duration::from_millis(1000));
+    common::wait_for_event("monitoring journald path", &mut agent_stderr);
+    consume_output(agent_stderr.into_inner());
+
+    assert_eq!(journal::print(6, "Sample info"), 0);
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    common::assert_agent_running(&mut agent_handle);
 
     let (server_result, _) = tokio::join!(server, async {
         for _ in 0..10 {
@@ -629,18 +633,24 @@ async fn test_journald_support() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg_attr(not(target_os = "linux"), ignore)]
 async fn test_journalctl_support() {
+    let _ = env_logger::Builder::from_default_env().try_init();
     assert_eq!(journal::print(6, "Sample info"), 0);
-    sleep(Duration::from_millis(1000));
+    tokio::time::sleep(Duration::from_millis(1000)).await;
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let mut settings = AgentSettings::with_mock_ingester("/var/log/journal", &addr);
     settings.journald_dirs = None;
     settings.exclusion_regex = Some(r"^(?!/var/log/journal).*$");
     let mut agent_handle = common::spawn_agent(settings);
-    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
 
-    sleep(Duration::from_millis(500));
-    common::wait_for_event("Listening to journalctl", &mut stderr_reader);
-    sleep(Duration::from_millis(500));
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    common::wait_for_event("Listening to journalctl", &mut agent_stderr);
+    consume_output(agent_stderr.into_inner());
+
+    assert_eq!(journal::print(6, "Sample info"), 0);
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    common::assert_agent_running(&mut agent_handle);
 
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
@@ -651,7 +661,7 @@ async fn test_journalctl_support() {
         }
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         let map = received.lock().await;
         let file_info = map.values().next().unwrap();
