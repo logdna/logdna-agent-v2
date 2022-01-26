@@ -25,7 +25,16 @@ docker build -t "$image" --build-arg "ARCH=$ARCH" -f "$curpath/journald/Dockerfi
 trap _term TERM
 trap _term INT
 
-journald_args="--tmpfs /tmp --tmpfs /run --tmpfs /run/lock -v /sys/fs/cgroup:/sys/fs/cgroup:ro"
+journald_args="--tmpfs /tmp --tmpfs /run --tmpfs /run/lock"
+
+# Handle cgroups v2 and v1
+if [ -f "/sys/fs/cgroup/cgroup.controllers" ]; then # the kernel has cgroup v2 enabled
+  journald_args="$journald_args --privileged --cap-add SYS_ADMIN --security-opt seccomp=unconfined --cgroup-parent=docker.slice --cgroupns private"
+else
+  journald_args="$journald_args -v /sys/fs/cgroup:/sys/fs/cgroup:ro"
+
+fi
+
 extra_args="$(get_volume_mounts "$1" "$image") $(get_sccache_args) $journald_args"
 
 # shellcheck disable=SC2086

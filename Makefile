@@ -164,7 +164,7 @@ k8s-test: ## Run integration tests using k8s kind
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
 	$(eval FEATURES := $(FEATURES) journald_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald -- --nocapture"
+	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald -- --nocapture --test-threads=1"
 
 .PHONY:bench
 bench:

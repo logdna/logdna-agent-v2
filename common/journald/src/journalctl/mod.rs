@@ -19,7 +19,7 @@ use combine::{
 };
 
 use futures::{Stream, StreamExt};
-use log::{info, warn};
+use log::{info, trace, warn};
 use tokio_util::codec::{Decoder, FramedRead};
 
 use std::convert::TryInto;
@@ -276,7 +276,10 @@ pub fn create_journalctl_source() -> Result<impl Stream<Item = LineBuilder>, std
         FramedRead::new(journalctl_stdout, decoder).filter_map(|r| async move {
             match r {
                 Ok(record) => match JournaldExportDecoder::process_default_record(&record) {
-                    Ok(r) => r,
+                    Ok(r) => {
+                        trace!("received a record from journalctl");
+                        r
+                    }
                     Err(e) => {
                         warn!("Encountered error in journald record: {}", e);
                         None
@@ -483,5 +486,55 @@ _SOURCE_REALTIME_TIMESTAMP=1623323451155218
             values[3].get("INVOCATION_ID").unwrap().to_string_lossy(),
             String::new()
         );
+    }
+
+    #[cfg(feature = "libjournald")]
+    #[tokio::test]
+    async fn stream_gets_new_logs() {
+        use super::create_journalctl_source;
+        use std::time::Duration;
+        use systemd::journal;
+        use tokio::time::{sleep, timeout};
+        let _ = env_logger::Builder::from_default_env().try_init();
+        journal::print(1, "Reader got the correct line 1!");
+        sleep(Duration::from_millis(50)).await;
+        let mut stream = Box::pin(create_journalctl_source().unwrap());
+        sleep(Duration::from_millis(50)).await;
+        journal::print(1, "Reader got the correct line 2!");
+
+        let first_line = match timeout(Duration::from_millis(500), stream.next()).await {
+            Err(e) => {
+                panic!("unable to grab first batch of lines from stream: {:?}", e);
+            }
+            Ok(None) => {
+                panic!("expected to get a line from journald stream");
+            }
+            Ok(Some(batch)) => batch,
+        };
+
+        assert!(first_line.line.is_some());
+        if let Some(line_str) = &first_line.line {
+            assert_eq!(line_str, "Reader got the correct line 1!");
+        }
+
+        let second_line = match timeout(Duration::from_millis(500), stream.next()).await {
+            Err(e) => {
+                panic!("unable to grab second batch of lines from stream: {:?}", e);
+            }
+            Ok(None) => {
+                panic!("expected to get a line from journald stream");
+            }
+            Ok(Some(batch)) => batch,
+        };
+
+        assert!(second_line.line.is_some());
+        if let Some(line_str) = &second_line.line {
+            assert_eq!(line_str, "Reader got the correct line 2!");
+        }
+
+        match timeout(Duration::from_millis(50), stream.next()).await {
+            Err(_) => {}
+            _ => panic!("did not expect any more events from journald stream"),
+        }
     }
 }

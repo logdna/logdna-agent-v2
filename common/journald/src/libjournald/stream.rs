@@ -1,9 +1,8 @@
 use crate::libjournald::error::JournalError;
 use futures::{channel::oneshot, stream::Stream as FutureStream};
 use http::types::body::LineBuilder;
-use log::{info, warn};
+use log::{info, trace, warn};
 use metrics::Metrics;
-use std::time::Instant;
 use std::{
     mem::drop,
     path::PathBuf,
@@ -14,8 +13,9 @@ use std::{
     },
     task::{Context, Poll, Waker},
     thread::{self, JoinHandle},
-    time::{Duration, SystemTime},
+    time::{Duration, Instant, SystemTime},
 };
+
 use systemd::journal::{Journal, JournalFiles, JournalRecord, JournalSeek};
 
 const KEY_MESSAGE: &str = "MESSAGE";
@@ -87,9 +87,11 @@ impl Stream {
                 }
             };
 
+            trace!("polling lines from journal");
             while let Ok(None) = stop_receiver.try_recv() {
                 match journal.process_next_record() {
                     Ok(Some(line)) => {
+                        trace!("retreived line from journal");
                         if let Err(e) = sender.send(line) {
                             warn!(
                                 "journald's worker thread unable to communicate with main thread: {}",
@@ -97,10 +99,12 @@ impl Stream {
                             );
                             break;
                         }
-
+                        trace!("received record from journal");
                         call_waker();
                     }
-                    Ok(None) => {}
+                    Ok(None) => {
+                        trace!("received empty record from journal");
+                    }
                     Err(JournalError::RecordMissingField(e)) => {
                         warn!("dropping journald record: {:?}", e);
                     }
@@ -184,7 +188,7 @@ impl Drop for Stream {
 
 struct Reader {
     reader: Journal,
-    last_warn: Instant,
+    last_warn: Option<Instant>,
 }
 
 impl Reader {
@@ -203,32 +207,49 @@ impl Reader {
 
         Self {
             reader,
-            last_warn: Instant::now(),
+            last_warn: None,
         }
     }
 
     fn process_next_record(&mut self) -> Result<Option<LineBuilder>, JournalError> {
         let record = match self.reader.next_entry() {
             Ok(Some(record)) => record,
-            Ok(None) => return Ok(None),
+            Ok(None) => {
+                trace!("got empty entry from journal");
+                return Ok(None);
+            }
             Err(e) => return Err(JournalError::BadRead(e)),
         };
 
+        let now = SystemTime::now();
         match self
             .reader
             .timestamp()
             .ok()
-            .map(|timestamp| SystemTime::now().duration_since(timestamp).ok())
+            .map(|timestamp| now.duration_since(timestamp).ok())
             .flatten()
         {
             Some(duration) => {
                 // Reject any records with a timestamp older than 30 seconds
                 if duration >= Duration::from_secs(30) {
-                    if self.last_warn.elapsed() > WARN_INTERVAL {
-                        self.last_warn = Instant::now();
+                    if self
+                        .last_warn
+                        .map_or(true, |last_warn| last_warn.elapsed() > WARN_INTERVAL)
+                    {
+                        self.last_warn = Some(Instant::now());
                         info!("Received a stale journald record, reseeking pointer");
+                        trace!(
+                            "stale record timestamp: {:#?} now: {:#?}",
+                            (now - duration),
+                            now
+                        )
                     }
+                    trace!("seeking to end of journal");
                     if let Err(e) = self.reader.seek(JournalSeek::Tail) {
+                        return Err(JournalError::BadRead(e));
+                    }
+                    // Hack to fix https://github.com/systemd/systemd/issues/9934
+                    if let Err(e) = self.reader.previous() {
                         return Err(JournalError::BadRead(e));
                     }
                     // Skip old records
@@ -273,9 +294,9 @@ mod tests {
     use super::*;
     use futures::stream::StreamExt;
     use serial_test::serial;
-    use std::{thread::sleep, time::Duration};
+    use std::time::Duration;
     use systemd::journal;
-    use tokio::time::timeout;
+    use tokio::time::{sleep, timeout};
 
     const JOURNALD_LOG_PATH: &str = "/var/log/journal";
 
@@ -284,8 +305,9 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn reader_gets_new_logs() {
+        let _ = env_logger::Builder::from_default_env().try_init();
         journal::print(1, "Reader got the correct line!");
-        sleep(Duration::from_millis(50));
+        sleep(Duration::from_millis(50)).await;
         let mut reader = Reader::new(Path::Directory(JOURNALD_LOG_PATH.into()));
 
         let record_status = reader.process_next_record();
@@ -302,10 +324,11 @@ mod tests {
     #[tokio::test]
     #[serial]
     async fn stream_gets_new_logs() {
+        let _ = env_logger::Builder::from_default_env().try_init();
         journal::print(1, "Reader got the correct line 1!");
-        sleep(Duration::from_millis(50));
+        sleep(Duration::from_millis(50)).await;
         let mut stream = Stream::new(Path::Directory(JOURNALD_LOG_PATH.into()));
-        sleep(Duration::from_millis(50));
+        sleep(Duration::from_millis(50)).await;
         journal::print(1, "Reader got the correct line 2!");
 
         let first_line = match timeout(Duration::from_millis(500), stream.next()).await {
