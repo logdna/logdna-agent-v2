@@ -209,15 +209,12 @@ async fn main() -> Result<(), std::io::Error> {
     let flamegraph_handle = if opt.profile {
         wpb.println("Spawning flamegraph");
         let mut flamegraph_cmd = std::process::Command::new("flamegraph");
-        let flamegraph_cmd = flamegraph_cmd
-            .args([
-                "-p",
-                &format!("{}", agent_handle.id()),
-                "-o",
-                "/tmp/flamegraph.svg",
-            ])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
+        let flamegraph_cmd = flamegraph_cmd.args([
+            "-p",
+            &format!("{}", agent_handle.id()),
+            "-o",
+            "/tmp/flamegraph.svg",
+        ]);
 
         Some(flamegraph_cmd.spawn().unwrap())
     } else {
@@ -232,11 +229,12 @@ async fn main() -> Result<(), std::io::Error> {
 
         let line_counter = line_counter.clone();
         async move {
-            let mut out_file: PathBuf = out_dir.clone();
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            out_file.push("test.log");
+            let mut out_file: PathBuf = out_dir.clone();
+            out_file.push("test1.log");
 
-            tokio::task::spawn_blocking({
+            let writer_1 = tokio::task::spawn_blocking({
+                let words = Vec::from(&*words).clone();
                 let out_file = out_file.clone();
                 let wpb = wpb.clone();
                 move || {
@@ -251,7 +249,7 @@ async fn main() -> Result<(), std::io::Error> {
                     for word in words.iter().cycle().take(line_count / 20) {
                         count += 1;
                         if count % 10_000 == 0 {
-                            std::thread::sleep(std::time::Duration::from_millis(50));
+                            std::thread::sleep(std::time::Duration::from_millis(12));
                             wpb.inc(10_000);
                             if count % 100_000 == 0 {
                                 log.flush().unwrap();
@@ -265,7 +263,7 @@ async fn main() -> Result<(), std::io::Error> {
                         count += 1;
                         if count % 10_000 == 0 {
                             wpb.inc(10_000);
-                            std::thread::sleep(std::time::Duration::from_millis(50));
+                            std::thread::sleep(std::time::Duration::from_millis(12));
                             if count % 100_000 == 0 {
                                 log.flush().unwrap();
                             }
@@ -273,9 +271,54 @@ async fn main() -> Result<(), std::io::Error> {
                         writeln!(log, "{}", word).unwrap();
                     }
                 }
-            })
-            .await
-            .unwrap();
+            });
+
+            let mut out_file: PathBuf = out_dir.clone();
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            out_file.push("test2.log");
+
+            let writer_2 = tokio::task::spawn_blocking({
+                let out_file = out_file.clone();
+                let wpb = wpb.clone();
+                move || {
+                    let mut count = 0;
+                    let mut log = std::io::BufWriter::new(FileRotate::new(
+                        out_file.clone(),
+                        RotationMode::BytesSurpassed(file_size),
+                        file_history,
+                    ));
+
+                    // Write first 5% of logs
+                    for word in words.iter().cycle().take(line_count / 20) {
+                        count += 1;
+                        if count % 10_000 == 0 {
+                            std::thread::sleep(std::time::Duration::from_millis(12));
+                            wpb.inc(10_000);
+                            if count % 100_000 == 0 {
+                                log.flush().unwrap();
+                            }
+                        }
+                        writeln!(log, "{}", word).unwrap();
+                    }
+
+                    // Write the rest of the logs
+                    for word in words.iter().cycle().take(line_count - line_count / 20) {
+                        count += 1;
+                        if count % 10_000 == 0 {
+                            wpb.inc(10_000);
+                            std::thread::sleep(std::time::Duration::from_millis(12));
+                            if count % 100_000 == 0 {
+                                log.flush().unwrap();
+                            }
+                        }
+                        writeln!(log, "{}", word).unwrap();
+                    }
+                }
+            });
+
+            let (w1r, w2r) = tokio::join!(writer_1, writer_2);
+            w1r.unwrap();
+            w2r.unwrap();
 
             let mut no_progress_count = 0;
             let mut last_count = 0;
