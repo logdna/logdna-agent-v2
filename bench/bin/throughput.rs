@@ -209,13 +209,12 @@ async fn main() -> Result<(), std::io::Error> {
     let flamegraph_handle = if opt.profile {
         wpb.println("Spawning flamegraph");
         let mut flamegraph_cmd = std::process::Command::new("flamegraph");
-        let flamegraph_cmd = flamegraph_cmd
-            .args([
-                "-p",
-                &format!("{}", agent_handle.id()),
-                "-o",
-                "/tmp/flamegraph.svg",
-            ]);
+        let flamegraph_cmd = flamegraph_cmd.args([
+            "-p",
+            &format!("{}", agent_handle.id()),
+            "-o",
+            "/tmp/flamegraph.svg",
+        ]);
 
         Some(flamegraph_cmd.spawn().unwrap())
     } else {
@@ -316,7 +315,6 @@ async fn main() -> Result<(), std::io::Error> {
                     }
                 }
             });
-
 
             let (w1r, w2r) = tokio::join!(writer_1, writer_2);
             w1r.unwrap();
