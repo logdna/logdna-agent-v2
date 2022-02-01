@@ -1,6 +1,4 @@
-/target
-/common/*/target
-/bin/target
+target
 **/*.rs.bk
 .idea
 .cargo_cache/

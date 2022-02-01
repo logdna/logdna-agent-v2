@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -e
+VERSION="3.4.0-beta.1"
+BUILD_DIR=./service/target/x86_64-pc-windows-gnu/debug
+CERT_PATH=./cert/logdna_dev_cert.pfx
+CERT_PASSWD=12345678
+TARGET_DIR=./target
+#
+# sign exe
+#
+mkdir -p "$TARGET_DIR"
+osslsigncode sign \
+    -pkcs12 "$CERT_PATH" \
+    -pass "$CERT_PASSWD" \
+    -n "LogDNA Agent" \
+    -i "https://www.logdna.com" \
+    -in "$BUILD_DIR/logdna-agent.exe" \
+    -out "$TARGET_DIR/logdna-agent.exe"
+#
+# create msi
+#
+export VERSION
+export AGENT_EXE_PATH="$TARGET_DIR/logdna-agent.exe"
+export AGENT_CFG_PATH="./logdna-agent.yml"
+wixl -v --ext ui ./logdna-agent.wxs -o "$TARGET_DIR/logdna-agent-unsigned.msi"
+#
+# sign msi
+#
+osslsigncode sign \
+    -add-msi-dse \
+    -pkcs12 "$CERT_PATH" \
+    -pass "$CERT_PASSWD" \
+	-n "LogDNA Agent" \
+    -i "https://www.logdna.com" \
+    -t http://timestamp.comodoca.com/authenticode \
+    -in "$TARGET_DIR/logdna-agent-unsigned.msi" \
+    -out "$TARGET_DIR/logdna-agent.msi"
+
+echo
+echo @@@@@@  SUCCESS  @@@@@@
+echo

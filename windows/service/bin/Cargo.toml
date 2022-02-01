@@ -1,0 +1,12 @@
+[package]
+name = "logdna-agent"
+version = "3.4.0-beta.1"
+
+
+[[bin]]
+name = "logdna-agent"
+path = "src/main.rs"
+
+
+[dependencies]
+winservice = { git = "https://github.com/dkhokhlov/winservice.git" }

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -e
+cross build --target x86_64-pc-windows-gnu
+echo
+echo @@@@@@  SUCCESS  @@@@@@
+echo

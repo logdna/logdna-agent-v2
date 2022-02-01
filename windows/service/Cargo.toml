@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "bin"
+]
+
+[profile.release]
+opt-level = 3
+debug = true
