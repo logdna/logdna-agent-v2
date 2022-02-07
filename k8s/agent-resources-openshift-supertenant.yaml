@@ -107,6 +107,8 @@ spec:
                 secretKeyRef:
                   name: logdna-agent-key
                   key: logdna-agent-key
+            - name: LOGDNA_HOST
+              value: logs.logdna.com
             - name: LOGDNA_LOOKBACK
               value: smallfiles
             - name: LOGDNA_DB_PATH
