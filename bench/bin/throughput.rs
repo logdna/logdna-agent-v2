@@ -5,19 +5,26 @@
 
 use std::convert::TryInto;
 use std::future::Future;
+use std::fs::File;
 use std::io::{BufRead, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use file_rotate::{FileRotate, RotationMode};
+use futures::future::{AbortHandle, Abortable};
+use futures::stream::{Stream, StreamExt};
+use futures::{stream};
+use hyper::{Client, StatusCode};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use memmap2::MmapOptions;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use owning_ref::OwningHandle;
+use prometheus_parse::{Sample, Scrape, Value};
 use rand::prelude::*;
 use structopt::StructOpt;
 use tokio::fs::{self};
@@ -91,6 +98,173 @@ fn start_ingester(
         format!("localhost:{}", port),
     )
 }
+
+// **** IMPORTED **************************
+#[allow(dead_code)]
+pub async fn fetch_agent_metrics(
+    metrics_port: u16,
+) -> Result<(StatusCode, Option<String>), hyper::Error> {
+    let client = Client::new();
+    let url = format!("http://127.0.0.1:{}/metrics", metrics_port)
+        .parse()
+        .unwrap();
+
+    let resp = client.get(url).await?;
+    let status = resp.status();
+    let body = if status == StatusCode::OK {
+        let buf = hyper::body::to_bytes(resp).await?;
+        let body_str = std::str::from_utf8(&buf).unwrap().to_string();
+        Some(body_str)
+    } else {
+        None
+    };
+
+    Ok((status, body))
+}
+
+#[allow(dead_code)]
+fn stream_agent_metrics(
+    metrics_port: u16,
+    scrape_delay: Option<Duration>,
+) -> impl Stream<Item = Sample> {
+    stream::unfold(Vec::new(), move |state| async move {
+        let mut state = loop {
+            if !state.is_empty() {
+                break state;
+            }
+
+            // Hitting the metrics endpoint too quick may result in subsequent queries without
+            // any data points. Depending on need, one can specify a delay before scrapping giving
+            // the agent time to generate some new metric data.
+            if let Some(delay) = scrape_delay {
+                tokio::time::sleep(delay).await;
+            }
+
+            match fetch_agent_metrics(metrics_port).await {
+                Ok((StatusCode::OK, Some(body))) => {
+                    let body = body.lines().map(|l| Ok(l.to_string()));
+                    break Scrape::parse(body)
+                        .expect("failed to parse the metrics response")
+                        .samples;
+                }
+                Ok((status, _)) => panic!(
+                    "The /metrics endpoint returned status code {:?}, expected 200.",
+                    status
+                ),
+                Err(err) => panic!(
+                    "Failed to make HTTP request to metrics endpoint - reason: {:?}",
+                    err
+                ),
+            }
+        };
+
+        state.pop().map(|metric| (metric, state))
+    })
+}
+
+#[allow(dead_code)]
+pub struct MetricsRecorder {
+    server: tokio::task::JoinHandle<Vec<Sample>>,
+    abort_handle: AbortHandle,
+}
+
+impl MetricsRecorder {
+    #[allow(dead_code)]
+    pub fn start(port: u16, scrape_delay: Option<Duration>) -> MetricsRecorder {
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+        MetricsRecorder {
+            server: tokio::spawn({
+                async move {
+                    Abortable::new(stream_agent_metrics(port, scrape_delay), abort_registration)
+                        .collect::<Vec<Sample>>()
+                        .await
+                }
+            }),
+            abort_handle,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub async fn stop(self) -> Vec<Sample> {
+        self.abort_handle.abort();
+        match self.server.await {
+            Ok(data) => data,
+            Err(e) => panic!("error waiting for thread: {}", e),
+        }
+    }
+}
+
+fn data_pair_for(name: &str) -> impl Fn(&Sample) -> Option<(i64, f64)> + '_ {
+    move |s: &Sample| match (&s.value, &s.labels.get("outcome")) {
+        (Value::Untyped(raw), Some("success")) if s.metric.as_str() == name => {
+            Some((s.timestamp.timestamp_millis(), *raw))
+        }
+        _ => None,
+    }
+}
+
+// Sample number of lines
+fn calculate_fs_line_metrics(samples: &[Sample]) -> (f64, f64) {
+    let fs_sample_data = samples
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Counter(raw) if s.metric.as_str() == "logdna_agent_fs_lines" => Some(raw),
+            _ => None,
+        })
+        .zip(samples.iter().filter_map(|t| match t.value {
+            Value::Counter(_) if t.metric.as_str() == "logdna_agent_fs_lines" => {
+                Some(t.timestamp.timestamp_millis())
+            }
+            _ => None,
+        }))
+        .collect::<Vec<(f64, i64)>>();
+
+    let fs_total_time = (fs_sample_data.last().unwrap().1 - fs_sample_data[0].1) / 1000;
+    let fs_total_lines = fs_sample_data.last().unwrap().0;
+    let fs_lines_rate = fs_total_lines / fs_total_time as f64;
+
+    (fs_total_lines, fs_lines_rate)
+}
+
+// Sample maximum memory
+fn calculate_memory_max(samples: &[Sample]) -> f64 {
+    let mut max_value: f64 = 0.0;
+    let private_virtual_memory = samples
+        .iter()
+        .filter_map(|m| match m.value {
+            Value::Gauge(raw) if m.metric.as_str() == "process_virtual_memory_bytes" => Some(raw),
+            _ => None,
+        })
+        .collect::<Vec<f64>>();
+
+        for &val in private_virtual_memory.iter() {
+            if val > max_value {
+                max_value = val
+            }
+        }
+
+        max_value
+}
+
+// Sample mean request time
+fn calculate_ingest_metrics(samples: &[Sample]) -> (i64, f64) {
+    let durations = samples
+        .iter()
+        .filter_map(data_pair_for(
+            "logdna_agent_ingest_request_duration_seconds_sum",
+        ))
+        .zip(samples.iter().filter_map(data_pair_for(
+            "logdna_agent_ingest_request_duration_seconds_count",
+        )))
+        .collect::<Vec<((i64, f64), (i64, f64))>>();
+
+        let ingest_total_time = (durations.last().unwrap().0.0 - durations[0].0.0)/1000;
+        let mean_ingest_value = durations.last().unwrap().0.1/durations.last().unwrap().1.1;
+        
+        (ingest_total_time, mean_ingest_value)
+}
+
+// **** IMPORTED **************************
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), std::io::Error> {
@@ -174,6 +348,7 @@ async fn main() -> Result<(), std::io::Error> {
         .env("LOGDNA_LOG_DIRS", opt.out_dir.clone())
         .env("LOGDNA_HOST", address)
         .env("LOGDNA_INGESTION_KEY", ingestion_key)
+        .env("LOGDNA_METRICS_PORT", "9881")
         .env("LOGDNA_USE_SSL", "false")
         .env("RUST_LOG", "info")
         .env("RUST_BACKTRACE", "full")
@@ -222,12 +397,16 @@ async fn main() -> Result<(), std::io::Error> {
     };
 
     wpb.println("Waiting for mock ingester");
-    let (server_result, _) = tokio::join!(server, {
+    let (server_result, metrics_result) = tokio::join!(server, {
         let out_dir = opt.out_dir.clone();
         let file_size = opt.file_size;
         let file_history = opt.file_history;
 
         let line_counter = line_counter.clone();
+        let metrics_port = 9881;
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        let recorder = MetricsRecorder::start(metrics_port, Some(Duration::from_millis(100)));
+
         async move {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             let mut out_file: PathBuf = out_dir.clone();
@@ -335,9 +514,13 @@ async fn main() -> Result<(), std::io::Error> {
                 last_count = lines;
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
+            
+            let metrics_result = recorder.stop().await;
+
             wpb.finish_at_current_pos();
             println!("Finished up wpb");
             shutdown_handle();
+            metrics_result
         }
     });
 
@@ -364,5 +547,16 @@ async fn main() -> Result<(), std::io::Error> {
         println!("Waiting on flamegraph, this might take a while.");
         println!("{:#?}", flamegraph_handle.wait().unwrap());
     }
+
+    let fs_line_metrics = calculate_fs_line_metrics(&metrics_result);
+    let ingest_metrics = calculate_ingest_metrics(&metrics_result);
+    let max_memory = calculate_memory_max(&metrics_result);
+    println!("File System (total lines, lines/second): {:?}", fs_line_metrics);
+    println!("Ingestion Metrics (total time, ingest rate/second): {:?}", ingest_metrics);
+    println!("Max Private Virtual Memory (bytes): {}", max_memory);
+
+    let metrics_file = File::create("metrics_output.log").expect("Could not open file.");
+    writeln!(&metrics_file, "{:?}", metrics_result).expect("Cound not write to file.");
+
     Ok(())
 }
