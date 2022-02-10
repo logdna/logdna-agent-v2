@@ -376,7 +376,10 @@ impl Default for LogConfig {
             db_path: None,
             metrics_port: None,
             include: Some(Rules {
-                glob: vec!["*.log".parse().unwrap()],
+                glob: vec![
+                    "*.log".parse().unwrap(),
+                    "!(*.*)".parse().unwrap(),
+                ],
                 regex: Vec::new(),
             }),
             exclude: Some(Rules {
@@ -461,6 +464,23 @@ mod tests {
         assert!(new_config.is_ok());
         let new_config = new_config.unwrap();
         assert_eq!(config, new_config);
+    }
+
+    #[test]
+    fn test_default_glob() {
+        let default_glob = LogConfig::default()
+            .include
+            .unwrap()
+            .glob
+            .iter()
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>();
+        assert_eq!(
+            default_glob,
+            vec![
+                String::from("*.log"),
+                String::from("!(*.*)")
+            ])
     }
 
     #[test]
