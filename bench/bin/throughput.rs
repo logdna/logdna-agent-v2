@@ -4,8 +4,8 @@
 // Kill agent
 
 use std::convert::TryInto;
-use std::future::Future;
 use std::fs::File;
+use std::future::Future;
 use std::io::{BufRead, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 use std::path::PathBuf;
@@ -16,8 +16,8 @@ use std::time::Duration;
 
 use file_rotate::{FileRotate, RotationMode};
 use futures::future::{AbortHandle, Abortable};
+use futures::stream;
 use futures::stream::{Stream, StreamExt};
-use futures::{stream};
 use hyper::{Client, StatusCode};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use memmap2::MmapOptions;
@@ -238,13 +238,13 @@ fn calculate_memory_max(samples: &[Sample]) -> f64 {
         })
         .collect::<Vec<f64>>();
 
-        for &val in private_virtual_memory.iter() {
-            if val > max_value {
-                max_value = val
-            }
+    for &val in private_virtual_memory.iter() {
+        if val > max_value {
+            max_value = val
         }
+    }
 
-        max_value
+    max_value
 }
 
 // Sample ingest requests
@@ -259,9 +259,12 @@ fn calculate_ingest_time_metrics(samples: &[Sample]) -> (i64, f64) {
         )))
         .collect::<Vec<((i64, f64), (i64, f64))>>();
 
-    let ingest_total_time = (ingest_duration_sample.last().unwrap().0.0 - ingest_duration_sample[0].0.0)/1000;
-    let mean_ingest_time = ingest_duration_sample.last().unwrap().0.1/ingest_duration_sample.last().unwrap().1.1;
-        
+    let ingest_total_time =
+        (ingest_duration_sample.last().unwrap().0 .0 - ingest_duration_sample[0].0 .0) / 1000;
+
+    let mean_ingest_time =
+        ingest_duration_sample.last().unwrap().0 .1 / ingest_duration_sample.last().unwrap().1 .1;
+
     (ingest_total_time, mean_ingest_time)
 }
 
@@ -269,17 +272,23 @@ fn calulate_ingest_size_metrics(samples: &[Sample]) -> f64 {
     let ingest_size_sample = samples
         .iter()
         .filter_map(|s| match s.value {
-            Value::Untyped(raw) if s.metric.as_str() == "logdna_agent_ingest_request_size_sum" => Some(raw),
+            Value::Untyped(raw) if s.metric.as_str() == "logdna_agent_ingest_request_size_sum" => {
+                Some(raw)
+            }
             _ => None,
         })
         .zip(samples.iter().filter_map(|t| match t.value {
-            Value::Untyped(raw) if t.metric.as_str() == "logdna_agent_ingest_request_size_count" => Some(raw),
+            Value::Untyped(raw)
+                if t.metric.as_str() == "logdna_agent_ingest_request_size_count" =>
+            {
+                Some(raw)
+            }
             _ => None,
         }))
         .collect::<Vec<(f64, f64)>>();
-        
-    let mean_ingest_size = ingest_size_sample.last().unwrap().0/ingest_size_sample.last().unwrap().1;
 
+    let mean_ingest_size =
+        ingest_size_sample.last().unwrap().0 / ingest_size_sample.last().unwrap().1;
     mean_ingest_size
 }
 
@@ -528,10 +537,11 @@ async fn main() -> Result<(), std::io::Error> {
                         break;
                     }
                 }
+
                 last_count = lines;
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
-            
+
             let metrics_result = recorder.stop().await;
 
             wpb.finish_at_current_pos();
@@ -565,14 +575,22 @@ async fn main() -> Result<(), std::io::Error> {
     let ingest_time_metrics = calculate_ingest_time_metrics(&metrics_result);
     let ingest_size_metrics = calulate_ingest_size_metrics(&metrics_result);
     let max_memory = calculate_memory_max(&metrics_result);
-    println!("File System (total lines, lines/second): {:?}", fs_line_metrics);
-    println!("Ingestion Time Metrics (total time, average ingest request duration (sec)): {:?}", ingest_time_metrics);
-    println!("Ingestion Size Metrics (average ingest request size (bytes): {:?}", ingest_size_metrics);
+    println!(
+        "File System (total lines, lines/second): {:?}",
+        fs_line_metrics
+    );
+    println!(
+        "Ingestion Time Metrics (total time, average ingest request duration (sec)): {:?}",
+        ingest_time_metrics
+    );
+    println!(
+        "Ingestion Size Metrics (average ingest request size (bytes): {:?}",
+        ingest_size_metrics
+    );
     println!("Max Private Virtual Memory (bytes): {}", max_memory);
 
     let metrics_file = File::create("metrics_output.log").expect("Could not open file.");
     writeln!(&metrics_file, "{:?}", metrics_result).expect("Cound not write to file.");
-    
     if let Some(mut flamegraph_handle) = flamegraph_handle {
         println!("Waiting on flamegraph, this might take a while.");
         println!("{:#?}", flamegraph_handle.wait().unwrap());
