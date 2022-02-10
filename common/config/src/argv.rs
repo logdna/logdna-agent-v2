@@ -617,10 +617,7 @@ mod test {
         assert_eq!(
             config.log.include,
             Some(Rules {
-                glob: vec![
-                    "*.log".parse().unwrap(),
-                    "!(*.*)".parse().unwrap(),
-                ],
+                glob: vec!["*.log".parse().unwrap(), "!(*.*)".parse().unwrap()],
                 regex: Vec::new(),
             })
         );
@@ -725,7 +722,7 @@ mod test {
 
         assert_eq!(
             inclusion.glob,
-            vec_strings!["*.log", "!(*.*)","included.ext", "another.*"]
+            vec_strings!["*.log", "!(*.*)", "included.ext", "another.*"]
         );
         assert_eq!(inclusion.regex, vec_strings!["a", "b", "c"])
     }

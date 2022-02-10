@@ -376,10 +376,7 @@ impl Default for LogConfig {
             db_path: None,
             metrics_port: None,
             include: Some(Rules {
-                glob: vec![
-                    "*.log".parse().unwrap(),
-                    "!(*.*)".parse().unwrap(),
-                ],
+                glob: vec!["*.log".parse().unwrap(), "!(*.*)".parse().unwrap()],
                 regex: Vec::new(),
             }),
             exclude: Some(Rules {
@@ -477,10 +474,8 @@ mod tests {
             .collect::<Vec<String>>();
         assert_eq!(
             default_glob,
-            vec![
-                String::from("*.log"),
-                String::from("!(*.*)")
-            ])
+            vec![String::from("*.log"), String::from("!(*.*)")]
+        )
     }
 
     #[test]
