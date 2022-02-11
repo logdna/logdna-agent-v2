@@ -1,7 +1,6 @@
 library 'magic-butler-catalogue'
 def PROJECT_NAME = 'logdna-agent-v2'
 def TRIGGER_PATTERN = '.*@logdnabot.*'
-def publishImage = false
 
 pipeline {
     agent any
@@ -11,7 +10,7 @@ pipeline {
     }
     triggers {
         issueCommentTrigger(TRIGGER_PATTERN)
-        cron(env.BRANCH_NAME ==~ /\d\.\d/ ? 'H 8 * * 1' : '')
+        parameterizedCron(env.BRANCH_NAME ==~ /\d\.\d/ ? 'H 8 * * 1 % PUBLISH_IMAGE=true' : '')
     }
     environment {
         RUST_IMAGE_REPO = 'us.gcr.io/logdna-k8s/rust'
@@ -19,6 +18,9 @@ pipeline {
         SCCACHE_BUCKET = 'logdna-sccache-us-west-2'
         SCCACHE_REGION = 'us-west-2'
         CARGO_INCREMENTAL = 'false'
+    }
+    parameters {
+        booleanParam(name: 'PUBLISH_IMAGE', description: 'Publish docker images', defaultValue: false)
     }
     stages {
         stage('Validate PR Source') {
@@ -102,28 +104,9 @@ pipeline {
                         sysdig engineCredentialsId: 'sysdig-secure-api-credentials', name: 'sysdig_secure_images', inlineScanning: true
                     }
                 }
-                stage('Check Publish Image or Timeout') {
-                    steps {
-                        script {
-                            publishImage = true
-                            if (currentBuild.getBuildCauses('hudson.triggers.TimerTrigger$TimerTriggerCause')) {
-                                echo "started by timer, publishing"
-                            } else {
-                                echo "not started by timer"
-                                try {
-                                    timeout(time: 5, unit: 'MINUTES') {
-                                        input(message: 'Should we publish the versioned image?')
-                                    }
-                                } catch (err) {
-                                    publishImage = false
-                                }
-                            }
-                        }
-                    }
-                }
                 stage('Publish Images') {
                     when {
-                        expression { return publishImage == true }
+                        environment name: 'PUBLISH_IMAGE', value: 'true'
                     }
                     steps {
                         // Publish to gcr, jenkins is logged into gcr globally
