@@ -204,24 +204,30 @@ fn data_pair_for(name: &str) -> impl Fn(&Sample) -> Option<(i64, f64)> + '_ {
 }
 // **** IMPORTED **************************
 
+fn is_agent_metric(sample: &prometheus_parse::Sample, metric_name: &str) -> bool {
+    let mut full_metric_name = String::from("logdna_agent_");
+    full_metric_name.push_str(metric_name);
+    sample.metric.as_str() == full_metric_name
+}
+
 // Sample number of lines
 fn calculate_fs_line_metrics(samples: &[Sample]) -> (f64, f64) {
+    let metric_name = "fs_lines";
     let fs_sample_data = samples
         .iter()
         .filter_map(|s| match s.value {
-            Value::Counter(raw) if s.metric.as_str() == "logdna_agent_fs_lines" => Some(raw),
-            _ => None,
-        })
-        .zip(samples.iter().filter_map(|t| match t.value {
-            Value::Counter(_) if t.metric.as_str() == "logdna_agent_fs_lines" => {
-                Some(t.timestamp.timestamp_millis())
+            Value::Counter(raw) if is_agent_metric(s, metric_name) => {
+                Some((raw, s.timestamp.timestamp_millis()))
             }
             _ => None,
-        }))
+        })
         .collect::<Vec<(f64, i64)>>();
 
-    let fs_total_time = (fs_sample_data.last().unwrap().1 - fs_sample_data[0].1) / 1000;
-    let fs_total_lines = fs_sample_data.last().unwrap().0;
+    let (fs_last_val, fs_last_tv) = fs_sample_data.last().unwrap();
+    let (_fs_first_val, fs_first_tv) = fs_sample_data[0];
+
+    let fs_total_time = (fs_last_tv - fs_first_tv) / 1000;
+    let fs_total_lines = *fs_last_val;
     let fs_lines_rate = fs_total_lines / fs_total_time as f64;
 
     (fs_total_lines, fs_lines_rate)
@@ -229,22 +235,12 @@ fn calculate_fs_line_metrics(samples: &[Sample]) -> (f64, f64) {
 
 // Sample maximum memory
 fn calculate_memory_max(samples: &[Sample]) -> f64 {
-    let mut max_value: f64 = 0.0;
-    let private_virtual_memory = samples
-        .iter()
-        .filter_map(|m| match m.value {
-            Value::Gauge(raw) if m.metric.as_str() == "process_virtual_memory_bytes" => Some(raw),
-            _ => None,
-        })
-        .collect::<Vec<f64>>();
+    let process_virtual_memory = samples.iter().filter_map(|m| match m.value {
+        Value::Gauge(raw) if m.metric.as_str() == "process_virtual_memory_bytes" => Some(raw),
+        _ => None,
+    });
 
-    for &val in private_virtual_memory.iter() {
-        if val > max_value {
-            max_value = val
-        }
-    }
-
-    max_value
+    process_virtual_memory.into_iter().reduce(f64::max).unwrap()
 }
 
 // Sample ingest requests
@@ -259,37 +255,32 @@ fn calculate_ingest_time_metrics(samples: &[Sample]) -> (i64, f64) {
         )))
         .collect::<Vec<((i64, f64), (i64, f64))>>();
 
-    let ingest_total_time =
-        (ingest_duration_sample.last().unwrap().0 .0 - ingest_duration_sample[0].0 .0) / 1000;
+    let ((last_sum_tv, last_sum_val), (_last_count_tv, last_count_val)) =
+        ingest_duration_sample.last().unwrap();
+    let ((first_sum_tv, _first_sum_val), (_first_count_tv, _first_count_val)) =
+        ingest_duration_sample[0];
 
-    let mean_ingest_time =
-        ingest_duration_sample.last().unwrap().0 .1 / ingest_duration_sample.last().unwrap().1 .1;
+    let ingest_total_time = (last_sum_tv - first_sum_tv) / 1000;
+    let ingest_mean_time = last_sum_val / last_count_val;
 
-    (ingest_total_time, mean_ingest_time)
+    (ingest_total_time, ingest_mean_time)
 }
 
 fn calulate_ingest_size_metrics(samples: &[Sample]) -> f64 {
     let ingest_size_sample = samples
         .iter()
         .filter_map(|s| match s.value {
-            Value::Untyped(raw) if s.metric.as_str() == "logdna_agent_ingest_request_size_sum" => {
-                Some(raw)
-            }
+            Value::Untyped(raw) if is_agent_metric(s, "ingest_request_size_sum") => Some(raw),
             _ => None,
         })
         .zip(samples.iter().filter_map(|t| match t.value {
-            Value::Untyped(raw)
-                if t.metric.as_str() == "logdna_agent_ingest_request_size_count" =>
-            {
-                Some(raw)
-            }
+            Value::Untyped(raw) if is_agent_metric(t, "ingest_request_size_count") => Some(raw),
             _ => None,
         }))
         .collect::<Vec<(f64, f64)>>();
 
-    let mean_ingest_size =
-        ingest_size_sample.last().unwrap().0 / ingest_size_sample.last().unwrap().1;
-    mean_ingest_size
+    let (ingest_size_sum, ingest_size_count) = ingest_size_sample.last().unwrap();
+    ingest_size_sum / ingest_size_count
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -576,18 +567,17 @@ async fn main() -> Result<(), std::io::Error> {
     let ingest_size_metrics = calulate_ingest_size_metrics(&metrics_result);
     let max_memory = calculate_memory_max(&metrics_result);
     println!(
-        "File System (total lines, lines/second): {:?}",
-        fs_line_metrics
+        "\nFILE SYSTEM METRICS\n . Total Lines: {:?}\n . Rate (lines/sec): {:?}",
+        fs_line_metrics.0, fs_line_metrics.1
     );
     println!(
-        "Ingestion Time Metrics (total time, average ingest request duration (sec)): {:?}",
-        ingest_time_metrics
+        "\nINGESTION METRICS\n . Totol Time (sec): {:?}\n . Average Duration (sec): {:?}\n . Average Request Size (bytes): {:?}",
+        ingest_time_metrics.0, ingest_time_metrics.1, ingest_size_metrics
     );
     println!(
-        "Ingestion Size Metrics (average ingest request size (bytes): {:?}",
-        ingest_size_metrics
+        "\nMEMEORY METRICS:\n . Max Process Virtual Memory (bytes): {:?}\n",
+        max_memory
     );
-    println!("Max Private Virtual Memory (bytes): {}", max_memory);
 
     let metrics_file = File::create("metrics_output.log").expect("Could not open file.");
     writeln!(&metrics_file, "{:?}", metrics_result).expect("Cound not write to file.");
