@@ -49,6 +49,7 @@ pipeline {
             parallel {
                 stage('Lint, Unit and Integration Tests'){
                     steps {
+                        sh "make init-qemu"
                         script {
                             def creds = readJSON file: CREDS_FILE
                             // Assumes the pipeline-e2e-creds format remains the same. Chase
@@ -57,16 +58,16 @@ pipeline {
                             LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
                         }
                         withCredentials([[
-                                                 $class: 'AmazonWebServicesCredentialsBinding',
-                                                 credentialsId: 'aws',
-                                                 accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                                 secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                           $class: 'AmazonWebServicesCredentialsBinding',
+                                           credentialsId: 'aws',
+                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                          ]]){
                             sh """
-                        make lint
-                        make test
-                        make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
-                    """
+                              make lint
+                              make test
+                              make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
+                            """
                         }
                     }
                     post {
@@ -77,6 +78,7 @@ pipeline {
                 }
                 stage('Run K8s Integration Tests') {
                     steps {
+                        sh "make init-qemu"
                         catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                             withCredentials([[
                                               $class: 'AmazonWebServicesCredentialsBinding',
@@ -101,6 +103,7 @@ pipeline {
             parallel {
                 stage('Build Release Image') {
                     steps {
+                        sh "make init-qemu"
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
                             credentialsId: 'aws',
@@ -123,6 +126,7 @@ pipeline {
                 }
                 stage('Build static release binary') {
                     steps {
+                        sh "make init-qemu"
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
                             credentialsId: 'aws',
@@ -147,6 +151,11 @@ pipeline {
                 branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
             }
             stages {
+                stage('Initilize qemu') {
+                  steps {
+                        sh "make init-qemu"
+                  }
+                }
                 stage('Scanning Images') {
                     steps {
                         sh 'make sysdig_secure_images'

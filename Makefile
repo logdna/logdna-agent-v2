@@ -437,3 +437,13 @@ sysdig_secure_images: ## Create sysdig_secure_images config
 help: ## Prints out a helpful description of each possible target
 	@awk 'BEGIN {FS = ":.*?## "}; /^.+: .*?## / && !/awk/ {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@$(SHELL) -c "echo '$(TEST_RULES)'" |  awk 'BEGIN {FS = ":.*?<> "}; /^.+: .*?<> / && !/awk/ {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+
+.PHONY:init-qemu
+init-qemu: ## register qemu in binfmt on x86_64 hosts
+	@set -e
+	echo "Host: " && hostname && uname -a && echo && free -h && echo && df -h && echo && lscpu && echo
+	@if [ "$(shell uname -m)" = "x86_64" ]; then \
+		docker run --rm --privileged multiarch/qemu-user-static --reset -p yes; \
+	else \
+		echo Skipping qemu init - non x86_64 host; \
+	fi
