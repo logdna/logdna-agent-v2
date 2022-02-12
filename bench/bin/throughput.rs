@@ -571,7 +571,7 @@ async fn main() -> Result<(), std::io::Error> {
         fs_line_metrics.0, fs_line_metrics.1
     );
     println!(
-        "\nINGESTION METRICS\n . Totol Time (sec): {:?}\n . Average Duration (sec): {:?}\n . Average Request Size (bytes): {:?}",
+        "\nINGESTION METRICS\n . Total Time (sec): {:?}\n . Average Duration (sec): {:?}\n . Average Request Size (bytes): {:?}",
         ingest_time_metrics.0, ingest_time_metrics.1, ingest_size_metrics
     );
     println!(
