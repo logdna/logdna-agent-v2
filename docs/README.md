@@ -192,9 +192,9 @@ for example:
 
 1. We support [this flavor of globber syntax](https://github.com/CJP10/globber).
 
-As listed above, by default the agent will only ingest files with a `.log` extention. Some other common globing patterns used in the `LOGDNA_INCLUSION_RULES` include: 
+As listed above, by default the agent will only ingest files with a `.log` extention. Some other common globing patterns to include in the `LOGDNA_INCLUSION_RULES` could be: 
 
-1. Include both `.log` extention AND extention-less files: `*.log,!(*.*)`.
+1. Pattern to ingest files with both a `.log` extention AND extention-less files: `*.log,!(*.*)`
 
 ### Configuring the Environment
 
