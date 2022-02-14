@@ -1,10 +1,9 @@
-use std::fs::File;
 use futures::future::{AbortHandle, Abortable};
 use futures::stream;
 use futures::stream::{Stream, StreamExt};
 use hyper::{Client, StatusCode};
+use prometheus_parse::{Sample, Scrape};
 use std::time::Duration;
-use prometheus_parse::{Sample, Scrape, Value};
 
 #[allow(dead_code)]
 pub async fn fetch_agent_metrics(
@@ -97,14 +96,5 @@ impl MetricsRecorder {
             Ok(data) => data,
             Err(e) => panic!("error waiting for thread: {}", e),
         }
-    }
-}
-
-fn data_pair_for(name: &str) -> impl Fn(&Sample) -> Option<(i64, f64)> + '_ {
-    move |s: &Sample| match (&s.value, &s.labels.get("outcome")) {
-        (Value::Untyped(raw), Some("success")) if s.metric.as_str() == name => {
-            Some((s.timestamp.timestamp_millis(), *raw))
-        }
-        _ => None,
     }
 }
