@@ -5,7 +5,6 @@ use hyper::{Client, StatusCode};
 use prometheus_parse::{Sample, Scrape};
 use std::time::Duration;
 
-#[allow(dead_code)]
 pub async fn fetch_agent_metrics(
     metrics_port: u16,
 ) -> Result<(StatusCode, Option<String>), hyper::Error> {
@@ -27,7 +26,6 @@ pub async fn fetch_agent_metrics(
     Ok((status, body))
 }
 
-#[allow(dead_code)]
 fn stream_agent_metrics(
     metrics_port: u16,
     scrape_delay: Option<Duration>,
@@ -67,14 +65,12 @@ fn stream_agent_metrics(
     })
 }
 
-#[allow(dead_code)]
 pub struct MetricsRecorder {
     server: tokio::task::JoinHandle<Vec<Sample>>,
     abort_handle: AbortHandle,
 }
 
 impl MetricsRecorder {
-    #[allow(dead_code)]
     pub fn start(port: u16, scrape_delay: Option<Duration>) -> MetricsRecorder {
         let (abort_handle, abort_registration) = AbortHandle::new_pair();
         MetricsRecorder {
@@ -89,7 +85,6 @@ impl MetricsRecorder {
         }
     }
 
-    #[allow(dead_code)]
     pub async fn stop(self) -> Vec<Sample> {
         self.abort_handle.abort();
         match self.server.await {
