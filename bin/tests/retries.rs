@@ -1,5 +1,6 @@
 use common::AgentSettings;
 pub use common::*;
+use logdna_metrics_recorder::*;
 use prometheus_parse::Value;
 use rand::Rng;
 use std::fs::File;

@@ -70,6 +70,7 @@ rustls = "0.20"
 rustls-pemfile = "0.2"
 rcgen = "0.8"
 logdna_mock_ingester = { package = "logdna-mock-ingester", path = "../common/test/mock-ingester" }
+logdna-metrics-recorder = { package = "logdna-metrics-recorder", path = "../utils/metrics-recorder" }
 test_types = { package = "types", path = "../common/test/types" }
 proptest = "1"
 tokio-test = "0.4"
