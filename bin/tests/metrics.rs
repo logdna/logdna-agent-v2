@@ -9,6 +9,7 @@ use tempfile::tempdir;
 
 use common::AgentSettings;
 pub use common::*;
+use logdna_metrics_recorder::*;
 
 fn check_fs_bytes(samples: &[Sample]) {
     let fs_bytes = samples
