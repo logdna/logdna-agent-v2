@@ -15,16 +15,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use file_rotate::{FileRotate, RotationMode};
-use futures::future::{AbortHandle, Abortable};
-use futures::stream;
-use futures::stream::{Stream, StreamExt};
-use hyper::{Client, StatusCode};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use logdna_metrics_recorder::*;
 use memmap2::MmapOptions;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use owning_ref::OwningHandle;
-use prometheus_parse::{Sample, Scrape, Value};
+use prometheus_parse::{Sample, Value};
 use rand::prelude::*;
 use structopt::StructOpt;
 use tokio::fs::{self};
@@ -99,101 +96,6 @@ fn start_ingester(
     )
 }
 
-// **** IMPORTED **************************
-#[allow(dead_code)]
-pub async fn fetch_agent_metrics(
-    metrics_port: u16,
-) -> Result<(StatusCode, Option<String>), hyper::Error> {
-    let client = Client::new();
-    let url = format!("http://127.0.0.1:{}/metrics", metrics_port)
-        .parse()
-        .unwrap();
-
-    let resp = client.get(url).await?;
-    let status = resp.status();
-    let body = if status == StatusCode::OK {
-        let buf = hyper::body::to_bytes(resp).await?;
-        let body_str = std::str::from_utf8(&buf).unwrap().to_string();
-        Some(body_str)
-    } else {
-        None
-    };
-
-    Ok((status, body))
-}
-
-#[allow(dead_code)]
-fn stream_agent_metrics(
-    metrics_port: u16,
-    scrape_delay: Option<Duration>,
-) -> impl Stream<Item = Sample> {
-    stream::unfold(Vec::new(), move |state| async move {
-        let mut state = loop {
-            if !state.is_empty() {
-                break state;
-            }
-
-            // Hitting the metrics endpoint too quick may result in subsequent queries without
-            // any data points. Depending on need, one can specify a delay before scrapping giving
-            // the agent time to generate some new metric data.
-            if let Some(delay) = scrape_delay {
-                tokio::time::sleep(delay).await;
-            }
-
-            match fetch_agent_metrics(metrics_port).await {
-                Ok((StatusCode::OK, Some(body))) => {
-                    let body = body.lines().map(|l| Ok(l.to_string()));
-                    break Scrape::parse(body)
-                        .expect("failed to parse the metrics response")
-                        .samples;
-                }
-                Ok((status, _)) => panic!(
-                    "The /metrics endpoint returned status code {:?}, expected 200.",
-                    status
-                ),
-                Err(err) => panic!(
-                    "Failed to make HTTP request to metrics endpoint - reason: {:?}",
-                    err
-                ),
-            }
-        };
-
-        state.pop().map(|metric| (metric, state))
-    })
-}
-
-#[allow(dead_code)]
-pub struct MetricsRecorder {
-    server: tokio::task::JoinHandle<Vec<Sample>>,
-    abort_handle: AbortHandle,
-}
-
-impl MetricsRecorder {
-    #[allow(dead_code)]
-    pub fn start(port: u16, scrape_delay: Option<Duration>) -> MetricsRecorder {
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
-        MetricsRecorder {
-            server: tokio::spawn({
-                async move {
-                    Abortable::new(stream_agent_metrics(port, scrape_delay), abort_registration)
-                        .collect::<Vec<Sample>>()
-                        .await
-                }
-            }),
-            abort_handle,
-        }
-    }
-
-    #[allow(dead_code)]
-    pub async fn stop(self) -> Vec<Sample> {
-        self.abort_handle.abort();
-        match self.server.await {
-            Ok(data) => data,
-            Err(e) => panic!("error waiting for thread: {}", e),
-        }
-    }
-}
-
 fn data_pair_for(name: &str) -> impl Fn(&Sample) -> Option<(i64, f64)> + '_ {
     move |s: &Sample| match (&s.value, &s.labels.get("outcome")) {
         (Value::Untyped(raw), Some("success")) if s.metric.as_str() == name => {
@@ -202,7 +104,6 @@ fn data_pair_for(name: &str) -> impl Fn(&Sample) -> Option<(i64, f64)> + '_ {
         _ => None,
     }
 }
-// **** IMPORTED **************************
 
 fn is_agent_metric(sample: &prometheus_parse::Sample, metric_name: &str) -> bool {
     let mut full_metric_name = String::from("logdna_agent_");

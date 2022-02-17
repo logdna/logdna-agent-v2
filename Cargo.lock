@@ -203,6 +203,7 @@ dependencies = [
  "futures",
  "hyper",
  "indicatif",
+ "logdna-metrics-recorder",
  "logdna-mock-ingester",
  "memmap2",
  "nix",

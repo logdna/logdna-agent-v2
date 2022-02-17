@@ -17,6 +17,7 @@ futures = "0.3.19"
 hyper = "0.14.16"
 indicatif = "0.16"
 logdna_mock_ingester = { package = "logdna-mock-ingester", path = "../common/test/mock-ingester" }
+logdna-metrics-recorder = { package = "logdna-metrics-recorder", path = "../utils/metrics-recorder" }
 memmap2 = "0.3"
 nix = "0.23"
 owning_ref = "0.4"
