@@ -5,11 +5,7 @@ def publishGCRImage = false
 def publishDockerhubICRImages = false
 
 pipeline {
-    agent {
-      node {
-        label 'ec2-fleet'
-      }
-    }
+    agent any
     options {
         timeout time: 2, unit: 'HOURS'
         timestamps()
