@@ -111,7 +111,7 @@ fn is_agent_metric(sample: &prometheus_parse::Sample, metric_name: &str) -> bool
     sample.metric.as_str() == full_metric_name
 }
 
-// Sample number of lines
+// Sample number of file system lines
 fn calculate_fs_line_metrics(samples: &[Sample]) -> (f64, f64) {
     let metric_name = "fs_lines";
     let fs_sample_data = samples
@@ -132,6 +132,29 @@ fn calculate_fs_line_metrics(samples: &[Sample]) -> (f64, f64) {
     let fs_lines_rate = fs_total_lines / fs_total_time as f64;
 
     (fs_total_lines, fs_lines_rate)
+}
+
+// Sample number of file system bytes
+fn calculate_fs_byte_metrics(samples: &[Sample]) -> (i64, f64, f64) {
+    let metric_name = "fs_bytes";
+    let fs_sample_data = samples
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Counter(raw) if is_agent_metric(s, metric_name) => {
+                Some((raw, s.timestamp.timestamp_millis()))
+            }
+            _ => None,
+        })
+        .collect::<Vec<(f64, i64)>>();
+
+    let (fs_last_val, fs_last_tv) = fs_sample_data.last().unwrap();
+    let (_fs_first_val, fs_first_tv) = fs_sample_data[0];
+
+    let fs_total_time = (fs_last_tv - fs_first_tv) / 1000;
+    let fs_total_bytes = *fs_last_val;
+    let fs_bytes_rate = fs_total_bytes / fs_total_time as f64;
+
+    (fs_total_time, fs_total_bytes, fs_bytes_rate)
 }
 
 // Sample maximum memory
@@ -162,12 +185,11 @@ fn calculate_ingest_time_metrics(samples: &[Sample]) -> (i64, f64) {
         ingest_duration_sample[0];
 
     let ingest_total_time = (last_sum_tv - first_sum_tv) / 1000;
-    let ingest_mean_time = last_sum_val / last_count_val;
-
-    (ingest_total_time, ingest_mean_time)
+    let ingest_count_rate = *last_count_val / ingest_total_time as f64;
+    (ingest_total_time, ingest_count_rate)
 }
 
-fn calulate_ingest_size_metrics(samples: &[Sample]) -> f64 {
+fn calulate_ingest_size_metrics(samples: &[Sample]) -> (f64, f64, f64) {
     let ingest_size_sample = samples
         .iter()
         .filter_map(|s| match s.value {
@@ -181,7 +203,8 @@ fn calulate_ingest_size_metrics(samples: &[Sample]) -> f64 {
         .collect::<Vec<(f64, f64)>>();
 
     let (ingest_size_sum, ingest_size_count) = ingest_size_sample.last().unwrap();
-    ingest_size_sum / ingest_size_count
+    let ingest_size_rate = ingest_size_sum / ingest_size_count;
+    (*ingest_size_sum, *ingest_size_count, ingest_size_rate)
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -464,16 +487,17 @@ async fn main() -> Result<(), std::io::Error> {
 
     // Calculate metrics
     let fs_line_metrics = calculate_fs_line_metrics(&metrics_result);
+    let fs_size_metrics = calculate_fs_byte_metrics(&metrics_result);
     let ingest_time_metrics = calculate_ingest_time_metrics(&metrics_result);
     let ingest_size_metrics = calulate_ingest_size_metrics(&metrics_result);
     let max_memory = calculate_memory_max(&metrics_result);
     println!(
-        "\nFILE SYSTEM METRICS\n . Total Lines: {:?}\n . Rate (lines/sec): {:?}",
-        fs_line_metrics.0, fs_line_metrics.1
+        "\nFILE SYSTEM METRICS\n . Total Time (sec): {:?}\n . Total Lines: {:?}\n . Line Rate (lines/sec): {:?}\n . Total Size (bytes): {:?}\n . Size Rate (bytes/sec): {:?}",
+        fs_size_metrics.0, fs_line_metrics.0, fs_line_metrics.1, fs_size_metrics.1, fs_size_metrics.2
     );
     println!(
-        "\nINGESTION METRICS\n . Total Time (sec): {:?}\n . Average Duration (sec): {:?}\n . Average Request Size (bytes): {:?}",
-        ingest_time_metrics.0, ingest_time_metrics.1, ingest_size_metrics
+        "\nINGESTION METRICS\n . Total Time (sec): {:?}\n . Total Ingestion Request Size (bytes): {:?}\n . Total # of Samples: {:?}\n . Sample Rate (samples/sec): {:?}\n . Ingestion Rate (bytes/sec): {:?}",
+        ingest_time_metrics.0, ingest_size_metrics.0, ingest_size_metrics.1, ingest_time_metrics.1, (ingest_size_metrics.0 / ingest_time_metrics.0 as f64)
     );
     println!(
         "\nMEMEORY METRICS:\n . Max Process Virtual Memory (bytes): {:?}\n",
