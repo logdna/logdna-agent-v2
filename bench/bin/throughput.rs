@@ -185,8 +185,8 @@ fn calculate_ingest_time_metrics(samples: &[Sample]) -> (i64, f64) {
         ingest_duration_sample[0];
 
     let ingest_total_time = (last_sum_tv - first_sum_tv) / 1000;
-    let ingest_count_rate = *last_count_val / ingest_total_time as f64;
-    (ingest_total_time, ingest_count_rate)
+    let ingest_average_request_time = *last_sum_val / *last_count_val;
+    (ingest_total_time, ingest_average_request_time)
 }
 
 fn calulate_ingest_size_metrics(samples: &[Sample]) -> (f64, f64, f64) {
@@ -492,12 +492,12 @@ async fn main() -> Result<(), std::io::Error> {
     let ingest_size_metrics = calulate_ingest_size_metrics(&metrics_result);
     let max_memory = calculate_memory_max(&metrics_result);
     println!(
-        "\nFILE SYSTEM METRICS\n . Total Time (sec): {:?}\n . Total Lines: {:?}\n . Line Rate (lines/sec): {:?}\n . Total Size (bytes): {:?}\n . Size Rate (bytes/sec): {:?}",
+        "\nFILE SYSTEM METRICS\n . Total Time (sec): {:?}\n . Total Lines: {:?}\n . Line Rate (lines/sec): {:?}\n . Total Size (bytes): {:?}\n . File Rate (bytes/sec): {:?}",
         fs_size_metrics.0, fs_line_metrics.0, fs_line_metrics.1, fs_size_metrics.1, fs_size_metrics.2
     );
     println!(
-        "\nINGESTION METRICS\n . Total Time (sec): {:?}\n . Total Ingestion Request Size (bytes): {:?}\n . Total # of Samples: {:?}\n . Sample Rate (samples/sec): {:?}\n . Ingestion Rate (bytes/sec): {:?}",
-        ingest_time_metrics.0, ingest_size_metrics.0, ingest_size_metrics.1, ingest_time_metrics.1, (ingest_size_metrics.0 / ingest_time_metrics.0 as f64)
+        "\nINGESTION METRICS\n . Total Time (sec): {:?}\n . Total Size (bytes): {:?}\n . Total number of Samples: {:?}\n . Average Request Duration (sec): {:?}\n . Average Request Size (bytes): {:?}",
+        ingest_time_metrics.0, ingest_size_metrics.0, ingest_size_metrics.1, ingest_time_metrics.1, ingest_size_metrics.2
     );
     println!(
         "\nMEMEORY METRICS:\n . Max Process Virtual Memory (bytes): {:?}\n",
