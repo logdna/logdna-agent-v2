@@ -7,7 +7,7 @@ def publishDockerhubICRImages = false
 pipeline {
     agent any
     options {
-        timeout time: 2, unit: 'HOURS'
+        timeout time: 8, unit: 'HOURS'
         timestamps()
         ansiColor 'xterm'
     }
@@ -31,15 +31,20 @@ pipeline {
     }
     stages {
         stage('Validate PR Source') {
-          when {
-            expression { env.CHANGE_FORK }
-            not {
-                triggeredBy 'issueCommentCause'
+            when {
+                expression { env.CHANGE_FORK }
+                not {
+                    triggeredBy 'issueCommentCause'
+                }
             }
-          }
-          steps {
-            error("A maintainer needs to approve this PR for CI by commenting")
-          }
+            steps {
+                error("A maintainer needs to approve this PR for CI by commenting")
+            }
+        }
+        stage('Init QEMU') {
+            steps {
+                sh "make init-qemu"
+            }
         }
         stage('Lint and Test') {
             environment {
@@ -49,7 +54,6 @@ pipeline {
             parallel {
                 stage('Lint, Unit and Integration Tests'){
                     steps {
-                        sh "make init-qemu"
                         script {
                             def creds = readJSON file: CREDS_FILE
                             // Assumes the pipeline-e2e-creds format remains the same. Chase
@@ -78,7 +82,6 @@ pipeline {
                 }
                 stage('Run K8s Integration Tests') {
                     steps {
-                        sh "make init-qemu"
                         catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                             withCredentials([[
                                               $class: 'AmazonWebServicesCredentialsBinding',
@@ -101,7 +104,7 @@ pipeline {
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
             }
             parallel {
-                stage('Build Release Image') {
+                stage('Build Release Image x86_64') {
                     steps {
                         sh "make init-qemu"
                         withCredentials([[
@@ -111,22 +114,43 @@ pipeline {
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                         ]]){
                             sh """
-                                echo "[default]" > ${PWD}/.aws_creds
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds
-                                ARCH=x86_64 make build-image AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds
+                                echo "[default]" > ${PWD}/.aws_creds_x86_64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_x86_64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_x86_64
+                                ARCH=x86_64 make build-image AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_x86_64
                             """
                         }
                     }
                     post {
                         always {
-                            sh "rm ${PWD}/.aws_creds"
+                            sh "rm ${PWD}/.aws_creds_x86_64"
                         }
                     }
                 }
-                stage('Build static release binary') {
+                stage('Build Release Image aarch64') {
                     steps {
-                        sh "make init-qemu"
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]){
+                            sh """
+                                echo "[default]" > ${PWD}/.aws_creds_aarch64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_aarch64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_aarch64
+                                ARCH=aarch64 make build-image AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_aarch64
+                            """
+                        }
+                    }
+                    post {
+                        always {
+                            sh "rm ${PWD}/.aws_creds_aarch64"
+                        }
+                    }
+                }
+                stage('Build static release binary x86_64') {
+                    steps {
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
                             credentialsId: 'aws',
@@ -134,12 +158,29 @@ pipeline {
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                         ]]) {
                             sh '''
-                                echo "[default]" > ${PWD}/.aws_creds_static
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static
-                                ARCH=x86_64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
-                                ARCH=aarch64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
-                                rm ${PWD}/.aws_creds_static
+                                echo "[default]" > ${PWD}/.aws_creds_static_x86_64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static_x86_64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static_x86_64
+                                ARCH=x86_64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static_x86_64
+                                rm ${PWD}/.aws_creds_static_x86_64
+                            '''
+                        }
+                    }
+                }
+                stage('Build static release binary aarch64') {
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh '''
+                                echo "[default]" > ${PWD}/.aws_creds_static_aarch64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static_aarch64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static_aarch64
+                                ARCH=aarch64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static_aarch64
+                                rm ${PWD}/.aws_creds_static_aarch64
                             '''
                         }
                     }
@@ -151,11 +192,6 @@ pipeline {
                 branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
             }
             stages {
-                stage('Initilize qemu') {
-                  steps {
-                        sh "make init-qemu"
-                  }
-                }
                 stage('Scanning Images') {
                     steps {
                         sh 'make sysdig_secure_images'
@@ -175,8 +211,8 @@ pipeline {
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static
                                 STATIC=1 make publish-s3-binary
-                                ARCH=x86_64 STATIC=1 make publish-s3-binary
-                                ARCH=aarch64 STATIC=1 make publish-s3-binary
+                                ARCH=x86_64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
+                                ARCH=aarch64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
                                 rm ${PWD}/.aws_creds_static
                             '''
                         }
@@ -188,7 +224,9 @@ pipeline {
                     }
                     steps {
                         // Publish to gcr, jenkins is logged into gcr globally
-                        sh 'make publish-image-gcr'
+                        sh 'ARCH=x86_64 make publish-image-gcr'
+                        sh 'ARCH=aarch64 make publish-image-gcr'
+                        sh 'make publish-image-multi-gcr'
                     }
                 }
                 stage('Publish Dockerhub and ICR images') {
@@ -202,14 +240,18 @@ pipeline {
                                 'https://index.docker.io/v1/',
                                 'dockerhub-username-password'
                             ) {
-                                sh 'make publish-image-docker'
+                                sh 'ARCH=x86_64 make publish-image-docker'
+                                sh 'ARCH=aarch64 make publish-image-docker'
+                                sh 'make publish-image-multi-docker'
                             }
                             // Login and publish to ibm
                             docker.withRegistry(
                                 'https://icr.io',
                                 'icr-iam-username-password'
                             ) {
-                                sh 'make publish-image-ibm'
+                                sh 'ARCH=x86_64 make publish-image-ibm'
+                                sh 'ARCH=aarch64 make publish-image-ibm'
+                                sh 'make publish-image-multi-ibm'
                             }
                         }
                     }
@@ -217,7 +259,8 @@ pipeline {
             }
             post {
                 always {
-                    sh 'make clean-all'
+                    sh 'ARCH=x86_64 make clean-all'
+                    sh 'ARCH=aarch64 make clean-all'
                 }
             }
         }
