@@ -500,7 +500,7 @@ async fn main() -> Result<(), std::io::Error> {
         ingest_time_metrics.0, ingest_size_metrics.0, ingest_size_metrics.1, ingest_time_metrics.1, ingest_size_metrics.2
     );
     println!(
-        "\nMEMEORY METRICS:\n . Max Process Virtual Memory (bytes): {:?}\n",
+        "\nMEMORY METRICS:\n . Max Process Virtual Memory (bytes): {:?}\n",
         max_memory
     );
 
