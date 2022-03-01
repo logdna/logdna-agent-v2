@@ -188,17 +188,17 @@ pipeline {
             }
         }
         stage('Check Publish Images') {
-            when {
-                branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
-            }
             stages {
                 stage('Scanning Images') {
                     steps {
-                        sh 'make sysdig_secure_images'
+                        sh 'ARCH=x86_64 make sysdig_secure_images'
                         sysdig engineCredentialsId: 'sysdig-secure-api-credentials', name: 'sysdig_secure_images', inlineScanning: true
                     }
                 }
                 stage('Publish static binary') {
+                    when {
+                        branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
+                    }
                     steps {
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
