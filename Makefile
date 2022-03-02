@@ -403,7 +403,7 @@ define publish_images
 	arch=$(shell docker inspect --format "{{.Architecture}}" $(REPO):$(IMAGE_TAG)); \
 	arr=($(TARGET_VERSIONS)); \
 	for version in $${arr[@]}; do \
-		echo $(1):$${version}-$${arch}; \
+		echo "$(REPO):$(IMAGE_TAG) -> $(1):$${version}-$${arch}"; \
 		$(DOCKER) tag $(REPO):$(IMAGE_TAG) $(1):$${version}-$${arch}; \
 		$(DOCKER) push $(1):$${version}-$${arch}; \
 	done;
@@ -414,7 +414,7 @@ define publish_images_multi
 	@set -e; \
 	arr=($(TARGET_VERSIONS)); \
 	for version in $${arr[@]}; do \
-		echo $(1):$${version}; \
+		echo "$(REPO):$(IMAGE_TAG) -> $(1):$${version}"; \
 		$(DOCKER) manifest create $(1):$${version} \
 			--amend $(1):$${version}-arm64 \
 			--amend $(1):$${version}-amd64; \

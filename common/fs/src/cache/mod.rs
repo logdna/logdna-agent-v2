@@ -536,7 +536,7 @@ impl FileSystem {
         let raw_components = base_components.as_slice();
         for i in 0..raw_components.len() - components.len() {
             // only need to iterate components up to current entry
-            let current_path: PathBuf = raw_components[0..=i].to_vec().into_iter().collect();
+            let current_path: PathBuf = raw_components[0..=i].iter().collect();
 
             if let Some(symlinks) = self.symlinks.get(&current_path) {
                 // check if path has a symlink to it
