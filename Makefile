@@ -36,7 +36,7 @@ DOCKER_DISPATCH := ARCH=$(ARCH) ./docker/dispatch.sh "$(WORKDIR)" "$(shell pwd):
 DOCKER_JOURNALD_DISPATCH := ARCH=$(ARCH) ./docker/journald_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
 DOCKER_KIND_DISPATCH := ARCH=$(ARCH) ./docker/kind_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
 DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/logdna-agent-v2
-DOCKER_PUBLIC_IMAGE := docker.io/logdna/logdna-agent
+DOCKER_PUBLIC_IMAGE ?= docker.io/logdna/logdna-agent
 DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
 
 export CARGO_CACHE ?= $(shell pwd)/.cargo_cache
