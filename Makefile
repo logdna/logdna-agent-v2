@@ -52,6 +52,7 @@ BUILD_DATE := $(shell date -u +'%Y%m%d')
 BUILD_TIMESTAMP := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUILD_VERSION := $(shell sed -nE "s/^version = \"(.+)\"\$$/\1/p" bin/Cargo.toml)
 BUILD_TAG ?= $(VCS_REF)
+IMAGE_TAG := $(BUILD_TAG)-$(ARCH)
 
 MAJOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f1)
 MINOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f2)
@@ -67,7 +68,7 @@ endif
 ifeq ($(ALL), 1)
 	CLEAN_TAG := *
 else
-	CLEAN_TAG := $(BUILD_TAG)
+	CLEAN_TAG := $(IMAGE_TAG)
 endif
 
 PULL ?= 1
@@ -316,7 +317,7 @@ release: ## Create a new release from the current beta and push to github
 
 .PHONY:build-image
 build-image: ## Build a docker image as specified in the Dockerfile
-	$(DOCKER) build . -t $(REPO):$(BUILD_TAG) \
+	$(DOCKER) build . -t $(REPO):$(IMAGE_TAG) \
 		$(PULL_OPTS) \
 		--progress=plain \
 		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
@@ -397,13 +398,27 @@ publish-s3-binary:
 	aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent
 
 define publish_images
-	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(shell docker images -q $(REPO):$(BUILD_TAG)) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
+	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(shell docker images -q $(REPO):$(IMAGE_TAG)) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
+	@set -e; \
+	arch=$(shell docker inspect --format "{{.Architecture}}" $(REPO):$(IMAGE_TAG)); \
+	arr=($(TARGET_VERSIONS)); \
+	for version in $${arr[@]}; do \
+		echo "$(REPO):$(IMAGE_TAG) -> $(1):$${version}-$${arch}"; \
+		$(DOCKER) tag $(REPO):$(IMAGE_TAG) $(1):$${version}-$${arch}; \
+		$(DOCKER) push $(1):$${version}-$${arch}; \
+	done;
+endef
+
+define publish_images_multi
+	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(shell docker images -q $(REPO):$(IMAGE_TAG)) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
 	@set -e; \
 	arr=($(TARGET_VERSIONS)); \
 	for version in $${arr[@]}; do \
-		echo $(1):$${version}; \
-		$(DOCKER) tag $(REPO):$(BUILD_TAG) $(1):$${version}; \
-		$(DOCKER) push $(1):$${version}; \
+		echo "$(REPO):$(IMAGE_TAG) -> $(1):$${version}"; \
+		$(DOCKER) manifest create $(1):$${version} \
+			--amend $(1):$${version}-arm64 \
+			--amend $(1):$${version}-amd64; \
+		$(DOCKER) manifest push $(1):$${version}; \
 	done;
 endef
 
@@ -422,6 +437,21 @@ publish-image-docker: ## Publish SemVer compliant releases to docker hub
 publish-image-ibm: ## Publish SemVer compliant releases to icr
 	$(call publish_images,$(DOCKER_IBM_IMAGE))
 
+.PHONY: publish-image-multi
+publish-image-multi: publish-image-multi-gcr publish-image-multi-docker publish-image-multi-ibm ## Publish multi-arch SemVer compliant releases to our registries
+
+.PHONY:publish-image-multi-gcr
+publish-image-multi-gcr: ## Publish multi-arch container images to gcr
+	$(call publish_images_multi,$(DOCKER_PRIVATE_IMAGE))
+
+.PHONY:publish-image-multi-docker
+publish-image-multi-docker: ## Publish multi-arch container images to docker hub
+	$(call publish_images_multi,$(DOCKER_PUBLIC_IMAGE))
+
+.PHONY:publish-image-multi-ibm
+publish-image-multi-ibm: ## Publish multi-arch container images to icr
+	$(call publish_images_multi,$(DOCKER_IBM_IMAGE))
+
 .PHONY:run
 run: ## Run the debug version of the agent
 	./target/debug/logdna-agent
@@ -431,7 +461,7 @@ run-release: ## Run the release version of the agent
 	./target/release/logdna-agent
 
 sysdig_secure_images: ## Create sysdig_secure_images config
-	echo $(REPO):$(BUILD_TAG) > sysdig_secure_images
+	echo $(REPO):$(IMAGE_TAG) > sysdig_secure_images
 
 .PHONY:help
 help: ## Prints out a helpful description of each possible target
@@ -441,7 +471,7 @@ help: ## Prints out a helpful description of each possible target
 .PHONY:init-qemu
 init-qemu: ## register qemu in binfmt on x86_64 hosts
 	@set -e
-	echo "Host: " && hostname && uname -a && echo && free -h && echo && df -h && echo && lscpu && echo
+	echo "Host: " && hostname && uname -a && blkid && docker info && echo && free -h && echo && df -h && echo && lscpu && echo
 	if [ "$(shell uname -m)" = "x86_64" ]; then \
 		if [ ! -f /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then \
 			( \

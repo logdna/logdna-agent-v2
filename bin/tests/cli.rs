@@ -431,6 +431,7 @@ fn test_include_only_rules() {
 }
 
 #[test]
+#[allow(clippy::needless_late_init)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_files_other_than_dot_log_should_be_not_included_by_default() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
