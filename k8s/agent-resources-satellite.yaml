@@ -116,8 +116,14 @@ spec:
                 secretKeyRef:
                   name: logdna-agent-key
                   key: logdna-agent-key
+            - name: LOGDNA_HOST
+              value: logs.us-south.logging.test.cloud.ibm.com
             - name: LOGDNA_CONFIG_FILE
-              value: agent-sattelite.conf
+              value: agent-satellite.conf
+            - name: POD_NAME
+              value: satellite_pod
+            - name: NAMESPACE
+              value: satellite_namespace
             - name: LOGDNA_LOOKBACK
               value: smallfiles
             - name: LOGDNA_DB_PATH
