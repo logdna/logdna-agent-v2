@@ -118,7 +118,7 @@ impl Metrics {
     pub async fn log_periodically() {
         loop {
             sleep(Duration::from_secs(60)).await;
-            info!("{}", Metrics::print());
+            info!("TEST {}", Metrics::print());
         }
     }
 

@@ -67,6 +67,8 @@ async fn main() {
         }
     };
 
+    info!("TEST Config Log Dir Paths {:?}", config.log.dirs);
+
     let mut _agent_state = None;
     let mut offset_state = None;
     let mut initial_offsets: Option<HashMap<FileId, SpanVec>> = None;
@@ -277,7 +279,7 @@ async fn main() {
     let mut sources: futures::stream::SelectAll<&mut (dyn Stream<Item = _> + Unpin)> =
         futures::stream::SelectAll::new();
 
-    info!("Enabling filesystem");
+    info!("TEST Enabling filesystem");
     sources.push(&mut fs_source);
 
     #[cfg(feature = "libjournald")]
