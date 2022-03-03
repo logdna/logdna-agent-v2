@@ -170,7 +170,7 @@ impl Service<Request<Body>> for Svc {
 
                     let tags = params.get("tags").map(String::from);
                     let orig_file_name = line.file.unwrap_or_else(|| " unknown".into());
-                    let file_name = orig_file_name.replace("/", "-").clone();
+                    let file_name = orig_file_name.replace('/', "-").clone();
 
                     let file_info = files.entry(orig_file_name).or_insert_with(move || {
                         info!("creating {}", file_name);

@@ -42,6 +42,7 @@ lazy_static! {
     };
 }
 
+#[allow(clippy::map_flatten)]
 impl From<Event> for EventLog {
     // Replicate the Reporter's formatting
     fn from(event: Event) -> Self {
@@ -263,6 +264,7 @@ impl K8sEventStream {
         Self::new(config, pod_name, namespace, pod_label)
     }
 
+    #[allow(clippy::map_flatten)]
     async fn get_oldest_pod(
         api: Api<Pod>,
         label: &str,
@@ -334,6 +336,7 @@ impl K8sEventStream {
             let pods: Api<Pod> = Api::namespaced(client.as_ref().clone(), &namespace);
             // subscribe to pod api and filter pods by POD_APP_LABEL
 
+            #[allow(clippy::map_flatten)]
             async move {
                 // Find the oldest pod of the latest generation
                 enum Cont {
