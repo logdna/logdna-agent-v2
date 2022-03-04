@@ -4,6 +4,7 @@
 // Kill agent
 
 use std::convert::TryInto;
+use std::fs::File;
 use std::future::Future;
 use std::io::{BufRead, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
@@ -11,13 +12,16 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use file_rotate::{FileRotate, RotationMode};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use logdna_metrics_recorder::*;
 use memmap2::MmapOptions;
 use nix::sys::signal::{self, Signal};
 use nix::unistd::Pid;
 use owning_ref::OwningHandle;
+use prometheus_parse::{Sample, Value};
 use rand::prelude::*;
 use structopt::StructOpt;
 use tokio::fs::{self};
@@ -90,6 +94,117 @@ fn start_ingester(
         shutdown_handle,
         format!("localhost:{}", port),
     )
+}
+
+fn data_pair_for(name: &str) -> impl Fn(&Sample) -> Option<(i64, f64)> + '_ {
+    move |s: &Sample| match (&s.value, &s.labels.get("outcome")) {
+        (Value::Untyped(raw), Some("success")) if s.metric.as_str() == name => {
+            Some((s.timestamp.timestamp_millis(), *raw))
+        }
+        _ => None,
+    }
+}
+
+fn is_agent_metric(sample: &prometheus_parse::Sample, metric_name: &str) -> bool {
+    let mut full_metric_name = String::from("logdna_agent_");
+    full_metric_name.push_str(metric_name);
+    sample.metric.as_str() == full_metric_name
+}
+
+// Sample number of file system lines
+fn calculate_fs_line_metrics(samples: &[Sample]) -> (f64, f64) {
+    let metric_name = "fs_lines";
+    let fs_sample_data = samples
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Counter(raw) if is_agent_metric(s, metric_name) => {
+                Some((raw, s.timestamp.timestamp_millis()))
+            }
+            _ => None,
+        })
+        .collect::<Vec<(f64, i64)>>();
+
+    let (fs_last_val, fs_last_tv) = fs_sample_data.last().unwrap();
+    let (_fs_first_val, fs_first_tv) = fs_sample_data[0];
+
+    let fs_total_time = (fs_last_tv - fs_first_tv) / 1000;
+    let fs_total_lines = *fs_last_val;
+    let fs_lines_rate = fs_total_lines / fs_total_time as f64;
+
+    (fs_total_lines, fs_lines_rate)
+}
+
+// Sample number of file system bytes
+fn calculate_fs_byte_metrics(samples: &[Sample]) -> (i64, f64, f64) {
+    let metric_name = "fs_bytes";
+    let fs_sample_data = samples
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Counter(raw) if is_agent_metric(s, metric_name) => {
+                Some((raw, s.timestamp.timestamp_millis()))
+            }
+            _ => None,
+        })
+        .collect::<Vec<(f64, i64)>>();
+
+    let (fs_last_val, fs_last_tv) = fs_sample_data.last().unwrap();
+    let (_fs_first_val, fs_first_tv) = fs_sample_data[0];
+
+    let fs_total_time = (fs_last_tv - fs_first_tv) / 1000;
+    let fs_total_bytes = *fs_last_val;
+    let fs_bytes_rate = fs_total_bytes / fs_total_time as f64;
+
+    (fs_total_time, fs_total_bytes, fs_bytes_rate)
+}
+
+// Sample maximum memory
+fn calculate_memory_max(samples: &[Sample]) -> f64 {
+    let process_virtual_memory = samples.iter().filter_map(|m| match m.value {
+        Value::Gauge(raw) if m.metric.as_str() == "process_virtual_memory_bytes" => Some(raw),
+        _ => None,
+    });
+
+    process_virtual_memory.into_iter().reduce(f64::max).unwrap()
+}
+
+// Sample ingest requests
+fn calculate_ingest_time_metrics(samples: &[Sample]) -> (i64, f64) {
+    let ingest_duration_sample = samples
+        .iter()
+        .filter_map(data_pair_for(
+            "logdna_agent_ingest_request_duration_seconds_sum",
+        ))
+        .zip(samples.iter().filter_map(data_pair_for(
+            "logdna_agent_ingest_request_duration_seconds_count",
+        )))
+        .collect::<Vec<((i64, f64), (i64, f64))>>();
+
+    let ((last_sum_tv, last_sum_val), (_last_count_tv, last_count_val)) =
+        ingest_duration_sample.last().unwrap();
+    let ((first_sum_tv, _first_sum_val), (_first_count_tv, _first_count_val)) =
+        ingest_duration_sample[0];
+
+    let ingest_total_time = (last_sum_tv - first_sum_tv) / 1000;
+    let ingest_average_request_time = *last_sum_val / *last_count_val;
+    (ingest_total_time, ingest_average_request_time)
+}
+
+fn calulate_ingest_size_metrics(samples: &[Sample]) -> (f64, f64, f64) {
+    let ingest_size_sample = samples
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Untyped(raw) if is_agent_metric(s, "ingest_request_size_sum") => Some(raw),
+            _ => None,
+        })
+        .zip(samples.iter().filter_map(|t| match t.value {
+            Value::Untyped(raw) if is_agent_metric(t, "ingest_request_size_count") => Some(raw),
+            _ => None,
+        }))
+        .collect::<Vec<(f64, f64)>>();
+
+    let (ingest_size_sum, ingest_size_count) = ingest_size_sample.last().unwrap();
+    let ingest_size_rate = ingest_size_sum / ingest_size_count;
+    (*ingest_size_sum, *ingest_size_count, ingest_size_rate)
 }
 
 #[tokio::main(flavor = "multi_thread")]
@@ -174,6 +289,7 @@ async fn main() -> Result<(), std::io::Error> {
         .env("LOGDNA_LOG_DIRS", opt.out_dir.clone())
         .env("LOGDNA_HOST", address)
         .env("LOGDNA_INGESTION_KEY", ingestion_key)
+        .env("LOGDNA_METRICS_PORT", "9881")
         .env("LOGDNA_USE_SSL", "false")
         .env("RUST_LOG", "info")
         .env("RUST_BACKTRACE", "full")
@@ -222,12 +338,16 @@ async fn main() -> Result<(), std::io::Error> {
     };
 
     wpb.println("Waiting for mock ingester");
-    let (server_result, _) = tokio::join!(server, {
+    let (server_result, metrics_result) = tokio::join!(server, {
         let out_dir = opt.out_dir.clone();
         let file_size = opt.file_size;
         let file_history = opt.file_history;
 
         let line_counter = line_counter.clone();
+        let metrics_port = 9881;
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        let recorder = MetricsRecorder::start(metrics_port, Some(Duration::from_millis(100)));
+
         async move {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             let mut out_file: PathBuf = out_dir.clone();
@@ -332,12 +452,17 @@ async fn main() -> Result<(), std::io::Error> {
                         break;
                     }
                 }
+
                 last_count = lines;
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
             }
+
+            let metrics_result = recorder.stop().await;
+
             wpb.finish_at_current_pos();
             println!("Finished up wpb");
             shutdown_handle();
+            metrics_result
         }
     });
 
@@ -360,9 +485,31 @@ async fn main() -> Result<(), std::io::Error> {
     println!("/proc Stat:\n{:#?}", stat);
     println!("/proc IO:\n{:#?}", io);
 
+    // Calculate metrics
+    let fs_line_metrics = calculate_fs_line_metrics(&metrics_result);
+    let fs_size_metrics = calculate_fs_byte_metrics(&metrics_result);
+    let ingest_time_metrics = calculate_ingest_time_metrics(&metrics_result);
+    let ingest_size_metrics = calulate_ingest_size_metrics(&metrics_result);
+    let max_memory = calculate_memory_max(&metrics_result);
+    println!(
+        "\nFILE SYSTEM METRICS\n . Total Time (sec): {:?}\n . Total Lines: {:?}\n . Line Rate (lines/sec): {:?}\n . Total Size (bytes): {:?}\n . File Rate (bytes/sec): {:?}",
+        fs_size_metrics.0, fs_line_metrics.0, fs_line_metrics.1, fs_size_metrics.1, fs_size_metrics.2
+    );
+    println!(
+        "\nINGESTION METRICS\n . Total Time (sec): {:?}\n . Total Size (bytes): {:?}\n . Total number of Samples: {:?}\n . Average Request Duration (sec): {:?}\n . Average Request Size (bytes): {:?}",
+        ingest_time_metrics.0, ingest_size_metrics.0, ingest_size_metrics.1, ingest_time_metrics.1, ingest_size_metrics.2
+    );
+    println!(
+        "\nMEMORY METRICS:\n . Max Process Virtual Memory (bytes): {:?}\n",
+        max_memory
+    );
+
+    let metrics_file = File::create("metrics_output.log").expect("Could not open file.");
+    writeln!(&metrics_file, "{:?}", metrics_result).expect("Cound not write to file.");
     if let Some(mut flamegraph_handle) = flamegraph_handle {
         println!("Waiting on flamegraph, this might take a while.");
         println!("{:#?}", flamegraph_handle.wait().unwrap());
     }
+
     Ok(())
 }
