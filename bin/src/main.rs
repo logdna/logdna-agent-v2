@@ -67,8 +67,6 @@ async fn main() {
         }
     };
 
-    info!("TEST Config Log Dir Paths {:?}", config.log.dirs);
-
     let mut _agent_state = None;
     let mut offset_state = None;
     let mut initial_offsets: Option<HashMap<FileId, SpanVec>> = None;
