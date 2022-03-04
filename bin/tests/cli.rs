@@ -431,7 +431,7 @@ fn test_include_only_rules() {
 }
 
 #[test]
-#[allow(clippy::needless_late_init)]
+#[allow(clippy::needless_lifetimes)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_files_other_than_dot_log_should_be_not_included_by_default() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
@@ -1591,7 +1591,7 @@ async fn test_directory_created_after_initialization() {
     //File::create(&file_path).unwrap();
 
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
-    let settings = AgentSettings::with_mock_ingester(&future_dir.to_str().unwrap(), &addr);
+    let settings = AgentSettings::with_mock_ingester(future_dir.to_str().unwrap(), &addr);
     let mut agent_handle = common::spawn_agent(settings);
     let stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
     std::thread::spawn(move || {
