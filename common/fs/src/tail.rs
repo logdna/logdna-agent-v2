@@ -56,7 +56,7 @@ async fn handle_event(
             match entry {
                 Entry::File { name, data, .. } => {
                     // If the file's passes the rules tail it
-                    info!("TEST 3 initialize event for file {:?}, target {:?}", name, path);
+                    info!("initialize event for file {:?}, target {:?}", name, path);
 
                     if fs.is_initial_dir_target(&path) {
                         return data.borrow_mut().tail(vec![path]).await;
@@ -95,7 +95,7 @@ async fn handle_event(
                 return None;
             }
             if let Entry::File { data, .. } = entry {
-                info!("TEST added {:?}", paths[0]);
+                info!("added {:?}", paths[0]);
                 return data.borrow_mut().tail(paths.clone()).await;
             }
         }

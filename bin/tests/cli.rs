@@ -1585,8 +1585,7 @@ async fn test_line_redact() {
 async fn test_directory_created_after_initialization() {
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let future_dir = dir.join("inner");
-    
-    // This creates file before the agent is spawned. 
+
     //let file_path = future_dir.join("test.log");
     //std::fs::create_dir(&future_dir).unwrap();
     //File::create(&file_path).unwrap();

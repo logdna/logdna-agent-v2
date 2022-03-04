@@ -636,7 +636,7 @@ impl FileSystem {
                 let tf = TailedFile::new(path, offsets, Some(self.resume_events_send.clone()))
                     .map_err(Error::File)?;
 
-                info!("TEST NEW 1 initialized {:?} with offset {}", path, initial_offset);
+                info!("initialized {:?} with offset {}", path, initial_offset);
 
                 let new_entry = Entry::File {
                     name: component,
@@ -699,7 +699,7 @@ impl FileSystem {
                 .push(entry_ptr);
         }
 
-        info!("TEST 2 watching {:?}", path);
+        info!("watching {:?}", path);
         Ok(())
     }
 

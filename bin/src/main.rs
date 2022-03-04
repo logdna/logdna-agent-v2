@@ -277,7 +277,7 @@ async fn main() {
     let mut sources: futures::stream::SelectAll<&mut (dyn Stream<Item = _> + Unpin)> =
         futures::stream::SelectAll::new();
 
-    info!("TEST Enabling filesystem");
+    info!("Enabling filesystem");
     sources.push(&mut fs_source);
 
     #[cfg(feature = "libjournald")]
