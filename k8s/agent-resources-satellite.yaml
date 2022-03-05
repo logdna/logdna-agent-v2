@@ -117,13 +117,15 @@ spec:
                   name: logdna-agent-key
                   key: logdna-agent-key
             - name: LOGDNA_HOST
-              value: logs.us-south.logging.test.cloud.ibm.com
+              value: logs.us-east.logging.cloud.ibm.com
             - name: LOGDNA_CONFIG_FILE
               value: agent-satellite.conf
             - name: POD_NAME
               value: satellite_pod
             - name: NAMESPACE
               value: satellite_namespace
+            - name: LOGDNA_HOSTNAME
+              value: satellite_host
             - name: LOGDNA_LOOKBACK
               value: smallfiles
             - name: LOGDNA_DB_PATH
@@ -132,18 +134,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.labels['app.kubernetes.io/name']
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: NODE_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-            - name: NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
           resources:
             requests:
               cpu: 20m
