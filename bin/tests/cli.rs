@@ -1581,7 +1581,7 @@ async fn test_line_redact() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[ignore]
 async fn test_directory_created_after_initialization() {
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let future_dir = dir.join("inner");
