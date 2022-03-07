@@ -1586,9 +1586,9 @@ async fn test_directory_created_after_initialization() {
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let future_dir = dir.join("inner");
 
-    //let file_path = future_dir.join("test.log");
-    //std::fs::create_dir(&future_dir).unwrap();
-    //File::create(&file_path).unwrap();
+    let file_path = future_dir.join("test.log");
+    std::fs::create_dir(&future_dir).unwrap();
+    File::create(&file_path).unwrap();
 
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let settings = AgentSettings::with_mock_ingester(future_dir.to_str().unwrap(), &addr);
@@ -1602,9 +1602,9 @@ async fn test_directory_created_after_initialization() {
 
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(Duration::from_millis(2000)).await;
-        let file_path = future_dir.join("test.log");
-        std::fs::create_dir(&future_dir).unwrap();
-        File::create(&file_path).unwrap();
+        //let file_path = future_dir.join("test.log");
+        //std::fs::create_dir(&future_dir).unwrap();
+        //File::create(&file_path).unwrap();
         common::append_to_file(&file_path, 10, 5).unwrap();
         common::force_client_to_flush(&future_dir).await;
 
