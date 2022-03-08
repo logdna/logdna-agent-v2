@@ -24,9 +24,8 @@ COPY . .
 RUN --mount=type=cache,target=/opt/rust/cargo/registry  \
     --mount=type=cache,target=/opt/logdna-agent-v2/target \
     if [ -z "$SCCACHE_BUCKET" ]; then unset RUSTC_WRAPPER; fi; \
-    cargo build --manifest-path bin/Cargo.toml ${FEATURES} --release && \
-    strip ./target/release/logdna-agent && \
-    cp ./target/release/logdna-agent logdna-agent && \
+    cargo build --manifest-path bin/Cargo.toml ${FEATURES} && \
+    cp ./target/debug/logdna-agent logdna-agent && \
     sccache --show-stats
 
 # Use Debian as agent base image
@@ -73,4 +72,4 @@ RUN apt update -y \
     && groupadd -g 5000 logdna \
     && useradd -u 5000 -g logdna logdna
 
-CMD ["./logdna-agent"]
+CMD gdbserver :11111 ./logdna-agent
