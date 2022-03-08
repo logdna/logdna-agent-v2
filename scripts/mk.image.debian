@@ -1,0 +1,5 @@
+#!/bin/bash
+OWN_PATH=$(readlink -f "$0")
+OWN_DIR=$(dirname "$OWN_PATH")
+# use local images first
+"$OWN_DIR"/mk build-image-debian PULL=0

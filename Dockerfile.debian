@@ -63,7 +63,7 @@ RUN apt update -y \
     && apt upgrade -y \
     && apt auto-remove -y \
     && apt install ca-certificates libcap2 netcat-openbsd nmap \
-                   dnsutils vim curl -y \
+                   dnsutils vim curl gdbserver procps net-tools -y \
     && rm -rf /var/cache/apt \
     && chmod -R 777 . \
     && setcap "cap_dac_read_search+eip" /work/logdna-agent \
