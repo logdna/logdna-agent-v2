@@ -336,6 +336,27 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
 		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
 
+.PHONY:build-image-debian
+build-image-debian: ## Build a docker image as specified in the Dockerfile
+	$(DOCKER) build . -f Dockerfile.debian -t $(REPO):$(IMAGE_TAG) \
+		$(PULL_OPTS) \
+		--progress=plain \
+		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
+		--rm \
+		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
+		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
+		--build-arg TARGET=$(TARGET) \
+		--build-arg RUSTFLAGS='$(RUSTFLAGS)' \
+		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
+		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+		--build-arg FEATURES='$(FEATURES_ARG)' \
+		--build-arg REPO=$(REPO) \
+		--build-arg VCS_REF=$(VCS_REF) \
+		--build-arg VCS_URL=$(VCS_URL) \
+		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
+		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
+		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
+
 DEB_VERSION=1
 DEB_ARCH_NAME_x86_64=amd64
 DEB_ARCH_NAME_aarch64=arm64
