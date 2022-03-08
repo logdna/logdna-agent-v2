@@ -101,7 +101,8 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
     where
         S: SerializeStr<String> + std::marker::Send,
     {
-        writer.serialize_str(&self.path).await?;
+        let path = String::from("file_name");
+        writer.serialize_str(&path).await?;
         Ok(())
     }
     fn has_host(&self) -> bool {
