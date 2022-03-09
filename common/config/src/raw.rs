@@ -287,6 +287,10 @@ pub struct LogConfig {
     pub lookback: Option<String>,
     pub use_k8s_enrichment: Option<String>,
     pub log_k8s_events: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub k8s_exclusion: Option<Rules>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub k8s_inclusion: Option<Rules>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
@@ -402,6 +406,18 @@ impl Default for LogConfig {
             lookback: None,
             use_k8s_enrichment: None,
             log_k8s_events: None,
+            k8s_exclusion: Some(Rules {
+                glob: vec![
+                    "/var/log/containers/*".parse().unwrap(),
+                ],
+                regex: Vec::new(),
+            }),
+            k8s_inclusion: Some(Rules {
+                glob: vec![
+                    "/var/log/containers/*".parse().unwrap(),
+                ],
+                regex: Vec::new(),
+            }),
         }
     }
 }

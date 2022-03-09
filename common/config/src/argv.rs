@@ -37,6 +37,8 @@ pub mod env {
     pub const LOG_K8S_EVENTS: &str = "LOGDNA_LOG_K8S_EVENTS";
     pub const LINE_EXCLUSION: &str = "LOGDNA_LINE_EXCLUSION_REGEX";
     pub const LINE_INCLUSION: &str = "LOGDNA_LINE_INCLUSION_REGEX";
+    pub const K8S_EXCLUSION: &str = "LOGDNA_K8S_EXCLUSION";
+    pub const K8S_INCLUSION: &str = "LOGDNA_K8S_INCLUSION";
     pub const REDACT: &str = "LOGDNA_REDACT_REGEX";
     pub const INGEST_TIMEOUT: &str = "LOGDNA_INGEST_TIMEOUT";
     pub const INGEST_BUFFER_SIZE: &str = "LOGDNA_INGEST_BUFFER_SIZE";
@@ -185,6 +187,14 @@ pub struct ArgumentOptions {
     #[structopt(long, env = env::LINE_INCLUSION)]
     line_inclusion: Vec<String>,
 
+    /// List of glob patterns to exlcude pod annotations under the /var/log/containers directory.
+    #[structopt(long, env = env::K8S_EXCLUSION)]
+    k8s_exclusion: Vec<String>,
+
+    /// List of glob patterns to include pod annotations under the /var/log/containers directory.
+    #[structopt(long, env = env::K8S_INCLUSION)]
+    k8s_inclusion: Vec<String>,
+    
     /// List of regex patterns used to mask matching sensitive information (such as PII) before
     /// sending it in the log line.
     #[structopt(long, env = env::REDACT)]
@@ -353,6 +363,20 @@ impl ArgumentOptions {
             with_csv(self.line_inclusion)
                 .iter()
                 .for_each(|v| regex.push(v.clone()));
+        }
+        
+        if !self.k8s_exclusion.is_empty() {
+            let rule = raw.log.k8s_exclusion.get_or_insert(Rules::default());
+            with_csv(self.k8s_exclusion)
+                .iter()
+                .for_each(|v| rule.regex.push(v.clone()));
+        }
+
+        if !self.k8s_inclusion.is_empty() {
+            let rule = raw.log.k8s_inclusion.get_or_insert(Rules::default());
+            with_csv(self.k8s_inclusion)
+                .iter()
+                .for_each(|v| rule.regex.push(v.clone()));
         }
 
         if !self.line_redact.is_empty() {
