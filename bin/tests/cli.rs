@@ -1580,6 +1580,43 @@ async fn test_line_redact() {
     test_line_rules(None, None, redact, to_write, expected).await;
 }
 
+#[tokio::test]
+#[ignore]
+async fn test_directory_created_after_initialization() {
+    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let future_dir = dir.join("inner");
+
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+    let settings = AgentSettings::with_mock_ingester(future_dir.to_str().unwrap(), &addr);
+    let mut agent_handle = common::spawn_agent(settings);
+    let stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
+    std::thread::spawn(move || {
+        stderr_reader
+            .lines()
+            .for_each(|line| eprintln!("{:?}", line))
+    });
+
+    let (server_result, _) = tokio::join!(server, async {
+        tokio::time::sleep(Duration::from_millis(2000)).await;
+        let file_path = future_dir.join("test.log");
+        std::fs::create_dir(&future_dir).unwrap();
+        File::create(&file_path).unwrap();
+        common::append_to_file(&file_path, 10, 5).unwrap();
+        common::force_client_to_flush(&future_dir).await;
+
+        // Wait for the data to be received by the mock ingester
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+
+        let map = received.lock().await;
+        let file_info = map.get(file_path.to_str().unwrap()).unwrap();
+        assert_eq!(file_info.lines, 10);
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
+    agent_handle.kill().expect("Could not kill process");
+}
+
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn lookback_stateful_lines_are_delivered() {
