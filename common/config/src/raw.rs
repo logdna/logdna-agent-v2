@@ -288,9 +288,9 @@ pub struct LogConfig {
     pub use_k8s_enrichment: Option<String>,
     pub log_k8s_events: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub k8s_exclusion: Option<Rules>,
+    pub k8s_exclusion_app: Option<K8sRules>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub k8s_inclusion: Option<Rules>,
+    pub k8s_inclusion_app: Option<K8sRules>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
@@ -316,6 +316,23 @@ impl Merge for Rules {
         self.glob.merge(&other.glob, &default.glob);
         self.regex.merge(&other.regex, &default.regex);
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
+pub struct K8sRules {
+    pub app: Vec<String>,
+    pub namespace: Vec<String>,
+    pub label: Vec<String>,
+    pub annotation: Vec<String>
+}
+
+impl Merge for K8sRules {
+   fn merge(&mut self, other: &Self, default: &Self) {
+       self.app.merge(&other.app, &default.app);
+       self.namespace.merge(&other.namespace, &default.namespace);
+       self.label.merge(&other.label, &default.annotation);
+       self.annotation.merge(&other.annotation, &default.annotation);
+   } 
 }
 
 impl Merge for Config {
@@ -406,18 +423,8 @@ impl Default for LogConfig {
             lookback: None,
             use_k8s_enrichment: None,
             log_k8s_events: None,
-            k8s_exclusion: Some(Rules {
-                glob: vec![
-                    "/var/log/containers/*".parse().unwrap(),
-                ],
-                regex: Vec::new(),
-            }),
-            k8s_inclusion: Some(Rules {
-                glob: vec![
-                    "/var/log/containers/*".parse().unwrap(),
-                ],
-                regex: Vec::new(),
-            }),
+            k8s_exclusion_app: None,
+            k8s_inclusion_app: None,
         }
     }
 }

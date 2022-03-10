@@ -1,6 +1,6 @@
 use crate::argv::env;
 use crate::error::ConfigError;
-use crate::raw::{Config, Rules};
+use crate::raw::{Config, Rules, K8sRules};
 use crate::{argv, get_hostname};
 use http::types::params::{Params, Tags};
 use humanize_rs::bytes::Bytes;
@@ -43,8 +43,8 @@ from_env_name!(DB_PATH);
 from_env_name!(METRICS_PORT);
 from_env_name!(USE_K8S_LOG_ENRICHMENT);
 from_env_name!(LOG_K8S_EVENTS);
-from_env_name!(K8S_EXCLUSION);
-from_env_name!(K8S_INCLUSION);
+from_env_name!(K8S_EXCLUSION_APP);
+from_env_name!(K8S_INCLUSION_APP);
 from_env_name!(LINE_EXCLUSION);
 from_env_name!(LINE_INCLUSION);
 from_env_name!(REDACT);
@@ -235,18 +235,18 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
             .for_each(|v| paths.push(PathBuf::from(v)));
     }
 
-    if let Some(value) = map.get(&K8S_EXCLUSION) {
-        let rule = result.log.k8s_exclusion.get_or_insert(Rules::default());
+    if let Some(value) = map.get(&K8S_EXCLUSION_APP) {
+        let rule = result.log.k8s_exclusion_app.get_or_insert(K8sRules::default());
         argv::split_by_comma(value)
             .iter()
-            .for_each(|v| rule.regex.push(v.to_string()));
+            .for_each(|v| rule.app.push(v.to_string()));
     }
     
-    if let Some(value) = map.get(&K8S_INCLUSION) {
-        let rule = result.log.k8s_inclusion.get_or_insert(Rules::default());
+    if let Some(value) = map.get(&K8S_INCLUSION_APP) {
+        let rule = result.log.k8s_inclusion_app.get_or_insert(K8sRules::default());
         argv::split_by_comma(value)
             .iter()
-            .for_each(|v| rule.regex.push(v.to_string()));
+            .for_each(|v| rule.app.push(v.to_string()));
     }
 
     result.log.lookback = map.get_string(&LOOKBACK);
