@@ -6,7 +6,7 @@ use http::types::body::{KeyValueMap, LineBufferMut};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{api::ListParams, config::Config, Api, Client};
 
-use kube_runtime::watcher;
+use kube_runtime::{watcher, reflector};
 use kube_runtime::watcher::Event as WatcherEvent;
 
 use backoff::backoff::Backoff;
@@ -62,7 +62,7 @@ impl K8sMetadata {
             api: Api::<Pod>::all(client),
         })
     }
-
+    
     async fn initialize(
         client: &Client,
         max_elapsed_time: Duration,
@@ -113,6 +113,32 @@ impl K8sMetadata {
                 }
             }
         }
+
+        Ok(metadata)
+    }
+    
+    async fn initialize_with_reflector(
+        client: &Client,
+        max_elapsed_time: Duration,
+    ) -> Result<HashMap<(String, String), PodMetadata>, K8sError> {
+        let api: Api<Pod> = Api::all(client.clone());
+        let store_w = reflector::store::Writer::<Pod>::default();
+        let store = store_w.as_reader();
+        let metadata = HashMap::new();
+        let backoff = ExponentialBackoff {
+            current_interval: Duration::from_millis(500),
+            initial_interval: Duration::from_millis(500),
+            randomization_factor: 0.2,
+            multiplier: 1.5, // Equivalent to 50% increases every time
+            max_interval: Duration::from_millis(2_000),
+            max_elapsed_time: Some(max_elapsed_time),
+            ..ExponentialBackoff::default()
+        };
+        let mut params = ListParams::default();
+        if let Ok(node) = env::var("NODE_NAME") {
+            params = ListParams::default().fields(&format!("spec.nodeName={}", node));
+        }
+        let reflector = reflector(store_w, watcher(api, params));
 
         Ok(metadata)
     }
