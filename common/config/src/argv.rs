@@ -37,8 +37,8 @@ pub mod env {
     pub const LOG_K8S_EVENTS: &str = "LOGDNA_LOG_K8S_EVENTS";
     pub const LINE_EXCLUSION: &str = "LOGDNA_LINE_EXCLUSION_REGEX";
     pub const LINE_INCLUSION: &str = "LOGDNA_LINE_INCLUSION_REGEX";
-    pub const K8S_EXCLUSION_APP: &str = "LOGDNA_K8S_EXCLUSION_APP";
-    pub const K8S_INCLUSION_APP: &str = "LOGDNA_K8S_INCLUSION_APP";
+    pub const K8S_EXCLUSION_RULES: &str = "LOGDNA_K8S_EXCLUSION_RULES";
+    pub const K8S_INCLUSION_RULES: &str = "LOGDNA_K8S_INCLUSION_RULES";
     pub const REDACT: &str = "LOGDNA_REDACT_REGEX";
     pub const INGEST_TIMEOUT: &str = "LOGDNA_INGEST_TIMEOUT";
     pub const INGEST_BUFFER_SIZE: &str = "LOGDNA_INGEST_BUFFER_SIZE";
@@ -188,12 +188,12 @@ pub struct ArgumentOptions {
     line_inclusion: Vec<String>,
 
     /// List of glob patterns to exlcude pod annotations under the /var/log/containers directory.
-    #[structopt(long, env = env::K8S_EXCLUSION_APP)]
-    k8s_exclusion_app: Vec<String>,
+    #[structopt(long, env = env::K8S_EXCLUSION_RULES)]
+    k8s_exclusion: Vec<String>,
 
     /// List of glob patterns to include pod annotations under the /var/log/containers directory.
-    #[structopt(long, env = env::K8S_INCLUSION_APP)]
-    k8s_inclusion_app: Vec<String>,
+    #[structopt(long, env = env::K8S_INCLUSION_RULES)]
+    k8s_inclusion: Vec<String>,
     
     /// List of regex patterns used to mask matching sensitive information (such as PII) before
     /// sending it in the log line.
@@ -364,20 +364,22 @@ impl ArgumentOptions {
                 .iter()
                 .for_each(|v| regex.push(v.clone()));
         }
-        
-        if !self.k8s_exclusion_app.is_empty() {
+       
+        /*
+        if !self.k8s_exclusion.is_empty() {
             let rule = raw.log.k8s_exclusion_app.get_or_insert(K8sRules::default());
             with_csv(self.k8s_exclusion_app)
                 .iter()
                 .for_each(|v| rule.app.push(v.clone()));
         }
 
-        if !self.k8s_inclusion_app.is_empty() {
+        if !self.k8s_inclusion.is_empty() {
             let rule = raw.log.k8s_inclusion_app.get_or_insert(K8sRules::default());
-            with_csv(self.k8s_inclusion_app)
+            with_csv(self.k8s_inclusion)
                 .iter()
                 .for_each(|v| rule.app.push(v.clone()));
         }
+        */
 
         if !self.line_redact.is_empty() {
             let regex = raw.log.line_redact_regex.get_or_insert(Vec::new());
@@ -649,8 +651,8 @@ mod test {
         assert_eq!(config.log.log_k8s_events, None);
         assert_eq!(config.log.db_path, None);
         assert_eq!(config.log.metrics_port, None);
-        assert_eq!(config.log.k8s_exclusion_app, None);
-        assert_eq!(config.log.k8s_inclusion_app, None);
+        assert_eq!(config.log.k8s_exclude, None);
+        assert_eq!(config.log.k8s_include, None);
     }
 
     #[test]

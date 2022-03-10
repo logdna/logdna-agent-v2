@@ -4,6 +4,7 @@ use http::types::params::Params;
 use humanize_rs::bytes::Bytes;
 use serde::de::{Deserializer, Error, Unexpected, Visitor};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
@@ -288,9 +289,9 @@ pub struct LogConfig {
     pub use_k8s_enrichment: Option<String>,
     pub log_k8s_events: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub k8s_exclusion_app: Option<K8sRules>,
+    pub k8s_exclude: Option<K8sRules>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub k8s_inclusion_app: Option<K8sRules>,
+    pub k8s_include: Option<K8sRules>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
@@ -322,8 +323,8 @@ impl Merge for Rules {
 pub struct K8sRules {
     pub app: Vec<String>,
     pub namespace: Vec<String>,
-    pub label: Vec<String>,
-    pub annotation: Vec<String>
+    pub label: Vec<HashMap<String, String>>,
+    pub annotation: Vec<HashMap<String, String>>
 }
 
 impl Merge for K8sRules {
@@ -423,8 +424,8 @@ impl Default for LogConfig {
             lookback: None,
             use_k8s_enrichment: None,
             log_k8s_events: None,
-            k8s_exclusion_app: None,
-            k8s_inclusion_app: None,
+            k8s_exclude: None,
+            k8s_include: None,
         }
     }
 }

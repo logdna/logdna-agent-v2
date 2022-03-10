@@ -43,8 +43,8 @@ from_env_name!(DB_PATH);
 from_env_name!(METRICS_PORT);
 from_env_name!(USE_K8S_LOG_ENRICHMENT);
 from_env_name!(LOG_K8S_EVENTS);
-from_env_name!(K8S_EXCLUSION_APP);
-from_env_name!(K8S_INCLUSION_APP);
+from_env_name!(K8S_EXCLUSION_RULES);
+from_env_name!(K8S_INCLUSION_RULES);
 from_env_name!(LINE_EXCLUSION);
 from_env_name!(LINE_INCLUSION);
 from_env_name!(REDACT);
@@ -235,15 +235,15 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
             .for_each(|v| paths.push(PathBuf::from(v)));
     }
 
-    if let Some(value) = map.get(&K8S_EXCLUSION_APP) {
-        let rule = result.log.k8s_exclusion_app.get_or_insert(K8sRules::default());
+    if let Some(value) = map.get(&K8S_EXCLUSION_RULES) {
+        let rule = result.log.k8s_exclude.get_or_insert(K8sRules::default());
         argv::split_by_comma(value)
             .iter()
             .for_each(|v| rule.app.push(v.to_string()));
     }
     
-    if let Some(value) = map.get(&K8S_INCLUSION_APP) {
-        let rule = result.log.k8s_inclusion_app.get_or_insert(K8sRules::default());
+    if let Some(value) = map.get(&K8S_INCLUSION_RULES) {
+        let rule = result.log.k8s_include.get_or_insert(K8sRules::default());
         argv::split_by_comma(value)
             .iter()
             .for_each(|v| rule.app.push(v.to_string()));
