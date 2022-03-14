@@ -14,8 +14,10 @@ use futures::{stream::try_unfold, Stream, StreamExt, TryStreamExt};
 use k8s_openapi::api::core::v1::{Event, ObjectReference, Pod};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::api::ListParams;
-use kube::{Api, Client, Config};
-use kube_runtime::{utils::try_flatten_touched, watcher};
+use kube::{
+    runtime::{utils::try_flatten_touched, watcher},
+    Api, Client, Config,
+};
 
 use pin_utils::pin_mut;
 
@@ -42,7 +44,6 @@ lazy_static! {
     };
 }
 
-#[allow(clippy::map_flatten)]
 impl From<Event> for EventLog {
     // Replicate the Reporter's formatting
     fn from(event: Event) -> Self {
@@ -131,14 +132,12 @@ impl From<Event> for EventLog {
                 node,
                 first_time: first_timestamp,
                 time: last_timestamp.or_else(|| event_time.map(|time| Time(time.0))),
-                age: age
-                    .map(|age| {
-                        age.num_seconds()
-                            .try_into()
-                            .map_err(|_| warn!("age too large, could not fit {} into i32", age))
-                            .ok()
-                    })
-                    .flatten(),
+                age: age.and_then(|age| {
+                    age.num_seconds()
+                        .try_into()
+                        .map_err(|_| warn!("age too large, could not fit {} into i32", age))
+                        .ok()
+                }),
                 count,
             },
         };
