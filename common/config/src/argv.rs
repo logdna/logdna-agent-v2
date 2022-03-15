@@ -652,7 +652,15 @@ mod test {
         assert_eq!(config.log.db_path, None);
         assert_eq!(config.log.metrics_port, None);
         assert_eq!(config.log.k8s_exclude, None);
-        assert_eq!(config.log.k8s_include, None);
+        assert_eq!(
+            config.log.k8s_include,
+            Some(K8sRules{
+                app: vec_strings!["*"],
+                namespace: vec_strings!["*"],
+                label: vec_strings!["*:*"],
+                annotation: vec_strings!["*:*"],
+            })
+        );
     }
 
     #[test]

@@ -323,8 +323,8 @@ impl Merge for Rules {
 pub struct K8sRules {
     pub app: Vec<String>,
     pub namespace: Vec<String>,
-    pub label: Vec<HashMap<String, String>>,
-    pub annotation: Vec<HashMap<String, String>>
+    pub label: Vec<String>,
+    pub annotation: Vec<String>
 }
 
 impl Merge for K8sRules {
@@ -425,7 +425,12 @@ impl Default for LogConfig {
             use_k8s_enrichment: None,
             log_k8s_events: None,
             k8s_exclude: None,
-            k8s_include: None,
+            k8s_include: Some(K8sRules {
+                app: vec!["*".parse().unwrap()],
+                namespace: vec!["*".parse().unwrap()],
+                label: vec!["*:*".parse().unwrap()],
+                annotation: vec!["*:*".parse().unwrap()]
+            })
         }
     }
 }
@@ -485,6 +490,15 @@ mod tests {
         assert!(new_config.is_ok());
         let new_config = new_config.unwrap();
         assert_eq!(config, new_config);
+        assert_eq!(
+            config.log.k8s_include,
+            Some(K8sRules{
+                app: vec_strings!["*"],
+                namespace: vec_strings!["*"],
+                label: vec_strings!["*:*"],
+                annotation: vec_strings!["*:*"],
+            })
+        );
     }
 
     #[test]
