@@ -7,6 +7,8 @@ use std::env::var as env_var;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
+use self::env::K8S_INCLUSION_RULES;
+
 // Symbol that will be populated in the main.rs file
 extern "Rust" {
     static PKG_VERSION: &'static str;
@@ -364,22 +366,8 @@ impl ArgumentOptions {
                 .iter()
                 .for_each(|v| regex.push(v.clone()));
         }
-       
-        /*
-        if !self.k8s_exclusion.is_empty() {
-            let rule = raw.log.k8s_exclusion_app.get_or_insert(K8sRules::default());
-            with_csv(self.k8s_exclusion_app)
-                .iter()
-                .for_each(|v| rule.app.push(v.clone()));
-        }
 
-        if !self.k8s_inclusion.is_empty() {
-            let rule = raw.log.k8s_inclusion_app.get_or_insert(K8sRules::default());
-            with_csv(self.k8s_inclusion)
-                .iter()
-                .for_each(|v| rule.app.push(v.clone()));
-        }
-        */
+        //set_k8s_rules(&mut raw.log.k8s_exclude, self.k8s_exclusion.app, self.k, label, annotation);
 
         if !self.line_redact.is_empty() {
             let regex = raw.log.line_redact_regex.get_or_insert(Vec::new());
@@ -458,6 +446,21 @@ fn set_rules(existing: &mut Option<Rules>, glob: Vec<String>, regex: Vec<String>
     rules.glob.append(&mut with_csv(glob));
     rules.regex.append(&mut with_csv(regex));
 }
+
+// TODO: complete fn to parse K8sRules object
+/*
+fn set_k8s_rules(
+    existing: &mut Option<K8sRules>,
+    exclude: Vec<String>,
+    include: Vec<String>,
+) {
+    let rules = existing.get_or_insert(K8sRules::default());
+    for val in with_csv(exclude).iter() {
+        match {
+            val.split(":") => rules.app.push();
+        }
+    }
+}*/
 
 pub fn split_by_comma(v: &str) -> Vec<String> {
     with_csv(vec![v.to_string()])
