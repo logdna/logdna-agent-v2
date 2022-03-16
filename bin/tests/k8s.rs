@@ -288,6 +288,7 @@ async fn create_agent_ds(
     agent_namespace: &str,
     ingester_addr: &str,
     log_k8s_events: &str,
+    enrich_logs_with_k8s: &str,
     agent_log_level: &str,
 ) {
     let sa = serde_json::from_value(serde_json::json!({
@@ -423,6 +424,7 @@ async fn create_agent_ds(
         "false",
         agent_name,
         log_k8s_events,
+        enrich_logs_with_k8s,
         agent_log_level,
     );
     //
@@ -476,6 +478,7 @@ fn get_agent_ds_yaml(
     use_ssl: &str,
     agent_name: &str,
     log_k8s_events: &str,
+    enrich_logs_with_k8s: &str,
     log_level: &str,
 ) -> DaemonSet {
     serde_json::from_value(serde_json::json!({
@@ -535,6 +538,10 @@ fn get_agent_ds_yaml(
                                 {
                                     "name": "LOGDNA_LOG_K8S_EVENTS",
                                     "value": log_k8s_events
+                                },
+                                {
+                                    "name": "LOGDNA_USE_K8S_LOG_ENRICHMENT",
+                                    "value": enrich_logs_with_k8s,
                                 },
                                 {
                                     "name": "POD_APP_LABEL",
@@ -740,6 +747,7 @@ async fn test_k8s_enrichment() {
             agent_namespace,
             &mock_ingester_socket_addr_str,
             "never",
+            "always",
             "warn",
         )
         .await;
@@ -871,6 +879,7 @@ async fn test_k8s_events_logged() {
             agent_name,
             agent_namespace,
             &mock_ingester_socket_addr_str,
+            "always",
             "always",
             "warn",
         )

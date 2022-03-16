@@ -3,6 +3,8 @@
 curpath=$(dirname "$0")
 create_cluster=${1:-true}
 
+KIND_IMAGE=kindest/node:v1.23.4@sha256:0e34f0d0fd448aa2f2819cfd74e99fe5793a6e4938b328f657c8e3f81ee0dfb9
+
 >&2 echo "Starting k8s kind build"
 
 # shellcheck source=/dev/null
@@ -21,6 +23,7 @@ export KIND_EXPERIMENTAL_DOCKER_NETWORK=$cluster_name
 if [ "$create_cluster" = "true" ]
 then
   >&2 kind create cluster --name $cluster_name \
+      --image=$KIND_IMAGE \
       --config=$curpath/kind/kind-config.yaml \
       --kubeconfig=$curpath/.kind_config_host
 else
