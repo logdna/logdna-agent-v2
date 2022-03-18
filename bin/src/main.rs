@@ -96,6 +96,7 @@ async fn main() {
         .as_ref()
         .map(|os| (os.write_handle(), os.flush_handle()));
 
+    let user_agent = config.http.template.user_agent.clone();
     let (retry, retry_stream) = retry(
         config.http.retry_dir,
         config.http.retry_base_delay,
@@ -120,8 +121,10 @@ async fn main() {
     if config.log.use_k8s_enrichment == K8sTrackingConf::Always
         && PathBuf::from("/var/log/containers/").exists()
     {
-        match K8sMetadata::new().await {
-            Ok(v) => {
+        let node_name = std::env::var("NODE_NAME").ok();
+        match K8sMetadata::new(user_agent, node_name.as_deref()).await {
+            Ok((driver, v)) => {
+                tokio::spawn(driver);
                 executor.register(v);
                 info!("Registered k8s metadata middleware");
             }

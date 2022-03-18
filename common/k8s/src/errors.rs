@@ -13,7 +13,7 @@ pub enum K8sError {
 #[derive(Debug, Error)]
 pub enum K8sEventStreamError {
     #[error(transparent)]
-    WatcherError(kube_runtime::watcher::Error),
+    WatcherError(kube::runtime::watcher::Error),
     #[error(transparent)]
     SerializationError(#[from] serde_json::Error),
     #[error(transparent)]
