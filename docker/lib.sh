@@ -46,3 +46,15 @@ get_sccache_args() {
 		echo "--env SCCACHE_BUCKET=$SCCACHE_BUCKET --env SCCACHE_REGION=$SCCACHE_REGION --env AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY --env AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID $APPEND"
 	fi
 }
+
+get_host_arch() {
+	# Default to the host ARCH
+	HOST_ARCH=$(uname -m)
+	# special case handling for M1s
+	if [[ $HOST_ARCH == 'arm64' ]]; then
+		HOST_ARCH=${HOST_ARCH:-'aarch64'}
+	else
+		HOST_ARCH=${HOST_ARCH:-$HOST_ARCH}
+	fi
+	echo $HOST_ARCH
+}
