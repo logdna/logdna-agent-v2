@@ -119,9 +119,11 @@ spec:
                   name: logdna-agent-key
                   key: logdna-agent-key
             - name: LOGDNA_HOST
-              value: logs.us-east.logging.cloud.ibm.com
-            - name: LOGDNA_CONFIG_FILE
-              value: agent-satellite.conf
+              value: logs.logdna.com
+            - name: LOGDNA_USE_K8S_LOG_ENRICHMENT
+              value: never
+            - name: LOGDNA_LOG_K8S_EVENTS
+              value: never
             - name: POD_NAME
               value: satellite_pod
             - name: NAMESPACE
@@ -132,10 +134,14 @@ spec:
               value: smallfiles
             - name: LOGDNA_DB_PATH
               value: /var/lib/logdna
+            - name: LOGDNA_EXCLUSION_RULES
+              value: /var/log/wtmp,/var/log/btmp,/var/log/utmp,/var/log/wtmpx,/var/log/btmpx,/var/log/utmpx,/var/log/asl/**,/var/log/sa/**,/var/log/sar*,/var/log/tallylog,/var/log/fluentd-buffers/**/*,/var/log/pods/**/*,/var/log/containers/logdna*
             - name: POD_APP_LABEL
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.labels['app.kubernetes.io/name']
+            - name: RUST_LOG
+              value: debug
           resources:
             requests:
               cpu: 20m
