@@ -234,7 +234,7 @@ pub enum StreamElem<T> {
 impl K8sEventStream {
     pub fn new(client: Client, pod_name: String, namespace: String, pod_label: String) -> Self {
         Self {
-            client: client,
+            client,
             pod_name,
             namespace,
             pod_label,
