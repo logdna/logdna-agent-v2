@@ -8,6 +8,8 @@ pub enum K8sError {
     InitializationError(String),
     #[error(transparent)]
     K8sError(#[from] kube::Error),
+    #[error(transparent)]
+    K8sInClusterError(#[from] kube::config::InClusterError),
 }
 
 #[derive(Debug, Error)]

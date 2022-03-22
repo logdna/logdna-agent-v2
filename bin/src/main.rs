@@ -20,7 +20,7 @@ use journald::journalctl::create_journalctl_source;
 use k8s::event_source::K8sEventStream;
 
 use k8s::middleware::K8sMetadata;
-use k8s::K8sTrackingConf;
+use k8s::{create_k8s_client_default_from_env, K8sTrackingConf};
 use metrics::Metrics;
 use middleware::line_rules::LineRules;
 use middleware::Executor;
@@ -118,26 +118,34 @@ async fn main() {
     }
 
     let mut executor = Executor::new();
-    if config.log.use_k8s_enrichment == K8sTrackingConf::Always
-        && PathBuf::from("/var/log/containers/").exists()
-    {
-        let node_name = std::env::var("NODE_NAME").ok();
-        match K8sMetadata::new(user_agent, node_name.as_deref()).await {
-            Ok((driver, v)) => {
-                tokio::spawn(driver);
-                executor.register(v);
-                info!("Registered k8s metadata middleware");
+
+    match create_k8s_client_default_from_env(user_agent) {
+        Ok(k8s_client) => {
+            if config.log.use_k8s_enrichment == K8sTrackingConf::Always
+                && PathBuf::from("/var/log/containers/").exists()
+            {
+                let node_name = std::env::var("NODE_NAME").ok();
+                match K8sMetadata::new(k8s_client.clone(), node_name.as_deref()).await {
+                    Ok((driver, v)) => {
+                        tokio::spawn(driver);
+                        executor.register(v);
+                        info!("Registered k8s metadata middleware");
+                    }
+                    Err(e) => {
+                        let message = format!(
+                            "The agent could not access k8s api after several attempts: {}",
+                            e
+                        );
+                        error!("{}", message);
+                        panic!("{}", message);
+                    }
+                };
             }
-            Err(e) => {
-                let message = format!(
-                    "The agent could not access k8s api after several attempts: {}",
-                    e
-                );
-                error!("{}", message);
-                panic!("{}", message);
-            }
-        };
-    }
+        }
+        Err(e) => {
+            warn!("Unable to initialise kubernetes client: {}", e);
+        }
+    };
 
     match LineRules::new(
         &config.log.line_exclusion_regex,
