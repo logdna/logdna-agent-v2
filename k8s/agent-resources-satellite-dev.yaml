@@ -102,14 +102,12 @@ spec:
       serviceAccountName: logdna-agent
       containers:
         - name: logdna-agent
-          image: mate:443/dkhokhlov/logdna-agent-debug:3.4.0-beta.1-arm64
+          image: docker.io/dkhokhlov/logdna-agent-dev:3.4.0-beta.1-amd64
           imagePullPolicy: Always
           securityContext:
-            privileged: true
             capabilities:
               add:
                 - DAC_READ_SEARCH
-                - SYS_PTRACE
               drop:
                 - all
           env:
@@ -144,10 +142,6 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            - name: LOGDNA_EXCLUSION_RULES
-              value: /var/log/wtmp,/var/log/btmp,/var/log/utmp,/var/log/wtmpx,/var/log/btmpx,/var/log/utmpx,/var/log/asl/**,/var/log/sa/**,/var/log/sar*,/var/log/tallylog,/var/log/fluentd-buffers/**/*,/var/log/pods/**/*,/var/log/containers/logdna*
-            - name: RUST_LOG
-              value: debug
           resources:
             requests:
               cpu: 20m

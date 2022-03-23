@@ -1795,8 +1795,10 @@ name = "middleware"
 version = "0.1.0"
 dependencies = [
  "http 0.1.0",
+ "log",
  "memoffset",
  "regex",
+ "serde_json",
  "thiserror",
 ]
 

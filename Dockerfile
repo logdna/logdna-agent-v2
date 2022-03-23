@@ -75,9 +75,6 @@ ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy
 
 # Copy the agent binary from the build stage
 COPY --from=build /logdna-agent /work/
-# Copy agent custom configs
-COPY config/ /work/
-
 WORKDIR /work/
 
 RUN microdnf update -y \
