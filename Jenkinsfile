@@ -44,14 +44,16 @@ pipeline {
         }
         stage('Init QEMU') {
             steps {
-                sh "make init-qemu"
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    sh "make init-qemu"
+                }
             }
         }
         stage('Lint and Test') {
             parallel {
                 stage('Lint'){
                     agent {
-                      label "ec2-fleet"
+                      label "rust-x86_64"
                     }
                     steps {
                         sh """
@@ -66,7 +68,7 @@ pipeline {
                 }
                 stage('Unit tests'){
                     agent {
-                      label "ec2-fleet"
+                      label "rust-x86_64"
                     }
                     steps {
                         withCredentials([[
@@ -88,7 +90,7 @@ pipeline {
                 }
                 stage('Journald tests'){
                     agent {
-                      label "ec2-fleet"
+                      label "rust-x86_64"
                     }
                     steps {
                         withCredentials([[
@@ -115,7 +117,7 @@ pipeline {
                     }
 
                     agent {
-                      label "ec2-fleet"
+                      label "rust-x86_64"
                     }
                     steps {
                         script {
@@ -165,7 +167,9 @@ pipeline {
             parallel {
                 stage('Build Release Image x86_64') {
                     steps {
-                        sh "make init-qemu"
+                        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                            sh "make init-qemu"
+                        }
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
                             credentialsId: 'aws',
@@ -269,7 +273,6 @@ pipeline {
                                 echo "[default]" > ${PWD}/.aws_creds_static
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static
-                                STATIC=1 make publish-s3-binary
                                 ARCH=x86_64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
                                 ARCH=aarch64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
                                 rm ${PWD}/.aws_creds_static
@@ -278,7 +281,7 @@ pipeline {
                     }
                 }
                 stage('Publish GCR images') {
-                    when {                        
+                    when {
                         environment name: 'PUBLISH_GCR_IMAGE', value: 'true'
                     }
                     steps {
