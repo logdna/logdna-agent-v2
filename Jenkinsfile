@@ -45,7 +45,10 @@ pipeline {
         stage('Init QEMU') {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    sh "make init-qemu"
+                    sh """
+                    env
+                    make init-qemu
+                    """
                 }
             }
         }

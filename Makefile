@@ -2,6 +2,8 @@ REPO := logdna-agent-v2
 
 SHELLFLAGS := -ic
 
+export SHELL=/bin/bash
+
 # The target architecture the agent is to be compiled for
 export ARCH ?= x86_64
 # The image repo and tag can be modified e.g.
