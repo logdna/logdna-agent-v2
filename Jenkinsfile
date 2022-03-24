@@ -48,10 +48,6 @@ pipeline {
             }
         }
         stage('Lint and Test') {
-            environment {
-                CREDS_FILE = credentials('pipeline-e2e-creds')
-                LOGDNA_HOST = "logs.use.stage.logdna.net"
-            }
             parallel {
                 stage('Lint'){
                     agent {
@@ -113,6 +109,11 @@ pipeline {
                     }
                 }
                 stage('Integration Tests'){
+                    environment {
+                        CREDS_FILE = credentials('pipeline-e2e-creds')
+                        LOGDNA_HOST = "logs.use.stage.logdna.net"
+                    }
+
                     agent {
                       label "ec2-fleet"
                     }
@@ -161,10 +162,6 @@ pipeline {
             }
         }
         stage('Build Release Binaries') {
-            environment {
-                CREDS_FILE = credentials('pipeline-e2e-creds')
-                LOGDNA_HOST = "logs.use.stage.logdna.net"
-            }
             parallel {
                 stage('Build Release Image x86_64') {
                     steps {
