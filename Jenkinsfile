@@ -53,7 +53,22 @@ pipeline {
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
             }
             parallel {
-                stage('Lint and Unit tests'){
+                stage('Lint'){
+                    agent {
+                      label "ec2-fleet"
+                    }
+                    steps {
+                        sh """
+                            make lint
+                        """
+                    }
+                    post {
+                        success {
+                            sh "make clean"
+                        }
+                    }
+                }
+                stage('Unit tests'){
                     agent {
                       label "ec2-fleet"
                     }
@@ -75,7 +90,7 @@ pipeline {
                         }
                     }
                 }
-                stage('Lint and Unit tests'){
+                stage('Journald tests'){
                     agent {
                       label "ec2-fleet"
                     }
