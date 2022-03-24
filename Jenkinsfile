@@ -53,7 +53,54 @@ pipeline {
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
             }
             parallel {
-                stage('Lint, Unit and Integration Tests'){
+                stage('Lint and Unit tests'){
+                    agent {
+                      label "ec2-fleet"
+                    }
+                    steps {
+                        withCredentials([[
+                                           $class: 'AmazonWebServicesCredentialsBinding',
+                                           credentialsId: 'aws',
+                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                         ]]){
+                            sh """
+                              make unit-test
+                            """
+                        }
+                    }
+                    post {
+                        success {
+                            sh "make clean"
+                        }
+                    }
+                }
+                stage('Lint and Unit tests'){
+                    agent {
+                      label "ec2-fleet"
+                    }
+                    steps {
+                        withCredentials([[
+                                           $class: 'AmazonWebServicesCredentialsBinding',
+                                           credentialsId: 'aws',
+                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                         ]]){
+                            sh """
+                              make test-journald
+                            """
+                        }
+                    }
+                    post {
+                        success {
+                            sh "make clean"
+                        }
+                    }
+                }
+                stage('Integration Tests'){
+                    agent {
+                      label "ec2-fleet"
+                    }
                     steps {
                         script {
                             def creds = readJSON file: CREDS_FILE
@@ -69,8 +116,6 @@ pipeline {
                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                          ]]){
                             sh """
-                              make lint
-                              make test
                               make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
                             """
                         }
@@ -81,6 +126,7 @@ pipeline {
                         }
                     }
                 }
+
                 stage('Run K8s Integration Tests') {
                     steps {
                         catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
