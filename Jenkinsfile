@@ -78,6 +78,10 @@ pipeline {
                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                          ]]){
                             sh """
+                              # test that the node has aws-cli installed DELETE ME
+                              aws s3 ls s3://logdna-agent-build-bin
+                              # DELETE ME
+
                               make unit-test
                             """
                         }
