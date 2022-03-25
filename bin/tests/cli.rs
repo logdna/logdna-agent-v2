@@ -1,4 +1,5 @@
 use std::fs;
+use std::convert::TryInto;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::fs::MetadataExt;
@@ -773,6 +774,210 @@ proptest! {
     }
 }
 
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn lookback_none_lines_arent_delivered() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+
+    let dir = tempdir().expect("Couldn't create temp dir...");
+    let dir_path = format!("{}/", dir.path().to_str().unwrap());
+
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester(
+        Some(common::HttpVersion::Http2),
+        Some(Box::new(|req| {
+            assert_eq!(req.version(), hyper::Version::HTTP_2);
+            None
+        })),
+        None,
+    );
+
+    let mut handle = common::spawn_agent(AgentSettings {
+        log_dirs: &dir_path,
+        exclusion_regex: Some(r"^/var.*"),
+        ssl_cert_file: Some(cert_file.path()),
+        lookback: Some("none"),
+        host: Some(&addr),
+        ..Default::default()
+    });
+    debug!("spawned agent");
+
+    let mut stderr_reader = BufReader::new(handle.stderr.take().unwrap());
+
+    debug!("Waiting for agent to build");
+    common::wait_for_event("watching", &mut stderr_reader);
+
+    std::thread::spawn(move || {
+        stderr_reader.lines().for_each(|line| debug!("{:?}", line))
+    });
+
+    let file_path = dir.path().join("test.log");
+    let log_lines = "This is a test log line";
+
+    // Dump the agent's stdout
+    // TODO: assert that it's successfully uploaded
+
+    let mb = 1024 * 1024;
+    let line_write_count = (mb / (log_lines.as_bytes().len() + 1)) + 1;
+
+    tokio_test::block_on(async {
+        let (line_count, _, server) = tokio::join!(
+            {
+                async {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+                    handle.kill().unwrap();
+
+                    debug!("getting lines from {}", &file_path.to_str().unwrap());
+                    handle.wait().unwrap();
+                    let line_count = received
+                        .lock()
+                        .await
+                        .get(file_path.to_str().unwrap())
+                        .unwrap()
+                        .lines;
+                    shutdown_handle();
+                    line_count
+                }
+            },
+            {
+                let file_path = file_path.clone();
+                async move {
+                    let mut line_buffer = vec![];
+                    debug!("test log: {}", file_path.to_str().unwrap());
+                    // Enough bytes to get past the lookback threshold
+                    (0..line_write_count)
+                        .for_each(|_| writeln!(&mut line_buffer, "{}", log_lines).expect("Couldn't write to temp log file..."));
+
+                    // Open a file and write a megabyte to it
+                    let mut file = std::io::BufWriter::with_capacity(mb, File::create(&file_path).expect("Couldn't create temp log file..."));
+                    file.write_all(&line_buffer).unwrap();
+                    debug!(
+                        "wrote {} lines to {} with size {}",
+                        line_write_count,
+                        file_path.to_str().unwrap(),
+                        (log_lines.as_bytes().len() + 1) * line_write_count
+                    );
+                    file.flush().expect("Failed to sync file");
+
+                    debug!("{} is {} bytes long", file_path.to_str().unwrap(), file.get_ref().metadata().unwrap().len());
+                    tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+
+                    (0..5).for_each(|_| {
+                        writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                        file.flush().expect("Failed to sync file");
+                    });
+                    file.flush().expect("Failed to sync file");
+                    debug!("wrote 5 lines");
+                }
+            },
+            server
+        );
+        server.unwrap();
+        assert_eq!(line_count, line_write_count + 5);
+    });
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn lookback_start_lines_arent_delivered() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+
+    let dir = tempdir().expect("Couldn't create temp dir...");
+    let dir_path = format!("{}/", dir.path().to_str().unwrap());
+
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester(
+        Some(common::HttpVersion::Http2),
+        Some(Box::new(|req| {
+            assert_eq!(req.version(), hyper::Version::HTTP_2);
+            None
+        })),
+        None,
+    );
+
+    let mut handle = common::spawn_agent(AgentSettings {
+        log_dirs: &dir_path,
+        exclusion_regex: Some(r"^/var.*"),
+        ssl_cert_file: Some(cert_file.path()),
+        lookback: Some("start"),
+        host: Some(&addr),
+        ..Default::default()
+    });
+    debug!("spawned agent");
+
+    let mut stderr_reader = BufReader::new(handle.stderr.take().unwrap());
+
+    debug!("Waiting for agent to build");
+    common::wait_for_event("watching", &mut stderr_reader);
+
+    std::thread::spawn(move || {
+        stderr_reader.lines().for_each(|line| debug!("{:?}", line))
+    });
+
+    let file_path = dir.path().join("test.log");
+    let log_lines = "This is a test log line";
+
+    // Dump the agent's stdout
+    // TODO: assert that it's successfully uploaded
+
+    let mb = 1024 * 1024;
+    let line_write_count = (mb / (log_lines.as_bytes().len() + 1)) + 1;
+
+    tokio_test::block_on(async {
+        let (line_count, _, server) = tokio::join!(
+            {
+                async {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+                    handle.kill().unwrap();
+
+                    debug!("getting lines from {}", &file_path.to_str().unwrap());
+                    handle.wait().unwrap();
+                    let line_count = received
+                        .lock()
+                        .await
+                        .get(file_path.to_str().unwrap())
+                        .unwrap()
+                        .lines;
+                    shutdown_handle();
+                    line_count
+                }
+            },
+            {
+                let file_path = file_path.clone();
+                async move {
+                    let mut line_buffer = vec![];
+                    debug!("test log: {}", file_path.to_str().unwrap());
+                    // Enough bytes to get past the lookback threshold
+                    (0..line_write_count)
+                        .for_each(|_| writeln!(&mut line_buffer, "{}", log_lines).expect("Couldn't write to temp log file..."));
+
+                    // Open a file and write a megabyte to it
+                    let mut file = std::io::BufWriter::with_capacity(mb, File::create(&file_path).expect("Couldn't create temp log file..."));
+                    file.write_all(&line_buffer).unwrap();
+                    file.get_mut().set_len((line_write_count * log_lines.len() / 2).try_into().unwrap()).unwrap();
+                    debug!(
+                        "wrote {} lines to {} with size {}",
+                        line_write_count,
+                        file_path.to_str().unwrap(),
+                        (log_lines.as_bytes().len() + 1) * line_write_count
+                    );
+                    file.flush().expect("Failed to sync file");
+
+                    debug!("{} is {} bytes long", file_path.to_str().unwrap(), file.get_ref().metadata().unwrap().len());
+                    tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+
+                    (0..5).for_each(|_| {
+                        writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                        file.flush().expect("Failed to sync file");
+                    });
+                    file.flush().expect("Failed to sync file");
+                    debug!("wrote 5 lines");
+                }
+            },
+            server
+        );
+        server.unwrap();
+        assert_eq!(line_count, line_write_count + 5);
+    });
+}
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn lookback_none_lines_are_delivered() {
