@@ -122,6 +122,18 @@ spec:
               value: smallfiles
             - name: LOGDNA_DB_PATH
               value: /var/lib/logdna
+            - name: LOGDNA_USE_K8S_LOG_ENRICHMENT
+              value: always
+            - name: LOGDNA_LOG_K8S_EVENTS
+              value: never
+            - name: LOGDNA_META_K8S_FILE
+              value: REDACTED_FILE
+            - name: LOGDNA_META_APP
+              value: REDACTED_APP
+            - name: LOGDNA_META_HOST
+              value: REDACTED_HOST
+            - name: LOGDNA_META_JSON
+              value: "{\"platform\":\"REDACTED_PLATFORM\"}"
             - name: POD_APP_LABEL
               valueFrom:
                 fieldRef:

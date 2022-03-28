@@ -102,7 +102,7 @@ spec:
       serviceAccountName: logdna-agent
       containers:
         - name: logdna-agent
-          image: docker.io/dkhokhlov/logdna-agent-dev:3.4.0-beta.1-amd64
+          image: mate:443/dkhokhlov/logdna-agent-dev:3.4.0-beta.1-arm64
           imagePullPolicy: Always
           securityContext:
             capabilities:
@@ -117,7 +117,7 @@ spec:
                   name: logdna-agent-key
                   key: logdna-agent-key
             - name: LOGDNA_HOST
-              value: logs.use.dev.logdna.net
+              value: logs.logdna.com
             - name: LOGDNA_LOOKBACK
               value: smallfiles
             - name: LOGDNA_DB_PATH
@@ -126,6 +126,14 @@ spec:
               value: always
             - name: LOGDNA_LOG_K8S_EVENTS
               value: never
+            - name: LOGDNA_META_K8S_FILE
+              value: REDACTED_FILE
+            - name: LOGDNA_META_APP
+              value: REDACTED_APP
+            - name: LOGDNA_META_HOST
+              value: REDACTED_HOST
+            - name: LOGDNA_META_JSON
+              value: "{\"platform\":\"REDACTED_PLATFORM\"}"
             - name: POD_APP_LABEL
               valueFrom:
                 fieldRef:
