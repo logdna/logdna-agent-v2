@@ -3,24 +3,15 @@ use crate::{Middleware, Status};
 use http::types::body::{KeyValueMap, LineBufferMut};
 use std::collections::HashMap;
 
-const OVER_META_APP: Option<&'static str> = option_env!("LOGDNA_META_APP");
-const OVER_META_HOST: Option<&'static str> = option_env!("LOGDNA_META_HOST");
-const OVER_META_ENV: Option<&'static str> = option_env!("LOGDNA_META_ENV");
-const OVER_META_FILE: Option<&'static str> = option_env!("LOGDNA_META_FILE");
-const OVER_META_K8S_FILE: Option<&'static str> = option_env!("LOGDNA_META_K8S_FILE");
-const OVER_META_JSON: Option<&'static str> = option_env!("LOGDNA_META_JSON");
-const OVER_META_ANNOTATIONS: Option<&'static str> = option_env!("LOGDNA_META_ANNOTATIONS");
-const OVER_META_LABELS: Option<&'static str> = option_env!("LOGDNA_META_LABELS");
-
 pub struct MetaRules {
     env_map: HashMap<String, String>,
     // LineMeta fields
-    over_app: Option<&'static str>,
-    over_host: Option<&'static str>,
-    over_env: Option<&'static str>,
-    over_file: Option<&'static str>,
-    over_k8s_file: Option<&'static str>, // override file field in k8s lines only
-    over_meta: Option<&'static str>,
+    over_app: Option<String>,
+    over_host: Option<String>,
+    over_env: Option<String>,
+    over_file: Option<String>,
+    over_k8s_file: Option<String>, // override file field in k8s lines only
+    over_meta: Option<String>,
     over_annotations: Option<HashMap<String, String>>,
     over_labels: Option<HashMap<String, String>>,
 }
@@ -33,23 +24,26 @@ pub enum MetaRulesError {
 
 impl MetaRules {
     pub fn new() -> Result<MetaRules, MetaRulesError> {
-        // for (key, value) in os_env_hashmap().into_iter() {
-        //     println!("{} = {:?}", key, value);
-        // }
-        Ok(MetaRules {
+        let env_map = os_env_hashmap();
+        let obj = MetaRules {
             env_map: os_env_hashmap(),
             //TODO: extract to Config
-            over_app: OVER_META_APP,
-            over_host: OVER_META_HOST,
-            over_env: OVER_META_ENV,
-            over_file: OVER_META_FILE,
-            over_k8s_file: OVER_META_K8S_FILE,
-            over_meta: OVER_META_JSON,
-            over_annotations: OVER_META_ANNOTATIONS
+            over_app: env_map.get("LOGDNA_META_APP").map(|s| s.clone()),
+            over_host: env_map
+                .get("LOGDNA_META_HOST")
+                .and_then(|s| Some(s.clone())),
+            over_env: env_map.get("LOGDNA_META_ENV").map(|s| s.clone()),
+            over_file: env_map.get("LOGDNA_META_FILE").map(|s| s.clone()),
+            over_k8s_file: env_map.get("LOGDNA_META_K8S_FILE").map(|s| s.clone()),
+            over_meta: env_map.get("LOGDNA_META_JSON").map(|s| s.clone()),
+            over_annotations: env_map
+                .get("LOGDNA_META_ANNOTATIONS")
                 .map_or_else(|| None, |str| serde_json::from_str(str).unwrap()),
-            over_labels: OVER_META_LABELS
+            over_labels: env_map
+                .get("LOGDNA_META_LABELS")
                 .map_or_else(|| None, |str| serde_json::from_str(str).unwrap()),
-        })
+        };
+        Ok(obj)
     }
 
     pub fn is_active(&self) -> bool {
@@ -127,30 +121,30 @@ impl MetaRules {
         // TODO: error handling for set_ calls
         //
         if self.over_app.is_some() {
-            let app = substitute(self.over_host.unwrap(), &meta_map);
+            let app = substitute(self.over_app.clone().unwrap().as_ref(), &meta_map);
             if let Err(_) = line.set_app(app) {}
         }
         if self.over_host.is_some() {
-            let host = substitute(self.over_host.unwrap(), &meta_map);
+            let host = substitute(self.over_host.clone().unwrap().as_ref(), &meta_map);
             if let Err(_) = line.set_host(host) {}
         }
         if self.over_env.is_some() {
-            let env = substitute(self.over_env.unwrap(), &meta_map);
+            let env = substitute(self.over_env.clone().unwrap().as_ref(), &meta_map);
             if let Err(_) = line.set_env(env) {}
         }
         if self.over_file.is_some() && line.get_file().is_some() {
-            let file = substitute(self.over_file.unwrap(), &meta_map);
+            let file = substitute(self.over_file.clone().unwrap().as_ref(), &meta_map);
             if let Err(_) = line.set_file(file) {}
         }
         // k8s line shave non empty annotations/labels
         if self.over_k8s_file.is_some()
             && (line.get_annotations().is_some() || line.get_labels().is_some())
         {
-            let file = substitute(self.over_k8s_file.unwrap(), &meta_map);
+            let file = substitute(self.over_k8s_file.clone().unwrap().as_ref(), &meta_map);
             if let Err(_) = line.set_file(file) {}
         }
         if self.over_meta.is_some() {
-            let meta = substitute(self.over_meta.unwrap(), &meta_map);
+            let meta = substitute(self.over_meta.clone().unwrap().as_ref(), &meta_map);
             let val = serde_json::from_str(&meta).unwrap();
             if let Err(_) = line.set_meta(val) {}
         }
