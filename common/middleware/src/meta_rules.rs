@@ -28,14 +28,12 @@ impl MetaRules {
         let obj = MetaRules {
             env_map: os_env_hashmap(),
             //TODO: extract to Config
-            over_app: env_map.get("LOGDNA_META_APP").map(|s| s.clone()),
-            over_host: env_map
-                .get("LOGDNA_META_HOST")
-                .and_then(|s| Some(s.clone())),
-            over_env: env_map.get("LOGDNA_META_ENV").map(|s| s.clone()),
-            over_file: env_map.get("LOGDNA_META_FILE").map(|s| s.clone()),
-            over_k8s_file: env_map.get("LOGDNA_META_K8S_FILE").map(|s| s.clone()),
-            over_meta: env_map.get("LOGDNA_META_JSON").map(|s| s.clone()),
+            over_app: env_map.get("LOGDNA_META_APP").cloned(),
+            over_host: env_map.get("LOGDNA_META_HOST").cloned(),
+            over_env: env_map.get("LOGDNA_META_ENV").cloned(),
+            over_file: env_map.get("LOGDNA_META_FILE").cloned(),
+            over_k8s_file: env_map.get("LOGDNA_META_K8S_FILE").cloned(),
+            over_meta: env_map.get("LOGDNA_META_JSON").cloned(),
             over_annotations: env_map
                 .get("LOGDNA_META_ANNOTATIONS")
                 .map_or_else(|| None, |str| serde_json::from_str(str).unwrap()),
@@ -105,7 +103,7 @@ impl MetaRules {
                 meta_map.insert(k.clone(), v.clone());
                 new_annotations.insert(k.clone(), v.clone());
             }
-            if let Err(_) = line.set_annotations(new_annotations) {}
+            if line.set_annotations(new_annotations).is_err() {}
         }
         if self.over_labels.is_some() {
             let mut new_labels = KeyValueMap::new();
@@ -114,7 +112,7 @@ impl MetaRules {
                 meta_map.insert(k.clone(), v.clone());
                 new_labels.insert(k.clone(), v.clone());
             }
-            if let Err(_) = line.set_labels(new_labels) {}
+            if line.set_labels(new_labels).is_err() {}
         }
         //
         // substitute "override" fields and override line fields
@@ -122,31 +120,31 @@ impl MetaRules {
         //
         if self.over_app.is_some() {
             let app = substitute(self.over_app.clone().unwrap().as_ref(), &meta_map);
-            if let Err(_) = line.set_app(app) {}
+            if line.set_app(app).is_err() {}
         }
         if self.over_host.is_some() {
             let host = substitute(self.over_host.clone().unwrap().as_ref(), &meta_map);
-            if let Err(_) = line.set_host(host) {}
+            if line.set_host(host).is_err() {}
         }
         if self.over_env.is_some() {
             let env = substitute(self.over_env.clone().unwrap().as_ref(), &meta_map);
-            if let Err(_) = line.set_env(env) {}
+            if line.set_env(env).is_err() {}
         }
         if self.over_file.is_some() && line.get_file().is_some() {
             let file = substitute(self.over_file.clone().unwrap().as_ref(), &meta_map);
-            if let Err(_) = line.set_file(file) {}
+            if line.set_file(file).is_err() {}
         }
         // k8s line shave non empty annotations/labels
         if self.over_k8s_file.is_some()
             && (line.get_annotations().is_some() || line.get_labels().is_some())
         {
             let file = substitute(self.over_k8s_file.clone().unwrap().as_ref(), &meta_map);
-            if let Err(_) = line.set_file(file) {}
+            if line.set_file(file).is_err() {}
         }
         if self.over_meta.is_some() {
             let meta = substitute(self.over_meta.clone().unwrap().as_ref(), &meta_map);
             let val = serde_json::from_str(&meta).unwrap();
-            if let Err(_) = line.set_meta(val) {}
+            if line.set_meta(val).is_err() {}
         }
         Status::Ok(line)
     }
@@ -178,7 +176,7 @@ pub fn substitute(template: &str, variables: &HashMap<String, String>) -> String
     let mut output = String::from(template);
     for (k, v) in variables {
         let from = format!("${{{}}}", k);
-        output = output.replace(&from, &v);
+        output = output.replace(&from, v);
     }
     output
 }
