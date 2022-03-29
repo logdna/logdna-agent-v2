@@ -754,7 +754,7 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
     let ll = serde_json::from_value(serde_json::json!({
         "apiVersion": "coordination.k8s.io/v1",
         "kind": "LeaseList",
-        "item": [
+        "items": [
             {
                 "apiVersion": "coordination.k8s.io/v1",
                 "kind": "Lease",
