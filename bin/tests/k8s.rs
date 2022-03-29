@@ -7,6 +7,7 @@ use tokio::net::TcpStream;
 use futures::{StreamExt, TryStreamExt};
 
 use k8s_openapi::api::apps::v1::DaemonSet;
+use k8s_openapi::api::coordination::v1::Lease;
 use k8s_openapi::api::core::v1::{Endpoints, Namespace, Pod, Service, ServiceAccount};
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBinding};
 use kube::api::{Api, ListParams, LogParams, PostParams, WatchEvent};
@@ -691,6 +692,105 @@ fn get_agent_ds_yaml(
     .expect("failed to serialize DS manifest")
 }
 
+async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: &str) {
+    let r = serde_json::from_value(serde_json::json!({
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "Role",
+        "metadata": {
+            "namespace": namespace,
+            "name": format!("{}-role", name)
+        },
+        "rules": [
+            {
+                "apiGroups": [
+                    "coordination.k8s.io"
+                ],
+                "resources": [
+                    "leases"
+                ],
+                "verbs": [
+                    "get",
+                    "list",
+                    "create",
+                    "update",
+                    "patch"
+                ]
+            }
+        ]
+    }))
+    .unwrap();
+    let role_client: Api<Role> = Api::namespaced(client.clone(), namespace);
+    role_client
+        .create(&PostParams::default(), &r)
+        .await
+        .unwrap();
+
+    let rb = serde_json::from_value(serde_json::json!({
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "RoleBinding",
+        "metadata": {
+            "name": name
+        },
+        "roleRef": {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "Role",
+            "name": format!("{}-role", name)
+        },
+        "subjects": [
+            {
+                "kind": "ServiceAccount",
+                "name": namespace,
+                "namespace": namespace
+            }
+        ]
+    }))
+    .unwrap();
+    let rolebinding_client: Api<RoleBinding> = Api::namespaced(client.clone(), namespace);
+    rolebinding_client
+        .create(&PostParams::default(), &rb)
+        .await
+        .unwrap();
+
+    let ll = serde_json::from_value(serde_json::json!({
+        "apiVersion": "coordination.k8s.io/v1",
+        "kind": "LeaseList",
+        "item": [
+            {
+                "apiVersion": "coordination.k8s.io/v1",
+                "kind": "Lease",
+                "metadata": {
+                    "name": format!("{}-0", name),
+                    "labels": {
+                        "process": "startup"
+                    },
+                },
+                "spec": {
+                    "holderIdentity": null
+                }
+            },
+            {
+                "apiVersion": "coordination.k8s.io/v1",
+                "kind": "Lease",
+                "metadata": {
+                    "name": format!("{}-1", name),
+                    "labels": {
+                        "process": "startup"
+                    },
+                },
+                "spec": {
+                    "holderIdentity": null
+                }
+            }
+        ]
+    }))
+    .unwrap();
+    let lease_client: Api<Lease> = Api::all(client.clone());
+    lease_client
+        .create(&PostParams::default(), &ll)
+        .await
+        .unwrap();
+}
+
 #[tokio::test]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_k8s_connection() {
@@ -910,4 +1010,19 @@ async fn test_k8s_events_logged() {
     });
 
     server_result.unwrap();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "k8s_tests"), ignore)]
+async fn test_k8s_startup_leases() {
+    let lease_name = "agent-startup-lease";
+    let namespace = "default";
+    let lease_label = "process:startup";
+    let client = Client::try_default().await.unwrap();
+    let lease_client: Api<Lease> = Api::all(client.clone());
+    let lp = ListParams::default().labels(lease_label);
+
+    create_agent_startup_lease_list(client, lease_name, namespace).await;
+    let lease_list = lease_client.list(&lp).await;
+    assert!(lease_list.iter().count() > 0);
 }
