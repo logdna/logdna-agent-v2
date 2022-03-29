@@ -5,12 +5,12 @@ use std::collections::HashMap;
 
 pub struct MetaRules {
     env_map: HashMap<String, String>,
-    // LineMeta fields
+    // LineMeta "override" fields
     over_app: Option<String>,
     over_host: Option<String>,
     over_env: Option<String>,
     over_file: Option<String>,
-    over_k8s_file: Option<String>, // override file field in k8s lines only
+    over_k8s_file: Option<String>, // k8s lines only
     over_meta: Option<String>,
     over_annotations: Option<HashMap<String, String>>,
     over_labels: Option<HashMap<String, String>>,
@@ -59,12 +59,12 @@ impl MetaRules {
 
     /// Override line meta fields
     /// [ create map ]  =>  [ substitute and insert to map ]  =>  [ substitute ]  =>  [ override ]
-    ///  os env vars         "overload" labels                     "overload" fields   line fields
-    ///  line fields         "overload" annotations
+    ///  os env vars         "override" labels                     "override" fields   line fields
+    ///  line fields         "override" annotations
     ///  line labels
     ///  line annotations
     /// Excluded:
-    ///  line meta
+    ///  line "meta"
     ///
     fn process_line<'a>(
         &self,
@@ -96,7 +96,7 @@ impl MetaRules {
         line.get_file()
             .map(|v| meta_map.insert("line.file".to_string(), v.to_string()));
         //
-        // substitute "overload" labels & annotations
+        // substitute "override" labels & annotations
         //
         if self.over_annotations.is_some() {
             let mut new_annotations = KeyValueMap::new();
@@ -117,7 +117,7 @@ impl MetaRules {
             if let Err(_) = line.set_labels(new_labels) {}
         }
         //
-        // substitute "overload" fields and override line fields
+        // substitute "override" fields and override line fields
         // TODO: error handling for set_ calls
         //
         if self.over_app.is_some() {
