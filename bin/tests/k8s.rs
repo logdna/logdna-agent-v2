@@ -755,7 +755,7 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
         "apiVersion": "coordination.k8s.io/v1",
         "kind": "Lease",
         "metadata": {
-            "name": format!("{}-0", name),
+            "name": name,
             "labels": {
                 "process": "agent-startup"
             },
@@ -998,13 +998,16 @@ async fn test_k8s_events_logged() {
 async fn test_k8s_startup_leases() {
     let lease_name = "agent-startup-lease";
     let namespace = "default";
-    let lease_label = "process:agent-startup";
+    let lease_label = "process=agent-startup";
     let client = Client::try_default().await.unwrap();
     let lease_client: Api<Lease> = Api::all(client.clone());
     let lp = ListParams::default().labels(lease_label);
 
     create_agent_startup_lease_list(client, lease_name, namespace).await;
     let lease_list = lease_client.list(&lp).await;
-    println!("Lease List: {:?}", lease_list.as_ref().unwrap());
-    assert!(lease_list.unwrap().iter().count() > 0);
+    assert!(lease_list.as_ref().unwrap().iter().count() > 0);
+    for lease in lease_list.unwrap().into_iter() {
+        assert_eq!(lease.metadata.namespace.unwrap(), namespace);
+        assert_eq!(lease.metadata.name.unwrap(), lease_name);
+    }
 }
