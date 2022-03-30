@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 pub struct MetaRules {
     env_map: HashMap<String, String>,
-    // LineMeta "override" fields
+    // Line metadata "override" fields
     over_app: Option<String>,
     over_host: Option<String>,
     over_env: Option<String>,
@@ -56,9 +56,9 @@ impl MetaRules {
     }
 
     /// Override line meta fields
-    /// [ create map ]  =>  [ substitute and insert to map ]  =>  [ substitute ]  =>  [ override ]
-    ///  os env vars         "override" labels                     "override" fields   line fields
-    ///  line fields         "override" annotations
+    /// [ create map ] => [ substitute then insert to map ] => [ substitute from map ] => [ override ]
+    ///  os env vars       "override" labels                    "override" fields          line fields
+    ///  line fields       "override" annotations
     ///  line labels
     ///  line annotations
     /// Excluded:
@@ -93,10 +93,12 @@ impl MetaRules {
             .map(|v| meta_map.insert("line.env".to_string(), v.to_string()));
         line.get_file()
             .map(|v| meta_map.insert("line.file".to_string(), v.to_string()));
+        // k8s lines have non empty annotations/labels
+        let is_k8s = line.get_annotations().is_some() || line.get_labels().is_some();
         //
         // substitute "override" labels & annotations
         //
-        if self.over_annotations.is_some() {
+        if self.over_annotations.is_some() && is_k8s {
             let mut new_annotations = KeyValueMap::new();
             for (k, v) in self.over_annotations.clone().unwrap().iter() {
                 let v = substitute(v, &meta_map);
@@ -105,7 +107,7 @@ impl MetaRules {
             }
             if line.set_annotations(new_annotations).is_err() {}
         }
-        if self.over_labels.is_some() {
+        if self.over_labels.is_some() && is_k8s {
             let mut new_labels = KeyValueMap::new();
             for (k, v) in self.over_labels.clone().unwrap().iter() {
                 let v = substitute(v, &meta_map);
@@ -115,7 +117,7 @@ impl MetaRules {
             if line.set_labels(new_labels).is_err() {}
         }
         //
-        // substitute "override" fields and override line fields
+        // substitute "override" fields and do override for line fields
         // TODO: error handling for set_ calls
         //
         if self.over_app.is_some() {
@@ -134,10 +136,7 @@ impl MetaRules {
             let file = substitute(self.over_file.clone().unwrap().as_ref(), &meta_map);
             if line.set_file(file).is_err() {}
         }
-        // k8s line shave non empty annotations/labels
-        if self.over_k8s_file.is_some()
-            && (line.get_annotations().is_some() || line.get_labels().is_some())
-        {
+        if self.over_k8s_file.is_some() && is_k8s {
             let file = substitute(self.over_k8s_file.clone().unwrap().as_ref(), &meta_map);
             if line.set_file(file).is_err() {}
         }
