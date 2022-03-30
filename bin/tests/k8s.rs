@@ -750,38 +750,18 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
         .create(&PostParams::default(), &rb)
         .await
         .unwrap();
-
     let ll = serde_json::from_value(serde_json::json!({
         "apiVersion": "coordination.k8s.io/v1",
-        "kind": "LeaseList",
-        "items": [
-            {
-                "apiVersion": "coordination.k8s.io/v1",
-                "kind": "Lease",
-                "metadata": {
-                    "name": format!("{}-0", name),
-                    "labels": {
-                        "process": "startup"
-                    },
-                },
-                "spec": {
-                    "holderIdentity": null
-                }
+        "kind": "Lease",
+        "metadata": {
+            "name": format!("{}-0", name),
+            "labels": {
+                "process": "startup"
             },
-            {
-                "apiVersion": "coordination.k8s.io/v1",
-                "kind": "Lease",
-                "metadata": {
-                    "name": format!("{}-1", name),
-                    "labels": {
-                        "process": "startup"
-                    },
-                },
-                "spec": {
-                    "holderIdentity": null
-                }
-            }
-        ]
+        },
+        "spec": {
+            "holderIdentity": null
+        }
     }))
     .unwrap();
     let lease_client: Api<Lease> = Api::all(client.clone());
