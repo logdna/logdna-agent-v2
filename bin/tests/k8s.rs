@@ -764,7 +764,7 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
         }
     }))
     .unwrap();
-    let lease_client: Api<Lease> = Api::all(client.clone());
+    let lease_client: Api<Lease> = Api::namespaced(client.clone(), namespace);
     lease_client
         .create(&PostParams::default(), &ll)
         .await
