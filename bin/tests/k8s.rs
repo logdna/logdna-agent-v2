@@ -750,13 +750,14 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
         .create(&PostParams::default(), &rb)
         .await
         .unwrap();
+
     let ll = serde_json::from_value(serde_json::json!({
         "apiVersion": "coordination.k8s.io/v1",
         "kind": "Lease",
         "metadata": {
             "name": format!("{}-0", name),
             "labels": {
-                "process": "startup"
+                "process": "agent-startup"
             },
         },
         "spec": {
@@ -997,12 +998,13 @@ async fn test_k8s_events_logged() {
 async fn test_k8s_startup_leases() {
     let lease_name = "agent-startup-lease";
     let namespace = "default";
-    let lease_label = "process:startup";
+    let lease_label = "process:agent-startup";
     let client = Client::try_default().await.unwrap();
     let lease_client: Api<Lease> = Api::all(client.clone());
     let lp = ListParams::default().labels(lease_label);
 
     create_agent_startup_lease_list(client, lease_name, namespace).await;
     let lease_list = lease_client.list(&lp).await;
-    assert!(lease_list.iter().count() > 0);
+    println!("Lease List: {:?}", lease_list.as_ref().unwrap());
+    assert!(lease_list.unwrap().iter().count() > 0);
 }
