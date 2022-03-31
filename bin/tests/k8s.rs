@@ -1000,7 +1000,7 @@ async fn test_k8s_startup_leases() {
     let namespace = "default";
     let lease_label = "process=agent-startup";
     let client = Client::try_default().await.unwrap();
-    let lease_client: Api<Lease> = Api::all(client.clone());
+    let lease_client: Api<Lease> = Api::namespaced(client.clone(), namespace);
     let lp = ListParams::default().labels(lease_label);
 
     create_agent_startup_lease_list(client, lease_name, namespace).await;
@@ -1008,5 +1008,13 @@ async fn test_k8s_startup_leases() {
     assert!(lease_list.as_ref().unwrap().iter().count() > 0);
 
     let available_lease = k8s::lease::get_available_lease(lease_label, &lease_client).await;
-    assert_eq!(available_lease.unwrap(), lease_name);
+    println!("Available lease: {:?}", available_lease.as_ref().unwrap());
+    assert_eq!(available_lease.as_ref().unwrap(), lease_name);
+
+    let claimed_lease_name = k8s::lease::claim_lease(available_lease.unwrap(), &lease_client).await;
+    let available_lease = k8s::lease::get_available_lease(lease_label, &lease_client).await;
+    assert_eq!(available_lease.as_ref(), None);
+    k8s::lease::release_lease(claimed_lease_name, &lease_client).await;
+    let available_lease = k8s::lease::get_available_lease(lease_label, &lease_client).await;
+    assert_eq!(available_lease.as_ref().unwrap(), lease_name);
 }

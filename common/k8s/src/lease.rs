@@ -35,7 +35,7 @@ pub async fn get_available_lease(lease_label: &str, lease_client: &Api<Lease>) -
     None
 }
 
-pub async fn claim_lease(lease_name: String, lease_client: &Api<Lease>) {
+pub async fn claim_lease(lease_name: String, lease_client: &Api<Lease>) -> String {
     let patch_value = LeasePatchValue {
         holderIdentity: Some(String::from("agent-2")), // TODO: need to find where this comes from?
         acquireTime: MicroTime(Utc::now()),
@@ -48,8 +48,9 @@ pub async fn claim_lease(lease_name: String, lease_client: &Api<Lease>) {
     println!(
         "Lease {} now owned by {:?}",
         &lease_name,
-        patch_lease.unwrap().spec.unwrap().holder_identity
+        &patch_lease.unwrap().spec.unwrap().holder_identity.unwrap()
     );
+    lease_name
 }
 
 pub async fn release_lease(lease_name: String, lease_client: &Api<Lease>) {
@@ -64,7 +65,7 @@ pub async fn release_lease(lease_name: String, lease_client: &Api<Lease>) {
     println!(
         "Lease {} has been released to {:?}",
         &lease_name,
-        patch_lease.unwrap().spec.unwrap().holder_identity
+        &patch_lease.unwrap().spec.unwrap().holder_identity
     );
 }
 
