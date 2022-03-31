@@ -1006,8 +1006,7 @@ async fn test_k8s_startup_leases() {
     create_agent_startup_lease_list(client, lease_name, namespace).await;
     let lease_list = lease_client.list(&lp).await;
     assert!(lease_list.as_ref().unwrap().iter().count() > 0);
-    for lease in lease_list.unwrap().into_iter() {
-        assert_eq!(lease.metadata.namespace.unwrap(), namespace);
-        assert_eq!(lease.metadata.name.unwrap(), lease_name);
-    }
+
+    let available_lease = k8s::lease::get_available_lease(lease_label, &lease_client).await;
+    assert_eq!(available_lease.unwrap(), lease_name);
 }

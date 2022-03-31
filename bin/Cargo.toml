@@ -59,9 +59,9 @@ journald_tests = ["journald/journald_tests"]
 lazy_static = "*"
 assert_cmd = "1"
 escargot = "0.5"
-kube = { version = "0.59", default-features = false, features = ["rustls-tls"] }
-kube-runtime = "0.59"
-k8s-openapi = { version = "0.13", default_features = false, features = ["v1_16"] }
+kube = { version = "0.69", default-features = false, features = ["rustls-tls"] }
+kube-runtime = "0.69"
+k8s-openapi = { version = "0.14", default_features = false, features = ["v1_16"] }
 pnet = "0.28"
 itertools = "0.10"
 predicates = "2"

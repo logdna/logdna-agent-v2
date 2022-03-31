@@ -1,9 +1,8 @@
 use chrono::Utc;
 use k8s_openapi::api::coordination::v1::Lease;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::MicroTime;
-use kube::api::{ListParams, Patch, PatchParams};
+use kube::api::{Api, ListParams, Patch, PatchParams};
 use kube::core::ObjectList;
-use kube::Api;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
