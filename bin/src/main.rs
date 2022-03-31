@@ -122,7 +122,7 @@ async fn main() {
     let k8s_event_stream = match create_k8s_client_default_from_env(user_agent) {
         Ok(k8s_client) => {
             if config.log.use_k8s_enrichment == K8sTrackingConf::Always
-        && option_env!("KUBERNETES_SERVICE_HOST").is_some()
+        && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
             {
                 let node_name = std::env::var("NODE_NAME").ok();
                 match K8sMetadata::new(k8s_client.clone(), node_name.as_deref()).await {
