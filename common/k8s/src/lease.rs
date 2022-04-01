@@ -35,9 +35,13 @@ pub async fn get_available_lease(lease_label: &str, lease_client: &Api<Lease>) -
     None
 }
 
-pub async fn claim_lease(lease_name: String, lease_client: &Api<Lease>) -> String {
+pub async fn claim_lease(
+    lease_name: String,
+    pod_name: String,
+    lease_client: &Api<Lease>,
+) -> String {
     let patch_value = LeasePatchValue {
-        holderIdentity: Some(String::from("agent-2")), // TODO: need to find where this comes from?
+        holderIdentity: Some(pod_name),
         acquireTime: MicroTime(Utc::now()),
     };
 
@@ -53,15 +57,15 @@ pub async fn claim_lease(lease_name: String, lease_client: &Api<Lease>) -> Strin
     lease_name
 }
 
-pub async fn release_lease(lease_name: String, lease_client: &Api<Lease>) {
+pub async fn release_lease(lease_name: &str, lease_client: &Api<Lease>) {
     let patch_value = LeasePatchValue {
         holderIdentity: None,
         acquireTime: MicroTime(Utc::now()),
     };
     let patch_spec = LeasePatchSpec { spec: patch_value };
     let patch = Patch::Merge(patch_spec);
-    let pp = PatchParams::apply(&lease_name);
-    let patch_lease = lease_client.patch(&lease_name, &pp, &patch).await;
+    let pp = PatchParams::apply(lease_name);
+    let patch_lease = lease_client.patch(lease_name, &pp, &patch).await;
     println!(
         "Lease {} has been released to {:?}",
         &lease_name,
