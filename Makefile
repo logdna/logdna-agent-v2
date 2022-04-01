@@ -320,11 +320,16 @@ release: ## Create a new release from the current beta and push to github
 	git push --follow-tags
 	git checkout $(TARGET_BRANCH) || git checkout -b $(TARGET_BRANCH)
 
+DEB_VERSION=1
+DEB_ARCH_NAME_x86_64=amd64
+DEB_ARCH_NAME_aarch64=arm64
+
 .PHONY:build-image
 build-image: ## Build a docker image as specified in the Dockerfile
 	$(DOCKER) build . -t $(REPO):$(IMAGE_TAG) \
 		$(PULL_OPTS) \
 		--progress=plain \
+		--platform=linux/${DEB_ARCH_NAME_${ARCH}} \
 		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
 		--rm \
 		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
@@ -340,10 +345,6 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
 		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
-
-DEB_VERSION=1
-DEB_ARCH_NAME_x86_64=amd64
-DEB_ARCH_NAME_aarch64=arm64
 
 .PHONY:build-deb
 build-deb: build-release
