@@ -751,11 +751,30 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
         .await
         .unwrap();
 
-    let ll = serde_json::from_value(serde_json::json!({
+    let l_zero = serde_json::from_value(serde_json::json!({
         "apiVersion": "coordination.k8s.io/v1",
         "kind": "Lease",
         "metadata": {
-            "name": name,
+            "name": format!("{}-0",name),
+            "labels": {
+                "process": "agent-startup"
+            },
+        },
+        "spec": {
+            "holderIdentity": "agent-owner"
+        }
+    }))
+    .unwrap();
+    let lease_client: Api<Lease> = Api::namespaced(client.clone(), namespace);
+    lease_client
+        .create(&PostParams::default(), &l_zero)
+        .await
+        .unwrap();
+    let l_one = serde_json::from_value(serde_json::json!({
+        "apiVersion": "coordination.k8s.io/v1",
+        "kind": "Lease",
+        "metadata": {
+            "name": format!("{}-1",name),
             "labels": {
                 "process": "agent-startup"
             },
@@ -767,7 +786,26 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
     .unwrap();
     let lease_client: Api<Lease> = Api::namespaced(client.clone(), namespace);
     lease_client
-        .create(&PostParams::default(), &ll)
+        .create(&PostParams::default(), &l_one)
+        .await
+        .unwrap();
+    let l_two = serde_json::from_value(serde_json::json!({
+        "apiVersion": "coordination.k8s.io/v1",
+        "kind": "Lease",
+        "metadata": {
+            "name": format!("{}-2",name),
+            "labels": {
+                "process": "agent-startup"
+            },
+        },
+        "spec": {
+            "holderIdentity": "agent-owner"
+        }
+    }))
+    .unwrap();
+    let lease_client: Api<Lease> = Api::namespaced(client.clone(), namespace);
+    lease_client
+        .create(&PostParams::default(), &l_two)
         .await
         .unwrap();
 }
@@ -1009,12 +1047,12 @@ async fn test_k8s_startup_leases() {
 
     let available_lease = k8s::lease::get_available_lease(lease_label, &lease_client).await;
     println!("Available lease: {:?}", available_lease.as_ref().unwrap());
-    assert_eq!(available_lease.as_ref().unwrap(), lease_name);
+    assert_eq!(available_lease.as_ref().unwrap(), "agent-startup-lease-1");
 
     let claimed_lease_name = k8s::lease::claim_lease(available_lease.unwrap(), &lease_client).await;
     let available_lease = k8s::lease::get_available_lease(lease_label, &lease_client).await;
     assert_eq!(available_lease.as_ref(), None);
     k8s::lease::release_lease(claimed_lease_name, &lease_client).await;
     let available_lease = k8s::lease::get_available_lease(lease_label, &lease_client).await;
-    assert_eq!(available_lease.as_ref().unwrap(), lease_name);
+    assert_eq!(available_lease.as_ref().unwrap(), "agent-startup-lease-1");
 }
