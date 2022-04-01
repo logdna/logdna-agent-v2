@@ -232,18 +232,13 @@ pub enum StreamElem<T> {
 }
 
 impl K8sEventStream {
-    pub fn new(
-        config: kube::Config,
-        pod_name: String,
-        namespace: String,
-        pod_label: String,
-    ) -> Result<Self, K8sError> {
-        Ok(Self {
-            client: Client::try_from(config)?,
+    pub fn new(client: Client, pod_name: String, namespace: String, pod_label: String) -> Self {
+        Self {
+            client,
             pod_name,
             namespace,
             pod_label,
-        })
+        }
     }
 
     pub fn try_default(
@@ -260,7 +255,12 @@ impl K8sEventStream {
                 )))
             }
         };
-        Self::new(config, pod_name, namespace, pod_label)
+        Ok(Self::new(
+            Client::try_from(config)?,
+            pod_name,
+            namespace,
+            pod_label,
+        ))
     }
 
     #[allow(clippy::map_flatten)]
