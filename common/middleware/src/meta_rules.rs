@@ -97,27 +97,46 @@ impl MetaRules {
         let is_k8s = line.get_annotations().is_some() || line.get_labels().is_some();
         //
         // substitute "override" labels & annotations
+        // merge "with override" + remove empty values
         //
         if self.over_annotations.is_some() && is_k8s {
             let mut new_annotations = KeyValueMap::new();
+            if line.get_annotations().is_some() {
+                for (k, v) in line.get_annotations().clone().unwrap().iter() {
+                    new_annotations.insert(k.clone(), v.clone());
+                }
+            }
             for (k, v) in self.over_annotations.clone().unwrap().iter() {
                 let v = substitute(v, &meta_map);
-                meta_map.insert(k.clone(), v.clone());
-                new_annotations.insert(k.clone(), v.clone());
+                meta_map.insert(k.clone(), v.clone()); // insert "with override"
+                if v.is_empty() {
+                    new_annotations = new_annotations.remove(&k.clone());
+                } else {
+                    new_annotations.insert(k.clone(), v.clone());
+                }
             }
             if line.set_annotations(new_annotations).is_err() {}
         }
         if self.over_labels.is_some() && is_k8s {
             let mut new_labels = KeyValueMap::new();
+            if line.get_labels().is_some() {
+                for (k, v) in line.get_labels().clone().unwrap().iter() {
+                    new_labels.insert(k.clone(), v.clone());
+                }
+            }
             for (k, v) in self.over_labels.clone().unwrap().iter() {
                 let v = substitute(v, &meta_map);
                 meta_map.insert(k.clone(), v.clone());
-                new_labels.insert(k.clone(), v.clone());
+                if v.is_empty() {
+                    new_labels = new_labels.remove(&k.clone());
+                } else {
+                    new_labels.insert(k.clone(), v.clone());
+                }
             }
             if line.set_labels(new_labels).is_err() {}
         }
         //
-        // substitute "override" fields and do override for line fields
+        // substitute "override" fields and then override line fields
         // TODO: error handling for set_ calls
         //
         if self.over_app.is_some() {

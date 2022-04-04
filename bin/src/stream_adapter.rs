@@ -28,8 +28,12 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
 
     fn has_annotations(&self) -> bool {
         match self {
-            StrictOrLazyLines::Strict(line) => line.get_annotations().is_some(),
-            StrictOrLazyLines::Lazy(line) => line.get_annotations().is_some(),
+            StrictOrLazyLines::Strict(line) => {
+                line.get_annotations().filter(|s| !s.is_empty()).is_some()
+            }
+            StrictOrLazyLines::Lazy(line) => {
+                line.get_annotations().filter(|s| !s.is_empty()).is_some()
+            }
         }
     }
     async fn annotations<'b, S>(
@@ -46,8 +50,8 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
     }
     fn has_app(&self) -> bool {
         match self {
-            StrictOrLazyLines::Strict(line) => line.get_app().is_some(),
-            StrictOrLazyLines::Lazy(line) => line.get_app().is_some(),
+            StrictOrLazyLines::Strict(line) => line.get_app().filter(|s| !s.is_empty()).is_some(),
+            StrictOrLazyLines::Lazy(line) => line.get_app().filter(|s| !s.is_empty()).is_some(),
         }
     }
     async fn app<S>(&mut self, writer: &mut S) -> Result<Self::Ok, IngestLineSerializeError>
@@ -61,8 +65,8 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
     }
     fn has_env(&self) -> bool {
         match self {
-            StrictOrLazyLines::Strict(line) => line.get_env().is_some(),
-            StrictOrLazyLines::Lazy(line) => line.get_env().is_some(),
+            StrictOrLazyLines::Strict(line) => line.get_env().filter(|s| !s.is_empty()).is_some(),
+            StrictOrLazyLines::Lazy(line) => line.get_env().filter(|s| !s.is_empty()).is_some(),
         }
     }
     async fn env<S>(&mut self, writer: &mut S) -> Result<Self::Ok, IngestLineSerializeError>
@@ -76,8 +80,8 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
     }
     fn has_file(&self) -> bool {
         match self {
-            StrictOrLazyLines::Strict(line) => line.get_file().is_some(),
-            StrictOrLazyLines::Lazy(_) => true,
+            StrictOrLazyLines::Strict(line) => line.get_file().filter(|s| !s.is_empty()).is_some(),
+            StrictOrLazyLines::Lazy(line) => line.get_file().filter(|s| !s.is_empty()).is_some(),
         }
     }
     async fn file<S>(&mut self, writer: &mut S) -> Result<Self::Ok, IngestLineSerializeError>
@@ -91,8 +95,8 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
     }
     fn has_host(&self) -> bool {
         match self {
-            StrictOrLazyLines::Strict(line) => line.get_host().is_some(),
-            StrictOrLazyLines::Lazy(line) => line.get_host().is_some(),
+            StrictOrLazyLines::Strict(line) => line.get_host().filter(|s| !s.is_empty()).is_some(),
+            StrictOrLazyLines::Lazy(line) => line.get_host().filter(|s| !s.is_empty()).is_some(),
         }
     }
     async fn host<S>(&mut self, writer: &mut S) -> Result<Self::Ok, IngestLineSerializeError>
@@ -106,8 +110,10 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
     }
     fn has_labels(&self) -> bool {
         match self {
-            StrictOrLazyLines::Strict(line) => line.get_labels().is_some(),
-            StrictOrLazyLines::Lazy(line) => line.get_labels().is_some(),
+            StrictOrLazyLines::Strict(line) => {
+                line.get_labels().filter(|s| !s.is_empty()).is_some()
+            }
+            StrictOrLazyLines::Lazy(line) => line.get_labels().filter(|s| !s.is_empty()).is_some(),
         }
     }
     async fn labels<'b, S>(&mut self, writer: &mut S) -> Result<Self::Ok, IngestLineSerializeError>
@@ -121,8 +127,8 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
     }
     fn has_level(&self) -> bool {
         match self {
-            StrictOrLazyLines::Strict(line) => line.get_level().is_some(),
-            StrictOrLazyLines::Lazy(line) => line.get_level().is_some(),
+            StrictOrLazyLines::Strict(line) => line.get_level().filter(|s| !s.is_empty()).is_some(),
+            StrictOrLazyLines::Lazy(line) => line.get_level().filter(|s| !s.is_empty()).is_some(),
         }
     }
     async fn level<S>(&mut self, writer: &mut S) -> Result<Self::Ok, IngestLineSerializeError>
