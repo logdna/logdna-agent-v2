@@ -108,6 +108,7 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
         http: Default::default(),
         log: Default::default(),
         journald: Default::default(),
+        startup: Default::default(),
     };
     result.http.ingestion_key = map.get(&INGESTION_KEY).map(|s| s.to_string());
 
