@@ -1,4 +1,3 @@
-use crate::create_k8s_client;
 use crate::errors::K8sError;
 use crate::middleware::parse_container_path;
 use futures::StreamExt;
@@ -6,14 +5,13 @@ use http::types::body::{KeyValueMap, LineBufferMut};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
     api::ListParams,
-    config::{Config, InClusterError},
     runtime::{
         reflector,
         reflector::ObjectRef,
         utils::StreamBackoff,
         watcher::{watcher, Event as WatcherEvent},
     },
-    Api,
+    Api, Client,
 };
 use std::pin::Pin;
 
@@ -30,8 +28,6 @@ pub enum Error {
     Utf(#[from] std::string::FromUtf8Error),
     #[error(transparent)]
     K8s(#[from] kube::Error),
-    #[error(transparent)]
-    K8sInClusterError(#[from] InClusterError),
 }
 
 pub struct K8sMetadata {
@@ -40,11 +36,9 @@ pub struct K8sMetadata {
 
 impl K8sMetadata {
     pub async fn new(
-        user_agent: hyper::http::header::HeaderValue,
+        client: Client,
         node_name: Option<&str>,
     ) -> Result<(Pin<Box<dyn futures::Future<Output = ()> + Send>>, Self), Error> {
-        let config = Config::from_cluster_env()?;
-        let client = create_k8s_client(user_agent, config)?;
         let api = Api::<Pod>::all(client);
 
         let store_writer = reflector::store::Writer::default();

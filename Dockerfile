@@ -25,8 +25,6 @@ ARG TARGET
 ARG RUSTFLAGS
 ENV RUSTFLAGS=${RUSTFLAGS}
 
-ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-Clink-self-contained=yes -Clinker=rust-lld ${RUSTFLAGS}"
-
 ENV RUST_LOG=rustc_codegen_ssa::back::link=info
 
 # Create the directory for agent repo

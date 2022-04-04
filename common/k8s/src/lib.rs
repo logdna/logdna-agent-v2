@@ -106,3 +106,10 @@ fn create_k8s_client(
         .service(client);
     Ok(Client::new(service, default_ns))
 }
+
+pub fn create_k8s_client_default_from_env(
+    user_agent: hyper::http::header::HeaderValue,
+) -> Result<Client, errors::K8sError> {
+    let config = Config::from_cluster_env()?;
+    Ok(create_k8s_client(user_agent, config)?)
+}
