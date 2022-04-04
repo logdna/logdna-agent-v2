@@ -56,6 +56,7 @@ pub mod env {
     pub const EXCLUSION_REGEX_RULES_DEPRECATED: &str = "LOGDNA_EXCLUDE_REGEX";
     pub const INCLUSION_RULES_DEPRECATED: &str = "LOGDNA_INCLUDE";
     pub const INCLUSION_REGEX_RULES_DEPRECATED: &str = "LOGDNA_INCLUDE_REGEX";
+    pub const K8S_STARTUP_LEASE: &str = "LOGDNA_K8S_STARTUP_LEASE_OPTION";
 }
 
 pub const DEFAULT_YAML_FILE: &str = "/etc/logdna/config.yaml";
@@ -164,6 +165,12 @@ pub struct ArgumentOptions {
     /// the value of `use_k8s_enrichment` setting value ("always" or "never"). Defaults to "never".
     #[structopt(long, env = env::LOG_K8S_EVENTS)]
     log_k8s_events: Option<K8sTrackingConf>,
+
+    /// Determine wheather or not to look for available K8s startup leases before attempting
+    /// to start the agent; used to throttle startup on very large K8s clusters.
+    /// Defaults to "off".
+    #[structopt(long, env = env::K8S_STARTUP_LEASE)]
+    k8s_startup_lease: Option<String>,
 
     /// The directory in which the agent will store its state database. Note that the agent must
     /// have write access to the directory and be a persistent volume.
@@ -491,7 +498,7 @@ fn combine(escaped: &str, token: &str) -> String {
 mod test {
     use super::*;
 
-    use crate::raw::{Config as RawConfig, Rules};
+    use crate::raw::{Config as RawConfig, K8sStartupLeaseConfig, Rules};
     use humanize_rs::bytes::Unit;
     use std::env::set_var;
 
@@ -625,6 +632,12 @@ mod test {
         assert_eq!(config.log.log_k8s_events, None);
         assert_eq!(config.log.db_path, None);
         assert_eq!(config.log.metrics_port, None);
+        assert_eq!(
+            config.startup,
+            K8sStartupLeaseConfig {
+                option: Some("off".to_string())
+            }
+        );
     }
 
     #[test]

@@ -293,7 +293,7 @@ pub struct LogConfig {
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct K8sStartupLeaseConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
-    option: Option<String>,
+    pub option: Option<String>,
 }
 
 impl Merge for K8sStartupLeaseConfig {
