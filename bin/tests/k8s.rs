@@ -71,7 +71,7 @@ async fn start_line_proxy_pod(
             "containers": [
                 {
                     "name": pod_name,
-                    "image": "alpine/socat",
+                    "image": "socat:local",
                     "ports": [
                         {
                             "name": "tcp-socat",
@@ -707,12 +707,14 @@ async fn test_k8s_enrichment() {
     let _ = env_logger::Builder::from_default_env().try_init();
     let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();
 
+    tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+
     let client = Client::try_default().await.unwrap();
 
     let pod_name = "socat-listener";
     let pod_node_addr = start_line_proxy_pod(client.clone(), pod_name, "default", 30001).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -752,7 +754,7 @@ async fn test_k8s_enrichment() {
         )
         .await;
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
         print_pod_logs(
             client.clone(),
@@ -872,7 +874,7 @@ async fn test_k8s_events_logged() {
             80,
         )
         .await;
-        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
         create_agent_ds(
             client.clone(),
@@ -886,7 +888,7 @@ async fn test_k8s_events_logged() {
         .await;
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_millis(2_000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
         let map = received.lock().await;
 
         let unknown_log_lines = map.get(" unknown").unwrap();
