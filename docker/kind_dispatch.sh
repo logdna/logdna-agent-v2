@@ -24,6 +24,9 @@ _term() {
 trap _term TERM
 trap _term INT
 
+echo "Building socat image"
+DOCKER_BUILDKIT=1 docker build -t "socat:local" $curpath/socat
+
 echo "Building Agent Image"
 DOCKER_BUILDKIT=1 docker build $curpath/.. \
   -f Dockerfile.debian \
@@ -45,6 +48,7 @@ else
 fi
 
 kind load docker-image $image --name $cluster_name
+kind load docker-image "socat:local" --name $cluster_name
 
 echo "Creating k8s resources"
 KUBECONFIG=$curpath/.kind_config_host kubectl apply -f $curpath/kind/test-resources.yaml
