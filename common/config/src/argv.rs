@@ -35,6 +35,7 @@ pub mod env {
     pub const METRICS_PORT: &str = "LOGDNA_METRICS_PORT";
     pub const USE_K8S_LOG_ENRICHMENT: &str = "LOGDNA_USE_K8S_LOG_ENRICHMENT";
     pub const LOG_K8S_EVENTS: &str = "LOGDNA_LOG_K8S_EVENTS";
+    pub const K8S_STARTUP_LEASE: &str = "LOGDNA_K8S_STARTUP_LEASE_OPTION";
     pub const LINE_EXCLUSION: &str = "LOGDNA_LINE_EXCLUSION_REGEX";
     pub const LINE_INCLUSION: &str = "LOGDNA_LINE_INCLUSION_REGEX";
     pub const REDACT: &str = "LOGDNA_REDACT_REGEX";
@@ -56,7 +57,6 @@ pub mod env {
     pub const EXCLUSION_REGEX_RULES_DEPRECATED: &str = "LOGDNA_EXCLUDE_REGEX";
     pub const INCLUSION_RULES_DEPRECATED: &str = "LOGDNA_INCLUDE";
     pub const INCLUSION_REGEX_RULES_DEPRECATED: &str = "LOGDNA_INCLUDE_REGEX";
-    pub const K8S_STARTUP_LEASE: &str = "LOGDNA_K8S_STARTUP_LEASE_OPTION";
 }
 
 pub const DEFAULT_YAML_FILE: &str = "/etc/logdna/config.yaml";
@@ -169,7 +169,7 @@ pub struct ArgumentOptions {
     /// Determine wheather or not to look for available K8s startup leases before attempting
     /// to start the agent; used to throttle startup on very large K8s clusters.
     /// Defaults to "off".
-    #[structopt(long, env = env::K8S_STARTUP_LEASE)]
+    #[structopt(long = "startup-lease", env = env::K8S_STARTUP_LEASE)]
     k8s_startup_lease: Option<String>,
 
     /// The directory in which the agent will store its state database. Note that the agent must
@@ -342,6 +342,10 @@ impl ArgumentOptions {
 
         if self.log_k8s_events.is_some() {
             raw.log.log_k8s_events = self.log_k8s_events.map(|v| v.to_string());
+        }
+
+        if self.k8s_startup_lease.is_some() {
+            raw.startup.option = self.k8s_startup_lease;
         }
 
         if self.db_path.is_some() {
@@ -659,6 +663,7 @@ mod test {
             use_k8s_enrichment: Some(K8sTrackingConf::Always),
             log_k8s_events: Some(K8sTrackingConf::Never),
             journald_paths: vec_strings!("/a"),
+            k8s_startup_lease: Some(String::from("teston")),
             ingest_timeout: Some(1111111),
             ingest_buffer_size: Some(222222),
             retry_dir: some_string!("/tmp/argv"),
@@ -690,6 +695,7 @@ mod test {
         assert_eq!(config.log.db_path, Some(PathBuf::from("a/b/c")));
         assert_eq!(config.log.metrics_port, Some(9089));
         assert_eq!(config.journald.paths, Some(vec_paths!["/a"]));
+        assert_eq!(config.startup.option, Some(String::from("teston")));
     }
 
     #[test]

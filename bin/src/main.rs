@@ -66,6 +66,7 @@ async fn main() {
             std::process::exit(1);
         }
     };
+    info!("K8s Startup Lease: {}", &config.startup.option);
 
     let mut _agent_state = None;
     let mut offset_state = None;
@@ -175,6 +176,35 @@ async fn main() {
         Err(e) => {
             warn!("Unable to initialise kubernetes client: {}", e);
             None
+        }
+    };
+
+    let lease_attempts = 3;
+    match &k8s_event_stream {
+        Some(_i) => {
+            if &config.startup.option == "on" {
+                info!("K8s Startup Lease: {}", &config.startup.option);
+                info!("Getting agent-startup-lease (making limited attempts)");
+                for i in 0..lease_attempts {
+                    info!("Attempting connection: {}", i)
+                }
+            } else if &config.startup.option == "always" {
+                info!("K8s Startup Lease: {}", &config.startup.option);
+                info!("Getting agent-startup-lease (trying forever)");
+            } else {
+                warn!(
+                    "Kubernetes cluster initialised, but K8s starup lease option set to {}",
+                    &config.startup.option
+                )
+            }
+        }
+        None => {
+            if &config.startup.option != "off" {
+                warn!(
+                    "K8s Starup Lease set to {}, but unable to initialise kubernetes cluster.",
+                    &config.startup.option
+                )
+            }
         }
     };
 
@@ -455,6 +485,10 @@ async fn main() {
                 .await
                 .expect("metrics server error");
         });
+    }
+
+    if &config.startup.option == "on" || &config.startup.option == "always" {
+        info!("Releasing lease.");
     }
 
     // Concurrently run the line streams and listen for the `shutdown` signal
