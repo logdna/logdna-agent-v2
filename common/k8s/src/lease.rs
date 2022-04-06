@@ -5,6 +5,8 @@ use kube::api::{Api, ListParams, Patch, PatchParams};
 use kube::core::ObjectList;
 use serde::{Deserialize, Serialize};
 
+use crate::create_k8s_client_default_from_env;
+
 #[derive(Debug, Serialize, Deserialize)]
 struct LeasePatchSpec {
     spec: LeasePatchValue,
@@ -39,7 +41,8 @@ pub async fn claim_lease(
     lease_name: String,
     pod_name: String,
     lease_client: &Api<Lease>,
-) -> String {
+    return_ref: &mut Option<String>,
+) {
     let patch_value = LeasePatchValue {
         holderIdentity: Some(pod_name),
         acquireTime: MicroTime(Utc::now()),
@@ -54,7 +57,8 @@ pub async fn claim_lease(
         &lease_name,
         &patch_lease.unwrap().spec.unwrap().holder_identity.unwrap()
     );
-    lease_name
+
+    *return_ref = Some(lease_name);
 }
 
 pub async fn release_lease(lease_name: &str, lease_client: &Api<Lease>) {
@@ -71,6 +75,16 @@ pub async fn release_lease(lease_name: &str, lease_client: &Api<Lease>) {
         &lease_name,
         &patch_lease.unwrap().spec.unwrap().holder_identity
     );
+}
+
+// TODO: Needs automated test
+pub async fn get_k8s_lease_api(
+    namespace: &str,
+    user_agent: hyper::http::HeaderValue,
+) -> Api<Lease> {
+    let client = create_k8s_client_default_from_env(user_agent);
+    let lease_api: Api<Lease> = Api::namespaced(client.unwrap(), namespace);
+    lease_api
 }
 
 async fn get_lease_list(

@@ -2,6 +2,7 @@
 extern crate log;
 
 use futures::Stream;
+use k8s::lease::get_available_lease;
 
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
 use config::{Config, DbPath};
@@ -30,7 +31,7 @@ use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::{thread, time::Duration};
 use tokio::signal::*;
 use tokio::sync::Mutex;
 
@@ -98,6 +99,8 @@ async fn main() {
         .map(|os| (os.write_handle(), os.flush_handle()));
 
     let user_agent = config.http.template.user_agent.clone();
+    let k8s_claim_lease_user_agent = config.http.template.user_agent.clone();
+    let k8s_release_lease_user_agent = config.http.template.user_agent.clone();
     let (retry, retry_stream) = retry(
         config.http.retry_dir,
         config.http.retry_base_delay,
@@ -179,18 +182,46 @@ async fn main() {
         }
     };
 
-    let lease_attempts = 3;
+    // TODO: Theses variable should be moved out of main if possible.
+    let k8s_lease_label = "process=agent-startup"; // TODO: move this to a lease and make constant
+    let mut k8s_claimed_lease: Option<String> = None;
     match &k8s_event_stream {
         Some(_i) => {
             if &config.startup.option == "on" {
-                info!("K8s Startup Lease: {}", &config.startup.option);
+                // Attempt to claim lease 3 times, then move on.
                 info!("Getting agent-startup-lease (making limited attempts)");
-                for i in 0..lease_attempts {
-                    info!("Attempting connection: {}", i)
-                }
+                //let avalable_lease = get_available_lease(k8s_lease_label, &k8s_lease_api).await;
+                //info!("Lease available: {:?}", avalable_lease.unwrap());
+                //for i in 0..3 {
+                //    info!("Attempting connection: {}", i)
+                //}
             } else if &config.startup.option == "always" {
-                info!("K8s Startup Lease: {}", &config.startup.option);
+                // Keep trying to claim lease forever.
                 info!("Getting agent-startup-lease (trying forever)");
+                let k8s_lease_api = k8s::lease::get_k8s_lease_api(
+                    &std::env::var("NAMESPACE").unwrap(),
+                    k8s_claim_lease_user_agent,
+                )
+                .await;
+                loop {
+                    match get_available_lease(k8s_lease_label, &k8s_lease_api).await {
+                        Some(available_lease) => {
+                            info!("Lease available: {:?}", available_lease);
+                            k8s::lease::claim_lease(
+                                available_lease,
+                                std::env::var("POD_NAME").unwrap(),
+                                &k8s_lease_api,
+                                &mut k8s_claimed_lease,
+                            )
+                            .await;
+                            break;
+                        }
+                        None => {
+                            info!("No lease availabe at this time. Waiting 1 second...");
+                            thread::sleep(Duration::from_millis(1000));
+                        }
+                    };
+                }
             } else {
                 warn!(
                     "Kubernetes cluster initialised, but K8s starup lease option set to {}",
@@ -487,8 +518,20 @@ async fn main() {
         });
     }
 
-    if &config.startup.option == "on" || &config.startup.option == "always" {
-        info!("Releasing lease.");
+    // If k8s_claimed_lease is not None, then lease was claimed and needs to be released.
+    match &k8s_claimed_lease {
+        Some(lease) => {
+            info!("Releasing lease: {:?}", lease);
+            let k8s_lease_api = k8s::lease::get_k8s_lease_api(
+                &std::env::var("NAMESPACE").unwrap(),
+                k8s_release_lease_user_agent,
+            )
+            .await;
+            k8s::lease::release_lease(k8s_claimed_lease.as_ref().unwrap(), &k8s_lease_api).await;
+        }
+        None => {
+            info!("No k8s lease claimed during startup.");
+        }
     }
 
     // Concurrently run the line streams and listen for the `shutdown` signal
