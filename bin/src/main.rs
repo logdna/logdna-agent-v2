@@ -99,8 +99,6 @@ async fn main() {
         .map(|os| (os.write_handle(), os.flush_handle()));
 
     let user_agent = config.http.template.user_agent.clone();
-    let k8s_claim_lease_user_agent = config.http.template.user_agent.clone();
-    let k8s_release_lease_user_agent = config.http.template.user_agent.clone();
     let (retry, retry_stream) = retry(
         config.http.retry_dir,
         config.http.retry_base_delay,
@@ -182,15 +180,16 @@ async fn main() {
         }
     };
 
+    let k8s_event_stream_client = k8s_event_stream.as_ref().unwrap().client.clone();
     let mut k8s_claimed_lease: Option<String> = None;
     match &k8s_event_stream {
-        Some(_i) => {
+        Some(stream) => {
             if &config.startup.option == "on" {
                 // Attempt to claim lease N times, then move on.
                 info!("Getting agent-startup-lease (making limited attempts)");
                 let k8s_lease_api = k8s::lease::get_k8s_lease_api(
                     &std::env::var("NAMESPACE").unwrap(),
-                    k8s_claim_lease_user_agent,
+                    stream.client.clone(),
                 )
                 .await;
                 for i in 0..K8S_STARTUP_LEASE_RETRY_ATTEMPTS {
@@ -218,7 +217,7 @@ async fn main() {
                 info!("Getting agent-startup-lease (trying forever)");
                 let k8s_lease_api = k8s::lease::get_k8s_lease_api(
                     &std::env::var("NAMESPACE").unwrap(),
-                    k8s_claim_lease_user_agent,
+                    stream.client.clone(),
                 )
                 .await;
                 loop {
@@ -542,7 +541,7 @@ async fn main() {
             info!("Releasing lease: {:?}", lease);
             let k8s_lease_api = k8s::lease::get_k8s_lease_api(
                 &std::env::var("NAMESPACE").unwrap(),
-                k8s_release_lease_user_agent,
+                k8s_event_stream_client,
             )
             .await;
             k8s::lease::release_lease(k8s_claimed_lease.as_ref().unwrap(), &k8s_lease_api).await;

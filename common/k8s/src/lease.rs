@@ -3,9 +3,8 @@ use k8s_openapi::api::coordination::v1::Lease;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::MicroTime;
 use kube::api::{Api, ListParams, Patch, PatchParams};
 use kube::core::ObjectList;
+use kube::Client;
 use serde::{Deserialize, Serialize};
-
-use crate::create_k8s_client_default_from_env;
 
 pub const K8S_STARTUP_LEASE_LABEL: &str = "process=agent-startup";
 pub const K8S_STARTUP_LEASE_RETRY_ATTEMPTS: i32 = 3;
@@ -81,12 +80,8 @@ pub async fn release_lease(lease_name: &str, lease_client: &Api<Lease>) {
 }
 
 // TODO: Needs automated test
-pub async fn get_k8s_lease_api(
-    namespace: &str,
-    user_agent: hyper::http::HeaderValue,
-) -> Api<Lease> {
-    let client = create_k8s_client_default_from_env(user_agent);
-    let lease_api: Api<Lease> = Api::namespaced(client.unwrap(), namespace);
+pub async fn get_k8s_lease_api(namespace: &str, client: Client) -> Api<Lease> {
+    let lease_api: Api<Lease> = Api::namespaced(client, namespace);
     lease_api
 }
 
