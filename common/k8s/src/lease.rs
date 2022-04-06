@@ -7,6 +7,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::create_k8s_client_default_from_env;
 
+pub const K8S_STARTUP_LEASE_LABEL: &str = "process=agent-startup";
+pub const K8S_STARTUP_LEASE_RETRY_ATTEMPTS: i32 = 3;
+
 #[derive(Debug, Serialize, Deserialize)]
 struct LeasePatchSpec {
     spec: LeasePatchValue,
