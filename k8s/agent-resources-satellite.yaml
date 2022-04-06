@@ -123,17 +123,15 @@ spec:
             - name: LOGDNA_DB_PATH
               value: /var/lib/logdna
             - name: LOGDNA_USE_K8S_LOG_ENRICHMENT
-              value: always
+              value: never
             - name: LOGDNA_LOG_K8S_EVENTS
               value: never
             - name: LOGDNA_META_K8S_FILE
               value: REDACTED_FILE
             - name: LOGDNA_META_APP
-              value: REDACTED_APP
+              value: "crn:v1:bluemix:public:fucsia:us-south:a=4b5f219cdaee498f9dac672a89d6dcb8:::"
             - name: LOGDNA_META_HOST
-              value: REDACTED_HOST
-            - name: LOGDNA_META_JSON
-              value: "{\"platform\":\"REDACTED_PLATFORM\"}"
+              value: dumbledore
             - name: POD_APP_LABEL
               valueFrom:
                 fieldRef:
