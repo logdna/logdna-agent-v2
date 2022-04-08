@@ -18,8 +18,10 @@ struct LeasePatchSpec {
 #[allow(non_snake_case)]
 #[derive(Debug, Serialize, Deserialize)]
 struct LeasePatchValue {
-    holderIdentity: Option<String>,
-    acquireTime: MicroTime,
+    #[serde(rename = "holderIdentity")]
+    holder_identity: Option<String>,
+    #[serde(rename = "aquireTime")]
+    acquire_time: MicroTime,
 }
 
 pub async fn get_available_lease(lease_label: &str, lease_client: &Api<Lease>) -> Option<String> {
@@ -46,8 +48,8 @@ pub async fn claim_lease(
     return_ref: &mut Option<String>,
 ) {
     let patch_value = LeasePatchValue {
-        holderIdentity: Some(pod_name),
-        acquireTime: MicroTime(Utc::now()),
+        holder_identity: Some(pod_name),
+        acquire_time: MicroTime(Utc::now()),
     };
 
     let patch_spec = LeasePatchSpec { spec: patch_value };
@@ -77,8 +79,8 @@ pub async fn claim_lease(
 
 pub async fn release_lease(lease_name: &str, lease_client: &Api<Lease>) {
     let patch_value = LeasePatchValue {
-        holderIdentity: None,
-        acquireTime: MicroTime(Utc::now()),
+        holder_identity: None,
+        acquire_time: MicroTime(Utc::now()),
     };
     let patch_spec = LeasePatchSpec { spec: patch_value };
     let patch = Patch::Merge(patch_spec);
@@ -125,8 +127,8 @@ mod tests {
         let test_date = Utc.ymd(2020, 3, 28).and_hms(15, 30, 5);
 
         let test_leasepatchvalue = LeasePatchValue {
-            holderIdentity: Some(test_agent),
-            acquireTime: MicroTime(test_date),
+            holder_identity: Some(test_agent),
+            acquire_time: MicroTime(test_date),
         };
 
         let test_leasepatchspec = LeasePatchSpec {
@@ -134,9 +136,9 @@ mod tests {
         };
 
         assert_eq!(
-            test_leasepatchspec.spec.holderIdentity.unwrap(),
+            test_leasepatchspec.spec.holder_identity.unwrap(),
             test_expected_agent
         );
-        assert_eq!(test_leasepatchspec.spec.acquireTime, MicroTime(test_date));
+        assert_eq!(test_leasepatchspec.spec.acquire_time, MicroTime(test_date));
     }
 }
