@@ -345,6 +345,7 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
 		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
+	if [ ! -z "$(PULL_OPTS)" ]; then $(DOCKER) pull $(RUST_IMAGE); fi
 
 .PHONY:build-deb
 build-deb: build-release
