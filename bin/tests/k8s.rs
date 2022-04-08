@@ -1050,9 +1050,7 @@ async fn test_k8s_startup_leases() {
     assert!(lease_list.as_ref().unwrap().iter().count() > 0);
 
     let available_lease = k8s::lease::get_available_lease(lease_label, &lease_client).await;
-    println!("Available lease: {:?}", available_lease.as_ref().unwrap());
     assert_eq!(available_lease.as_ref().unwrap(), "agent-startup-lease-1");
-
     k8s::lease::claim_lease(
         available_lease.unwrap(),
         pod_name,

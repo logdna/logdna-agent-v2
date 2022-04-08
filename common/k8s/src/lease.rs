@@ -28,10 +28,10 @@ pub async fn get_available_lease(lease_label: &str, lease_client: &Api<Lease>) -
         let lease_name = lease.metadata.name.unwrap();
         match lease.spec.unwrap().holder_identity {
             Some(lease_owner) => {
-                println!("Lease {} is OWNED by {:?}.", lease_name, lease_owner)
+                info!("Lease {} is OWNED by {:?}.", lease_name, lease_owner)
             }
             None => {
-                println!("Lease {} NOT OWNED...", lease_name);
+                info!("Lease {} NOT OWNED...", lease_name);
                 return Some(lease_name);
             }
         }
@@ -54,12 +54,24 @@ pub async fn claim_lease(
     let patch = Patch::Merge(patch_spec);
     let pp = PatchParams::apply(&lease_name);
     let patch_lease = lease_client.patch(&lease_name, &pp, &patch).await;
-    println!(
-        "Lease {} now owned by {:?}",
-        &lease_name,
-        &patch_lease.unwrap().spec.unwrap().holder_identity.unwrap()
-    );
-
+    match patch_lease {
+        Ok(ref patch) => {
+            info!(
+                "Lease {} now owned by {:?}",
+                &lease_name,
+                &patch
+                    .spec
+                    .as_ref()
+                    .unwrap()
+                    .holder_identity
+                    .as_ref()
+                    .unwrap(),
+            );
+        }
+        Err(e) => {
+            error!("Issue patching lease: {:?}", e)
+        }
+    }
     *return_ref = Some(lease_name);
 }
 
@@ -72,14 +84,21 @@ pub async fn release_lease(lease_name: &str, lease_client: &Api<Lease>) {
     let patch = Patch::Merge(patch_spec);
     let pp = PatchParams::apply(lease_name);
     let patch_lease = lease_client.patch(lease_name, &pp, &patch).await;
-    println!(
-        "Lease {} has been released to {:?}",
-        &lease_name,
-        &patch_lease.unwrap().spec.unwrap().holder_identity
-    );
+    match patch_lease {
+        Ok(ref patch) => {
+            info!(
+                "Lease {} had now been released to {:?}",
+                &lease_name,
+                &patch.spec.as_ref().unwrap().holder_identity
+            );
+        }
+        Err(e) => {
+            error!("Issue releasing lease: {:?}", e)
+        }
+    }
 }
 
-// TODO: Needs automated test
+// TODO: This may not be needed.
 pub async fn get_k8s_lease_api(namespace: &str, client: Client) -> Api<Lease> {
     let lease_api: Api<Lease> = Api::namespaced(client, namespace);
     lease_api

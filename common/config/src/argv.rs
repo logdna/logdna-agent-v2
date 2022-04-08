@@ -35,7 +35,7 @@ pub mod env {
     pub const METRICS_PORT: &str = "LOGDNA_METRICS_PORT";
     pub const USE_K8S_LOG_ENRICHMENT: &str = "LOGDNA_USE_K8S_LOG_ENRICHMENT";
     pub const LOG_K8S_EVENTS: &str = "LOGDNA_LOG_K8S_EVENTS";
-    pub const K8S_STARTUP_LEASE: &str = "LOGDNA_K8S_STARTUP_LEASE_OPTION";
+    pub const K8S_STARTUP_LEASE: &str = "LOGDNA_K8S_STARTUP_LEASE";
     pub const LINE_EXCLUSION: &str = "LOGDNA_LINE_EXCLUSION_REGEX";
     pub const LINE_INCLUSION: &str = "LOGDNA_LINE_INCLUSION_REGEX";
     pub const REDACT: &str = "LOGDNA_REDACT_REGEX";

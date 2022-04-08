@@ -43,6 +43,7 @@ from_env_name!(DB_PATH);
 from_env_name!(METRICS_PORT);
 from_env_name!(USE_K8S_LOG_ENRICHMENT);
 from_env_name!(LOG_K8S_EVENTS);
+from_env_name!(K8S_STARTUP_LEASE);
 from_env_name!(LINE_EXCLUSION);
 from_env_name!(LINE_INCLUSION);
 from_env_name!(REDACT);
@@ -238,6 +239,7 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
     result.log.use_k8s_enrichment = map.get_string(&USE_K8S_LOG_ENRICHMENT);
     result.log.log_k8s_events = map.get_string(&LOG_K8S_EVENTS);
     result.log.db_path = map.get(&DB_PATH).map(PathBuf::from);
+    result.startup.option = map.get_string(&K8S_STARTUP_LEASE);
 
     if let Some(value) = map.get(&LINE_EXCLUSION) {
         let regex_rules = result.log.line_exclusion_regex.get_or_insert(Vec::new());

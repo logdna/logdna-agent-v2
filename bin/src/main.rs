@@ -22,6 +22,7 @@ use k8s::lease::{get_available_lease, K8S_STARTUP_LEASE_LABEL, K8S_STARTUP_LEASE
 
 use k8s::middleware::K8sMetadata;
 use k8s::{create_k8s_client_default_from_env, K8sTrackingConf};
+use kube::Client as Kube_Client;
 use metrics::Metrics;
 use middleware::line_rules::LineRules;
 use middleware::Executor;
@@ -31,9 +32,9 @@ use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::{thread, time::Duration};
 use tokio::signal::*;
 use tokio::sync::Mutex;
+use tokio::time::Duration;
 
 mod dep_audit;
 mod stream_adapter;
@@ -121,11 +122,18 @@ async fn main() {
 
     let mut executor = Executor::new();
 
+    let mut k8s_claimed_lease: Option<String> = None;
     let k8s_event_stream = match create_k8s_client_default_from_env(user_agent) {
         Ok(k8s_client) => {
             if config.log.use_k8s_enrichment == K8sTrackingConf::Always
                 && PathBuf::from("/var/log/containers/").exists()
             {
+                check_startup_lease_status(
+                    &config.startup.option,
+                    &mut k8s_claimed_lease,
+                    k8s_client.clone(),
+                )
+                .await;
                 let node_name = std::env::var("NODE_NAME").ok();
                 match K8sMetadata::new(k8s_client.clone(), node_name.as_deref()).await {
                     Ok((driver, v)) => {
@@ -180,81 +188,10 @@ async fn main() {
         }
     };
 
-    let k8s_event_stream_client = k8s_event_stream.as_ref().unwrap().client.clone();
-    let mut k8s_claimed_lease: Option<String> = None;
-    match &k8s_event_stream {
-        Some(stream) => {
-            if &config.startup.option == "on" {
-                // Attempt to claim lease N times, then move on.
-                info!("Getting agent-startup-lease (making limited attempts)");
-                let k8s_lease_api = k8s::lease::get_k8s_lease_api(
-                    &std::env::var("NAMESPACE").unwrap(),
-                    stream.client.clone(),
-                )
-                .await;
-                for i in 0..K8S_STARTUP_LEASE_RETRY_ATTEMPTS {
-                    info!("Attempting connection: {}", i);
-                    match get_available_lease(K8S_STARTUP_LEASE_LABEL, &k8s_lease_api).await {
-                        Some(available_lease) => {
-                            info!("Lease available: {:?}", available_lease);
-                            k8s::lease::claim_lease(
-                                available_lease,
-                                std::env::var("POD_NAME").unwrap(),
-                                &k8s_lease_api,
-                                &mut k8s_claimed_lease,
-                            )
-                            .await;
-                            break;
-                        }
-                        None => {
-                            info!("No lease availabe at this time. Waiting 1 second...");
-                            thread::sleep(Duration::from_millis(1000));
-                        }
-                    };
-                }
-            } else if &config.startup.option == "always" {
-                // Keep trying to claim lease forever.
-                info!("Getting agent-startup-lease (trying forever)");
-                let k8s_lease_api = k8s::lease::get_k8s_lease_api(
-                    &std::env::var("NAMESPACE").unwrap(),
-                    stream.client.clone(),
-                )
-                .await;
-                loop {
-                    match get_available_lease(K8S_STARTUP_LEASE_LABEL, &k8s_lease_api).await {
-                        Some(available_lease) => {
-                            info!("Lease available: {:?}", available_lease);
-                            k8s::lease::claim_lease(
-                                available_lease,
-                                std::env::var("POD_NAME").unwrap(),
-                                &k8s_lease_api,
-                                &mut k8s_claimed_lease,
-                            )
-                            .await;
-                            break;
-                        }
-                        None => {
-                            info!("No lease availabe at this time. Waiting 1 second...");
-                            thread::sleep(Duration::from_millis(1000));
-                        }
-                    };
-                }
-            } else {
-                warn!(
-                    "Kubernetes cluster initialised, but K8s starup lease option set to {}",
-                    &config.startup.option
-                )
-            }
-        }
-        None => {
-            if &config.startup.option != "off" {
-                warn!(
-                    "K8s Starup Lease set to {}, but unable to initialise kubernetes cluster.",
-                    &config.startup.option
-                )
-            }
-        }
-    };
+    // Clone event stream if exists for releasing lease.
+    let k8s_event_stream_clone: Option<kube::Client> = k8s_event_stream
+        .as_ref()
+        .map(|_stream| k8s_event_stream.as_ref().unwrap().client.clone());
 
     match LineRules::new(
         &config.log.line_exclusion_regex,
@@ -541,7 +478,7 @@ async fn main() {
             info!("Releasing lease: {:?}", lease);
             let k8s_lease_api = k8s::lease::get_k8s_lease_api(
                 &std::env::var("NAMESPACE").unwrap(),
-                k8s_event_stream_client,
+                k8s_event_stream_clone.unwrap(),
             )
             .await;
             k8s::lease::release_lease(k8s_claimed_lease.as_ref().unwrap(), &k8s_lease_api).await;
@@ -559,6 +496,68 @@ async fn main() {
         signal_name = get_signal() => {
             info!("Received {} signal, shutting down", signal_name)
         }
+    }
+}
+
+async fn check_startup_lease_status(
+    start_option: &str,
+    claimed_lease_ref: &mut Option<String>,
+    client: Kube_Client,
+) {
+    if start_option == "on" {
+        // Attempt to claim lease N times, then move on.
+        info!("Getting agent-startup-lease (making limited attempts)");
+        let k8s_lease_api =
+            k8s::lease::get_k8s_lease_api(&std::env::var("NAMESPACE").unwrap(), client).await;
+        for i in 0..K8S_STARTUP_LEASE_RETRY_ATTEMPTS {
+            info!("Attempting connection: {}", i);
+            match get_available_lease(K8S_STARTUP_LEASE_LABEL, &k8s_lease_api).await {
+                Some(available_lease) => {
+                    info!("Lease available: {:?}", available_lease);
+                    k8s::lease::claim_lease(
+                        available_lease,
+                        std::env::var("POD_NAME").unwrap(),
+                        &k8s_lease_api,
+                        claimed_lease_ref,
+                    )
+                    .await;
+                    break;
+                }
+                None => {
+                    info!("No lease availabe at this time. Waiting 1 second...");
+                    tokio::time::sleep(Duration::from_millis(1000)).await;
+                }
+            };
+        }
+    } else if start_option == "always" {
+        // Keep trying to claim lease forever.
+        info!("Getting agent-startup-lease (trying forever)");
+        let k8s_lease_api =
+            k8s::lease::get_k8s_lease_api(&std::env::var("NAMESPACE").unwrap(), client).await;
+        loop {
+            match get_available_lease(K8S_STARTUP_LEASE_LABEL, &k8s_lease_api).await {
+                Some(available_lease) => {
+                    info!("Lease available: {:?}", available_lease);
+                    k8s::lease::claim_lease(
+                        available_lease,
+                        std::env::var("POD_NAME").unwrap(),
+                        &k8s_lease_api,
+                        claimed_lease_ref,
+                    )
+                    .await;
+                    break;
+                }
+                None => {
+                    info!("No lease availabe at this time. Waiting 1 second...");
+                    tokio::time::sleep(Duration::from_millis(1000)).await;
+                }
+            };
+        }
+    } else {
+        warn!(
+            "Kubernetes cluster initialised, but K8s starup lease option set to {}",
+            start_option
+        )
     }
 }
 
