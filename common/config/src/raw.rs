@@ -290,7 +290,7 @@ pub struct LogConfig {
     pub log_k8s_events: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
 pub struct K8sStartupLeaseConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub option: Option<String>,
@@ -299,14 +299,6 @@ pub struct K8sStartupLeaseConfig {
 impl Merge for K8sStartupLeaseConfig {
     fn merge(&mut self, other: &Self, default: &Self) {
         self.option.merge(&other.option, &default.option);
-    }
-}
-
-impl Default for K8sStartupLeaseConfig {
-    fn default() -> Self {
-        K8sStartupLeaseConfig {
-            option: Some("off".to_string()),
-        }
     }
 }
 
@@ -479,9 +471,7 @@ mod tests {
         let yaml = yaml.unwrap();
         // make sure the config can be deserialized
         let new_config = serde_yaml::from_str::<Config>(&yaml);
-        let k8s_config = K8sStartupLeaseConfig {
-            option: Some("off".to_string()),
-        };
+        let k8s_config = K8sStartupLeaseConfig { option: None };
         assert!(new_config.is_ok());
         let new_config = new_config.unwrap();
         assert_eq!(config, new_config);

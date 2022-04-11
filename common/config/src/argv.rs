@@ -636,12 +636,7 @@ mod test {
         assert_eq!(config.log.log_k8s_events, None);
         assert_eq!(config.log.db_path, None);
         assert_eq!(config.log.metrics_port, None);
-        assert_eq!(
-            config.startup,
-            K8sStartupLeaseConfig {
-                option: Some("off".to_string())
-            }
-        );
+        assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
     }
 
     #[test]

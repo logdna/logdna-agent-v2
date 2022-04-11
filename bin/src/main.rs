@@ -68,7 +68,6 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    info!("K8s Startup Lease: {}", &config.startup.option);
 
     let mut _agent_state = None;
     let mut offset_state = None;
@@ -129,7 +128,7 @@ async fn main() {
                 && PathBuf::from("/var/log/containers/").exists()
             {
                 check_startup_lease_status(
-                    &config.startup.option,
+                    Some(&config.startup.option),
                     &mut k8s_claimed_lease,
                     k8s_client.clone(),
                 )
@@ -500,11 +499,11 @@ async fn main() {
 }
 
 async fn check_startup_lease_status(
-    start_option: &str,
+    start_option: Option<&str>,
     claimed_lease_ref: &mut Option<String>,
     client: Kube_Client,
 ) {
-    if start_option == "on" {
+    if start_option == Some("on") {
         // Attempt to claim lease N times, then move on.
         info!("Getting agent-startup-lease (making limited attempts)");
         let k8s_lease_api =
@@ -529,7 +528,7 @@ async fn check_startup_lease_status(
                 }
             };
         }
-    } else if start_option == "always" {
+    } else if start_option == Some("always") {
         // Keep trying to claim lease forever.
         info!("Getting agent-startup-lease (trying forever)");
         let k8s_lease_api =
@@ -556,7 +555,7 @@ async fn check_startup_lease_status(
     } else {
         warn!(
             "Kubernetes cluster initialised, but K8s starup lease option set to {}",
-            start_option
+            start_option.unwrap()
         )
     }
 }
