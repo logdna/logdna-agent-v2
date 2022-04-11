@@ -1035,7 +1035,7 @@ async fn test_k8s_events_logged() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
-async fn test_k8s_startup_leases() {
+async fn test_k8s_startup_lease_functions() {
     let lease_name = "agent-startup-lease";
     let namespace = "default";
     let pod_name = "agent-pod-name".to_string();
@@ -1063,4 +1063,70 @@ async fn test_k8s_startup_leases() {
     k8s::lease::release_lease(&claimed_lease_name.unwrap(), &lease_client).await;
     let available_lease = k8s::lease::get_available_lease(lease_label, &lease_client).await;
     assert_eq!(available_lease.as_ref().unwrap(), "agent-startup-lease-1");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "k8s_tests"), ignore)]
+async fn test_k8s_startup_leases_always_start() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+
+    let (server, _received, shutdown_handle, ingester_addr) = common::start_http_ingester();
+
+    let client = Client::try_default().await.unwrap();
+
+    let (server_result, _) = tokio::join!(server, async {
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        // Create Agent
+        let agent_name = "k8s-agent-lease";
+        let agent_namespace = "k8s-agent-lease";
+        let agent_lease_name = "agent-startup-lease";
+        let agent_lease_label = "process=agent-startup";
+
+        let nss: Api<Namespace> = Api::all(client.clone());
+        let ns = serde_json::from_value(serde_json::json!({
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {
+                "name": agent_namespace
+            }
+        }))
+        .unwrap();
+        nss.create(&PostParams::default(), &ns).await.unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        // Crate Startup Leases
+        let agent_lease_api: Api<Lease> = Api::namespaced(client.clone(), agent_namespace);
+        let lp = ListParams::default().labels(agent_lease_label);
+        create_agent_startup_lease_list(client.clone(), agent_lease_name, agent_namespace).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        // Assert leases were created
+        let agent_lease_list = agent_lease_api.list(&lp).await;
+        assert!(agent_lease_list.as_ref().unwrap().iter().count() > 0);
+        let mock_ingester_socket_addr_str = create_mock_ingester_service(
+            client.clone(),
+            ingester_public_addr(ingester_addr),
+            "ingest-service",
+            agent_namespace,
+            80,
+        )
+        .await;
+
+        create_agent_ds(
+            client.clone(),
+            agent_name,
+            agent_namespace,
+            &mock_ingester_socket_addr_str,
+            "never",
+            "always",
+            "warn",
+        )
+        .await;
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+        shutdown_handle();
+    });
+
+    println!("Server Results: {:?}", server_result.unwrap());
 }
