@@ -3,6 +3,16 @@ use crate::{Middleware, Status};
 use http::types::body::{KeyValueMap, LineBufferMut};
 use std::collections::HashMap;
 
+/// Env config options
+static LOGDNA_META_APP: &str = "LOGDNA_META_APP";
+static LOGDNA_META_HOST: &str = "LOGDNA_META_HOST";
+static LOGDNA_META_ENV: &str = "LOGDNA_META_ENV";
+static LOGDNA_META_FILE: &str = "LOGDNA_META_FILE";
+static LOGDNA_META_K8S_FILE: &str = "LOGDNA_META_K8S_FILE";
+static LOGDNA_META_JSON: &str = "LOGDNA_META_JSON";
+static LOGDNA_META_ANNOTATIONS: &str = "LOGDNA_META_ANNOTATIONS";
+static LOGDNA_META_LABELS: &str = "LOGDNA_META_LABELS";
+
 pub struct MetaRules {
     env_map: HashMap<String, String>,
     // Line metadata "override" fields
@@ -27,18 +37,18 @@ impl MetaRules {
         let env_map = os_env_hashmap();
         let obj = MetaRules {
             env_map: os_env_hashmap(),
-            //TODO: extract to Config
-            over_app: env_map.get("LOGDNA_META_APP").cloned(),
-            over_host: env_map.get("LOGDNA_META_HOST").cloned(),
-            over_env: env_map.get("LOGDNA_META_ENV").cloned(),
-            over_file: env_map.get("LOGDNA_META_FILE").cloned(),
-            over_k8s_file: env_map.get("LOGDNA_META_K8S_FILE").cloned(),
-            over_meta: env_map.get("LOGDNA_META_JSON").cloned(),
+            //TODO: extract to common.config.Config
+            over_app: env_map.get(LOGDNA_META_APP).cloned(),
+            over_host: env_map.get(LOGDNA_META_HOST).cloned(),
+            over_env: env_map.get(LOGDNA_META_ENV).cloned(),
+            over_file: env_map.get(LOGDNA_META_FILE).cloned(),
+            over_k8s_file: env_map.get(LOGDNA_META_K8S_FILE).cloned(),
+            over_meta: env_map.get(LOGDNA_META_JSON).cloned(),
             over_annotations: env_map
-                .get("LOGDNA_META_ANNOTATIONS")
+                .get(LOGDNA_META_ANNOTATIONS)
                 .map_or_else(|| None, |str| serde_json::from_str(str).unwrap()),
             over_labels: env_map
-                .get("LOGDNA_META_LABELS")
+                .get(LOGDNA_META_LABELS)
                 .map_or_else(|| None, |str| serde_json::from_str(str).unwrap()),
         };
         Ok(obj)
@@ -55,6 +65,7 @@ impl MetaRules {
             || self.over_labels.is_some()
     }
 
+    /// process_line
     /// Override line meta fields
     /// [ create map ] => [ substitute then insert to map ] => [ substitute from map ] => [ override ]
     ///  os env vars       "override" labels                    "override" fields          line fields
@@ -199,6 +210,8 @@ pub fn substitute(template: &str, variables: &HashMap<String, String>) -> String
     output
 }
 
+//##################################################################################
+
 #[cfg(test)]
 mod tests {
     use crate::meta_rules::{os_env_hashmap, substitute};
@@ -223,5 +236,27 @@ mod tests {
         let templ = r#"{"key1":"${val1}", "key2":"${val2}"}"#;
         let res = substitute(templ, &vals);
         assert_eq!(res, r#"{"key1":"1", "key2":"2"}"#);
+    }
+
+    use super::*;
+    use http::types::body::LineBuilder;
+    use std::env;
+
+    macro_rules! s {
+        ($val: expr) => {
+            $val.to_string()
+        };
+    }
+
+    #[test]
+    fn should_override_app() {
+        env::set_var(LOGDNA_META_APP, "REDACTED_APP");
+
+        let p = MetaRules::new().unwrap();
+        let mut line = LineBuilder::new().line("Hello");
+        let status = p.process(&mut line);
+        assert!(matches!(status, Status::Ok(_)));
+        let app = line.app.as_ref().unwrap();
+        assert_eq!(app.as_str(), "REDACTED_APP");
     }
 }
