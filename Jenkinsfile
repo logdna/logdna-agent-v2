@@ -7,7 +7,7 @@ def publishDockerhubICRImages = false
 pipeline {
     agent {
         node {
-            label "ec2-fleet"
+            label "rust-x86_64"
         }
     }
     options {
@@ -35,6 +35,10 @@ pipeline {
         string(name: 'RUST_IMAGE_SUFFIX', description: 'Build image tag suffix', defaultValue: "")
     }
     stages {
+        stage('delete me') {
+            sh 'make init-qemu'
+            sh 'exit 1'
+        }
         stage('Validate PR Source') {
             when {
                 expression { env.CHANGE_FORK }
