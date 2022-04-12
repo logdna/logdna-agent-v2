@@ -479,6 +479,8 @@ help: ## Prints out a helpful description of each possible target
 init-qemu: ## register qemu in binfmt on x86_64 hosts
 	@set -e
 	echo "Host: " && hostname && uname -a && blkid && docker info && echo && free -h && echo && df -h && echo && lscpu && echo
+	echo "$(shell whoami)"
+	echo "$(shell echo $$SHELL)"
 	if [ "$(shell uname -m)" = "x86_64" ]; then \
 		if [ ! -f /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then \
 			( \
