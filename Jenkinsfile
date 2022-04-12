@@ -36,8 +36,10 @@ pipeline {
     }
     stages {
         stage('delete me') {
-            sh 'make init-qemu'
-            sh 'exit 1'
+            steps {
+                sh 'make init-qemu'
+                sh 'exit 1'
+            }
         }
         stage('Validate PR Source') {
             when {
