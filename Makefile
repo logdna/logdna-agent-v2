@@ -143,6 +143,14 @@ ifneq ($(TARGET),)
 	TARGET_DOCKER_ARG= --target $(TARGET)
 endif
 
+.PHONY:vendor
+vendor:
+	$(UNCACHED_RUST_COMMAND) "" "$(CARGO_COMMAND) vendor >> .cargo/config"
+
+.PHONY:build-test
+build-test:
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build $(TARGET_DOCKER_ARG) --profile=test"
+
 .PHONY:build
 build: ## Build the agent
 	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG)"
@@ -179,7 +187,7 @@ bench:
 
 .PHONY:clean
 clean: ## Clean all artifacts from the build process
-	$(RUST_COMMAND) "" "rm -fr target/* \$$CARGO_HOME/registry/* \$$CARGO_HOME/git/*"
+	$(RUST_COMMAND) "" "rm -fr target/* \$$CARGO_HOME/registry/* \$$CARGO_HOME/git/* vendor/* bench/target/* .cargo/config"
 
 .PHONY:clean-docker
 clean-docker: ## Cleans the intermediate and final agent images left over from the build-image target

@@ -51,6 +51,14 @@ pipeline {
                 sh "make init-qemu"
             }
         }
+        stage('Warm Cache') {
+            steps {
+                sh """
+                    make vendor
+                    make build-test
+                """
+            }
+        }
         stage('Lint and Test') {
             environment {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
