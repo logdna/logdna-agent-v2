@@ -23,7 +23,7 @@ use k8s::middleware::K8sMetadata;
 use k8s::{create_k8s_client_default_from_env, K8sTrackingConf};
 use metrics::Metrics;
 use middleware::line_rules::LineRules;
-use middleware::meta_rules::MetaRules;
+use middleware::meta_rules::{MetaConfig, MetaRules};
 use middleware::Executor;
 
 use pin_utils::pin_mut;
@@ -122,7 +122,7 @@ async fn main() {
     let k8s_event_stream = match create_k8s_client_default_from_env(user_agent) {
         Ok(k8s_client) => {
             if config.log.use_k8s_enrichment == K8sTrackingConf::Always
-        && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
+                && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
             {
                 let node_name = std::env::var("NODE_NAME").ok();
                 match K8sMetadata::new(k8s_client.clone(), node_name.as_deref()).await {
@@ -190,7 +190,7 @@ async fn main() {
         }
     };
 
-    match MetaRules::new() {
+    match MetaRules::new(MetaConfig::from_env()) {
         Ok(v) => executor.register(v),
         Err(e) => {
             error!("line regex is invalid: {}", e);

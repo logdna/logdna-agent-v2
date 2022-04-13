@@ -13,6 +13,47 @@ static LOGDNA_META_JSON: &str = "LOGDNA_META_JSON";
 static LOGDNA_META_ANNOTATIONS: &str = "LOGDNA_META_ANNOTATIONS";
 static LOGDNA_META_LABELS: &str = "LOGDNA_META_LABELS";
 
+//TODO: extract to LogConfig
+pub struct MetaConfig {
+    pub app: Option<String>,
+    pub host: Option<String>,
+    pub env: Option<String>,
+    pub file: Option<String>,
+    pub k8s_file: Option<String>, // used for lines from k8s
+    pub meta: Option<String>,
+    pub annotations: Option<String>,
+    pub labels: Option<String>,
+}
+
+impl MetaConfig {
+    pub fn default() -> Self {
+        MetaConfig {
+            app: None,
+            host: None,
+            env: None,
+            file: None,
+            k8s_file: None,
+            meta: None,
+            annotations: None,
+            labels: None,
+        }
+    }
+
+    pub fn from_env() -> Self {
+        let vars = os_env_hashmap();
+        MetaConfig {
+            app: vars.get(LOGDNA_META_APP).cloned(),
+            host: vars.get(LOGDNA_META_HOST).cloned(),
+            env: vars.get(LOGDNA_META_ENV).cloned(),
+            file: vars.get(LOGDNA_META_FILE).cloned(),
+            k8s_file: vars.get(LOGDNA_META_K8S_FILE).cloned(),
+            meta: vars.get(LOGDNA_META_JSON).cloned(),
+            annotations: vars.get(LOGDNA_META_ANNOTATIONS).cloned(),
+            labels: vars.get(LOGDNA_META_LABELS).cloned(),
+        }
+    }
+}
+
 pub struct MetaRules {
     env_map: HashMap<String, String>,
     // Line metadata "override" fields
@@ -33,23 +74,21 @@ pub enum MetaRulesError {
 }
 
 impl MetaRules {
-    pub fn new() -> Result<MetaRules, MetaRulesError> {
-        let env_map = os_env_hashmap();
+    pub fn new(cfg: MetaConfig) -> Result<MetaRules, MetaRulesError> {
         let obj = MetaRules {
             env_map: os_env_hashmap(),
-            //TODO: extract to common.config.Config
-            over_app: env_map.get(LOGDNA_META_APP).cloned(),
-            over_host: env_map.get(LOGDNA_META_HOST).cloned(),
-            over_env: env_map.get(LOGDNA_META_ENV).cloned(),
-            over_file: env_map.get(LOGDNA_META_FILE).cloned(),
-            over_k8s_file: env_map.get(LOGDNA_META_K8S_FILE).cloned(),
-            over_meta: env_map.get(LOGDNA_META_JSON).cloned(),
-            over_annotations: env_map
-                .get(LOGDNA_META_ANNOTATIONS)
-                .map_or_else(|| None, |str| serde_json::from_str(str).unwrap()),
-            over_labels: env_map
-                .get(LOGDNA_META_LABELS)
-                .map_or_else(|| None, |str| serde_json::from_str(str).unwrap()),
+            over_app: cfg.app,
+            over_host: cfg.host,
+            over_env: cfg.env,
+            over_file: cfg.file,
+            over_k8s_file: cfg.k8s_file,
+            over_meta: cfg.meta,
+            over_annotations: cfg
+                .annotations
+                .map_or_else(|| None, |str| serde_json::from_str(str.as_str()).unwrap()),
+            over_labels: cfg
+                .labels
+                .map_or_else(|| None, |str| serde_json::from_str(str.as_str()).unwrap()),
         };
         Ok(obj)
     }
@@ -113,7 +152,7 @@ impl MetaRules {
         if self.over_annotations.is_some() && is_k8s {
             let mut new_annotations = KeyValueMap::new();
             if line.get_annotations().is_some() {
-                for (k, v) in line.get_annotations().clone().unwrap().iter() {
+                for (k, v) in line.get_annotations().unwrap().iter() {
                     new_annotations.insert(k.clone(), v.clone());
                 }
             }
@@ -131,7 +170,7 @@ impl MetaRules {
         if self.over_labels.is_some() && is_k8s {
             let mut new_labels = KeyValueMap::new();
             if line.get_labels().is_some() {
-                for (k, v) in line.get_labels().clone().unwrap().iter() {
+                for (k, v) in line.get_labels().unwrap().iter() {
                     new_labels.insert(k.clone(), v.clone());
                 }
             }
@@ -162,7 +201,7 @@ impl MetaRules {
             let env = substitute(self.over_env.clone().unwrap().as_ref(), &meta_map);
             if line.set_env(env).is_err() {}
         }
-        if self.over_file.is_some() && line.get_file().is_some() {
+        if self.over_file.is_some() {
             let file = substitute(self.over_file.clone().unwrap().as_ref(), &meta_map);
             if line.set_file(file).is_err() {}
         }
@@ -182,10 +221,7 @@ impl MetaRules {
 impl Middleware for MetaRules {
     fn run(&self) {}
     fn process<'a>(&self, line: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
-        match line.get_line_buffer() {
-            None => Status::Skip,
-            Some(_) => self.process_line(line),
-        }
+        self.process_line(line)
     }
 }
 
@@ -210,11 +246,30 @@ pub fn substitute(template: &str, variables: &HashMap<String, String>) -> String
     output
 }
 
-//##################################################################################
+//################################################################################## Tests
 
 #[cfg(test)]
 mod tests {
     use crate::meta_rules::{os_env_hashmap, substitute};
+
+    #[test]
+    fn test_meta_config() {
+        env::set_var(LOGDNA_META_APP, "some_app");
+        env::set_var(LOGDNA_META_HOST, "some_host");
+        env::set_var(LOGDNA_META_ENV, "some_env");
+        env::set_var(LOGDNA_META_FILE, "some_file");
+        env::set_var(LOGDNA_META_JSON, "some_json");
+        env::set_var(LOGDNA_META_ANNOTATIONS, "some_annotations");
+        env::set_var(LOGDNA_META_LABELS, "some_labels");
+        let cfg = MetaConfig::from_env();
+        assert_eq!(cfg.app, Some("some_app".into()));
+        assert_eq!(cfg.host, Some("some_host".into()));
+        assert_eq!(cfg.env, Some("some_env".into()));
+        assert_eq!(cfg.file, Some("some_file".into()));
+        assert_eq!(cfg.meta, Some("some_json".into()));
+        assert_eq!(cfg.annotations, Some("some_annotations".into()));
+        assert_eq!(cfg.labels, Some("some_labels".into()));
+    }
 
     #[test]
     fn test_os_env_hashmap() {
@@ -240,23 +295,149 @@ mod tests {
 
     use super::*;
     use http::types::body::LineBuilder;
+    use serde_json::Value;
     use std::env;
 
-    macro_rules! s {
-        ($val: expr) => {
-            $val.to_string()
+    #[test]
+    ///  k8s case: annotations and/or labels are defined
+    fn should_override_existing_k8s() {
+        let cfg = MetaConfig {
+            app: Some("REDACTED_APP".into()),
+            host: Some("REDACTED_HOST".into()),
+            env: Some("REDACTED_ENV".into()),
+            file: Some("REDACTED_FILE".into()),
+            k8s_file: Some("REDACTED_K8S_FILE".into()),
+            meta: Some(r#"{"key1":"val1"}"#.into()),
+            annotations: Some(r#"{"key1":"val1"}"#.into()),
+            labels: Some(r#"{"key1":"val1"}"#.into()),
         };
+        let p = MetaRules::new(cfg).unwrap();
+        let redacted_meta: Value = serde_json::from_str(r#"{"key1":"val1"}"#).unwrap();
+        let redacted_annotations = KeyValueMap::new().add("key1", "val1");
+        let redacted_labels = KeyValueMap::new().add("key1", "val1");
+        let some_meta: Value = serde_json::from_str(r#"{"some_key1":"some_val1"}"#).unwrap();
+        let some_annotations = KeyValueMap::new().add("key1", "some_val1");
+        let some_labels = KeyValueMap::new().add("key1", "some_val1");
+        let mut line = LineBuilder::new()
+            .line("SOME_LINE")
+            .app("SOME_APP")
+            .file("SOME_FILE")
+            .host("SOME_HOST")
+            .level("SOME_LEVEL")
+            .meta(some_meta)
+            .annotations(some_annotations)
+            .labels(some_labels);
+        let status = p.process(&mut line);
+        assert!(matches!(status, Status::Ok(_)));
+        assert_eq!(line.app.unwrap(), "REDACTED_APP");
+        assert_eq!(line.host.unwrap(), "REDACTED_HOST");
+        assert_eq!(line.env.unwrap(), "REDACTED_ENV");
+        assert_eq!(line.file.unwrap(), "REDACTED_K8S_FILE");
+        assert_eq!(line.meta.unwrap(), redacted_meta); // replaced as a whole
+        assert_eq!(line.annotations.unwrap(), redacted_annotations);
+        assert_eq!(line.labels.unwrap(), redacted_labels);
     }
 
     #[test]
-    fn should_override_app() {
-        env::set_var(LOGDNA_META_APP, "REDACTED_APP");
-
-        let p = MetaRules::new().unwrap();
-        let mut line = LineBuilder::new().line("Hello");
+    ///  k8s case: annotations and/or labels are defined
+    fn should_override_non_existing_k8s() {
+        let cfg = MetaConfig {
+            app: Some("REDACTED_APP".into()),
+            host: Some("REDACTED_HOST".into()),
+            env: Some("REDACTED_ENV".into()),
+            file: Some("REDACTED_FILE".into()),
+            k8s_file: Some("REDACTED_K8S_FILE".into()),
+            meta: Some(r#"{"key1":"val1"}"#.into()),
+            annotations: Some(r#"{"key1":"val1"}"#.into()),
+            labels: Some(r#"{"key1":"val1"}"#.into()),
+        };
+        let p = MetaRules::new(cfg).unwrap();
+        let redacted_meta: Value = serde_json::from_str(r#"{"key1":"val1"}"#).unwrap();
+        let redacted_annotations = KeyValueMap::new().add("key1", "val1");
+        let redacted_labels = KeyValueMap::new().add("key1", "val1");
+        let mut line = LineBuilder::new()
+            .annotations(KeyValueMap::new().add("key1", "some_val1"))
+            .labels(KeyValueMap::new().add("key1", "some_val1"));
         let status = p.process(&mut line);
         assert!(matches!(status, Status::Ok(_)));
-        let app = line.app.as_ref().unwrap();
-        assert_eq!(app.as_str(), "REDACTED_APP");
+        assert_eq!(line.app.unwrap(), "REDACTED_APP");
+        assert_eq!(line.host.unwrap(), "REDACTED_HOST");
+        assert_eq!(line.env.unwrap(), "REDACTED_ENV");
+        assert_eq!(line.file.unwrap(), "REDACTED_K8S_FILE"); // k8s overrides last
+        assert_eq!(line.meta.unwrap(), redacted_meta);
+        assert_eq!(line.annotations.unwrap(), redacted_annotations);
+        assert_eq!(line.labels.unwrap(), redacted_labels);
+    }
+
+    #[test]
+    ///  non k8s case: annotations and/or labels are NOT defined
+    fn should_override_non_existing() {
+        let cfg = MetaConfig {
+            app: Some("REDACTED_APP".into()),
+            host: Some("REDACTED_HOST".into()),
+            env: Some("REDACTED_ENV".into()),
+            file: Some("REDACTED_FILE".into()),
+            k8s_file: Some("REDACTED_K8S_FILE".into()),
+            meta: Some(r#"{"key1":"val1"}"#.into()),
+            annotations: Some(r#"{"key1":"val1"}"#.into()),
+            labels: Some(r#"{"key1":"val1"}"#.into()),
+        };
+        let p = MetaRules::new(cfg).unwrap();
+        let redacted_meta: Value = serde_json::from_str(r#"{"key1":"val1"}"#).unwrap();
+        let mut line = LineBuilder::new();
+        let status = p.process(&mut line);
+        assert!(matches!(status, Status::Ok(_)));
+        assert_eq!(line.app.unwrap(), "REDACTED_APP");
+        assert_eq!(line.host.unwrap(), "REDACTED_HOST");
+        assert_eq!(line.env.unwrap(), "REDACTED_ENV");
+        assert_eq!(line.file.unwrap(), "REDACTED_FILE");
+        assert_eq!(line.meta.unwrap(), redacted_meta);
+        assert_eq!(line.annotations, None);
+        assert_eq!(line.labels, None);
+    }
+
+    #[test]
+    fn transparent_if_not_configured_k8s() {
+        let p = MetaRules::new(MetaConfig::default()).unwrap();
+        let some_annotations: KeyValueMap = serde_json::from_str(r#"{"key1":"val1"}"#).unwrap();
+        let some_labels: KeyValueMap = serde_json::from_str(r#"{"key1":"val1"}"#).unwrap();
+        let mut line = LineBuilder::new()
+            .line("SOME_LINE")
+            .app("SOME_APP")
+            .file("SOME_FILE")
+            .host("SOME_HOST")
+            .level("SOME_LEVEL")
+            .annotations(some_annotations.clone())
+            .labels(some_labels.clone());
+        let status = p.process(&mut line);
+        assert!(matches!(status, Status::Ok(_)));
+        assert_eq!(line.line.unwrap(), "SOME_LINE");
+        assert_eq!(line.app.unwrap(), "SOME_APP");
+        assert_eq!(line.file.unwrap(), "SOME_FILE");
+        assert_eq!(line.host.unwrap(), "SOME_HOST");
+        assert_eq!(line.level.unwrap(), "SOME_LEVEL");
+        assert_eq!(line.annotations.unwrap(), some_annotations);
+        assert_eq!(line.labels.unwrap(), some_labels);
+    }
+
+    #[test]
+    fn transparent_if_not_configured() {
+        let p = MetaRules::new(MetaConfig::default()).unwrap();
+        let mut line = LineBuilder::new()
+            .line("SOME_LINE")
+            .app("SOME_APP")
+            .file("SOME_FILE")
+            .host("SOME_HOST")
+            .level("SOME_LEVEL");
+        // no annotations & labels
+        let status = p.process(&mut line);
+        assert!(matches!(status, Status::Ok(_)));
+        assert_eq!(line.line.unwrap(), "SOME_LINE");
+        assert_eq!(line.app.unwrap(), "SOME_APP");
+        assert_eq!(line.file.unwrap(), "SOME_FILE");
+        assert_eq!(line.host.unwrap(), "SOME_HOST");
+        assert_eq!(line.level.unwrap(), "SOME_LEVEL");
+        assert_eq!(line.annotations, None);
+        assert_eq!(line.labels, None);
     }
 }
