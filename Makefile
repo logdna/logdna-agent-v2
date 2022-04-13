@@ -48,7 +48,7 @@ BENCH_COMMAND = CACHE_TARGET="false" $(DOCKER_DISPATCH) $(BENCH_IMAGE)
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
-INTEGRATION_TEST_THREADS ?= 1
+INTEGRATION_TEST_THREADS ?=
 K8S_TEST_CREATE_CLUSTER ?= true
 
 VCS_REF := $(shell git rev-parse --short HEAD)
@@ -162,7 +162,7 @@ test: test-journald ## Run unit tests
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
 	$(eval FEATURES := $(FEATURES) integration_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
+	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) -- --nocapture $(INTEGRATION_TEST_THREADS)"
 
 .PHONY:k8s-test
 k8s-test: ## Run integration tests using k8s kind

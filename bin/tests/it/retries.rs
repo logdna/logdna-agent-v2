@@ -1,5 +1,5 @@
-use common::AgentSettings;
-pub use common::*;
+use crate::common::AgentSettings;
+use crate::common::{self, *};
 use logdna_metrics_recorder::*;
 use prometheus_parse::Value;
 use rand::Rng;
@@ -10,8 +10,6 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::tempdir;
-
-mod common;
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
@@ -135,9 +133,9 @@ async fn test_retry_location() {
         // Wait for the agent to bootstrap and then start generating some log data
         common::wait_for_event("Enabling filesystem", &mut agent_stderr);
         common::consume_output(agent_stderr.into_inner());
-        gen_log_data(&mut log_file).await;
+        writeln!(&mut log_file, "test").unwrap();
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(timeout * 3)).await;
 
         // Check that a retry file was created in the retry dir
         let matches = std::fs::read_dir(retry_dir).unwrap().filter(|r| {
@@ -320,9 +318,9 @@ async fn gen_log_data(file: &mut File) {
 async fn test_retry_metrics_emitted() {
     let _ = env_logger::Builder::from_default_env().try_init();
     let timeout = 200;
-    let base_delay_ms = 300;
-    let step_delay_ms = 100;
-    let metrics_port = 9881;
+    let base_delay_ms = 50;
+    let step_delay_ms = 50;
+    let metrics_port = 9882;
 
     let log_dir = tempdir().unwrap().into_path();
     let log_file_path = log_dir.join("test.log");
@@ -359,22 +357,20 @@ async fn test_retry_metrics_emitted() {
     let mut agent_handle = common::spawn_agent(settings);
     let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
 
+    common::wait_for_event("Enabling filesystem", &mut agent_stderr);
+    common::consume_output(agent_stderr.into_inner());
     // This creates a new thread that scrapes the metrics from the agent process and
     // stores all the values for the retry metrics under test.
     let recorder = MetricsRecorder::start(metrics_port, Some(Duration::from_millis(100)));
 
     let (ingest_result, metrics_result) = tokio::join!(server, async move {
         // Wait for the agent to bootstrap and then start generating some log data
-        common::wait_for_event("Enabling filesystem", &mut agent_stderr);
-        common::consume_output(agent_stderr.into_inner());
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         gen_log_data(&mut log_file).await;
 
         // Signal to the mock ingestor to start doing random rejections on log data.
         simulate_ingest_problems.store(true, Ordering::Relaxed);
         gen_log_data(&mut log_file).await;
         gen_log_data(&mut log_file).await;
-        tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
 
         // Signal to the mock ingestor to stop doing random rejections
         simulate_ingest_problems.store(false, Ordering::Relaxed);
@@ -382,10 +378,12 @@ async fn test_retry_metrics_emitted() {
         tokio::time::sleep(tokio::time::Duration::from_millis(6000)).await;
         gen_log_data(&mut log_file).await;
 
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
         shutdown_ingest();
         recorder.stop().await
     });
 
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     // Shut down processes
     ingest_result.unwrap();
     agent_handle.kill().unwrap();

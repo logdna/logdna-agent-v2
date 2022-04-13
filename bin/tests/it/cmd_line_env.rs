@@ -1,8 +1,8 @@
 use assert_cmd::cargo::CommandCargoExt;
-pub use common::*; // workaround for unused functions
 use predicate::str::{contains, is_match};
 use predicates::prelude::predicate;
 use predicates::Predicate;
+use serial_test::serial;
 use std::fs::{self, File};
 use std::io;
 use std::io::BufRead;
@@ -14,8 +14,6 @@ use std::str::from_utf8;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tempfile::tempdir;
-
-mod common;
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
@@ -87,6 +85,7 @@ fn test_version_is_included() {
 }
 
 #[test]
+#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_list_config_from_conf() -> io::Result<()> {
     let config_dir = tempdir()?;
@@ -120,6 +119,7 @@ fn test_list_config_from_conf() -> io::Result<()> {
 }
 
 #[test]
+#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_legacy_and_new_confs_merge() -> io::Result<()> {
@@ -224,6 +224,7 @@ fn test_list_config_no_options() -> io::Result<()> {
 }
 
 #[test]
+#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_list_default_conf() -> io::Result<()> {
@@ -438,6 +439,7 @@ fn test_deprecated_environment_variables_should_set_config() {
 }
 
 #[test]
+#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_command_line_arguments_should_merge_config_from_file() {
     let config_dir = tempdir().unwrap().into_path();
@@ -512,6 +514,7 @@ startup: {{}}
 }
 
 #[test]
+#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_properties_config_min() -> io::Result<()> {
     let config_dir = tempdir()?;
@@ -534,6 +537,7 @@ fn test_properties_config_min() -> io::Result<()> {
 }
 
 #[test]
+#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_properties_config_legacy() -> io::Result<()> {
     let config_dir = tempdir()?;
@@ -576,6 +580,7 @@ hostname = some-linux-instance"
 }
 
 #[test]
+#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_properties_config_common() -> io::Result<()> {
     let config_dir = tempdir()?;
@@ -612,6 +617,7 @@ line_exclusion_regex = (?i:debug),(?i:trace)"
 }
 
 #[test]
+#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_properties_default_conf() -> io::Result<()> {
@@ -635,6 +641,7 @@ fn test_properties_default_conf() -> io::Result<()> {
 }
 
 #[test]
+#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_properties_default_yaml() -> io::Result<()> {
