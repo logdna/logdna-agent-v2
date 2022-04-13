@@ -21,7 +21,6 @@ RUN mkdir -p /var/log/journal && \
 
 
 WORKDIR /work/
-COPY . .
 
 RUN chmod 777 /etc
 RUN mkdir /etc/logdna

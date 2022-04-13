@@ -48,7 +48,7 @@ BENCH_COMMAND = CACHE_TARGET="false" $(DOCKER_DISPATCH) $(BENCH_IMAGE)
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
-TEST_THREADS ?= $(shell nproc)
+TEST_THREADS ?= $(shell echo "$$(nproc)/4" | bc)
 TEST_THREADS_ARG = --test-threads=$(TEST_THREADS)
 
 K8S_TEST_CREATE_CLUSTER ?= true
@@ -170,7 +170,7 @@ test: unit-test test-journald ## Run unit tests
 
 .PHONY:unit-test
 unit-test:
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) --no-run && $(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) $(TESTS) -- --nocapture $(TEST_THREADS_ARG)"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) --no-run && $(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) $(TESTS) -- --nocapture"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
@@ -179,7 +179,7 @@ integration-test: ## Run integration tests using image with additional tools
 
 .PHONY:k8s-test
 k8s-test: ## Run integration tests using k8s kind
-	$(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) --manifest-path bin/Cargo.toml --features k8s_tests -- --nocapture $(TEST_THREADS_ARG)"
+	$(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) --manifest-path bin/Cargo.toml --features k8s_tests -- --nocapture"
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
