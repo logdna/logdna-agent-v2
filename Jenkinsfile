@@ -57,7 +57,35 @@ pipeline {
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
             }
             parallel {
-                stage('Lint, Unit and Integration Tests'){
+                stage('Lint'){
+                    steps {
+                        withCredentials([[
+                                           $class: 'AmazonWebServicesCredentialsBinding',
+                                           credentialsId: 'aws',
+                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                         ]]){
+                            sh """
+                              make lint
+                            """
+                        }
+                    }
+                }
+                stage('Unit Tests'){
+                    steps {
+                        withCredentials([[
+                                           $class: 'AmazonWebServicesCredentialsBinding',
+                                           credentialsId: 'aws',
+                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                         ]]){
+                            sh """
+                              make test
+                            """
+                        }
+                    }
+                }
+                stage('Integration Tests'){
                     steps {
                         script {
                             def creds = readJSON file: CREDS_FILE
@@ -73,33 +101,29 @@ pipeline {
                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                          ]]){
                             sh """
-                              make lint
-                              make test
                               make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
                             """
-                        }
-                    }
-                    post {
-                        success {
-                            sh "make clean"
                         }
                     }
                 }
                 stage('Run K8s Integration Tests') {
                     steps {
-                        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                            withCredentials([[
-                                              $class: 'AmazonWebServicesCredentialsBinding',
-                                              credentialsId: 'aws',
-                                              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                             ]]) {
-                                sh '''
-                                    make k8s-test
-                                '''
-                            }
+                        withCredentials([[
+                                            $class: 'AmazonWebServicesCredentialsBinding',
+                                            credentialsId: 'aws',
+                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                            ]]) {
+                            sh '''
+                                make k8s-test
+                            '''
                         }
                     }
+                }
+            }
+            post {
+                always {
+                    sh "make clean"
                 }
             }
         }
