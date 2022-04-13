@@ -51,20 +51,15 @@ pipeline {
                 sh "make init-qemu"
             }
         }
-        stage('Warm Cache') {
+        stage('Vendor') {
             steps {
                 sh """
                     mkdir -p .cargo || /bin/true
                     make vendor
-                    make build-test
                 """
             }
         }
-        stage('Lint and Test') {
-            environment {
-                CREDS_FILE = credentials('pipeline-e2e-creds')
-                LOGDNA_HOST = "logs.use.stage.logdna.net"
-            }
+        stage('Lint') {
             parallel {
                 stage('Lint'){
                     steps {
@@ -80,6 +75,28 @@ pipeline {
                         }
                     }
                 }
+                stage('Warm Cache') {
+                    steps {
+                        withCredentials([[
+                                           $class: 'AmazonWebServicesCredentialsBinding',
+                                           credentialsId: 'aws',
+                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                         ]]){
+                            sh """
+                                make build-test
+                            """
+                        }
+                    }
+                }
+            }
+        }
+        stage('Test') {
+            environment {
+                CREDS_FILE = credentials('pipeline-e2e-creds')
+                LOGDNA_HOST = "logs.use.stage.logdna.net"
+            }
+            parallel {
                 stage('Unit Tests'){
                     steps {
                         withCredentials([[
