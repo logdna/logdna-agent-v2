@@ -4,6 +4,7 @@ use http::types::params::{Params, Tags};
 use humanize_rs::bytes::Bytes;
 use k8s::K8sTrackingConf;
 use std::env::var as env_var;
+use std::ffi::OsString;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
@@ -366,8 +367,12 @@ impl ArgumentOptions {
     }
 
     /// Parse command line options, default env vars and additional (deprecated) env vars.
-    pub fn from_args_with_all_env_vars() -> ArgumentOptions {
-        let options: ArgumentOptions = ArgumentOptions::from_args();
+    pub fn from_args_with_all_env_vars<I>(iter: I) -> ArgumentOptions
+    where
+        I: IntoIterator,
+        I::Item: Into<OsString> + Clone,
+    {
+        let options: ArgumentOptions = ArgumentOptions::from_iter(iter);
         ArgumentOptions::parse_deprecated(options)
     }
 
