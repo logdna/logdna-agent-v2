@@ -48,7 +48,9 @@ BENCH_COMMAND = CACHE_TARGET="false" $(DOCKER_DISPATCH) $(BENCH_IMAGE)
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
-INTEGRATION_TEST_THREADS ?=
+TEST_THREADS ?= $(shell nproc)
+TEST_THREADS_ARG = --test-threads=$(TEST_THREADS)
+
 K8S_TEST_CREATE_CLUSTER ?= true
 
 VCS_REF := $(shell git rev-parse --short HEAD)
@@ -165,16 +167,16 @@ check: ## Run unit tests
 
 .PHONY:test
 test: test-journald ## Run unit tests
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) --no-run && cargo test $(TARGET_DOCKER_ARG) $(TESTS)"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) --no-run && $(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) $(TESTS) -- --nocapture $(TEST_THREADS_ARG)"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
 	$(eval FEATURES := $(FEATURES) integration_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) -- --nocapture $(INTEGRATION_TEST_THREADS)"
+	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) -- --nocapture $(TEST_THREADS_ARG)"
 
 .PHONY:k8s-test
 k8s-test: ## Run integration tests using k8s kind
-	$(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) --manifest-path bin/Cargo.toml --features k8s_tests -- --nocapture"
+	$(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) --manifest-path bin/Cargo.toml --features k8s_tests -- --nocapture $(TEST_THREADS_ARG)"
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests

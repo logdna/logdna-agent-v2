@@ -99,6 +99,12 @@ pipeline {
             parallel {
                 stage('Unit Tests'){
                     steps {
+                        script {
+                            TEST_THREADS = sh (
+                                script: 'echo "$(nproc)/4"| bc',
+                                returnStdout: true
+                            ).trim()
+                        }
                         withCredentials([[
                                            $class: 'AmazonWebServicesCredentialsBinding',
                                            credentialsId: 'aws',
@@ -106,7 +112,7 @@ pipeline {
                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                          ]]){
                             sh """
-                              make test
+                              TEST_THREADS="${TEST_THREADS}" make test
                             """
                         }
                     }
@@ -119,6 +125,10 @@ pipeline {
                             // refer to the e2e tests's README's authorization docs for the
                             // current structure
                             LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
+                            TEST_THREADS = sh (
+                                script: 'echo "$(nproc)/4"| bc',
+                                returnStdout: true
+                            ).trim()
                         }
                         withCredentials([[
                                            $class: 'AmazonWebServicesCredentialsBinding',
@@ -127,22 +137,28 @@ pipeline {
                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                          ]]){
                             sh """
-                              make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
+                              TEST_THREADS="${TEST_THREADS}" make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
                             """
                         }
                     }
                 }
                 stage('Run K8s Integration Tests') {
                     steps {
+                        script {
+                            TEST_THREADS = sh (
+                                script: 'echo "$(nproc)/4"| bc',
+                                returnStdout: true
+                            ).trim()
+                        }
                         withCredentials([[
                                             $class: 'AmazonWebServicesCredentialsBinding',
                                             credentialsId: 'aws',
                                             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                             ]]) {
-                            sh '''
-                                make k8s-test
-                            '''
+                            sh """
+                                TEST_THREADS="${TEST_THREADS}" make k8s-test
+                            """
                         }
                     }
                 }
