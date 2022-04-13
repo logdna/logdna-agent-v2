@@ -54,6 +54,7 @@ pipeline {
         stage('Warm Cache') {
             steps {
                 sh """
+                    mkdir -p .cargo || /bin/true
                     make vendor
                     make build-test
                 """
