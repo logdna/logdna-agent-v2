@@ -145,11 +145,11 @@ endif
 
 .PHONY:vendor
 vendor:
-	$(UNCACHED_RUST_COMMAND) "" "$(CARGO_COMMAND) vendor >> .cargo/config"
+	$(RUST_COMMAND) "" "$(CARGO_COMMAND) vendor >> .cargo/config"
 
 .PHONY:build-test
 build-test:
-	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build $(TARGET_DOCKER_ARG) --profile=test"
+	$(RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "$(CARGO_COMMAND) build $(TARGET_DOCKER_ARG) --profile=test"
 
 .PHONY:build
 build: ## Build the agent
