@@ -33,8 +33,8 @@ SHELLCHECK_IMAGE := $(SHELLCHECK_IMAGE)
 WORKDIR :=/build
 DOCKER := DOCKER_BUILDKIT=1 docker
 DOCKER_DISPATCH := ARCH=$(ARCH) ./docker/dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
-DOCKER_JOURNALD_DISPATCH := ARCH=$(ARCH) ./docker/journald_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
-DOCKER_KIND_DISPATCH := ARCH=$(ARCH) ./docker/kind_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
+DOCKER_JOURNALD_DISPATCH := BUILD_IMAGE=${RUST_IMAGE} ARCH=$(ARCH) ./docker/journald_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
+DOCKER_KIND_DISPATCH := BUILD_IMAGE=${RUST_IMAGE} ARCH=$(ARCH) ./docker/kind_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
 DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/logdna-agent-v2
 DOCKER_PUBLIC_IMAGE ?= docker.io/logdna/logdna-agent
 DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
@@ -156,21 +156,21 @@ check: ## Run unit tests
 
 .PHONY:test
 test: test-journald ## Run unit tests
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --no-run && cargo test $(TESTS)"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) --no-run && cargo test $(TARGET_DOCKER_ARG) $(TESTS)"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
 	$(eval FEATURES := $(FEATURES) integration_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(FEATURES_ARG) --release --manifest-path bin/Cargo.toml $(TESTS) -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
+	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
 
 .PHONY:k8s-test
 k8s-test: ## Run integration tests using k8s kind
-	$(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "cargo test --manifest-path bin/Cargo.toml --features k8s_tests -- --nocapture"
+	$(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) --manifest-path bin/Cargo.toml --features k8s_tests -- --nocapture"
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
 	$(eval FEATURES := $(FEATURES) journald_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald -- --nocapture --test-threads=1"
+	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald -- --nocapture --test-threads=1"
 
 .PHONY:bench
 bench:
