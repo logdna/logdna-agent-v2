@@ -166,7 +166,10 @@ check: ## Run unit tests
 	$(RUST_COMMAND) "" "cargo check --all-targets"
 
 .PHONY:test
-test: test-journald ## Run unit tests
+test: unit-test test-journald ## Run unit tests
+
+.PHONY:unit-test
+unit-test:
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) --no-run && $(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) $(TESTS) -- --nocapture $(TEST_THREADS_ARG)"
 
 .PHONY:integration-test
