@@ -615,8 +615,11 @@ line_exclusion_regex = (?i:debug),(?i:trace)"
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_properties_default_conf() -> io::Result<()> {
+    let data = "key = 1234\ntags = sample_tag";
     let file_path = Path::new("/etc/logdna.conf");
-    fs::write(file_path, "key = 1234\ntags = sample_tag")?;
+    let mut conf_file = File::create(file_path)?;
+    conf_file.write_all(data.as_bytes())?;
+    conf_file.flush()?;
 
     test_command(
         |_| {

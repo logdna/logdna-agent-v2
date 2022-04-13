@@ -56,33 +56,32 @@ fn api_key_present() {
         ..Default::default()
     });
 
-    thread::sleep(std::time::Duration::from_secs(1));
+    let mut stderr_reader = BufReader::new(handle.stderr.take().unwrap());
+    common::wait_for_event("running version", &mut stderr_reader);
 
     let log_lines = "This is a test log line\nLook at me, another test log line\nMore log lines....\nAnother log line!";
 
     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
     file.sync_all().unwrap();
-    thread::sleep(std::time::Duration::from_secs(1));
 
     let test_file_path = dir.path().join("test.log");
     let mut file = File::create(&test_file_path).expect("Couldn't create temp log file...");
 
     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
     file.sync_all().unwrap();
-    thread::sleep(std::time::Duration::from_secs(1));
 
     let test1_file_path = dir.path().join("test1.log");
     let mut file = File::create(&test1_file_path).expect("Couldn't create temp log file...");
 
     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
     file.sync_all().unwrap();
+
     thread::sleep(std::time::Duration::from_secs(1));
 
     handle.kill().unwrap();
     let mut output = String::new();
 
-    let stderr_ref = handle.stderr.as_mut().unwrap();
-    stderr_ref.read_to_string(&mut output).unwrap();
+    stderr_reader.read_to_string(&mut output).unwrap();
 
     debug!("{}", output);
 
@@ -135,7 +134,8 @@ fn test_read_file_appended_in_the_background() {
 
     let context = common::start_append_to_file(&dir, 5);
 
-    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
+    common::wait_for_event("Enabling filesystem", &mut stderr_reader);
     let mut line = String::new();
     let mut occurrences = 0;
     let expected_occurrences = 100;
@@ -187,13 +187,13 @@ fn test_append_and_delete() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_file_added_after_initialization() {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Could not create temp dir").into_path();
 
     let mut agent_handle = common::spawn_agent(AgentSettings::new(dir.to_str().unwrap()));
 
-    let mut reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
-
-    thread::sleep(std::time::Duration::from_millis(2000));
+    let mut reader = BufReader::new(agent_handle.stderr.take().unwrap());
+    common::wait_for_event("Enabling filesystem", &mut reader);
 
     let file_path = dir.join("file1.log");
     File::create(&file_path).expect("Could not create file");
@@ -521,6 +521,7 @@ fn test_append_after_symlinks_delete() {
 
     let mut agent_handle = common::spawn_agent(AgentSettings::new(log_dir.to_str().unwrap()));
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    common::wait_for_event("Enabling filesystem", &mut stderr_reader);
 
     std::os::unix::fs::symlink(&file_path, &symlink_path).unwrap();
     common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
@@ -587,33 +588,29 @@ fn test_directory_symlinks_delete() {
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg_attr(not(target_os = "linux"), ignore)]
-async fn test_journald_support() {
+async fn test_z_journald_support() {
     let _ = env_logger::Builder::from_default_env().try_init();
-    tokio::time::sleep(Duration::from_millis(1000)).await;
     let dir = "/var/log/journal";
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let mut settings = AgentSettings::with_mock_ingester("/var/log/journal", &addr);
     settings.journald_dirs = Some(dir);
     settings.features = Some("libjournald");
     settings.exclusion_regex = Some(r"^(?!/var/log/journal).*$");
+    assert_eq!(journal::print(6, "Sample info"), 0);
+
     let mut agent_handle = common::spawn_agent(settings);
     let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
 
-    common::wait_for_event("monitoring journald path", &mut agent_stderr);
-    consume_output(agent_stderr.into_inner());
-
-    assert_eq!(journal::print(6, "Sample info"), 0);
-    tokio::time::sleep(Duration::from_millis(1000)).await;
-    common::assert_agent_running(&mut agent_handle);
-
     let (server_result, _) = tokio::join!(server, async {
+        common::wait_for_event("monitoring journald path", &mut agent_stderr);
+        consume_output(agent_stderr.into_inner());
         for _ in 0..10 {
             journal::print(1, "Sample alert");
             journal::print(6, "Sample info");
         }
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         let map = received.lock().await;
         let file_info = map.values().next().unwrap();
@@ -635,26 +632,17 @@ async fn test_journald_support() {
 #[cfg_attr(not(target_os = "linux"), ignore)]
 async fn test_journalctl_support() {
     let _ = env_logger::Builder::from_default_env().try_init();
-    assert_eq!(journal::print(6, "Sample info"), 0);
-    tokio::time::sleep(Duration::from_millis(1000)).await;
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let mut settings = AgentSettings::with_mock_ingester("/var/log/journal", &addr);
     settings.journald_dirs = None;
     settings.exclusion_regex = Some(r"^(?!/var/log/journal).*$");
-    let mut agent_handle = common::spawn_agent(settings);
-    let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
-
-    tokio::time::sleep(Duration::from_millis(500)).await;
-
-    common::wait_for_event("Listening to journalctl", &mut agent_stderr);
-    consume_output(agent_stderr.into_inner());
 
     assert_eq!(journal::print(6, "Sample info"), 0);
-    tokio::time::sleep(Duration::from_millis(500)).await;
-    common::assert_agent_running(&mut agent_handle);
-
+    let mut agent_handle = common::spawn_agent(settings);
+    let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
     let (server_result, _) = tokio::join!(server, async {
-        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+        common::wait_for_event("Listening to journalctl", &mut agent_stderr);
+        consume_output(agent_stderr.into_inner());
         for _ in 0..10 {
             journal::print(1, "Sample alert");
             journal::print(6, "Sample info");
@@ -665,6 +653,8 @@ async fn test_journalctl_support() {
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         let map = received.lock().await;
+
+        debug!("Received: {:?}", map);
         let file_info = map.values().next().unwrap();
 
         let predicate_fn = predicate::in_iter(file_info.values.iter().map(|s| s.trim_end()));
@@ -711,14 +701,12 @@ proptest! {
         file.sync_all().expect("Failed to sync file");
 
         // Dump the agent's stdout
-        // TODO: assert that it's successfully uploaded
 
         thread::sleep(std::time::Duration::from_secs(1));
 
         tokio_test::block_on(async {
             let ((line_count, lines), _, server) = tokio::join!(
                 async {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                     let mut handle = common::spawn_agent(AgentSettings {
                         log_dirs: &dir_path,
                         exclusion_regex: Some(r"/var\w*"),
@@ -729,12 +717,10 @@ proptest! {
                     });
 
                     let mut stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
-                    common::wait_for_event("initialized", &mut stderr_reader);
-                    std::thread::spawn(move || {
-                        stderr_reader.lines().for_each(|line| debug!("{:?}", line))
-                    });
+                    common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+                    consume_output(stderr_reader.into_inner());
 
-                    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
                     handle.kill().unwrap();
 
@@ -815,7 +801,6 @@ fn lookback_none_lines_are_delivered() {
     tokio_test::block_on(async {
         let (line_count, _, server) = tokio::join!(
             async {
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                 let mut handle = common::spawn_agent(AgentSettings {
                     log_dirs: &dir_path,
                     exclusion_regex: Some(r"^/var.*"),
@@ -827,10 +812,8 @@ fn lookback_none_lines_are_delivered() {
                 debug!("spawned agent");
 
                 let mut stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
-                common::wait_for_event("initialized", &mut stderr_reader);
-                std::thread::spawn(move || {
-                    stderr_reader.lines().for_each(|line| debug!("{:?}", line))
-                });
+                common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+                consume_output(stderr_reader.into_inner());
 
                 tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
 
@@ -1076,8 +1059,9 @@ async fn test_symlink_initialization_both_included() {
         let mut settings = AgentSettings::with_mock_ingester(log_dir.to_str().unwrap(), &addr);
         settings.lookback = Some("smallfiles");
         let mut agent_handle = common::spawn_agent(settings);
-        let stderr_reader = agent_handle.stderr.take().unwrap();
-        consume_output(stderr_reader);
+        let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
+        common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+        consume_output(stderr_reader.into_inner());
         tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
         for i in 10..20 {
             writeln!(file, "SAMPLE {}", i).unwrap();
@@ -1132,10 +1116,10 @@ async fn test_symlink_initialization_excluded_file() {
         let mut settings = AgentSettings::with_mock_ingester(log_dir.to_str().unwrap(), &addr);
         settings.lookback = Some("smallfiles");
         let mut agent_handle = common::spawn_agent(settings);
-        let stderr_reader = agent_handle.stderr.take().unwrap();
+        let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
+        common::wait_for_event("Enabling filesystem", &mut stderr_reader);
         // Consume output
-        consume_output(stderr_reader);
-        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        consume_output(stderr_reader.into_inner());
         for i in 10..20 {
             writeln!(file, "SAMPLE {}", i).unwrap();
         }
@@ -1184,17 +1168,17 @@ async fn test_symlink_to_symlink_initialization_excluded_file() {
         let mut settings = AgentSettings::with_mock_ingester(log_dir.to_str().unwrap(), &addr);
         settings.lookback = Some("smallfiles");
         let mut agent_handle = common::spawn_agent(settings);
-        let stderr_reader = agent_handle.stderr.take().unwrap();
+        let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
+        common::wait_for_event("Enabling filesystem", &mut stderr_reader);
         // Consume output
-        consume_output(stderr_reader);
-        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        consume_output(stderr_reader.into_inner());
         for i in 10..20 {
             writeln!(file, "SAMPLE {}", i).unwrap();
         }
         file.sync_all().unwrap();
         common::force_client_to_flush(&log_dir).await;
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
         let map = received.lock().await;
         let file_info = map
             .get(symlink_path.to_str().unwrap())
@@ -1263,7 +1247,7 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
     );
 
     let (server_result, _) = tokio::join!(server, async {
-        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         let settings = AgentSettings {
             log_dirs: log_dir.to_str().unwrap(),
@@ -1276,17 +1260,17 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
         };
 
         let mut agent_handle = common::spawn_agent(settings.clone());
-        let stderr_reader = agent_handle.stderr.take().unwrap();
+        let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
         // Consume output
-        consume_output(stderr_reader);
-        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+        consume_output(stderr_reader.into_inner());
         for i in 10..20 {
             writeln!(file, "SAMPLE {}", i).unwrap();
         }
         file.sync_all().unwrap();
         common::force_client_to_flush(&log_dir).await;
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
         {
             let map = received.lock().await;
             let file_info = map
@@ -1326,17 +1310,17 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
         );
 
         let mut agent_handle = common::spawn_agent(settings);
-        let stderr_reader = agent_handle.stderr.take().unwrap();
+        let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
         // Consume output
-        consume_output(stderr_reader);
-        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+        consume_output(stderr_reader.into_inner());
         for i in 20..30 {
             writeln!(file, "SAMPLE {}", i).unwrap();
         }
         file.sync_all().unwrap();
         common::force_client_to_flush(&log_dir).await;
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
         let map = received.lock().await;
         let file_info = map
             .get(symlink_path.to_str().unwrap())
@@ -1349,7 +1333,7 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
             assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
         }
         agent_handle.kill().expect("Could not kill process");
-        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         shutdown_handle();
     });
     server_result.unwrap();
@@ -1418,17 +1402,18 @@ async fn test_symlink_initialization_with_stateful_lookback() {
                 ..Default::default()
             };
             let mut agent_handle = common::spawn_agent(settings.clone());
-            let stderr_reader = agent_handle.stderr.take().unwrap();
+            let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
             // Consume output
-            consume_output(stderr_reader);
+            common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+            consume_output(stderr_reader.into_inner());
 
-            tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
             agent_handle.kill().expect("Could not kill process");
 
             let mut agent_handle = common::spawn_agent(settings);
-            let stderr_reader = agent_handle.stderr.take().unwrap();
+            let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
             // Consume output
-            consume_output(stderr_reader);
+            common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+            consume_output(stderr_reader.into_inner());
             tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
     );
@@ -1591,15 +1576,11 @@ async fn test_directory_created_after_initialization() {
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let settings = AgentSettings::with_mock_ingester(future_dir.to_str().unwrap(), &addr);
     let mut agent_handle = common::spawn_agent(settings);
-    let stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
-    std::thread::spawn(move || {
-        stderr_reader
-            .lines()
-            .for_each(|line| eprintln!("{:?}", line))
-    });
+    let mut stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
+    common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+    consume_output(stderr_reader.into_inner());
 
     let (server_result, _) = tokio::join!(server, async {
-        tokio::time::sleep(Duration::from_millis(2000)).await;
         let file_path = future_dir.join("test.log");
         std::fs::create_dir(&future_dir).unwrap();
         File::create(&file_path).unwrap();
@@ -1607,7 +1588,7 @@ async fn test_directory_created_after_initialization() {
         common::force_client_to_flush(&future_dir).await;
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(Duration::from_millis(1000)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
 
         let map = received.lock().await;
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();
@@ -1662,10 +1643,11 @@ fn lookback_stateful_lines_are_delivered() {
                     ..Default::default()
                 });
 
-                consume_output(handle.stderr.take().unwrap());
+                let mut stderr_reader = BufReader::new(handle.stderr.take().unwrap());
+                common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+                consume_output(stderr_reader.into_inner());
 
-                tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
-
+                tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
                 handle.kill().unwrap();
 
                 debug!("getting lines from {}", &file_path1.to_str().unwrap());
@@ -1719,9 +1701,10 @@ fn lookback_stateful_lines_are_delivered() {
                     ..Default::default()
                 });
 
-                let stderr_reader = handle.stderr.take().unwrap();
-                consume_output(stderr_reader);
-                tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+                let mut stderr_reader = BufReader::new(handle.stderr.take().unwrap());
+                common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+                consume_output(stderr_reader.into_inner());
+                tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
 
                 handle.kill().unwrap();
 
@@ -1800,7 +1783,7 @@ async fn test_tight_writes() {
         common::force_client_to_flush(&dir).await;
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_millis(20000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
         writeln!(file, "And we're done").unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
@@ -1842,11 +1825,9 @@ async fn test_tight_writes_with_slow_ingester() {
     let agent_stderr = agent_handle.stderr.take().unwrap();
     let mut stderr_reader = BufReader::new(agent_stderr);
     common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
-    let agent_stderr = stderr_reader.into_inner();
-    consume_output(agent_stderr);
+    consume_output(stderr_reader.into_inner());
 
     let (server_result, _) = tokio::join!(server, async {
-        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
         let line = "Nice short message";
         let lines = 1_000_000;
         let sync_every = 50_000;
@@ -1885,7 +1866,7 @@ async fn test_tight_writes_with_slow_ingester() {
         // Wait for the data to be received by the mock ingester
         writeln!(file, "And we're done").unwrap();
         file.flush()?;
-        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(4000)).await;
 
         let map = received.lock().await;
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();
@@ -1922,11 +1903,9 @@ async fn test_endurance_writes() {
     let agent_stderr = agent_handle.stderr.take().unwrap();
     let mut stderr_reader = BufReader::new(agent_stderr);
     common::wait_for_file_event("initialized", &file_path, &mut stderr_reader);
-    let agent_stderr = stderr_reader.into_inner();
-    consume_output(agent_stderr);
+    consume_output(stderr_reader.into_inner());
 
     let (server_result, _) = tokio::join!(server, async {
-        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
         let line = "Nice short message\n";
 
         let sync_every = 5_000;
@@ -1972,13 +1951,13 @@ async fn test_endurance_writes() {
         common::force_client_to_flush(&dir).await;
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_millis(20000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
         file.write_all("One more and we're done\n".as_bytes())
             .await
             .unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
         file.write_all("And we're done\n".as_bytes()).await.unwrap();
-        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         let map = received.lock().await;
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();
