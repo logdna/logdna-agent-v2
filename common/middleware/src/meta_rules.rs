@@ -105,7 +105,7 @@ impl MetaRules {
     }
 
     /// process_line
-    /// Override line meta fields
+    /// - override line meta fields
     /// [ create map ] => [ substitute then insert to map ] => [ substitute from map ] => [ override ]
     ///  os env vars       "override" labels                    "override" fields          line fields
     ///  line fields       "override" annotations
@@ -136,13 +136,13 @@ impl MetaRules {
             }
         }
         line.get_app()
-            .map(|v| meta_map.insert("line.app".to_string(), v.to_string()));
+            .map(|v| meta_map.insert("line.app".into(), v.into()));
         line.get_host()
-            .map(|v| meta_map.insert("line.host".to_string(), v.to_string()));
+            .map(|v| meta_map.insert("line.host".into(), v.into()));
         line.get_env()
-            .map(|v| meta_map.insert("line.env".to_string(), v.to_string()));
+            .map(|v| meta_map.insert("line.env".into(), v.into()));
         line.get_file()
-            .map(|v| meta_map.insert("line.file".to_string(), v.to_string()));
+            .map(|v| meta_map.insert("line.file".into(), v.into()));
         // k8s lines have non empty annotations/labels
         let is_k8s = line.get_annotations().is_some() || line.get_labels().is_some();
         //
@@ -439,5 +439,56 @@ mod tests {
         assert_eq!(line.level.unwrap(), "SOME_LEVEL");
         assert_eq!(line.annotations, None);
         assert_eq!(line.labels, None);
+    }
+
+    #[test]
+    ///  delete value in annotations and labels
+    fn should_delete_value_in_annotations_labels() {
+        let some_annotations: KeyValueMap =
+            serde_json::from_str(r#"{"key1":"val1", "key2":"val2"}"#).unwrap();
+        let some_labels: KeyValueMap =
+            serde_json::from_str(r#"{"key1":"val1", "key2":"val2"}"#).unwrap();
+        let mut line = LineBuilder::new()
+            .annotations(some_annotations)
+            .labels(some_labels);
+        let cfg = MetaConfig {
+            app: None,
+            host: None,
+            env: None,
+            file: None,
+            k8s_file: None,
+            meta: None,
+            annotations: Some(r#"{"key1":"val1", "key2":""}"#.into()), // empty key2 >> delete
+            labels: Some(r#"{"key1":"val1", "key2":""}"#.into()),      // empty key2 >> delete
+        };
+        let p = MetaRules::new(cfg).unwrap();
+        let redacted_annotations = KeyValueMap::new().add("key1", "val1");
+        let redacted_labels = KeyValueMap::new().add("key1", "val1");
+        let status = p.process(&mut line);
+        assert!(matches!(status, Status::Ok(_)));
+        assert_eq!(line.annotations, redacted_annotations.into());
+        assert_eq!(line.labels, redacted_labels.into());
+    }
+
+    #[test]
+    ///  make meta empty
+    fn should_delete_meta() {
+        let some_meta: Value = serde_json::from_str(r#"{"some_key1":"some_val1"}"#).unwrap();
+        let mut line = LineBuilder::new().meta(some_meta);
+        let cfg = MetaConfig {
+            app: None,
+            host: None,
+            env: None,
+            file: None,
+            k8s_file: None,
+            meta: Some("{}".into()),
+            annotations: None,
+            labels: None,
+        };
+        let p = MetaRules::new(cfg).unwrap();
+        let redacted_meta: Value = serde_json::from_str("{}").unwrap();
+        let status = p.process(&mut line);
+        assert!(matches!(status, Status::Ok(_)));
+        assert_eq!(line.meta.unwrap(), redacted_meta);
     }
 }
