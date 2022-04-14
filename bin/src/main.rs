@@ -23,7 +23,7 @@ use k8s::middleware::K8sMetadata;
 use k8s::{create_k8s_client_default_from_env, K8sTrackingConf};
 use metrics::Metrics;
 use middleware::line_rules::LineRules;
-use middleware::meta_rules::{MetaConfig, MetaRules};
+use middleware::meta_rules::{MetaRules, MetaRulesConfig};
 use middleware::Executor;
 
 use pin_utils::pin_mut;
@@ -190,7 +190,7 @@ async fn main() {
         }
     };
 
-    match MetaRules::new(MetaConfig::from_env()) {
+    match MetaRules::new(MetaRulesConfig::from_env()) {
         Ok(v) => executor.register(v),
         Err(e) => {
             error!("line regex is invalid: {}", e);
