@@ -124,15 +124,16 @@ async fn main() {
     let mut k8s_claimed_lease: Option<String> = None;
     let k8s_event_stream = match create_k8s_client_default_from_env(user_agent) {
         Ok(k8s_client) => {
+            info!("K8s Config Startup Option: {:?}", &config.startup.option);
+            check_startup_lease_status(
+                Some(&config.startup.option),
+                &mut k8s_claimed_lease,
+                k8s_client.clone(),
+            )
+            .await;
             if config.log.use_k8s_enrichment == K8sTrackingConf::Always
                 && PathBuf::from("/var/log/containers/").exists()
             {
-                check_startup_lease_status(
-                    Some(&config.startup.option),
-                    &mut k8s_claimed_lease,
-                    k8s_client.clone(),
-                )
-                .await;
                 let node_name = std::env::var("NODE_NAME").ok();
                 match K8sMetadata::new(k8s_client.clone(), node_name.as_deref()).await {
                     Ok((driver, v)) => {
@@ -553,9 +554,9 @@ async fn check_startup_lease_status(
             };
         }
     } else {
-        warn!(
-            "Kubernetes cluster initialised, but K8s starup lease option set to {}",
-            start_option.unwrap()
+        info!(
+            "Kubernetes cluster initialised, K8s startup lease set to: {:?}",
+            start_option,
         )
     }
 }

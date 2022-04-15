@@ -40,7 +40,11 @@ async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
 
                 log::debug!("Logging agent pod {}", p.name());
                 while let Some(line) = logs.next().await {
-                    log::debug!("LOG {:?}", String::from_utf8_lossy(&line.unwrap()));
+                    log::debug!(
+                        "LOG [{:?}] {:?}",
+                        p.name(),
+                        String::from_utf8_lossy(&line.unwrap())
+                    );
                 }
             }
         });
@@ -283,6 +287,7 @@ async fn create_mock_ingester_service(
     format!("{}:{}", ingest_cluster_ip, service_port)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create_agent_ds(
     client: Client,
     agent_name: &str,
@@ -291,6 +296,7 @@ async fn create_agent_ds(
     log_k8s_events: &str,
     enrich_logs_with_k8s: &str,
     agent_log_level: &str,
+    agent_startup_lease: &str,
 ) {
     let sa = serde_json::from_value(serde_json::json!({
         "apiVersion": "v1",
@@ -427,6 +433,7 @@ async fn create_agent_ds(
         log_k8s_events,
         enrich_logs_with_k8s,
         agent_log_level,
+        agent_startup_lease,
     );
     //
     let dss: Api<DaemonSet> = Api::namespaced(client.clone(), agent_namespace);
@@ -473,6 +480,7 @@ async fn create_agent_ds(
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 }
 
+#[allow(clippy::too_many_arguments)]
 fn get_agent_ds_yaml(
     image_name: &str,
     ingester_addr: &str,
@@ -481,6 +489,7 @@ fn get_agent_ds_yaml(
     log_k8s_events: &str,
     enrich_logs_with_k8s: &str,
     log_level: &str,
+    startup_lease: &str,
 ) -> DaemonSet {
     serde_json::from_value(serde_json::json!({
         "apiVersion": "apps/v1",
@@ -535,6 +544,10 @@ fn get_agent_ds_yaml(
                                 {
                                     "name": "LOGDNA_DB_PATH",
                                     "value": "/var/lib/logdna"
+                                },
+                                {
+                                    "name": "LOGDNA_K8S_STARTUP_LEASE",
+                                    "value": startup_lease
                                 },
                                 {
                                     "name": "LOGDNA_LOG_K8S_EVENTS",
@@ -761,7 +774,7 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
             },
         },
         "spec": {
-            "holderIdentity": "agent-owner"
+            "holderIdentity": "agent-default"
         }
     }))
     .unwrap();
@@ -780,7 +793,7 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
             },
         },
         "spec": {
-            "holderIdentity": null
+            "holderIdentity": "agent-default"
         }
     }))
     .unwrap();
@@ -799,7 +812,7 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
             },
         },
         "spec": {
-            "holderIdentity": "agent-owner"
+            "holderIdentity": "agent-default"
         }
     }))
     .unwrap();
@@ -870,6 +883,7 @@ async fn test_k8s_enrichment() {
             "never",
             "always",
             "warn",
+            "off",
         )
         .await;
 
@@ -1003,6 +1017,7 @@ async fn test_k8s_events_logged() {
             "always",
             "always",
             "warn",
+            "off",
         )
         .await;
 
@@ -1049,6 +1064,7 @@ async fn test_k8s_startup_lease_functions() {
     let lease_list = lease_client.list(&lp).await;
     assert!(lease_list.as_ref().unwrap().iter().count() > 0);
 
+    k8s::lease::release_lease("agent-startup-lease-1", &lease_client).await;
     let available_lease = k8s::lease::get_available_lease(lease_label, &lease_client).await;
     assert_eq!(available_lease.as_ref().unwrap(), "agent-startup-lease-1");
     k8s::lease::claim_lease(
@@ -1070,19 +1086,19 @@ async fn test_k8s_startup_lease_functions() {
 async fn test_k8s_startup_leases_always_start() {
     let _ = env_logger::Builder::from_default_env().try_init();
 
-    let (server, _received, shutdown_handle, ingester_addr) = common::start_http_ingester();
-
-    let client = Client::try_default().await.unwrap();
+    let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();
+    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
     let (server_result, _) = tokio::join!(server, async {
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
-        // Create Agent
+        let client = Client::try_default().await.unwrap();
         let agent_name = "k8s-agent-lease";
         let agent_namespace = "k8s-agent-lease";
         let agent_lease_name = "agent-startup-lease";
         let agent_lease_label = "process=agent-startup";
 
+        // Create Agent
         let nss: Api<Namespace> = Api::all(client.clone());
         let ns = serde_json::from_value(serde_json::json!({
             "apiVersion": "v1",
@@ -1104,6 +1120,8 @@ async fn test_k8s_startup_leases_always_start() {
         // Assert leases were created
         let agent_lease_list = agent_lease_api.list(&lp).await;
         assert!(agent_lease_list.as_ref().unwrap().iter().count() > 0);
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         let mock_ingester_socket_addr_str = create_mock_ingester_service(
             client.clone(),
             ingester_public_addr(ingester_addr),
@@ -1112,6 +1130,7 @@ async fn test_k8s_startup_leases_always_start() {
             80,
         )
         .await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         create_agent_ds(
             client.clone(),
@@ -1120,13 +1139,42 @@ async fn test_k8s_startup_leases_always_start() {
             &mock_ingester_socket_addr_str,
             "never",
             "always",
-            "warn",
+            "info",
+            "always",
         )
         .await;
 
+        print_pod_logs(
+            client.clone(),
+            agent_namespace,
+            &format!("app={}", &agent_name),
+        )
+        .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+        let mut map = received.lock().await;
+        let result = map.iter().find(|(k, _)| k.contains(agent_name));
+        assert!(result.is_none());
+        drop(map);
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        log::info!("RELEASE AGENT STARTUP LEASE...");
+        k8s::lease::release_lease("agent-startup-lease-1", &agent_lease_api).await;
+        let available_lease =
+            k8s::lease::get_available_lease(agent_lease_label, &agent_lease_api).await;
+        assert_eq!(available_lease.as_ref().unwrap(), "agent-startup-lease-1");
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
+        map = received.lock().await;
+        let result = map.iter().find(|(k, _)| k.contains(agent_name));
+        assert!(result.is_some());
+        let (_, file_info) = result.unwrap();
+        for val in file_info.values.iter() {
+            println!("VALUE: {:?}\n", val);
+        }
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
         shutdown_handle();
     });
 
-    println!("Server Results: {:?}", server_result.unwrap());
+    server_result.unwrap();
 }
