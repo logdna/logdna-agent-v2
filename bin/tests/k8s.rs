@@ -1089,10 +1089,16 @@ async fn test_k8s_startup_leases_always_start() {
     let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
+    let client = Client::try_default().await.unwrap();
+
+    let pod_node_addr =
+        start_line_proxy_pod(client.clone(), "socat-listener", "default", 30001).await;
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
-        let client = Client::try_default().await.unwrap();
         let agent_name = "k8s-agent-lease";
         let agent_namespace = "k8s-agent-lease";
         let agent_lease_name = "agent-startup-lease";
@@ -1137,12 +1143,13 @@ async fn test_k8s_startup_leases_always_start() {
             agent_name,
             agent_namespace,
             &mock_ingester_socket_addr_str,
-            "never",
+            "always",
             "always",
             "info",
             "always",
         )
         .await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
         print_pod_logs(
             client.clone(),
@@ -1150,13 +1157,32 @@ async fn test_k8s_startup_leases_always_start() {
             &format!("app={}", &agent_name),
         )
         .await;
+
+        let messages = vec![
+            "Agent data! 0\n",
+            "Agent data! 1\n",
+            "Agent data! 2\n",
+            "Agent data! 3\n",
+            "Agent data! 4\n",
+        ];
+
+        let mut pre_logger_stream = TcpStream::connect(pod_node_addr).await.unwrap();
+
+        // Write some data.
+        for msg in messages.iter() {
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            pre_logger_stream.write_all(msg.as_bytes()).await.unwrap();
+        }
+
+        // Wait for the data to be received by the mock ingester
         tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+
         let mut map = received.lock().await;
-        let result = map.iter().find(|(k, _)| k.contains(agent_name));
+        let mut result = map.iter().find(|(k, _)| k.contains("socat-listener"));
         assert!(result.is_none());
         drop(map);
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
         log::info!("RELEASE AGENT STARTUP LEASE...");
         k8s::lease::release_lease("agent-startup-lease-1", &agent_lease_api).await;
         let available_lease =
@@ -1164,14 +1190,19 @@ async fn test_k8s_startup_leases_always_start() {
         assert_eq!(available_lease.as_ref().unwrap(), "agent-startup-lease-1");
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
-        map = received.lock().await;
-        let result = map.iter().find(|(k, _)| k.contains(agent_name));
-        assert!(result.is_some());
-        let (_, file_info) = result.unwrap();
-        for val in file_info.values.iter() {
-            println!("VALUE: {:?}\n", val);
+        let mut post_logger_stream = TcpStream::connect(pod_node_addr).await.unwrap();
+        // Write more data.
+        for msg in messages.iter() {
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            post_logger_stream.write_all(msg.as_bytes()).await.unwrap();
         }
-        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
+        // Wait for the data to be received by the mock ingester
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+
+        map = received.lock().await;
+        result = map.iter().find(|(k, _)| k.contains("socat-listener"));
+        assert!(result.is_some());
 
         shutdown_handle();
     });

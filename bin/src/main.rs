@@ -153,7 +153,7 @@ async fn main() {
             }
 
             let k8s_event_stream = match config.log.log_k8s_events {
-                K8sTrackingConf::Never => None,
+                K8sTrackingConf::Never => None, // Agent won't release it this is set to None.
                 K8sTrackingConf::Always => {
                     let pod_name = std::env::var("POD_NAME").ok();
                     let namespace = std::env::var("NAMESPACE").ok();
@@ -192,6 +192,28 @@ async fn main() {
     let k8s_event_stream_clone: Option<kube::Client> = k8s_event_stream
         .as_ref()
         .map(|_stream| k8s_event_stream.as_ref().unwrap().client.clone());
+
+    match k8s_event_stream_clone {
+        Some(clone) => {
+            // If k8s_claimed_lease is not None, then lease was claimed and needs to be released.
+            match &k8s_claimed_lease {
+                Some(lease) => {
+                    info!("Releasing lease: {:?}", lease);
+                    let k8s_lease_api =
+                        k8s::lease::get_k8s_lease_api(&std::env::var("NAMESPACE").unwrap(), clone)
+                            .await;
+                    k8s::lease::release_lease(k8s_claimed_lease.as_ref().unwrap(), &k8s_lease_api)
+                        .await;
+                }
+                None => {
+                    info!("No k8s lease claimed during startup.");
+                }
+            }
+        }
+        None => {
+            warn!("K8s event stream NOT cloned.");
+        }
+    }
 
     match LineRules::new(
         &config.log.line_exclusion_regex,
@@ -470,22 +492,6 @@ async fn main() {
                 .await
                 .expect("metrics server error");
         });
-    }
-
-    // If k8s_claimed_lease is not None, then lease was claimed and needs to be released.
-    match &k8s_claimed_lease {
-        Some(lease) => {
-            info!("Releasing lease: {:?}", lease);
-            let k8s_lease_api = k8s::lease::get_k8s_lease_api(
-                &std::env::var("NAMESPACE").unwrap(),
-                k8s_event_stream_clone.unwrap(),
-            )
-            .await;
-            k8s::lease::release_lease(k8s_claimed_lease.as_ref().unwrap(), &k8s_lease_api).await;
-        }
-        None => {
-            info!("No k8s lease claimed during startup.");
-        }
     }
 
     // Concurrently run the line streams and listen for the `shutdown` signal
