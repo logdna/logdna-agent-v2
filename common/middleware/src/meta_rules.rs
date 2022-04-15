@@ -237,6 +237,15 @@ fn os_env_hashmap() -> HashMap<String, String> {
     map
 }
 
+/// Var expansion with default value support.
+/// Supported cases:
+///   1. ${VarName}             - simple substitute using vars dictionary,
+///                               expended to empty string if var not found
+///   2. ${VarName|DefaultVal}  - first try to expand as ${VarName} then
+///                               use DefaultVal if var not found  
+///   3. ${VarName|${VarName2}} - ${VarName2} is expanded first then case #2
+///   4. ${VarName|}            - empty default, equivalent to "var not found" in case #1
+///
 pub fn substitute(template: &str, variables: &HashMap<String, String>) -> String {
     let mut output = String::from(template);
     for (k, v) in variables {
