@@ -1092,7 +1092,7 @@ async fn test_k8s_startup_leases_always_start() {
     let client = Client::try_default().await.unwrap();
 
     let pod_node_addr =
-        start_line_proxy_pod(client.clone(), "socat-listener", "default", 30001).await;
+        start_line_proxy_pod(client.clone(), "always-lease-listener", "default", 30002).await;
 
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
@@ -1178,7 +1178,7 @@ async fn test_k8s_startup_leases_always_start() {
         tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
         let mut map = received.lock().await;
-        let mut result = map.iter().find(|(k, _)| k.contains("socat-listener"));
+        let mut result = map.iter().find(|(k, _)| k.contains("always-listener"));
         assert!(result.is_none());
         drop(map);
 
@@ -1201,7 +1201,103 @@ async fn test_k8s_startup_leases_always_start() {
         tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
         map = received.lock().await;
-        result = map.iter().find(|(k, _)| k.contains("socat-listener"));
+        result = map
+            .iter()
+            .find(|(k, _)| k.contains("always-lease-listener"));
+        assert!(result.is_some());
+
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "k8s_tests"), ignore)]
+async fn test_k8s_startup_leases_off_start() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+
+    let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();
+    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
+    let client = Client::try_default().await.unwrap();
+
+    let pod_node_addr =
+        start_line_proxy_pod(client.clone(), "off-lease-listener", "default", 30003).await;
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
+    let (server_result, _) = tokio::join!(server, async {
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
+        let agent_name = "k8s-agent-lease-off";
+        let agent_namespace = "k8s-agent-lease-off";
+
+        // Create Agent
+        let nss: Api<Namespace> = Api::all(client.clone());
+        let ns = serde_json::from_value(serde_json::json!({
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {
+                "name": agent_namespace
+            }
+        }))
+        .unwrap();
+        nss.create(&PostParams::default(), &ns).await.unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        let mock_ingester_socket_addr_str = create_mock_ingester_service(
+            client.clone(),
+            ingester_public_addr(ingester_addr),
+            "ingest-service",
+            agent_namespace,
+            80,
+        )
+        .await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        create_agent_ds(
+            client.clone(),
+            agent_name,
+            agent_namespace,
+            &mock_ingester_socket_addr_str,
+            "always",
+            "always",
+            "info",
+            "off",
+        )
+        .await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+        print_pod_logs(
+            client.clone(),
+            agent_namespace,
+            &format!("app={}", &agent_name),
+        )
+        .await;
+
+        let messages = vec![
+            "Agent data! 0\n",
+            "Agent data! 1\n",
+            "Agent data! 2\n",
+            "Agent data! 3\n",
+            "Agent data! 4\n",
+        ];
+
+        let mut logger_stream = TcpStream::connect(pod_node_addr).await.unwrap();
+
+        // Write some data.
+        for msg in messages.iter() {
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            logger_stream.write_all(msg.as_bytes()).await.unwrap();
+        }
+
+        // Wait for the data to be received by the mock ingester
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+
+        let map = received.lock().await;
+        let result = map.iter().find(|(k, _)| k.contains("off-lease-listener"));
         assert!(result.is_some());
 
         shutdown_handle();
