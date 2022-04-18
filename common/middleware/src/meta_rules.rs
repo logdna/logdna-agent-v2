@@ -23,6 +23,7 @@ lazy_static! {
 }
 
 //TODO: extract to LogConfig
+#[derive(Default)]
 pub struct MetaRulesConfig {
     pub app: Option<String>,
     pub host: Option<String>,
@@ -35,19 +36,6 @@ pub struct MetaRulesConfig {
 }
 
 impl MetaRulesConfig {
-    pub fn default() -> Self {
-        MetaRulesConfig {
-            app: None,
-            host: None,
-            env: None,
-            file: None,
-            k8s_file: None,
-            meta: None,
-            annotations: None,
-            labels: None,
-        }
-    }
-
     pub fn from_env() -> Self {
         let vars = os_env_hashmap();
         MetaRulesConfig {
