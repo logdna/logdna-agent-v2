@@ -361,7 +361,7 @@ mod tests {
     use std::env;
 
     #[test]
-    ///  k8s case: annotations and/or labels are defined
+    /// k8s case: annotations and/or labels are defined
     fn test_override_existing_k8s() {
         let cfg = MetaRulesConfig {
             app: Some("REDACTED_APP".into()),
@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    ///  k8s case: annotations and/or labels are defined
+    /// k8s case: annotations and/or labels are defined
     fn test_override_non_existing_k8s() {
         let cfg = MetaRulesConfig {
             app: Some("REDACTED_APP".into()),
@@ -432,7 +432,7 @@ mod tests {
     }
 
     #[test]
-    ///  non k8s case: annotations and/or labels are NOT defined
+    /// non k8s case: annotations and/or labels are NOT defined
     fn test_override_non_existing() {
         let cfg = MetaRulesConfig {
             app: Some("REDACTED_APP".into()),
@@ -504,7 +504,7 @@ mod tests {
     }
 
     #[test]
-    ///  delete value in annotations and labels
+    /// delete value in annotations and labels
     fn test_delete_value_in_annotations_labels() {
         let some_annotations: KeyValueMap =
             serde_json::from_str(r#"{"key1":"val1", "key2":"val2"}"#).unwrap();
@@ -533,7 +533,7 @@ mod tests {
     }
 
     #[test]
-    ///  make meta empty
+    /// make meta empty
     fn test_delete_meta() {
         let some_meta: Value = serde_json::from_str(r#"{"some_key1":"some_val1"}"#).unwrap();
         let mut line = LineBuilder::new().meta(some_meta);
@@ -555,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    ///  override APP with a values from labels
+    /// override APP with a values from labels
     fn test_override_app_with_value_from_labels_k8s() {
         let some_labels: KeyValueMap =
             serde_json::from_str(r#"{"key1":"val1", "key2":"val2"}"#).unwrap();
@@ -577,7 +577,7 @@ mod tests {
     }
 
     #[test]
-    ///  override APP with default including empty (delete var)
+    /// override APP with default including empty (delete var)
     fn test_override_app_with_default() {
         let mut line = LineBuilder::new().app("some_app");
         let cfg = MetaRulesConfig {
@@ -598,7 +598,7 @@ mod tests {
 
     #[test]
     #[should_panic]
-    ///  invalid meta override value
+    /// invalid meta override value in config
     fn test_invalid_meta_override() {
         let some_meta: Value = serde_json::from_str("{}").unwrap();
         let mut line = LineBuilder::new().meta(some_meta);
@@ -613,7 +613,46 @@ mod tests {
             labels: None,
         };
         let p = MetaRules::new(cfg).unwrap();
-        let status = p.process(&mut line);
-        assert!(matches!(status, Status::Ok(_)));
+        p.process(&mut line);
+    }
+
+    #[test]
+    #[should_panic]
+    /// invalid annotations override value in config
+    fn test_invalid_annotations_override() {
+        let some_annotations: KeyValueMap = serde_json::from_str("{}").unwrap();
+        let mut line = LineBuilder::new().annotations(some_annotations);
+        let cfg = MetaRulesConfig {
+            app: None,
+            host: None,
+            env: None,
+            file: None,
+            k8s_file: None,
+            meta: None,
+            annotations: Some("bad value".into()),
+            labels: None,
+        };
+        let p = MetaRules::new(cfg).unwrap();
+        p.process(&mut line);
+    }
+
+    #[test]
+    #[should_panic]
+    /// invalid labels override value in config
+    fn test_invalid_labels_override() {
+        let some_labels: KeyValueMap = serde_json::from_str("{}").unwrap();
+        let mut line = LineBuilder::new().annotations(some_labels);
+        let cfg = MetaRulesConfig {
+            app: None,
+            host: None,
+            env: None,
+            file: None,
+            k8s_file: None,
+            meta: None,
+            annotations: None,
+            labels: Some("bad value".into()),
+        };
+        let p = MetaRules::new(cfg).unwrap();
+        p.process(&mut line);
     }
 }
