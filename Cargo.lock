@@ -1795,6 +1795,7 @@ name = "middleware"
 version = "0.1.0"
 dependencies = [
  "http 0.1.0",
+ "lazy_static",
  "log",
  "memoffset",
  "regex",
