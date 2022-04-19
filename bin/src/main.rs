@@ -153,7 +153,7 @@ async fn main() {
             }
 
             let k8s_event_stream = match config.log.log_k8s_events {
-                K8sTrackingConf::Never => None, // Agent won't release it this is set to None.
+                K8sTrackingConf::Never => None,
                 K8sTrackingConf::Always => {
                     let pod_name = std::env::var("POD_NAME").ok();
                     let namespace = std::env::var("NAMESPACE").ok();
