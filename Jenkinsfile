@@ -197,7 +197,9 @@ pipeline {
                 stage('Scanning Images') {
                     steps {
                         sh 'ARCH=x86_64 make sysdig_secure_images'
-                        sysdig engineCredentialsId: 'sysdig-secure-api-credentials', name: 'sysdig_secure_images', inlineScanning: true
+                        sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
+                        sh 'ARCH=aarch64 make sysdig_secure_images'
+                        sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
                     }
                 }
                 stage('Publish static binary') {
@@ -224,7 +226,7 @@ pipeline {
                     }
                 }
                 stage('Publish GCR images') {
-                    when {                        
+                    when {
                         environment name: 'PUBLISH_GCR_IMAGE', value: 'true'
                     }
                     steps {
