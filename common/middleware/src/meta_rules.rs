@@ -16,6 +16,8 @@ static LOGDNA_META_JSON: &str = "LOGDNA_META_JSON";
 static LOGDNA_META_ANNOTATIONS: &str = "LOGDNA_META_ANNOTATIONS";
 static LOGDNA_META_LABELS: &str = "LOGDNA_META_LABELS";
 
+static K8S_LOG_DIR: &str = "/var/log/containers/";
+
 lazy_static! {
     static ref REGEX_VAR: Regex = Regex::new(r"(?P<var>\$\{(?P<key>[^|}]+?)})").unwrap();
     static ref REGEX_VAR_DEFAULT: Regex =
@@ -156,13 +158,15 @@ impl MetaRules {
         line.get_file()
             .map(|v| meta_map.insert("line.file".into(), v.into()));
         // k8s lines have non empty annotations/labels
-        let is_k8s = line.get_annotations().is_some() || line.get_labels().is_some();
+        let is_k8s_line = line.get_annotations().is_some()
+            || line.get_labels().is_some()
+            || line.get_file().unwrap_or("").starts_with(K8S_LOG_DIR);
         //
         // [ substitute then insert to map ]
         // substitute "override" labels & annotations
         // merge "with override" + remove empty values
         //
-        if let (Some(over_annotations), true) = (self.over_annotations.clone(), is_k8s) {
+        if let (Some(over_annotations), true) = (self.over_annotations.clone(), is_k8s_line) {
             let mut new_annotations = KeyValueMap::new();
             line.get_annotations().map(|kvm| {
                 for (k, v) in kvm.iter() {
@@ -179,9 +183,9 @@ impl MetaRules {
                     new_annotations.insert(k.clone(), v.clone());
                 }
             }
-            if let Err(_) = line.set_annotations(new_annotations) {}
+            if line.set_annotations(new_annotations).is_err() {}
         }
-        if let (Some(over_labels), true) = (self.over_labels.clone(), is_k8s) {
+        if let (Some(over_labels), true) = (self.over_labels.clone(), is_k8s_line) {
             let mut new_labels = KeyValueMap::new();
             line.get_labels().map(|kvm| {
                 for (k, v) in kvm.iter() {
@@ -198,29 +202,29 @@ impl MetaRules {
                     new_labels.insert(k.clone(), v.clone());
                 }
             }
-            if let Err(_) = line.set_labels(new_labels) {}
+            if line.set_labels(new_labels).is_err() {}
         }
         // [ substitute from map ]
         // substitute "override" fields and then override line fields
-        // TODO: add rate limited err log
+        // TODO: add rate limited err log for setters
         //
         if let Some(over_app) = self.over_app.clone() {
             let app = substitute(over_app.deref(), &meta_map);
-            if let Err(_) = line.set_app(app) {}
+            if line.set_app(app).is_err() {}
         }
         if let Some(over_host) = self.over_host.clone() {
             let host = substitute(over_host.deref(), &meta_map);
-            if let Err(_) = line.set_host(host) {}
+            if line.set_host(host).is_err() {}
         }
         if let Some(over_env) = self.over_env.clone() {
             let env = substitute(over_env.deref(), &meta_map);
-            if let Err(_) = line.set_env(env) {}
+            if line.set_env(env).is_err() {}
         }
         if let Some(over_file) = self.over_file.clone() {
             let file = substitute(over_file.deref(), &meta_map);
-            if let Err(_) = line.set_file(file) {}
+            if line.set_file(file).is_err() {}
         }
-        if let (Some(over_k8s_file), true) = (self.over_k8s_file.clone(), is_k8s) {
+        if let (Some(over_k8s_file), true) = (self.over_k8s_file.clone(), is_k8s_line) {
             let file = substitute(over_k8s_file.deref(), &meta_map);
             if line.set_file(file).is_err() {}
         }
