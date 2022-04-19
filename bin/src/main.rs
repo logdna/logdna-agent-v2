@@ -180,6 +180,22 @@ async fn main() {
                     }
                 }
             };
+
+            match k8s_claimed_lease.as_ref() {
+                Some(lease) => {
+                    info!("Releasing lease: {:?}", lease);
+                    let k8s_lease_api = k8s::lease::get_k8s_lease_api(
+                        &std::env::var("NAMESPACE").unwrap(),
+                        k8s_client.clone(),
+                    )
+                    .await;
+                    k8s::lease::release_lease(lease, &k8s_lease_api).await;
+                }
+                None => {
+                    info!("No K8s lease clamimed during startup.");
+                }
+            }
+
             k8s_event_stream
         }
         Err(e) => {
@@ -187,33 +203,6 @@ async fn main() {
             None
         }
     };
-
-    // Clone event stream if exists for releasing lease.
-    let k8s_event_stream_clone: Option<kube::Client> = k8s_event_stream
-        .as_ref()
-        .map(|_stream| k8s_event_stream.as_ref().unwrap().client.clone());
-
-    match k8s_event_stream_clone {
-        Some(clone) => {
-            // If k8s_claimed_lease is not None, then lease was claimed and needs to be released.
-            match &k8s_claimed_lease {
-                Some(lease) => {
-                    info!("Releasing lease: {:?}", lease);
-                    let k8s_lease_api =
-                        k8s::lease::get_k8s_lease_api(&std::env::var("NAMESPACE").unwrap(), clone)
-                            .await;
-                    k8s::lease::release_lease(k8s_claimed_lease.as_ref().unwrap(), &k8s_lease_api)
-                        .await;
-                }
-                None => {
-                    info!("No k8s lease claimed during startup.");
-                }
-            }
-        }
-        None => {
-            warn!("K8s event stream NOT cloned.");
-        }
-    }
 
     match LineRules::new(
         &config.log.line_exclusion_regex,
