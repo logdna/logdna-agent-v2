@@ -155,7 +155,7 @@ pipeline {
                 stage('Scanning Images') {
                     steps {
                         sh 'make sysdig_secure_images'
-                        sysdig engineCredentialsId: 'sysdig-secure-api-credentials', name: 'sysdig_secure_images', inlineScanning: true
+                        sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
                     }
                 }
                 stage('Publish static binary') {
