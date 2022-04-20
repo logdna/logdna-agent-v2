@@ -2,6 +2,7 @@ use crate::{Middleware, Status};
 use http::types::body::{KeyValueMap, LineBufferMut};
 use lazy_static::lazy_static;
 use log::error;
+use regex::bytes::Regex as RegexB;
 use regex::Regex;
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -22,6 +23,8 @@ lazy_static! {
     static ref REGEX_VAR: Regex = Regex::new(r"(?P<var>\$\{(?P<key>[^|}]+?)})").unwrap();
     static ref REGEX_VAR_DEFAULT: Regex =
         Regex::new(r"(?P<var>\$\{(?P<key>[^|}]+?)\|(?P<default>[^|}]*?)})").unwrap();
+    static ref REGEX_CRIO_LOG: RegexB =
+        RegexB::new(r"([0-9]{4}(?:-[0-9]{2}){2}T(?:[0-9]{2}:){2}[0-9]{2}.[0-9]{1,9}(?:[+-][0-9]{2}:[0-9]{2}|Z)) (stdout|stderr) ([PF]) (?P<line>.*)").unwrap();
 }
 
 //TODO: extract to LogConfig
@@ -227,6 +230,20 @@ impl MetaRules {
         if let (Some(over_k8s_file), true) = (self.over_k8s_file.clone(), is_k8s_line) {
             let file = substitute(over_k8s_file.deref(), &meta_map);
             if line.set_file(file).is_err() {}
+            // overriding "file" will disable server side CRIO log line parsing,
+            // so we remove CRIO log prefix from line here to make regular line parser happy
+            if let Some(line_text) = line.get_line_buffer() {
+                let mut new_buf = Vec::with_capacity(line_text.len());
+                let mut is_found = false;
+                for cap in REGEX_CRIO_LOG.captures_iter(line_text).take(1) {
+                    cap.name("line").map(|new_line| {
+                        new_buf = Vec::from(new_line.as_bytes());
+                        is_found = true;
+                        Some(new_line)
+                    });
+                }
+                if is_found && line.set_line_buffer(new_buf).is_err() {}
+            }
         }
         if let Some(over_meta) = self.over_meta.clone() {
             let meta = substitute(over_meta.deref(), &meta_map);
@@ -658,5 +675,31 @@ mod tests {
         };
         let p = MetaRules::new(cfg).unwrap();
         p.process(&mut line);
+    }
+
+    #[test]
+    /// k8s case: overriding File should trigger removal of CRIO log prefix
+    fn test_override_file_with_crio_k8s() {
+        let cfg = MetaRulesConfig {
+            app: None,
+            host: None,
+            env: None,
+            file: None,
+            k8s_file: Some("REDACTED_K8S_FILE".into()),
+            meta: None,
+            annotations: None,
+            labels: None,
+        };
+        let p = MetaRules::new(cfg).unwrap();
+        let mut line = LineBuilder::new()
+            .file("/var/log/containers/a.log")
+            .line(r#"2022-04-20T00:44:16.848418974-07:00 stdout F 2022-04-20T07:44:16.848Z DEBUG {"color":"yellow","sold":true,"rating":68}"#);
+        let status = p.process(&mut line);
+        assert!(matches!(status, Status::Ok(_)));
+        assert_eq!(
+            line.get_line_buffer().unwrap(),
+            r#"2022-04-20T07:44:16.848Z DEBUG {"color":"yellow","sold":true,"rating":68}"#
+                .as_bytes()
+        );
     }
 }
