@@ -236,7 +236,8 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
     if let Some(journald_dirs) = settings.journald_dirs {
         agent.env("LOGDNA_JOURNALD_PATHS", journald_dirs);
     }
-    
+
+    // Add in other config?
     if let Some(startup_lease) = settings.startup_lease {
         agent.env("LOGDNA_K8S_STARTUP_LEASE", startup_lease);
     }
