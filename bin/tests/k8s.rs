@@ -1091,8 +1091,8 @@ async fn test_k8s_startup_leases_always_start() {
 
     let client = Client::try_default().await.unwrap();
 
-    let pod_node_addr =
-        start_line_proxy_pod(client.clone(), "always-lease-listener", "default", 30002).await;
+    let pod_name = "always-lease-listener";
+    let pod_node_addr = start_line_proxy_pod(client.clone(), pod_name, "default", 30002).await;
 
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
@@ -1178,7 +1178,7 @@ async fn test_k8s_startup_leases_always_start() {
         tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
         let mut map = received.lock().await;
-        let mut result = map.iter().find(|(k, _)| k.contains("always-listener"));
+        let mut result = map.iter().find(|(k, _)| k.contains(pod_name));
         assert!(result.is_none());
         drop(map);
 
@@ -1201,9 +1201,7 @@ async fn test_k8s_startup_leases_always_start() {
         tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
         map = received.lock().await;
-        result = map
-            .iter()
-            .find(|(k, _)| k.contains("always-lease-listener"));
+        result = map.iter().find(|(k, _)| k.contains(pod_name));
         assert!(result.is_some());
 
         shutdown_handle();
@@ -1222,8 +1220,8 @@ async fn test_k8s_startup_leases_off_start() {
 
     let client = Client::try_default().await.unwrap();
 
-    let pod_node_addr =
-        start_line_proxy_pod(client.clone(), "off-lease-listener", "default", 30003).await;
+    let pod_name = "off-lease-listener";
+    let pod_node_addr = start_line_proxy_pod(client.clone(), pod_name, "default", 30003).await;
 
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
@@ -1297,7 +1295,7 @@ async fn test_k8s_startup_leases_off_start() {
         tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
         let map = received.lock().await;
-        let result = map.iter().find(|(k, _)| k.contains("off-lease-listener"));
+        let result = map.iter().find(|(k, _)| k.contains(pod_name));
         assert!(result.is_some());
 
         shutdown_handle();

@@ -499,60 +499,47 @@ async fn check_startup_lease_status(
     claimed_lease_ref: &mut Option<String>,
     client: Kube_Client,
 ) {
-    if start_option == Some("on") {
-        // Attempt to claim lease N times, then move on.
-        info!("Getting agent-startup-lease (making limited attempts)");
-        let k8s_lease_api =
-            k8s::lease::get_k8s_lease_api(&std::env::var("NAMESPACE").unwrap(), client).await;
-        for i in 0..K8S_STARTUP_LEASE_RETRY_ATTEMPTS {
-            info!("Attempting connection: {}", i);
-            match get_available_lease(K8S_STARTUP_LEASE_LABEL, &k8s_lease_api).await {
-                Some(available_lease) => {
-                    info!("Lease available: {:?}", available_lease);
-                    k8s::lease::claim_lease(
-                        available_lease,
-                        std::env::var("POD_NAME").unwrap(),
-                        &k8s_lease_api,
-                        claimed_lease_ref,
-                    )
-                    .await;
-                    break;
-                }
-                None => {
-                    info!("No lease availabe at this time. Waiting 1 second...");
-                    tokio::time::sleep(Duration::from_millis(1000)).await;
-                }
-            };
+    let max_attempts = match start_option {
+        Some("on") => {
+            info!("Getting agent-startup-lease (making limited attempts)");
+            K8S_STARTUP_LEASE_RETRY_ATTEMPTS
         }
-    } else if start_option == Some("always") {
-        // Keep trying to claim lease forever.
-        info!("Getting agent-startup-lease (trying forever)");
-        let k8s_lease_api =
-            k8s::lease::get_k8s_lease_api(&std::env::var("NAMESPACE").unwrap(), client).await;
-        loop {
-            match get_available_lease(K8S_STARTUP_LEASE_LABEL, &k8s_lease_api).await {
-                Some(available_lease) => {
-                    info!("Lease available: {:?}", available_lease);
-                    k8s::lease::claim_lease(
-                        available_lease,
-                        std::env::var("POD_NAME").unwrap(),
-                        &k8s_lease_api,
-                        claimed_lease_ref,
-                    )
-                    .await;
-                    break;
-                }
-                None => {
-                    info!("No lease availabe at this time. Waiting 1 second...");
-                    tokio::time::sleep(Duration::from_millis(1000)).await;
-                }
-            };
+        Some("always") => {
+            info!("Getting agent-startup-lease (trying forever)");
+            -1
         }
-    } else {
-        info!(
-            "Kubernetes cluster initialised, K8s startup lease set to: {:?}",
-            start_option,
-        )
+        _ => {
+            info!(
+                "Kubernetes cluster initialised, K8s startup lease set to: {:?}",
+                start_option
+            );
+            return;
+        }
+    };
+
+    let k8s_lease_api =
+        k8s::lease::get_k8s_lease_api(&std::env::var("NAMESPACE").unwrap(), client).await;
+    let mut attempts = 0;
+    while (max_attempts == -1) || (attempts < max_attempts) {
+        info!("Attempting connection: {}", attempts);
+        match get_available_lease(K8S_STARTUP_LEASE_LABEL, &k8s_lease_api).await {
+            Some(available_lease) => {
+                info!("Lease available: {:?}", available_lease);
+                k8s::lease::claim_lease(
+                    available_lease,
+                    std::env::var("POD_NAME").unwrap(),
+                    &k8s_lease_api,
+                    claimed_lease_ref,
+                )
+                .await;
+                break;
+            }
+            None => {
+                attempts += 1;
+                info!("No lease availabe at this time. Waiting 1 second...");
+                tokio::time::sleep(Duration::from_millis(1000)).await;
+            }
+        };
     }
 }
 
