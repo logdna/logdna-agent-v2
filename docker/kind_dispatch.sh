@@ -35,8 +35,7 @@ DOCKER_BUILDKIT=1 docker build $curpath/.. \
   --progress=plain \
   --build-arg BUILD_IMAGE=docker.io/logdna/build-images:rust-buster-1-stable-$(get_host_arch) \
   --build-arg SCCACHE_BUCKET=$SCCACHE_BUCKET \
-  --build-arg SCCACHE_REGION=$SCCACHE_REGION \
-  2> $curpath/../target/.docker_build.log || cat $curpath/../target/.docker_build.log
+  --build-arg SCCACHE_REGION=$SCCACHE_REGION
 
 echo "Loading into kind"
 
