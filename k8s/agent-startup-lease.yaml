@@ -13,7 +13,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: logdna-agent-startup-lease
-  namespace: default
+  namespace: logdna-agent
 subjects:
 - kind: ServiceAccount
   name: logdna-agent
@@ -25,8 +25,6 @@ roleRef:
 ---
 apiVersion: coordination.k8s.io/v1
 kind: LeaseList
-metadata:
-  namespace: logdna-agent
 items:
   - apiVersion: coordination.k8s.io/v1
     kind: Lease

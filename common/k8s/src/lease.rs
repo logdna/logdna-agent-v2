@@ -6,7 +6,7 @@ use kube::core::ObjectList;
 use kube::Client;
 use serde::{Deserialize, Serialize};
 
-pub const K8S_STARTUP_LEASE_LABEL: &str = "process=agent-startup";
+pub const K8S_STARTUP_LEASE_LABEL: &str = "process=logdna-agent-startup";
 pub const K8S_STARTUP_LEASE_RETRY_ATTEMPTS: i32 = 3;
 
 #[derive(Debug, Serialize, Deserialize)]

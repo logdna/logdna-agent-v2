@@ -770,7 +770,7 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
         "metadata": {
             "name": format!("{}-0",name),
             "labels": {
-                "process": "agent-startup"
+                "process": "logdna-agent-startup"
             },
         },
         "spec": {
@@ -789,7 +789,7 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
         "metadata": {
             "name": format!("{}-1",name),
             "labels": {
-                "process": "agent-startup"
+                "process": "logdna-agent-startup"
             },
         },
         "spec": {
@@ -808,7 +808,7 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
         "metadata": {
             "name": format!("{}-2",name),
             "labels": {
-                "process": "agent-startup"
+                "process": "logdna-agent-startup"
             },
         },
         "spec": {
@@ -1054,7 +1054,7 @@ async fn test_k8s_startup_lease_functions() {
     let lease_name = "agent-startup-lease";
     let namespace = "default";
     let pod_name = "agent-pod-name".to_string();
-    let lease_label = "process=agent-startup";
+    let lease_label = "process=logdna-agent-startup";
     let mut claimed_lease_name: Option<String> = None;
     let client = Client::try_default().await.unwrap();
     let lease_client: Api<Lease> = Api::namespaced(client.clone(), namespace);
@@ -1102,7 +1102,7 @@ async fn test_k8s_startup_leases_always_start() {
         let agent_name = "k8s-agent-lease";
         let agent_namespace = "k8s-agent-lease";
         let agent_lease_name = "agent-startup-lease";
-        let agent_lease_label = "process=agent-startup";
+        let agent_lease_label = "process=logdna-agent-startup";
 
         // Create Agent
         let nss: Api<Namespace> = Api::all(client.clone());
