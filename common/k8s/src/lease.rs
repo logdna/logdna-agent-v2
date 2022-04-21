@@ -89,7 +89,7 @@ pub async fn release_lease(lease_name: &str, lease_client: &Api<Lease>) {
     match patch_lease {
         Ok(ref patch) => {
             info!(
-                "Lease {} had now been released to {:?}",
+                "Lease {} has now been released to {:?}",
                 &lease_name,
                 &patch.spec.as_ref().unwrap().holder_identity
             );

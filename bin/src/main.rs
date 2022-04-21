@@ -500,7 +500,7 @@ async fn check_startup_lease_status(
     client: Kube_Client,
 ) {
     let max_attempts = match start_option {
-        Some("on") => {
+        Some("limited") => {
             info!("Getting agent-startup-lease (making limited attempts)");
             K8S_STARTUP_LEASE_RETRY_ATTEMPTS
         }

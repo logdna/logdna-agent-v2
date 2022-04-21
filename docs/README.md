@@ -173,7 +173,7 @@ options are available:
 |`LOGDNA_REDACT_REGEX`|Comma separated list of regex patterns used to mask matching sensitive information (such as PII) before sending it in the log line.||
 |`LOGDNA_JOURNALD_PATHS`|Comma separated list of paths (directories or files) of journald paths to monitor||
 |`LOGDNA_LOOKBACK`|The lookback strategy on startup|`none`|
-|`LOGDNA_K8S_STARTUP_LEASE`|Determines whether or not to use K8 leases on startup|`none`|
+|`LOGDNA_K8S_STARTUP_LEASE`|Determines whether or not to use K8 leases on startup||
 |`LOGDNA_USE_K8S_LOG_ENRICHMENT`|Determines whether the agent should query the K8s API to enrich log lines from other pods.|`always`|
 |`LOGDNA_LOG_K8S_EVENTS`|Determines whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
 |`LOGDNA_DB_PATH`|The directory in which the agent will store its state database. Note that the agent must have write access to the directory and be a persistent volume.|`/var/lib/logdna`|
@@ -231,19 +231,19 @@ The valid values for this option are:
 
 ### Configuring Lease Startup
 
-The lease startup configuration uses Leases to limit the number of agents that can start all at one time on a Kubernetes cluster. This should only be needed when running the agent on a very large cluster, where 
-you would run the risk of overwhelming etcd if all the the agents tried to connect at once.
-
-In order to use this feature, you much ensure that your K8 cluster has leases configured before starting the agent. To do this you can apply the `agent-startup-leases.yaml` file located under the root of the 
-repositiory. 
+The lease startup configuration uses Kubernetes Leases to limit the number of agents that can start at one time on a cluster. When enabled, the agent will "claim" a lease before starting. Once started, the agent will then release the lease. If no leases are available, the agent will wait for one to become available. This feature would only be needed if running the agent on a cluster large enough that you'd risk crashing `etcd` if all the the agents tried to connect at once.
 
 The valid values for this option are:
-* When set to **`none`** (default):
+* When set to **`None`** (default):
   * The agent will start normally and will not attempt to obtain a lease before starting.
-* When set to **`on`**:
+* When set to **`limited`**:
   * The agent will attempt to connect to a lease before starting, but will start anyway after a number of unsuccessful attempts.
 * When set to **`always`**:
-  * The agent will attempts to connect to a lease indefinitely. 
+  * The agent will attempts to connect to a lease indefinitely.
+
+**Note:**
+For more information on how to configure leases on a your Kubernetes cluster, see the "Installation Steps" in the KUBERNETES.md 
+file in docs directory of this repository.
 
 ### Configuring Journald
 
