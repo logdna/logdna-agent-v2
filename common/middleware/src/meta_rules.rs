@@ -19,6 +19,10 @@ static LOGDNA_META_LABELS: &str = "LOGDNA_META_LABELS";
 
 static K8S_LOG_DIR: &str = "/var/log/containers/";
 
+static MAP_PREFIX_ENV: &str = "env.";
+static MAP_PREFIX_ANN: &str = "annot.";
+static MAP_PREFIX_LAB: &str = "label.";
+
 lazy_static! {
     static ref REGEX_VAR: Regex = Regex::new(r"(?P<var>\$\{(?P<key>[^|}]+?)})").unwrap();
     static ref REGEX_VAR_DEFAULT: Regex =
@@ -139,17 +143,20 @@ impl MetaRules {
             return Status::Ok(line);
         }
         //
-        // [ create map ]
+        // [ create meta map ]
         //
-        let mut meta_map: HashMap<String, String> = self.env_map.clone();
+        let mut meta_map = HashMap::new();
+        for (k, v) in self.env_map.iter() {
+            meta_map.insert(MAP_PREFIX_ENV.to_string() + k, v.clone());
+        }
         if let Some(annotations) = line.get_annotations() {
             for (k, v) in annotations.iter() {
-                meta_map.insert(k.clone(), v.clone());
+                meta_map.insert(MAP_PREFIX_ANN.to_string() + k, v.clone());
             }
         }
         if let Some(labels) = line.get_labels() {
             for (k, v) in labels.iter() {
-                meta_map.insert(k.clone(), v.clone());
+                meta_map.insert(MAP_PREFIX_LAB.to_string() + k, v.clone());
             }
         }
         line.get_app()
@@ -160,7 +167,7 @@ impl MetaRules {
             .map(|v| meta_map.insert("line.env".into(), v.into()));
         line.get_file()
             .map(|v| meta_map.insert("line.file".into(), v.into()));
-        // k8s lines have non empty annotations/labels
+
         let is_k8s_line = line.get_annotations().is_some()
             || line.get_labels().is_some()
             || line.get_file().unwrap_or("").starts_with(K8S_LOG_DIR);
@@ -169,6 +176,7 @@ impl MetaRules {
         // substitute "override" labels & annotations
         // merge "with override" + remove empty values
         //
+        // annotations
         if let (Some(over_annotations), true) = (self.over_annotations.clone(), is_k8s_line) {
             let mut new_annotations = KeyValueMap::new();
             line.get_annotations().map(|kvm| {
@@ -179,7 +187,7 @@ impl MetaRules {
             });
             for (k, v) in over_annotations.iter() {
                 let v = substitute(v, &meta_map);
-                meta_map.insert(k.clone(), v.clone()); // insert "with override"
+                meta_map.insert(MAP_PREFIX_ANN.to_string() + k, v.clone()); // insert "with override"
                 if v.is_empty() {
                     new_annotations = new_annotations.remove(&k.clone());
                 } else {
@@ -188,6 +196,7 @@ impl MetaRules {
             }
             if line.set_annotations(new_annotations).is_err() {}
         }
+        // labels
         if let (Some(over_labels), true) = (self.over_labels.clone(), is_k8s_line) {
             let mut new_labels = KeyValueMap::new();
             line.get_labels().map(|kvm| {
@@ -198,7 +207,7 @@ impl MetaRules {
             });
             for (k, v) in over_labels.iter() {
                 let v = substitute(v, &meta_map);
-                meta_map.insert(k.clone(), v.clone());
+                meta_map.insert(MAP_PREFIX_LAB.to_string() + k, v.clone());
                 if v.is_empty() {
                     new_labels = new_labels.remove(&k.clone());
                 } else {
@@ -265,8 +274,7 @@ impl Middleware for MetaRules {
 
 fn os_env_hashmap() -> HashMap<String, String> {
     let mut map = HashMap::new();
-    use std::env;
-    for (key, val) in env::vars_os() {
+    for (key, val) in std::env::vars_os() {
         // Use pattern bindings instead of testing .is_some() followed by .unwrap()
         if let (Ok(k), Ok(v)) = (key.into_string(), val.into_string()) {
             map.insert(k, v);
@@ -354,11 +362,8 @@ mod tests {
     #[test]
     fn test_os_env_hashmap() {
         let vars = os_env_hashmap();
-        let host_name = vars.get("PATH");
-        assert_ne!(host_name, None);
-        for (key, value) in vars.into_iter() {
-            println!("{} = {:?}", key, value);
-        }
+        let path = vars.get("PATH");
+        assert!(path.unwrap().contains("/usr/bin"));
     }
 
     #[test]
@@ -582,7 +587,7 @@ mod tests {
             serde_json::from_str(r#"{"key1":"val1", "key2":"val2"}"#).unwrap();
         let mut line = LineBuilder::new().labels(some_labels);
         let cfg = MetaRulesConfig {
-            app: Some("app_${key1}_${key2}".into()),
+            app: Some("app_${label.key1}_${label.key2}".into()),
             host: None,
             env: None,
             file: None,
