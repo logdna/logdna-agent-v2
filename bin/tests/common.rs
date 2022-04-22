@@ -2,13 +2,14 @@ use core::time;
 
 use rand::seq::IteratorRandom;
 
+use std::collections::HashMap;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc;
 use std::sync::mpsc::TryRecvError;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
@@ -22,7 +23,13 @@ use logdna_mock_ingester::{
 
 pub use logdna_mock_ingester::HttpVersion;
 
+use once_cell::sync::Lazy;
+
 use rcgen::generate_simple_self_signed;
+
+type CargoCommandByFeatureMap = HashMap<Option<String>, Arc<Mutex<Option<escargot::CargoRun>>>>;
+static AGENT_COMMANDS: Lazy<Mutex<CargoCommandByFeatureMap>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 pub static LINE: &str = "Nov 30 09:14:47 sample-host-name sampleprocess[1204]: Hello from process";
 
@@ -159,19 +166,32 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
     let mut manifest_path = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     manifest_path.pop();
     manifest_path.push("bin/Cargo.toml");
-    let mut cargo_build = escargot::CargoBuild::new()
-        .manifest_path(manifest_path)
-        .bin("logdna-agent")
-        .release()
-        .current_target();
 
-    if let Some(features) = settings.features {
-        cargo_build = cargo_build.no_default_features().features(features);
-    }
+    let feature_command_lock = {
+        let agent_commands = AGENT_COMMANDS.lock();
+        agent_commands
+            .unwrap()
+            .entry(settings.features.map(String::from))
+            .or_insert_with(|| Arc::new(Mutex::new(None)))
+            .clone()
+    };
 
-    let cargo_build = cargo_build.run().unwrap();
+    let mut cmd = {
+        let mut f_c = feature_command_lock.lock().unwrap();
+        f_c.get_or_insert_with(|| {
+            let mut cargo_build = escargot::CargoBuild::new()
+                .manifest_path(manifest_path)
+                .bin("logdna-agent")
+                .release()
+                .current_target();
 
-    let mut cmd = cargo_build.command();
+            if let Some(features) = settings.features {
+                cargo_build = cargo_build.no_default_features().features(features);
+            }
+            cargo_build.run().unwrap()
+        })
+        .command()
+    };
 
     let ingestion_key = if let Some(key) = settings.ingester_key {
         key.to_string()
