@@ -66,16 +66,15 @@ The agent can be installed in your cluster using a set of YAML files we provide.
 ```console
 kubectl apply -f k8s/agent-namespace.yaml
 kubectl create secret generic logdna-agent-key -n logdna-agent --from-literal=logdna-agent-key=<YOUR LOGDNA INGESTION KEY>
+kubectl apply -f k8s/agent-startup-lease.yaml (optional, see note below)
 kubectl apply -f k8s/agent-resources.yaml
 ```
-__Optionally:__ If you intend to use the K8's Lease option in the agent startup process, your cluster must be configured before starting the agent. To do this, run the following command in addition the commands listed above in step #2: 
-```console
-kubectl apply -f k8s/agent-startup-lease.yaml
-```
+__Optional:__ The `agent-startup-lease.yaml` file only needs to be applied if you intend to use the K8's Lease option in the agent startup process.
+
 By default, there are 5 leases created. The `agent-startup-lease.yaml` file can be modified to include additional startup leases if needed.
 3. Monitor the pods for startup success:
 ```console
-foo@bar:~$ kubectl get pods -n logdna-agent --watch
+kubectl get pods -n logdna-agent --watch
 NAME                 READY   STATUS    RESTARTS   AGE
 logdna-agent-hcvhn   1/1     Running   0          10s
 ```
