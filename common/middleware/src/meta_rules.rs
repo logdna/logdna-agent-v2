@@ -77,7 +77,12 @@ pub struct MetaRules {
 pub enum MetaRulesError {
     #[error(transparent)]
     Serde(#[from] serde_json::Error),
+    #[error("Configuration error: {0}")]
+    Config(String),
 }
+
+//"Invalid LOGDNA_META_ANNOTATIONS value: '{}', err: {}",
+//panic!("Invalid LOGDNA_META_LABELS value: '{}', err: {}", str, err)
 
 impl MetaRules {
     pub fn new(cfg: MetaRulesConfig) -> Result<MetaRules, MetaRulesError> {
@@ -89,27 +94,26 @@ impl MetaRules {
             over_file: cfg.file,
             over_k8s_file: cfg.k8s_file,
             over_meta: cfg.meta,
-            over_annotations: cfg.annotations.map_or_else(
-                || None,
-                |str| match serde_json::from_str(str.as_str()) {
-                    Ok(kvp) => kvp,
-                    Err(err) => {
-                        panic!(
-                            "Invalid LOGDNA_META_ANNOTATIONS value: '{}', err: {}",
-                            str, err
-                        )
-                    }
-                },
-            ),
-            over_labels: cfg.labels.map_or_else(
-                || None,
-                |str| match serde_json::from_str(str.as_str()) {
-                    Ok(kvp) => kvp,
-                    Err(err) => {
-                        panic!("Invalid LOGDNA_META_LABELS value: '{}', err: {}", str, err)
-                    }
-                },
-            ),
+            over_annotations: match cfg.annotations {
+                Some(str) => match serde_json::from_str(str.as_str()) {
+                    Ok(kvp) => Ok(kvp),
+                    Err(err) => Err(MetaRulesError::Config(format!(
+                        "Invalid LOGDNA_META_ANNOTATIONS value: '{}', err: '{}'",
+                        str, err
+                    ))),
+                }?,
+                _ => None,
+            },
+            over_labels: match cfg.labels {
+                Some(str) => match serde_json::from_str(str.as_str()) {
+                    Ok(kvp) => Ok(kvp),
+                    Err(err) => Err(MetaRulesError::Config(format!(
+                        "Invalid LOGDNA_META_LABELS value: '{}', err: '{}'",
+                        str, err
+                    ))),
+                }?,
+                _ => None,
+            },
         };
         Ok(obj)
     }
@@ -177,7 +181,7 @@ impl MetaRules {
         // merge "with override" + remove empty values
         //
         // annotations
-        if let (Some(over_annotations), true) = (self.over_annotations.clone(), is_k8s_line) {
+        if let (Some(over_annotations), true) = (&self.over_annotations, is_k8s_line) {
             let mut new_annotations = KeyValueMap::new();
             line.get_annotations().map(|kvm| {
                 for (k, v) in kvm.iter() {
@@ -220,23 +224,23 @@ impl MetaRules {
         // substitute "override" fields and then override line fields
         // TODO: add rate limited err log for setters
         //
-        if let Some(over_app) = self.over_app.clone() {
+        if let Some(over_app) = &self.over_app {
             let app = substitute(over_app.deref(), &meta_map);
             if line.set_app(app).is_err() {}
         }
-        if let Some(over_host) = self.over_host.clone() {
+        if let Some(over_host) = &self.over_host {
             let host = substitute(over_host.deref(), &meta_map);
             if line.set_host(host).is_err() {}
         }
-        if let Some(over_env) = self.over_env.clone() {
+        if let Some(over_env) = &self.over_env {
             let env = substitute(over_env.deref(), &meta_map);
             if line.set_env(env).is_err() {}
         }
-        if let Some(over_file) = self.over_file.clone() {
+        if let Some(over_file) = &self.over_file {
             let file = substitute(over_file.deref(), &meta_map);
             if line.set_file(file).is_err() {}
         }
-        if let (Some(over_k8s_file), true) = (self.over_k8s_file.clone(), is_k8s_line) {
+        if let (Some(over_k8s_file), true) = (&self.over_k8s_file, is_k8s_line) {
             let file = substitute(over_k8s_file.deref(), &meta_map);
             if line.set_file(file).is_err() {}
             // overriding "file" will disable server side CRIO log line parsing,
@@ -254,7 +258,7 @@ impl MetaRules {
                 if is_found && line.set_line_buffer(new_buf).is_err() {}
             }
         }
-        if let Some(over_meta) = self.over_meta.clone() {
+        if let Some(over_meta) = &self.over_meta {
             let meta = substitute(over_meta.deref(), &meta_map);
             match serde_json::from_str(&meta) {
                 Ok(val) => if line.set_meta(val).is_err() {},

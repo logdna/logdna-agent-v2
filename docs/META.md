@@ -1,6 +1,6 @@
 # Mangling Line Metadata  
 
-You can use `LOGDNA_META_XXXXX` environment variables to override or ommit various metadata fields before they get sent to server. 
+You can use `LOGDNA_META_XXXXX` environment variables to override or omit various metadata fields before they get sent to server. 
 Empty value will cause a field to be omitted or removed.
 
 Notes:
