@@ -61,7 +61,7 @@ async fn main() {
     dep_audit::get_auditable_dependency_list()
         .map_or_else(|e| trace!("{}", e), |d| trace!("{}", d));
 
-    let config = match Config::new() {
+    let config = match Config::new(std::env::args_os()) {
         Ok(v) => v,
         Err(e) => {
             error!("config error: {}", e);
