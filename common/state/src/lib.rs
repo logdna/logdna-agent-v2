@@ -1,4 +1,6 @@
-use rocksdb::{ColumnFamilyDescriptor, IteratorMode, Options, WriteBatch, DB};
+use rocksdb::{
+    BlockBasedOptions, Cache, ColumnFamilyDescriptor, IteratorMode, Options, WriteBatch, DB,
+};
 
 use derivative::Derivative;
 use futures::channel::oneshot;
@@ -23,6 +25,7 @@ pub use offsets::{Offset, OffsetMap};
 pub use span::{Span, SpanError, SpanVec};
 
 const OFFSET_NAME: &str = "file_offsets";
+const ROCKSDB_CACHE_SIZE: usize = 1024 * 500;
 
 #[derive(Debug, Error)]
 pub enum StateError {
@@ -54,9 +57,14 @@ fn _construct_agent_state(path: &Path) -> Result<AgentState, StateError> {
 
     let path = path.join("agent_state.db");
 
+    let cache = Cache::new_lru_cache(ROCKSDB_CACHE_SIZE);
+    let mut block_options = BlockBasedOptions::default();
+    block_options.set_block_cache(&cache.unwrap());
+
     let mut db_opts = Options::default();
     db_opts.create_missing_column_families(true);
     db_opts.create_if_missing(true);
+    db_opts.set_block_based_table_factory(&block_options);
 
     let offset_cf_opt = Options::default();
     let offset_cf = ColumnFamilyDescriptor::new(OFFSET_NAME, offset_cf_opt.clone());
