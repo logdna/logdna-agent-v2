@@ -245,7 +245,7 @@ The lease startup configuration uses Kubernetes Leases to limit the number of ag
 The valid values for this option are:
 * When set to **`None`** (default):
   * The agent will start normally and will not attempt to obtain a lease before starting.
-* When set to **`limited`**:
+* When set to **`attempt`**:
   * The agent will attempt to connect to a lease before starting, but will start anyway after a number of unsuccessful attempts.
 * When set to **`always`**:
   * The agent will attempts to connect to a lease indefinitely.
