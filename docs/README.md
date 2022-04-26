@@ -182,6 +182,15 @@ options are available:
 |`LOGDNA_INGEST_BUFFER_SIZE`|The size, in bytes, of the ingest data buffer used to batch log data with.|`2097152`|
 |`LOGDNA_RETRY_DIR`|The directory used by the agent to store data temporarily while retrying calls to the ingestion API.|`/tmp/logdna`|
 |`LOGDNA_RETRY_DISK_LIMIT`|The maximum amount of disk space the agent will use to store retry data. The value can be the total number of bytes or a human representation of space using suffixes "KB", "MB", "GB" or "TB", e.g. `10 MB` If left unset, the agent will not limit disk usage. If set to `0`, no retry data will be stored on disk.||
+|`LOGDNA_META_APP`|Overrides/omits `APP` field in log line metadata. [Examples](META.md)||
+|`LOGDNA_META_HOST`|Overrides/omits `HOST` field in log line metadata.||
+|`LOGDNA_META_ENV`|Overrides/omits `EMV` field in log line metadata.||
+|`LOGDNA_META_FILE`|Overrides/omits `FILE` field in log line metadata.||
+|`LOGDNA_META_K8S_FILE`|Overrides/omits `FILE` field in k8s log line metadata. Follows `LOGDNA_META_FILE`.||
+|`LOGDNA_META_JSON`|Overrides/omits `META` filed in log line metadata.||
+|`LOGDNA_META_ANNOTATIONS`|Overrides specific kay-value-pairs inside `ANNOTATIONS` field in log line metadata.||
+|`LOGDNA_META_LABELS`|Overrides specific kay-value-pairs inside `LABELS` field in log line metadata.||
+
 
 All regular expressions use [Perl-style syntax][regex-syntax] with case sensitivity by default. If you don't
 want to differentiate between capital and lower-case letters, use non-capturing groups with a flag: `(?flags:exp)`,

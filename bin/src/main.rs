@@ -25,12 +25,12 @@ use k8s::{create_k8s_client_default_from_env, K8sTrackingConf};
 use kube::Client as Kube_Client;
 use metrics::Metrics;
 use middleware::line_rules::LineRules;
+use middleware::meta_rules::{MetaRules, MetaRulesConfig};
 use middleware::Executor;
 
 use pin_utils::pin_mut;
 use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::signal::*;
 use tokio::sync::Mutex;
@@ -132,7 +132,7 @@ async fn main() {
             )
             .await;
             if config.log.use_k8s_enrichment == K8sTrackingConf::Always
-                && PathBuf::from("/var/log/containers/").exists()
+                && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
             {
                 let node_name = std::env::var("NODE_NAME").ok();
                 match K8sMetadata::new(k8s_client.clone(), node_name.as_deref()).await {
@@ -209,6 +209,14 @@ async fn main() {
         &config.log.line_inclusion_regex,
         &config.log.line_redact_regex,
     ) {
+        Ok(v) => executor.register(v),
+        Err(e) => {
+            error!("line regex is invalid: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    match MetaRules::new(MetaRulesConfig::from_env()) {
         Ok(v) => executor.register(v),
         Err(e) => {
             error!("line regex is invalid: {}", e);

@@ -7,7 +7,7 @@ def publishDockerhubICRImages = false
 pipeline {
     agent {
         node {
-            label "ec2-fleet"
+            label "rust-x86_64"
         }
     }
     options {
