@@ -65,7 +65,7 @@ pnet = "0.28"
 itertools = "0.10"
 predicates = "2"
 tempfile = "3"
-rustls = "0.20"
+rustls = "=0.20.2"
 rustls-pemfile = "0.2"
 rcgen = "0.8"
 logdna_mock_ingester = { package = "logdna-mock-ingester", path = "../common/test/mock-ingester" }
