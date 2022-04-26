@@ -24,9 +24,8 @@ COPY . .
 RUN --mount=type=cache,target=/opt/rust/cargo/registry  \
     --mount=type=cache,target=/opt/logdna-agent-v2/target \
     if [ -z "$SCCACHE_BUCKET" ]; then unset RUSTC_WRAPPER; fi; \
-    cargo build --manifest-path bin/Cargo.toml ${FEATURES} --release && \
-    strip ./target/release/logdna-agent && \
-    cp ./target/release/logdna-agent logdna-agent && \
+    cargo build --manifest-path bin/Cargo.toml ${FEATURES} && \
+    cp ./target/debug/logdna-agent logdna-agent && \
     sccache --show-stats
 
 # Use Debian as agent base image
@@ -57,6 +56,7 @@ ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy
 
 # Copy the agent binary from the build stage
 COPY --from=build /opt/logdna-agent-v2/logdna-agent /work/
+
 WORKDIR /work/
 
 RUN apt update -y \
@@ -70,4 +70,4 @@ RUN apt update -y \
     && groupadd -g 5000 logdna \
     && useradd -u 5000 -g logdna logdna
 
-CMD ["./logdna-agent"]
+CMD gdbserver :11111 ./logdna-agent

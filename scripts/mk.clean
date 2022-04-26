@@ -1,0 +1,10 @@
+#!/bin/bash
+set -e
+OWN_PATH=$(readlink -f "$0")
+OWN_DIR=$(dirname "$OWN_PATH")
+pushd "$OWN_DIR/.."
+rm -rf ./target
+rm -rf ./bin/target
+echo
+echo @@@@@@  SUCCESS  @@@@@@
+echo
