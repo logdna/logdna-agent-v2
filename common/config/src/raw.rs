@@ -332,6 +332,7 @@ impl Merge for Config {
         self.http.merge(&other.http, &default.http);
         self.log.merge(&other.log, &default.log);
         self.journald.merge(&other.journald, &default.journald);
+        self.startup.merge(&other.startup, &default.startup);
     }
 }
 
