@@ -192,14 +192,14 @@ async fn main() {
                     k8s::lease::release_lease(lease, &k8s_lease_api).await;
                 }
                 None => {
-                    info!("No K8s lease clamimed during startup.");
+                    info!("No K8s lease claimed during startup.");
                 }
             }
 
             k8s_event_stream
         }
         Err(e) => {
-            warn!("Unable to initialise kubernetes client: {}", e);
+            warn!("Unable to initialize kubernetes client: {}", e);
             None
         }
     };
