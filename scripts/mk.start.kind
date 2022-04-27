@@ -1,0 +1,47 @@
+#!/bin/bash
+#
+# - build "socat:local" image
+# - build "logdna-agent-kind:building" image 
+# - load images into Kind
+# - start Kind cluster
+#
+set -e
+OWN_PATH=$(readlink -f "$0")
+OWN_DIR=$(dirname "$OWN_PATH")
+pushd "$OWN_DIR/.."
+
+./docker/kind_start.sh
+sed -i "s/127.0.0.1/agent-dev-cluster-control-plane/" ./docker/.kind_config_host
+
+source ./docker/lib.sh
+
+echo "Building socat image"
+DOCKER_BUILDKIT=1 docker build -t "socat:local" ./docker/socat
+
+echo "Building Agent Image"
+image="logdna-agent-kind:building"
+DOCKER_BUILDKIT=1 docker build . \
+  -f Dockerfile.debian \
+  -t "$image" \
+  --pull \
+  --progress=plain \
+  --build-arg BUILD_IMAGE=docker.io/logdna/build-images:rust-buster-1-stable-$(get_host_arch) \
+  --build-arg SCCACHE_BUCKET=$SCCACHE_BUCKET \
+  --build-arg SCCACHE_REGION=$SCCACHE_REGION
+
+echo "Loading into kind"
+
+if [ -z "$BUILD_TAG" ]
+then
+  cluster_name=agent-dev-cluster
+else
+  cluster_name=$(echo $BUILD_TAG | tr '[:upper:]' '[:lower:]' | tail -c 32)
+fi
+
+kind load docker-image $image --name "$cluster_name"
+kind load docker-image "socat:local" --name "$cluster_name"
+
+
+echo
+echo @@@@@@  SUCCESS  @@@@@@
+echo
