@@ -3,6 +3,7 @@ extern crate log;
 extern crate humanize_rs;
 
 use std::convert::{TryFrom, TryInto};
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -103,8 +104,12 @@ pub struct JournaldConfig {
 }
 
 impl Config {
-    pub fn new() -> Result<Self, ConfigError> {
-        let argv_options = ArgumentOptions::from_args_with_all_env_vars();
+    pub fn new<I>(args: I) -> Result<Self, ConfigError>
+    where
+        I: IntoIterator,
+        I::Item: Into<OsString> + Clone,
+    {
+        let argv_options = ArgumentOptions::from_args_with_all_env_vars(args);
         let list_settings = argv_options.list_settings;
         let config_path = argv_options.config.clone();
         let raw_config = match RawConfig::parse(&config_path) {
@@ -544,22 +549,28 @@ mod tests {
             .unwrap();
 
         guard(file, |file| {
+            let args = vec![OsString::new()];
             serde_yaml::to_writer(file, &RawConfig::default()).unwrap();
 
             env::remove_var(argv::env::INGESTION_KEY);
             env::remove_var(argv::env::INGESTION_KEY_ALTERNATE);
             env::remove_var(argv::env::INCLUSION_RULES_DEPRECATED);
             env::set_var(argv::env::CONFIG_FILE, "test.yaml");
-            assert!(Config::new().is_err());
+            assert!(Config::new(args.clone()).is_err());
 
             env::set_var(argv::env::INGESTION_KEY, "ingestion_key_test");
-            assert!(Config::new().is_ok());
+            assert!(Config::new(args.clone()).is_ok());
 
-            let old_len = Config::new().unwrap().log.rules.inclusion_list().len();
+            let old_len = Config::new(args.clone())
+                .unwrap()
+                .log
+                .rules
+                .inclusion_list()
+                .len();
             env::set_var(argv::env::INCLUSION_RULES, "test.log,test2.log");
             assert_eq!(
                 old_len + 2,
-                Config::new().unwrap().log.rules.inclusion_list().len()
+                Config::new(args).unwrap().log.rules.inclusion_list().len()
             );
 
             remove_file("test.yaml").unwrap();

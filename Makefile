@@ -11,6 +11,11 @@ RUST_IMAGE_BASE ?= buster
 RUST_IMAGE_TAG ?= rust-$(RUST_IMAGE_BASE)-1-stable
 RUST_IMAGE ?= $(RUST_IMAGE_REPO):$(RUST_IMAGE_TAG)-$(ARCH)
 
+RUST_IMAGE_SUFFIX ?=
+ifneq ($(RUST_IMAGE_SUFFIX),)
+	RUST_IMAGE := $(RUST_IMAGE)-$(RUST_IMAGE_SUFFIX)
+endif
+
 BENCH_IMAGE_BASE ?= bullseye
 BENCH_IMAGE_TAG ?= rust-$(BENCH_IMAGE_BASE)-1-stable
 BENCH_IMAGE ?= $(RUST_IMAGE_REPO):$(BENCH_IMAGE_TAG)-$(ARCH)
@@ -31,7 +36,7 @@ DOCKER_DISPATCH := ARCH=$(ARCH) ./docker/dispatch.sh "$(WORKDIR)" "$(shell pwd):
 DOCKER_JOURNALD_DISPATCH := ARCH=$(ARCH) ./docker/journald_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
 DOCKER_KIND_DISPATCH := ARCH=$(ARCH) ./docker/kind_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
 DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/logdna-agent-v2
-DOCKER_PUBLIC_IMAGE := docker.io/logdna/logdna-agent
+DOCKER_PUBLIC_IMAGE ?= docker.io/logdna/logdna-agent
 DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
 
 export CARGO_CACHE ?= $(shell pwd)/.cargo_cache
@@ -315,9 +320,36 @@ release: ## Create a new release from the current beta and push to github
 	git push --follow-tags
 	git checkout $(TARGET_BRANCH) || git checkout -b $(TARGET_BRANCH)
 
+DEB_VERSION=1
+DEB_ARCH_NAME_x86_64=amd64
+DEB_ARCH_NAME_aarch64=arm64
+
 .PHONY:build-image
 build-image: ## Build a docker image as specified in the Dockerfile
 	$(DOCKER) build . -t $(REPO):$(IMAGE_TAG) \
+		$(PULL_OPTS) \
+		--progress=plain \
+		--platform=linux/${DEB_ARCH_NAME_${ARCH}} \
+		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
+		--rm \
+		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
+		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
+		--build-arg TARGET=$(TARGET) \
+		--build-arg RUSTFLAGS='$(RUSTFLAGS)' \
+		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
+		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+		--build-arg FEATURES='$(FEATURES_ARG)' \
+		--build-arg REPO=$(REPO) \
+		--build-arg VCS_REF=$(VCS_REF) \
+		--build-arg VCS_URL=$(VCS_URL) \
+		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
+		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
+		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
+	if [ ! -z "$(PULL_OPTS)" ]; then $(DOCKER) pull $(RUST_IMAGE); fi
+
+.PHONY:build-image-debian
+build-image-debian: ## Build a docker image as specified in the Dockerfile.debian
+	$(DOCKER) build . -f Dockerfile.debian -t $(REPO):$(IMAGE_TAG) \
 		$(PULL_OPTS) \
 		--progress=plain \
 		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
@@ -336,9 +368,26 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
 		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
 
-DEB_VERSION=1
-DEB_ARCH_NAME_x86_64=amd64
-DEB_ARCH_NAME_aarch64=arm64
+.PHONY:build-image-debug
+build-image-debug: ## Build a docker image as specified in the Dockerfile.debug
+	$(DOCKER) build . -f Dockerfile.debug -t $(REPO):$(IMAGE_TAG) \
+		$(PULL_OPTS) \
+		--progress=plain \
+		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
+		--rm \
+		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
+		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
+		--build-arg TARGET=$(TARGET) \
+		--build-arg RUSTFLAGS='$(RUSTFLAGS)' \
+		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
+		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+		--build-arg FEATURES='$(FEATURES_ARG)' \
+		--build-arg REPO=$(REPO) \
+		--build-arg VCS_REF=$(VCS_REF) \
+		--build-arg VCS_URL=$(VCS_URL) \
+		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
+		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
+		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
 
 .PHONY:build-deb
 build-deb: build-release

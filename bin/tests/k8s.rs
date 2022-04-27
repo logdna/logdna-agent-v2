@@ -71,7 +71,7 @@ async fn start_line_proxy_pod(
             "containers": [
                 {
                     "name": pod_name,
-                    "image": "alpine/socat",
+                    "image": "socat:local",
                     "ports": [
                         {
                             "name": "tcp-socat",
@@ -288,6 +288,7 @@ async fn create_agent_ds(
     agent_namespace: &str,
     ingester_addr: &str,
     log_k8s_events: &str,
+    enrich_logs_with_k8s: &str,
     agent_log_level: &str,
 ) {
     let sa = serde_json::from_value(serde_json::json!({
@@ -423,6 +424,7 @@ async fn create_agent_ds(
         "false",
         agent_name,
         log_k8s_events,
+        enrich_logs_with_k8s,
         agent_log_level,
     );
     //
@@ -476,6 +478,7 @@ fn get_agent_ds_yaml(
     use_ssl: &str,
     agent_name: &str,
     log_k8s_events: &str,
+    enrich_logs_with_k8s: &str,
     log_level: &str,
 ) -> DaemonSet {
     serde_json::from_value(serde_json::json!({
@@ -535,6 +538,10 @@ fn get_agent_ds_yaml(
                                 {
                                     "name": "LOGDNA_LOG_K8S_EVENTS",
                                     "value": log_k8s_events
+                                },
+                                {
+                                    "name": "LOGDNA_USE_K8S_LOG_ENRICHMENT",
+                                    "value": enrich_logs_with_k8s,
                                 },
                                 {
                                     "name": "POD_APP_LABEL",
@@ -700,12 +707,14 @@ async fn test_k8s_enrichment() {
     let _ = env_logger::Builder::from_default_env().try_init();
     let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();
 
+    tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+
     let client = Client::try_default().await.unwrap();
 
     let pod_name = "socat-listener";
     let pod_node_addr = start_line_proxy_pod(client.clone(), pod_name, "default", 30001).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -740,11 +749,12 @@ async fn test_k8s_enrichment() {
             agent_namespace,
             &mock_ingester_socket_addr_str,
             "never",
+            "always",
             "warn",
         )
         .await;
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
         print_pod_logs(
             client.clone(),
@@ -864,7 +874,7 @@ async fn test_k8s_events_logged() {
             80,
         )
         .await;
-        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
         create_agent_ds(
             client.clone(),
@@ -872,12 +882,13 @@ async fn test_k8s_events_logged() {
             agent_namespace,
             &mock_ingester_socket_addr_str,
             "always",
+            "always",
             "warn",
         )
         .await;
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_millis(2_000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
         let map = received.lock().await;
 
         let unknown_log_lines = map.get(" unknown").unwrap();

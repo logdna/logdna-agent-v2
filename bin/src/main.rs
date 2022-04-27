@@ -20,15 +20,15 @@ use journald::journalctl::create_journalctl_source;
 use k8s::event_source::K8sEventStream;
 
 use k8s::middleware::K8sMetadata;
-use k8s::K8sTrackingConf;
+use k8s::{create_k8s_client_default_from_env, K8sTrackingConf};
 use metrics::Metrics;
 use middleware::line_rules::LineRules;
+use middleware::meta_rules::{MetaRules, MetaRulesConfig};
 use middleware::Executor;
 
 use pin_utils::pin_mut;
 use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::signal::*;
@@ -59,7 +59,7 @@ async fn main() {
     dep_audit::get_auditable_dependency_list()
         .map_or_else(|e| trace!("{}", e), |d| trace!("{}", d));
 
-    let config = match Config::new() {
+    let config = match Config::new(std::env::args_os()) {
         Ok(v) => v,
         Err(e) => {
             error!("config error: {}", e);
@@ -96,6 +96,7 @@ async fn main() {
         .as_ref()
         .map(|os| (os.write_handle(), os.flush_handle()));
 
+    let user_agent = config.http.template.user_agent.clone();
     let (retry, retry_stream) = retry(
         config.http.retry_dir,
         config.http.retry_base_delay,
@@ -117,30 +118,79 @@ async fn main() {
     }
 
     let mut executor = Executor::new();
-    if config.log.use_k8s_enrichment == K8sTrackingConf::Always
-        && PathBuf::from("/var/log/containers/").exists()
-    {
-        match K8sMetadata::new().await {
-            Ok(v) => {
-                executor.register(v);
-                info!("Registered k8s metadata middleware");
+
+    let k8s_event_stream = match create_k8s_client_default_from_env(user_agent) {
+        Ok(k8s_client) => {
+            if config.log.use_k8s_enrichment == K8sTrackingConf::Always
+                && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
+            {
+                let node_name = std::env::var("NODE_NAME").ok();
+                match K8sMetadata::new(k8s_client.clone(), node_name.as_deref()).await {
+                    Ok((driver, v)) => {
+                        tokio::spawn(driver);
+                        executor.register(v);
+                        info!("Registered k8s metadata middleware");
+                    }
+                    Err(e) => {
+                        let message = format!(
+                            "The agent could not access k8s api after several attempts: {}",
+                            e
+                        );
+                        error!("{}", message);
+                        panic!("{}", message);
+                    }
+                };
             }
-            Err(e) => {
-                let message = format!(
-                    "The agent could not access k8s api after several attempts: {}",
-                    e
-                );
-                error!("{}", message);
-                panic!("{}", message);
-            }
-        };
-    }
+
+            let k8s_event_stream = match config.log.log_k8s_events {
+                K8sTrackingConf::Never => None,
+                K8sTrackingConf::Always => {
+                    let pod_name = std::env::var("POD_NAME").ok();
+                    let namespace = std::env::var("NAMESPACE").ok();
+                    let pod_label = std::env::var("POD_APP_LABEL").ok();
+                    match (pod_name, namespace, pod_label) {
+                        (Some(pod_name), Some(namespace), Some(pod_label)) => Some(
+                            K8sEventStream::new(k8s_client.clone(), pod_name, namespace, pod_label),
+                        ),
+                        (pn, n, pl) => {
+                            if pn.is_none() {
+                                warn!("Kubernetes event logging is configured, but POD_NAME env is not set")
+                            }
+                            if n.is_none() {
+                                warn!(
+                                    "Kubernetes event logging is configured, but NAMESPACE env is not set"
+                                )
+                            }
+                            if pl.is_none() {
+                                warn!("Kubernetes event logging is configured, but POD_APP_LABEL env is not set")
+                            }
+                            warn!("Kubernetes event logging disabled");
+                            None
+                        }
+                    }
+                }
+            };
+            k8s_event_stream
+        }
+        Err(e) => {
+            warn!("Unable to initialise kubernetes client: {}", e);
+            None
+        }
+    };
 
     match LineRules::new(
         &config.log.line_exclusion_regex,
         &config.log.line_inclusion_regex,
         &config.log.line_redact_regex,
     ) {
+        Ok(v) => executor.register(v),
+        Err(e) => {
+            error!("line regex is invalid: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    match MetaRules::new(MetaRulesConfig::from_env()) {
         Ok(v) => executor.register(v),
         Err(e) => {
             error!("line regex is invalid: {}", e);
@@ -218,37 +268,6 @@ async fn main() {
             Ok(lazy_lin_ser) => Some(StrictOrLazyLineBuilder::Lazy(lazy_lin_ser)),
         }
     });
-
-    let k8s_event_stream = match config.log.log_k8s_events {
-        K8sTrackingConf::Never => None,
-        K8sTrackingConf::Always => {
-            let pod_name = std::env::var("POD_NAME").ok();
-            let namespace = std::env::var("NAMESPACE").ok();
-            let pod_label = std::env::var("POD_APP_LABEL").ok();
-            match (pod_name, namespace, pod_label) {
-                (Some(pod_name), Some(namespace), Some(pod_label)) => {
-                    K8sEventStream::try_default(pod_name, namespace, pod_label)
-                        .map_err(|e| warn!("Error initialising Kubernetes event logging: {}", e))
-                        .ok()
-                }
-                (pn, n, pl) => {
-                    if pn.is_none() {
-                        warn!("Kubernetes event logging is configured, but POD_NAME env is not set")
-                    }
-                    if n.is_none() {
-                        warn!(
-                            "Kubernetes event logging is configured, but NAMESPACE env is not set"
-                        )
-                    }
-                    if pl.is_none() {
-                        warn!("Kubernetes event logging is configured, but POD_APP_LABEL env is not set")
-                    }
-                    warn!("Kubernetes event logging disabled");
-                    None
-                }
-            }
-        }
-    };
 
     let k8s_event_source: Option<_> = if let Some(fut) = k8s_event_stream.map(|e| e.event_stream())
     {

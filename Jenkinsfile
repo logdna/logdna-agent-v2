@@ -5,7 +5,11 @@ def publishGCRImage = false
 def publishDockerhubICRImages = false
 
 pipeline {
-    agent any
+    agent {
+        node {
+            label "rust-x86_64"
+        }
+    }
     options {
         timeout time: 8, unit: 'HOURS'
         timestamps()
@@ -28,6 +32,7 @@ pipeline {
     parameters {
         booleanParam(name: 'PUBLISH_GCR_IMAGE', description: 'Publish docker image to Google Container Registry (GCR)', defaultValue: false)
         booleanParam(name: 'PUBLISH_ICR_IMAGE', description: 'Publish docker image to IBM Container Registry (ICR) and Dockerhub', defaultValue: false)
+        string(name: 'RUST_IMAGE_SUFFIX', description: 'Build image tag suffix', defaultValue: "")
     }
     stages {
         stage('Validate PR Source') {
@@ -192,7 +197,9 @@ pipeline {
                 stage('Scanning Images') {
                     steps {
                         sh 'ARCH=x86_64 make sysdig_secure_images'
-                        sysdig engineCredentialsId: 'sysdig-secure-api-credentials', name: 'sysdig_secure_images', inlineScanning: true
+                        sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
+                        sh 'ARCH=aarch64 make sysdig_secure_images'
+                        sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
                     }
                 }
                 stage('Publish static binary') {
@@ -219,7 +226,7 @@ pipeline {
                     }
                 }
                 stage('Publish GCR images') {
-                    when {                        
+                    when {
                         environment name: 'PUBLISH_GCR_IMAGE', value: 'true'
                     }
                     steps {

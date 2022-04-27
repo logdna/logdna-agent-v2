@@ -13,7 +13,7 @@ state = { package = "state", path = "../state" }
 logdna-client = { git = "https://github.com/logdna/logdna-rust.git", branch="0.6.x", version = "0.6" }
 
 #io
-tokio = { version = "1", features = ["fs", "io-util"] }
+tokio = { version = "1", features = ["fs", "io-util", "macros"] }
 async-compat = "0.2.1"
 #utils
 log = "0.4"

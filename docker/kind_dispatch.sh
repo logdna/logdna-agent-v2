@@ -24,16 +24,18 @@ _term() {
 trap _term TERM
 trap _term INT
 
+echo "Building socat image"
+DOCKER_BUILDKIT=1 docker build -t "socat:local" $curpath/socat
+
 echo "Building Agent Image"
 DOCKER_BUILDKIT=1 docker build $curpath/.. \
   -f Dockerfile.debian \
   -t "$image" \
   --pull \
   --progress=plain \
-  --build-arg BUILD_IMAGE=docker.io/logdna/build-images:rust-buster-stable \
+  --build-arg BUILD_IMAGE=docker.io/logdna/build-images:rust-buster-1-stable-$(get_host_arch) \
   --build-arg SCCACHE_BUCKET=$SCCACHE_BUCKET \
-  --build-arg SCCACHE_REGION=$SCCACHE_REGION \
-  2> $curpath/../target/.docker_build.log || cat $curpath/../target/.docker_build.log
+  --build-arg SCCACHE_REGION=$SCCACHE_REGION
 
 echo "Loading into kind"
 
@@ -45,6 +47,7 @@ else
 fi
 
 kind load docker-image $image --name $cluster_name
+kind load docker-image "socat:local" --name $cluster_name
 
 echo "Creating k8s resources"
 KUBECONFIG=$curpath/.kind_config_host kubectl apply -f $curpath/kind/test-resources.yaml

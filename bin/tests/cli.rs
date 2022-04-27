@@ -728,7 +728,8 @@ proptest! {
                         ..Default::default()
                     });
 
-                    let stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
+                    let mut stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
+                    common::wait_for_event("initialized", &mut stderr_reader);
                     std::thread::spawn(move || {
                         stderr_reader.lines().for_each(|line| debug!("{:?}", line))
                     });
@@ -825,7 +826,8 @@ fn lookback_none_lines_are_delivered() {
                 });
                 debug!("spawned agent");
 
-                let stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
+                let mut stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
+                common::wait_for_event("initialized", &mut stderr_reader);
                 std::thread::spawn(move || {
                     stderr_reader.lines().for_each(|line| debug!("{:?}", line))
                 });
