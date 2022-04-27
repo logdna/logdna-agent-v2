@@ -11,7 +11,16 @@ OWN_DIR=$(dirname "$OWN_PATH")
 pushd "$OWN_DIR/.."
 
 ./docker/kind_start.sh
+# workaround for Rust
 sed -i "s/127.0.0.1/agent-dev-cluster-control-plane/" ./docker/.kind_config_host
+HOSTS=$(</etc/hosts)
+if [[ ! $HOSTS =~ "agent-dev-cluster-control-plane" ]]; then
+  echo "Add '127.0.0.1 agent-dev-cluster-control-plane' to /etc/hosts file!"
+  exit 1
+fi
+
+echo "Creating sample-pod & sample-job"
+KUBECONFIG=./docker/.kind_config_host kubectl apply -f ./docker/kind/test-resources.yaml
 
 source ./docker/lib.sh
 
