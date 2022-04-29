@@ -160,6 +160,7 @@ log:
   dirs:
     - /var/log1/
 journald: {{}}
+startup: {{}}
 "
     )?;
 
@@ -472,6 +473,7 @@ log:
   use_k8s_enrichment: always
   log_k8s_events: always
 journald: {{}}
+startup: {{}}
     "
     )
     .unwrap();
@@ -655,7 +657,8 @@ http:
 log:
   dirs:
     - /var/log1/
-journald: {}",
+journald: {}
+startup: {}",
     )?;
 
     test_command(

@@ -36,6 +36,7 @@ pub mod env {
     pub const METRICS_PORT: &str = "LOGDNA_METRICS_PORT";
     pub const USE_K8S_LOG_ENRICHMENT: &str = "LOGDNA_USE_K8S_LOG_ENRICHMENT";
     pub const LOG_K8S_EVENTS: &str = "LOGDNA_LOG_K8S_EVENTS";
+    pub const K8S_STARTUP_LEASE: &str = "LOGDNA_K8S_STARTUP_LEASE";
     pub const LINE_EXCLUSION: &str = "LOGDNA_LINE_EXCLUSION_REGEX";
     pub const LINE_INCLUSION: &str = "LOGDNA_LINE_INCLUSION_REGEX";
     pub const REDACT: &str = "LOGDNA_REDACT_REGEX";
@@ -165,6 +166,12 @@ pub struct ArgumentOptions {
     /// the value of `use_k8s_enrichment` setting value ("always" or "never"). Defaults to "never".
     #[structopt(long, env = env::LOG_K8S_EVENTS)]
     log_k8s_events: Option<K8sTrackingConf>,
+
+    /// Determine wheather or not to look for available K8s startup leases before attempting
+    /// to start the agent; used to throttle startup on very large K8s clusters.
+    /// Defaults to "off".
+    #[structopt(long = "startup-lease", env = env::K8S_STARTUP_LEASE)]
+    k8s_startup_lease: Option<String>,
 
     /// The directory in which the agent will store its state database. Note that the agent must
     /// have write access to the directory and be a persistent volume.
@@ -338,6 +345,10 @@ impl ArgumentOptions {
             raw.log.log_k8s_events = self.log_k8s_events.map(|v| v.to_string());
         }
 
+        if self.k8s_startup_lease.is_some() {
+            raw.startup.option = self.k8s_startup_lease;
+        }
+
         if self.db_path.is_some() {
             raw.log.db_path = self.db_path.map(PathBuf::from);
         }
@@ -496,7 +507,7 @@ fn combine(escaped: &str, token: &str) -> String {
 mod test {
     use super::*;
 
-    use crate::raw::{Config as RawConfig, Rules};
+    use crate::raw::{Config as RawConfig, K8sStartupLeaseConfig, Rules};
     use humanize_rs::bytes::Unit;
     use std::env::set_var;
 
@@ -630,6 +641,7 @@ mod test {
         assert_eq!(config.log.log_k8s_events, None);
         assert_eq!(config.log.db_path, None);
         assert_eq!(config.log.metrics_port, None);
+        assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
     }
 
     #[test]
@@ -651,6 +663,7 @@ mod test {
             use_k8s_enrichment: Some(K8sTrackingConf::Always),
             log_k8s_events: Some(K8sTrackingConf::Never),
             journald_paths: vec_strings!("/a"),
+            k8s_startup_lease: Some(String::from("teston")),
             ingest_timeout: Some(1111111),
             ingest_buffer_size: Some(222222),
             retry_dir: some_string!("/tmp/argv"),
@@ -682,6 +695,7 @@ mod test {
         assert_eq!(config.log.db_path, Some(PathBuf::from("a/b/c")));
         assert_eq!(config.log.metrics_port, Some(9089));
         assert_eq!(config.journald.paths, Some(vec_paths!["/a"]));
+        assert_eq!(config.startup.option, Some(String::from("teston")));
     }
 
     #[test]

@@ -68,6 +68,7 @@ pub struct Config {
     pub http: HttpConfig,
     pub log: LogConfig,
     pub journald: JournaldConfig,
+    pub startup: K8sStartupLeaseConfig,
 }
 
 #[derive(Debug)]
@@ -101,6 +102,11 @@ pub struct LogConfig {
 #[derive(Debug)]
 pub struct JournaldConfig {
     pub paths: Vec<PathBuf>,
+}
+
+#[derive(Debug)]
+pub struct K8sStartupLeaseConfig {
+    pub option: String,
 }
 
 impl Config {
@@ -322,6 +328,10 @@ impl TryFrom<RawConfig> for Config {
             }
         }
 
+        let startup = K8sStartupLeaseConfig {
+            option: raw.startup.option.unwrap_or_default(),
+        };
+
         let journald = JournaldConfig {
             paths: raw.journald.paths.unwrap_or_default().into_iter().collect(),
         };
@@ -330,6 +340,7 @@ impl TryFrom<RawConfig> for Config {
             http,
             log,
             journald,
+            startup,
         })
     }
 }

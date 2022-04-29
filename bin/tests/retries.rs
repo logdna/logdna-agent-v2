@@ -86,8 +86,8 @@ async fn test_retry_disk_limit() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_retry_location() {
     let _ = env_logger::Builder::from_default_env().try_init();
-    let timeout = 200;
-    let base_delay_ms = 300;
+    let timeout = 150;
+    let base_delay_ms = 600;
     let step_delay_ms = 100;
     let metrics_port = 9881;
 
@@ -103,11 +103,12 @@ async fn test_retry_location() {
                 .iter()
                 .any(|l| l.file.as_deref().unwrap().contains("test.log"))
             {
-                return Some(Box::pin(tokio::time::sleep(Duration::from_millis(
-                    timeout * 2,
-                ))));
+                Some(Box::pin(tokio::time::sleep(Duration::from_millis(
+                    timeout * 10,
+                ))))
+            } else {
+                None
             }
-            None
         })
     });
 
@@ -580,6 +581,7 @@ log:
       - /var/log/btmp
     regex: []
 journald: {{}}
+startup: {{}}
 ",
         timeout, retry_base_delay_ms, retry_step_delay_ms, retry_dir_line, disk_limit_line
     )
