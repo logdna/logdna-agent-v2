@@ -18,9 +18,11 @@ use journald::libjournald::source::create_source;
 use journald::journalctl::create_journalctl_source;
 
 use k8s::event_source::K8sEventStream;
+use k8s::lease::{get_available_lease, K8S_STARTUP_LEASE_LABEL, K8S_STARTUP_LEASE_RETRY_ATTEMPTS};
 
 use k8s::middleware::K8sMetadata;
 use k8s::{create_k8s_client_default_from_env, K8sTrackingConf};
+use kube::Client as Kube_Client;
 use metrics::Metrics;
 use middleware::line_rules::LineRules;
 use middleware::meta_rules::{MetaRules, MetaRulesConfig};
@@ -30,9 +32,9 @@ use pin_utils::pin_mut;
 use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::signal::*;
 use tokio::sync::Mutex;
+use tokio::time::Duration;
 
 mod dep_audit;
 mod stream_adapter;
@@ -119,8 +121,16 @@ async fn main() {
 
     let mut executor = Executor::new();
 
+    let mut k8s_claimed_lease: Option<String> = None;
     let k8s_event_stream = match create_k8s_client_default_from_env(user_agent) {
         Ok(k8s_client) => {
+            info!("K8s Config Startup Option: {:?}", &config.startup.option);
+            check_startup_lease_status(
+                Some(&config.startup.option),
+                &mut k8s_claimed_lease,
+                k8s_client.clone(),
+            )
+            .await;
             if config.log.use_k8s_enrichment == K8sTrackingConf::Always
                 && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
             {
@@ -170,10 +180,26 @@ async fn main() {
                     }
                 }
             };
+
+            match k8s_claimed_lease.as_ref() {
+                Some(lease) => {
+                    info!("Releasing lease: {:?}", lease);
+                    let k8s_lease_api = k8s::lease::get_k8s_lease_api(
+                        &std::env::var("NAMESPACE").unwrap(),
+                        k8s_client.clone(),
+                    )
+                    .await;
+                    k8s::lease::release_lease(lease, &k8s_lease_api).await;
+                }
+                None => {
+                    info!("No K8s lease claimed during startup.");
+                }
+            }
+
             k8s_event_stream
         }
         Err(e) => {
-            warn!("Unable to initialise kubernetes client: {}", e);
+            warn!("Unable to initialize kubernetes client: {}", e);
             None
         }
     };
@@ -473,6 +499,55 @@ async fn main() {
         signal_name = get_signal() => {
             info!("Received {} signal, shutting down", signal_name)
         }
+    }
+}
+
+async fn check_startup_lease_status(
+    start_option: Option<&str>,
+    claimed_lease_ref: &mut Option<String>,
+    client: Kube_Client,
+) {
+    let max_attempts = match start_option {
+        Some("attempt") => {
+            info!("Getting agent-startup-lease (making limited attempts)");
+            K8S_STARTUP_LEASE_RETRY_ATTEMPTS
+        }
+        Some("always") => {
+            info!("Getting agent-startup-lease (trying forever)");
+            -1
+        }
+        _ => {
+            info!(
+                "Kubernetes cluster initialised, K8s startup lease set to: {:?}",
+                start_option
+            );
+            return;
+        }
+    };
+
+    let k8s_lease_api =
+        k8s::lease::get_k8s_lease_api(&std::env::var("NAMESPACE").unwrap(), client).await;
+    let mut attempts = 0;
+    while (max_attempts == -1) || (attempts < max_attempts) {
+        info!("Attempting connection: {}", attempts);
+        match get_available_lease(K8S_STARTUP_LEASE_LABEL, &k8s_lease_api).await {
+            Some(available_lease) => {
+                info!("Lease available: {:?}", available_lease);
+                k8s::lease::claim_lease(
+                    available_lease,
+                    std::env::var("POD_NAME").unwrap(),
+                    &k8s_lease_api,
+                    claimed_lease_ref,
+                )
+                .await;
+                break;
+            }
+            None => {
+                attempts += 1;
+                info!("No lease availabe at this time. Waiting 1 second...");
+                tokio::time::sleep(Duration::from_millis(1000)).await;
+            }
+        };
     }
 }
 
