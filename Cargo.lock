@@ -1110,8 +1110,8 @@ dependencies = [
  "http 0.2.6",
  "hyper",
  "log",
- "rustls",
- "rustls-native-certs",
+ "rustls 0.20.2",
+ "rustls-native-certs 0.6.1",
  "tokio",
  "tokio-rustls",
 ]
@@ -1370,11 +1370,11 @@ dependencies = [
  "hyper-rustls",
  "hyper-timeout",
  "jsonpath_lib",
- "k8s-openapi",
- "kube-core",
- "pem",
- "pin-project",
- "rustls",
+ "k8s-openapi 0.14.0",
+ "kube-core 0.69.1",
+ "pem 1.0.2",
+ "pin-project 1.0.10",
+ "rustls 0.20.2",
  "rustls-pemfile",
  "secrecy",
  "serde",
@@ -1543,7 +1543,7 @@ dependencies = [
  "proptest",
  "rand",
  "rcgen",
- "rustls",
+ "rustls 0.20.2",
  "rustls-pemfile",
  "serde",
  "serde_json",
@@ -1577,8 +1577,8 @@ dependencies = [
  "hyper",
  "hyper-rustls",
  "log",
- "pin-project",
- "rustls",
+ "pin-project 1.0.10",
+ "rustls 0.20.2",
  "serde",
  "serde_json",
  "serde_urlencoded",
@@ -1612,7 +1612,7 @@ dependencies = [
  "hyper-rustls",
  "log",
  "rcgen",
- "rustls",
+ "rustls 0.20.2",
  "rustls-pemfile",
  "serde",
  "serde_json",
@@ -2467,9 +2467,22 @@ checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
 name = "rustls"
-version = "0.20.4"
+version = "0.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4fbfeb8d0ddb84706bc597a5574ab8912817c52a397f819e5b614e2265206921"
+checksum = "35edb675feee39aec9c99fa5ff985081995a06d594114ae14cbe797ad7b7a6d7"
+dependencies = [
+ "base64",
+ "log",
+ "ring",
+ "sct 0.6.1",
+ "webpki 0.21.4",
+]
+
+[[package]]
+name = "rustls"
+version = "0.20.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d37e5e2290f3e040b594b1a9e04377c2c671f1a1cfd9bfdef82106ac1c113f84"
 dependencies = [
  "log",
  "ring",
@@ -3061,7 +3074,7 @@ version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a27d5f2b839802bd8267fa19b0530f5a08b9c08cd417976be2a65d130fe1c11b"
 dependencies = [
- "rustls",
+ "rustls 0.20.2",
  "tokio",
  "webpki",
 ]
