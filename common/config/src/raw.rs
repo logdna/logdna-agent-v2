@@ -289,9 +289,7 @@ pub struct LogConfig {
     pub use_k8s_enrichment: Option<String>,
     pub log_k8s_events: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub k8s_exclude: Option<K8sRules>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub k8s_include: Option<K8sRules>,
+    pub k8s_exclude_rules: Option<K8sRules>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
@@ -321,19 +319,20 @@ impl Merge for Rules {
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
 pub struct K8sRules {
-    pub app: Vec<String>,
     pub namespace: Vec<String>,
+    pub pod: Vec<String>,
     pub label: Vec<String>,
-    pub annotation: Vec<String>
+    pub annotation: Vec<String>,
 }
 
 impl Merge for K8sRules {
-   fn merge(&mut self, other: &Self, default: &Self) {
-       self.app.merge(&other.app, &default.app);
-       self.namespace.merge(&other.namespace, &default.namespace);
-       self.label.merge(&other.label, &default.annotation);
-       self.annotation.merge(&other.annotation, &default.annotation);
-   } 
+    fn merge(&mut self, other: &Self, default: &Self) {
+        self.namespace.merge(&other.namespace, &default.namespace);
+        self.pod.merge(&other.pod, &default.pod);
+        self.label.merge(&other.label, &default.annotation);
+        self.annotation
+            .merge(&other.annotation, &default.annotation);
+    }
 }
 
 impl Merge for Config {
@@ -424,13 +423,7 @@ impl Default for LogConfig {
             lookback: None,
             use_k8s_enrichment: None,
             log_k8s_events: None,
-            k8s_exclude: None,
-            k8s_include: Some(K8sRules {
-                app: vec!["*".parse().unwrap()],
-                namespace: vec!["*".parse().unwrap()],
-                label: vec!["*:*".parse().unwrap()],
-                annotation: vec!["*:*".parse().unwrap()]
-            })
+            k8s_exclude_rules: None,
         }
     }
 }
@@ -454,6 +447,8 @@ impl Merge for LogConfig {
             .merge(&other.use_k8s_enrichment, &default.use_k8s_enrichment);
         self.log_k8s_events
             .merge(&other.log_k8s_events, &default.log_k8s_events);
+        self.k8s_exclude_rules
+            .merge(&other.k8s_exclude_rules, &default.k8s_exclude_rules);
     }
 }
 
@@ -490,15 +485,7 @@ mod tests {
         assert!(new_config.is_ok());
         let new_config = new_config.unwrap();
         assert_eq!(config, new_config);
-        assert_eq!(
-            config.log.k8s_include,
-            Some(K8sRules{
-                app: vec_strings!["*"],
-                namespace: vec_strings!["*"],
-                label: vec_strings!["*:*"],
-                annotation: vec_strings!["*:*"],
-            })
-        );
+        assert_eq!(config.log.k8s_exclude_rules, None);
     }
 
     #[test]
