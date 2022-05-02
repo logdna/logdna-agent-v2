@@ -4,7 +4,6 @@ use http::types::params::{Params, Tags};
 use humanize_rs::bytes::Bytes;
 use k8s::K8sTrackingConf;
 use std::env::var as env_var;
-use std::f32::consts::E;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use structopt::StructOpt;
@@ -488,7 +487,9 @@ fn set_k8s_rules(
 ) {
     let k8s_rules = existing.get_or_insert(K8sRules::default());
     if namespace.is_some() {
-        k8s_rules.namespace.append(&mut with_csv(namespace.unwrap()))
+        k8s_rules
+            .namespace
+            .append(&mut with_csv(namespace.unwrap()))
     };
     if pod.is_some() {
         k8s_rules.pod.append(&mut with_csv(pod.unwrap()))
@@ -497,7 +498,9 @@ fn set_k8s_rules(
         k8s_rules.label.append(&mut with_csv(label.unwrap()))
     };
     if annotation.is_some() {
-        k8s_rules.annotation.append(&mut with_csv(annotation.unwrap()))
+        k8s_rules
+            .annotation
+            .append(&mut with_csv(annotation.unwrap()))
     };
 }
 
@@ -695,7 +698,7 @@ mod test {
         assert_eq!(config.log.metrics_port, None);
         assert_eq!(
             config.log.k8s_exclude_rules,
-            Some(K8sRules{
+            Some(K8sRules {
                 namespace: Vec::new(),
                 pod: Vec::new(),
                 label: Vec::new(),
