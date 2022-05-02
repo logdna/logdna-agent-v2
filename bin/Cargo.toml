@@ -10,7 +10,7 @@
 
 [package]
 name = "logdna-agent"
-version = "3.4.0-beta.1"
+version = "3.6.0-dev"
 authors = ["CJP10 <connor.peticca@logdna.com>"]
 edition = "2018"
 build = "build.rs"
@@ -33,13 +33,14 @@ state = { package = "state", path = "../common/state" }
 bytes = "1"
 time = "0.3"
 async-trait = "0.1"
+kube = { version = "0.69", default-features = false, features = ["rustls-tls"] }
 log = "0.4"
 env_logger = "0.8"
 anyhow = "1"
 serde_yaml = "0.8"
 tikv-jemallocator  = { version = "0.4.1", default-features = false, features = ["stats"] }
 futures = "0.3"
-tokio = { version = "1", features = ["rt-multi-thread", "signal"] }
+tokio = { version = "1", features = ["rt-multi-thread", "signal", "time"] }
 tokio-stream = "0.1"
 pin-utils = "0.1"
 
@@ -58,9 +59,9 @@ journald_tests = ["journald/journald_tests"]
 [dev-dependencies]
 assert_cmd = "1"
 escargot = "0.5"
-kube = { version = "0.59", default-features = false, features = ["rustls-tls"] }
-kube-runtime = "0.59"
-k8s-openapi = { version = "0.13", default_features = false, features = ["v1_16"] }
+kube = { version = "0.69", default-features = false, features = ["rustls-tls"] }
+kube-runtime = "0.69"
+k8s-openapi = { version = "0.14", default_features = false, features = ["v1_16"] }
 pnet = "0.28"
 itertools = "0.10"
 predicates = "2"

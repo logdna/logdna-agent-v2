@@ -15,6 +15,7 @@ use hyper::http::header;
 
 pub mod errors;
 pub mod event_source;
+pub mod lease;
 pub mod middleware;
 pub mod restarting_stream;
 

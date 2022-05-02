@@ -196,6 +196,7 @@ pub struct Config {
     pub http: HttpConfig,
     pub log: LogConfig,
     pub journald: JournaldConfig,
+    pub startup: K8sStartupLeaseConfig,
 }
 
 impl Config {
@@ -293,6 +294,18 @@ pub struct LogConfig {
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
+pub struct K8sStartupLeaseConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub option: Option<String>,
+}
+
+impl Merge for K8sStartupLeaseConfig {
+    fn merge(&mut self, other: &Self, default: &Self) {
+        self.option.merge(&other.option, &default.option);
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
 pub struct JournaldConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paths: Option<Vec<PathBuf>>,
@@ -340,6 +353,7 @@ impl Merge for Config {
         self.http.merge(&other.http, &default.http);
         self.log.merge(&other.log, &default.log);
         self.journald.merge(&other.journald, &default.journald);
+        self.startup.merge(&other.startup, &default.startup);
     }
 }
 
@@ -482,10 +496,12 @@ mod tests {
         let yaml = yaml.unwrap();
         // make sure the config can be deserialized
         let new_config = serde_yaml::from_str::<Config>(&yaml);
+        let k8s_config = K8sStartupLeaseConfig { option: None };
         assert!(new_config.is_ok());
         let new_config = new_config.unwrap();
         assert_eq!(config, new_config);
         assert_eq!(config.log.k8s_exclude_rules, None);
+        assert_eq!(config.startup, k8s_config);
     }
 
     #[test]
@@ -687,6 +703,7 @@ log:
     - /var/log1/
     - /var/log2/
 journald: {}
+startup: {}
 ",
         )?;
 
@@ -704,6 +721,7 @@ journald: {}
             config.log.dirs,
             vec![PathBuf::from("/var/log1/"), PathBuf::from("/var/log2/")]
         );
+        assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
         Ok(())
     }
 
@@ -1122,7 +1140,8 @@ log:
     dirs:
         - /var/log1/
         - /var/log2/
-journald: {}",
+journald: {}
+startup: {}",
         )?;
 
         let conf_paths: Vec<&Path> = vec![&legacy_conf_path, &new_conf_path];
@@ -1192,7 +1211,8 @@ log:
     dirs:
         - /var/log1/
         - /var/log2/
-journald: {}",
+journald: {}
+startup: {}",
         )?;
 
         let conf_paths: Vec<&Path> = vec![&legacy_conf_path, &missing_file, &new_conf_path];

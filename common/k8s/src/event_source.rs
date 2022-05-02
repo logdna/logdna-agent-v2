@@ -220,7 +220,7 @@ impl TryFrom<EventLog> for LineBuilder {
 }
 
 pub struct K8sEventStream {
-    client: Client,
+    pub client: Client,
     pod_name: String,
     namespace: String,
     pod_label: String,
