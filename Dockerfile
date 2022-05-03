@@ -1,11 +1,12 @@
 # syntax = docker/dockerfile:1.0-experimental
 
+ARG UBI_VERSION=8.5
 ARG TARGET_ARCH=x86_64
 ARG BUILD_IMAGE
 # Image that runs natively on the BUILDPLATFORM to produce cross compile
 # artifacts
 
-FROM --platform=${TARGETPLATFORM} registry.access.redhat.com/ubi8/ubi-minimal:8.4 as target
+FROM --platform=${TARGETPLATFORM} registry.access.redhat.com/ubi8/ubi-minimal:${UBI_VERSION} as target
 
 FROM --platform=${BUILDPLATFORM} ${BUILD_IMAGE} as build
 
@@ -87,8 +88,11 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     cp ./target/${TARGET}/release/logdna-agent /logdna-agent && \
     sccache --show-stats
 
+
+ARG UBI_VERSION
+
 # Use Red Hat Universal Base Image Minimal as the final base image
-FROM --platform=${TARGETPLATFORM} registry.access.redhat.com/ubi8/ubi-minimal:8.4
+FROM --platform=${TARGETPLATFORM} registry.access.redhat.com/ubi8/ubi-minimal:${UBI_VERSION}
 
 ARG REPO
 ARG BUILD_TIMESTAMP
