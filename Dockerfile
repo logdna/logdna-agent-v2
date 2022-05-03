@@ -1,14 +1,22 @@
 # syntax = docker/dockerfile:1.0-experimental
-ARG BUILD_IMAGE
-ARG TARGET
 
-FROM ${BUILD_IMAGE} as build
+ARG CROSS_COMPILER_TARGET_ARCH=x86_64
+ARG BUILD_IMAGE
+# Image that runs natively on the BUILDPLATFORM to produce cross compile
+# artifacts
+
+FROM --platform=${TARGETPLATFORM} registry.access.redhat.com/ubi8/ubi-minimal:8.4 as target
+
+FROM --platform=${BUILDPLATFORM} ${BUILD_IMAGE} as build
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ARG CROSS_COMPILER_TARGET_ARCH
+ARG TARGET
 
 ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 
 ARG FEATURES
-
 
 ARG SCCACHE_BUCKET
 ARG SCCACHE_REGION
@@ -22,33 +30,59 @@ ARG BUILD_ENVS
 
 ARG TARGET
 
-ARG RUSTFLAGS
-ENV RUSTFLAGS=${RUSTFLAGS}
-
 ENV RUST_LOG=rustc_codegen_ssa::back::link=info
 
 # Create the directory for agent repo
 WORKDIR /opt/logdna-agent-v2
 
+# Install the target image libraries we want to link against.
+# hadolint ignore=DL3008
+RUN apt-get update && apt-get install --no-install-recommends -y dnf
+COPY --from=target /etc/yum.repos.d/ubi.repo /etc/yum.repos.d/ubi.repo
+COPY --from=target /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+ENV UBI_PACKAGES="systemd-libs systemd-devel glibc glibc-devel gcc libstdc++-devel libstdc++-static kernel-headers"
+RUN dnf install --releasever=8 --forcearch="${CROSS_COMPILER_TARGET_ARCH}" \
+        --installroot=/sysroot/ubi8/ --repo=ubi-8-baseos --repo=ubi-8-appstream \
+        --repo=ubi-8-codeready-builder -y $UBI_PACKAGES
+
 # Add the actual agent source files
 COPY . .
 
+# Set up env vars so that the compilers know to link against the target image libraries rather than the base image's
+ENV C_INCLUDES="-isystem /sysroot/debian-buster-${TARGET_ARCH}/usr/lib/clang/13.0.1/include/ -isystem /sysroot/ubi8/usr/include -isystem /sysroot/ubi8/usr/include/linux/"
+ENV LD_LIBRARY_PATH="-L /sysroot/ubi8/usr/lib/gcc/${TARGET_ARCH}-redhat-linux/8/ -L /sysroot/ubi8/lib64"
+
+ENV CFLAGS_x86_64_unknown_linux_gnu="${CFLAGS_x86_64_unknown_linux_gnu} --sysroot /sysroot/ubi8 -nostdinc ${C_INCLUDES} -B/sysroot/ubi8/usr/lib/gcc/x86_64-redhat-linux/8/ ${LD_LIBRARY_PATH}"
+ENV CXXFLAGS_x86_64_unknown_linux_gnu="${CXXFLAGS_x86_64_unknown_linux_gnu} --sysroot /sysroot/ubi8 -nostdinc -nostdinc++ -isystem /sysroot/ubi8/usr/include/c++/8/x86_64-redhat-linux -isystem /sysroot/ubi8/usr/include/c++/8/ ${C_INCLUDES} -B/sysroot/ubi8/usr/lib/gcc/x86_64-redhat-linux/8/ ${LD_LIBRARY_PATH}"
+
+ENV CFLAGS_aarch64_unknown_linux_gnu="${CFLAGS_aarch64_unknown_linux_gnu} --sysroot /sysroot/ubi8 -nostdinc ${C_INCLUDES} -B/sysroot/ubi8/usr/lib/gcc/aarch64-redhat-linux/8/ ${LD_LIBRARY_PATH}"
+ENV CXXFLAGS_aarch64_unknown_linux_gnu="${CXXFLAGS_aarch64_unknown_linux_gnu} --sysroot /sysroot/ubi8 -nostdinc -nostdinc++ -isystem /sysroot/ubi8/usr/include/c++/8/aarch64-redhat-linux -isystem /sysroot/ubi8/usr/include/c++/8/ ${C_INCLUDES} -B/sysroot/ubi8/usr/lib/gcc/aarch64-redhat-linux/8/ ${LD_LIBRARY_PATH}"
+
+ENV TARGET_CFLAGS=CFLAGS_${TARGET_ARCH}_unknown_linux_gnu
+ENV TARGET_CXXFLAGS=CXXFLAGS_${TARGET_ARCH}_unknown_linux_gnu
+
 RUN env
+
 # Rebuild the agent
 RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     --mount=type=cache,target=/opt/rust/cargo/registry  \
-    --mount=type=cache,target=/opt/logdna-agent-v2/target \
+#    --mount=type=cache,target=/opt/logdna-agent-v2/target \
+    set -x; \
     if [ -z "$SCCACHE_BUCKET" ]; then unset RUSTC_WRAPPER; fi; \
     if [ -n "${TARGET}" ]; then export TARGET_ARG="--target ${TARGET}"; fi; \
     export ${BUILD_ENVS?};  \
     if [ -z "$SCCACHE_ENDPOINT" ]; then unset SCCACHE_ENDPOINT; fi; \
+    export EXTRA_CFLAGS=${!TARGET_CFLAGS}; \
+    export EXTRA_CXXFLAGS=${!TARGET_CXXFLAGS}; \
+    export BINDGEN_EXTRA_CLANG_ARGS="${!TARGET_CXXFLAGS}"; \
     cargo build --manifest-path bin/Cargo.toml --no-default-features ${FEATURES} --release $TARGET_ARG && \
-    strip ./target/${TARGET}/release/logdna-agent && \
+    llvm-strip ./target/${TARGET}/release/logdna-agent && \
     cp ./target/${TARGET}/release/logdna-agent /logdna-agent && \
     sccache --show-stats
 
+
 # Use Red Hat Universal Base Image Minimal as the final base image
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.4
+FROM --platform=${TARGETPLATFORM} registry.access.redhat.com/ubi8/ubi-minimal:8.4
 
 ARG REPO
 ARG BUILD_TIMESTAMP

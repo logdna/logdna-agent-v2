@@ -7,7 +7,7 @@ export ARCH ?= x86_64
 # The image repo and tag can be modified e.g.
 # `make build RUST_IMAGE=docker.io/rust:latest
 RUST_IMAGE_REPO ?= docker.io/logdna/build-images
-RUST_IMAGE_BASE ?= buster
+RUST_IMAGE_BASE ?= bullseye
 RUST_IMAGE_TAG ?= rust-$(RUST_IMAGE_BASE)-1-stable
 RUST_IMAGE ?= $(RUST_IMAGE_REPO):$(RUST_IMAGE_TAG)-$(ARCH)
 
@@ -360,7 +360,6 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
 		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
-	if [ ! -z "$(PULL_OPTS)" ]; then $(DOCKER) pull $(RUST_IMAGE); fi
 
 .PHONY:build-image-debian
 build-image-debian: ## Build a docker image as specified in the Dockerfile.debian
