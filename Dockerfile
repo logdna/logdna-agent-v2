@@ -31,6 +31,8 @@ ARG BUILD_ENVS
 
 ARG TARGET
 
+ENV SYSROOT_PATH="/sysroot/ubi-${UBI_VERSION}"
+
 ENV RUST_LOG=rustc_codegen_ssa::back::link=info
 
 # Create the directory for agent repo
@@ -43,29 +45,29 @@ COPY --from=target /etc/yum.repos.d/ubi.repo /etc/yum.repos.d/ubi.repo
 COPY --from=target /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 ENV UBI_PACKAGES="systemd-libs systemd-devel glibc glibc-devel gcc libstdc++-devel libstdc++-static kernel-headers"
 RUN dnf install --releasever=8 --forcearch="${TARGET_ARCH}" \
-        --installroot=/sysroot/ubi8/ --repo=ubi-8-baseos --repo=ubi-8-appstream \
+        --installroot=$SYSROOT_PATH/ --repo=ubi-8-baseos --repo=ubi-8-appstream \
         --repo=ubi-8-codeready-builder -y $UBI_PACKAGES
 
 RUN printf "/* GNU ld script\n*/\n\
 OUTPUT_FORMAT(elf64-%s)\n\
-GROUP ( /usr/lib64/libgcc_s.so.1  AS_NEEDED ( /usr/lib64/libgcc_s.so.1 ) )" $(echo ${TARGET_ARCH} | tr '_' '-' ) > /sysroot/ubi8/usr/lib64/libgcc_s.so
+GROUP ( /usr/lib64/libgcc_s.so.1  AS_NEEDED ( /usr/lib64/libgcc_s.so.1 ) )" $(echo ${TARGET_ARCH} | tr '_' '-' ) > $SYSROOT_PATH/usr/lib64/libgcc_s.so
 
 # Add the actual agent source files
 COPY . .
 
 # Set up env vars so that the compilers know to link against the target image libraries rather than the base image's
-ENV LD_LIBRARY_PATH="-L /sysroot/ubi8/usr/lib/gcc/${TARGET_ARCH}-redhat-linux/8/ -L /sysroot/ubi8/usr/lib64"
+ENV LD_LIBRARY_PATH="-L $SYSROOT_PATH/usr/lib/gcc/${TARGET_ARCH}-redhat-linux/8/ -L $SYSROOT_PATH/usr/lib64"
 
-ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-Clink-arg=--sysroot=/sysroot/ubi8 -Clink-arg=-fuse-ld=lld -Clink-arg=--target=x86_64-unknown-linux-gnu"
-ENV CFLAGS_x86_64_unknown_linux_gnu="${CFLAGS_x86_64_unknown_linux_gnu} --sysroot /sysroot/ubi8 -isysroot=/sysroot/ubi8 ${LD_LIBRARY_PATH}"
-ENV CXXFLAGS_x86_64_unknown_linux_gnu="${CXXFLAGS_x86_64_unknown_linux_gnu} --sysroot /sysroot/ubi8 -isysroot=/sysroot/ubi8"
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-Clink-arg=--sysroot=$SYSROOT_PATH -Clink-arg=-fuse-ld=lld -Clink-arg=--target=x86_64-unknown-linux-gnu"
+ENV CFLAGS_x86_64_unknown_linux_gnu="${CFLAGS_x86_64_unknown_linux_gnu} --sysroot $SYSROOT_PATH -isysroot=$SYSROOT_PATH ${LD_LIBRARY_PATH}"
+ENV CXXFLAGS_x86_64_unknown_linux_gnu="${CXXFLAGS_x86_64_unknown_linux_gnu} --sysroot $SYSROOT_PATH -isysroot=$SYSROOT_PATH"
 
-ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-Clink-arg=--sysroot=/sysroot/ubi8 -Clink-arg=-fuse-ld=lld -Clink-arg=--target=aarch64-unknown-linux-gnu"
-ENV CFLAGS_aarch64_unknown_linux_gnu="${CFLAGS_aarch64_unknown_linux_gnu} --sysroot /sysroot/ubi8 -isysroot=/sysroot/ubi8 ${LD_LIBRARY_PATH}"
-ENV CXXFLAGS_aarch64_unknown_linux_gnu="${CXXFLAGS_aarch64_unknown_linux_gnu} --sysroot /sysroot/ubi8 -isysroot=/sysroot/ubi8"
+ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="-Clink-arg=--sysroot=$SYSROOT_PATH -Clink-arg=-fuse-ld=lld -Clink-arg=--target=aarch64-unknown-linux-gnu"
+ENV CFLAGS_aarch64_unknown_linux_gnu="${CFLAGS_aarch64_unknown_linux_gnu} --sysroot $SYSROOT_PATH -isysroot=$SYSROOT_PATH ${LD_LIBRARY_PATH}"
+ENV CXXFLAGS_aarch64_unknown_linux_gnu="${CXXFLAGS_aarch64_unknown_linux_gnu} --sysroot $SYSROOT_PATH -isysroot=$SYSROOT_PATH"
 
 ENV LDFLAGS="-fuse-ld=lld"
-ENV SYSTEMD_LIB_DIR="/sysroot/ubi8/lib64"
+ENV SYSTEMD_LIB_DIR="$SYSROOT_PATH/lib64"
 
 ENV TARGET_CFLAGS=CFLAGS_${TARGET_ARCH}_unknown_linux_gnu
 ENV TARGET_CXXFLAGS=CXXFLAGS_${TARGET_ARCH}_unknown_linux_gnu
