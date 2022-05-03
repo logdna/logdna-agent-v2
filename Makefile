@@ -350,6 +350,7 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
 		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
 		--build-arg TARGET=$(TARGET) \
+		--build-arg TARGET_ARCH=$(ARCH) \
 		--build-arg RUSTFLAGS='$(RUSTFLAGS)' \
 		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
