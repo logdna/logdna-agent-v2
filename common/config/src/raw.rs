@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
-use std::io::{Seek, SeekFrom};
+use std::io::{ErrorKind, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::vec::Vec;
 
@@ -215,9 +215,11 @@ impl Config {
 
         let indiv_confs = try_load_confs(&conf_files);
         let (final_conf, mut error_list) = merge_all_confs(indiv_confs);
-
         for conf_err in &error_list {
-            error!("error encountered loading configuration: {:?}", conf_err);
+            if !matches!(conf_err, ConfigError::Io(ref err) if is_default_path && err.kind() == ErrorKind::NotFound)
+            {
+                error!("error encountered loading configuration: {:?}", conf_err);
+            }
         }
 
         // Default to returning the first error encountered as this would most likely be the first error
