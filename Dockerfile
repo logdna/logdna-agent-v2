@@ -50,7 +50,7 @@ RUN dnf install --releasever=8 --forcearch="${TARGET_ARCH}" \
 
 RUN printf "/* GNU ld script\n*/\n\
 OUTPUT_FORMAT(elf64-%s)\n\
-GROUP ( /usr/lib64/libgcc_s.so.1  AS_NEEDED ( /usr/lib64/libgcc_s.so.1 ) )" $(echo ${TARGET_ARCH} | tr '_' '-' ) > $SYSROOT_PATH/usr/lib64/libgcc_s.so
+GROUP ( /usr/lib64/libgcc_s.so.1  AS_NEEDED ( /usr/lib64/libgcc_s.so.1 ) )" "$(echo ${TARGET_ARCH} | tr '_' '-' )" > $SYSROOT_PATH/usr/lib64/libgcc_s.so
 
 # Add the actual agent source files
 COPY . .
