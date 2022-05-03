@@ -42,16 +42,10 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     if [ -n "${TARGET}" ]; then export TARGET_ARG="--target ${TARGET}"; fi; \
     export ${BUILD_ENVS?};  \
     if [ -z "$SCCACHE_ENDPOINT" ]; then unset SCCACHE_ENDPOINT; fi; \
-    export EXTRA_CFLAGS=${!TARGET_CFLAGS}; \
-    export EXTRA_CXXFLAGS=${!TARGET_CXXFLAGS}; \
-    export BINDGEN_EXTRA_CLANG_ARGS="${!TARGET_CXXFLAGS}"; \
     cargo build --manifest-path bin/Cargo.toml --no-default-features ${FEATURES} --release $TARGET_ARG && \
-    export status=$? && \
-    find ./target/ -name "logdna-agent" && \
     llvm-strip ./target/${TARGET}/release/logdna-agent; \
     cp ./target/${TARGET}/release/logdna-agent /logdna-agent ;\
-    sccache --show-stats; \
-    exit $status
+    sccache --show-stats
 
 # Use Red Hat Universal Base Image Minimal as the final base image
 FROM registry.access.redhat.com/ubi8/ubi-minimal:8.4

@@ -11,7 +11,7 @@ RUST_IMAGE_BASE ?= buster
 RUST_IMAGE_TAG ?= rust-$(RUST_IMAGE_BASE)-1-stable
 RUST_IMAGE ?= $(RUST_IMAGE_REPO):$(RUST_IMAGE_TAG)-$(ARCH)
 
-RUST_IMAGE_SUFFIX?=a74f56ec4a657dcd
+RUST_IMAGE_SUFFIX?=
 ifneq ($(RUST_IMAGE_SUFFIX),)
 	RUST_IMAGE := $(RUST_IMAGE)-$(RUST_IMAGE_SUFFIX)
 endif
@@ -147,15 +147,15 @@ endif
 
 .PHONY:vendor
 vendor:
-	$(RUST_COMMAND) "" "$(CARGO_COMMAND) vendor >> .cargo/config"
+	$(RUST_COMMAND) "" "cargo vendor >> .cargo/config"
 
 .PHONY:build-test
 build-test:
-	$(RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "$(CARGO_COMMAND) build $(TARGET_DOCKER_ARG) --profile=test"
+	$(RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "cargo build $(TARGET_DOCKER_ARG) --profile=test"
 
 .PHONY:build
 build: ## Build the agent
-	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG)"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG)"
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
@@ -170,25 +170,25 @@ test: unit-test test-journald ## Run unit tests
 
 .PHONY:unit-test
 unit-test:
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) --no-run && $(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) $(TESTS) -- --nocapture"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) --no-run && cargo test $(TARGET_DOCKER_ARG) $(TESTS) -- --nocapture"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
 	$(eval FEATURES := $(FEATURES) integration_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) -- --nocapture $(TEST_THREADS_ARG)"
+	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) -- --nocapture $(TEST_THREADS_ARG)"
 
 .PHONY:k8s-test
 k8s-test: ## Run integration tests using k8s kind
-	$(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) --manifest-path bin/Cargo.toml --features k8s_tests -- --nocapture"
+	$(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) --manifest-path bin/Cargo.toml --features k8s_tests -- --nocapture"
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
 	$(eval FEATURES := $(FEATURES) journald_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "$(CARGO_COMMAND) test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald -- --nocapture --test-threads=1"
+	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald -- --nocapture --test-threads=1"
 
 .PHONY:bench
 bench:
-	$(BENCH_COMMAND) "--privileged --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "PERF=\$$(find /usr/bin -type f -wholename /usr/bin/perf\* | head -n1) $(CARGO_COMMAND) run --release --manifest-path bench/Cargo.toml --bin=throughput /dict.txt -o /tmp/out $(PROFILE) --file-history 3 --line-count 100000000 --file-size 20000000 && mv /tmp/flamegraph.svg ."
+	$(BENCH_COMMAND) "--privileged --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "PERF=\$$(find /usr/bin -type f -wholename /usr/bin/perf\* | head -n1) cargo run --release --manifest-path bench/Cargo.toml --bin=throughput /dict.txt -o /tmp/out $(PROFILE) --file-history 3 --line-count 100000000 --file-size 20000000 && mv /tmp/flamegraph.svg ."
 
 .PHONY:clean
 clean: ## Clean all artifacts from the build process
@@ -205,15 +205,15 @@ clean-all: clean-docker clean ## Deep cleans the project and removed any docker 
 
 .PHONY:lint-format
 lint-format: ## Checks for formatting errors
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "$(CARGO_COMMAND) fmt -- --check"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo fmt -- --check"
 
 .PHONY:lint-clippy
 lint-clippy: ## Checks for code errors
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "$(CARGO_COMMAND) clippy --all-targets -- -D warnings"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo clippy --all-targets -- -D warnings"
 
 .PHONY:lint-audit
 lint-audit: ## Audits packages for issues
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "$(CARGO_COMMAND) audit --ignore RUSTSEC-2020-0159 --ignore RUSTSEC-2020-0071"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo audit --ignore RUSTSEC-2020-0159 --ignore RUSTSEC-2020-0071"
 
 .PHONY:lint-docker
 lint-docker: ## Lint the Dockerfile for issues
@@ -347,7 +347,6 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
 		--rm \
 		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
-		--build-arg CARGO_COMMAND="$(CARGO_COMMAND)" \
 		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
 		--build-arg TARGET=$(TARGET) \
 		--build-arg RUSTFLAGS='$(RUSTFLAGS)' \
