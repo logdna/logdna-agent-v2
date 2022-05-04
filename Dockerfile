@@ -48,6 +48,7 @@ RUN dnf install --releasever=8 --forcearch="${TARGET_ARCH}" \
         --installroot=$SYSROOT_PATH/ --repo=ubi-8-baseos --repo=ubi-8-appstream \
         --repo=ubi-8-codeready-builder -y $UBI_PACKAGES
 
+# Linker file to hint where the linker can find libgcc_s as the packaged symlink is broken
 RUN printf "/* GNU ld script\n*/\n\
 OUTPUT_FORMAT(elf64-%s)\n\
 GROUP ( /usr/lib64/libgcc_s.so.1  AS_NEEDED ( /usr/lib64/libgcc_s.so.1 ) )" "$(echo ${TARGET_ARCH} | tr '_' '-' )" > $SYSROOT_PATH/usr/lib64/libgcc_s.so
