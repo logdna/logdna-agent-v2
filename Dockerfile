@@ -32,54 +32,25 @@ ARG BUILD_ENVS
 ARG TARGET
 
 ARG UBI_VERSION
-ENV SYSROOT_PATH="/sysroot/ubi-${UBI_VERSION}"
 
 ENV RUST_LOG=rustc_codegen_ssa::back::link=info
 
 # Create the directory for agent repo
 WORKDIR /opt/logdna-agent-v2
 
-# Install the target image libraries we want to link against.
+# Grab target image repo info for packages we want to link against.
 # hadolint ignore=DL3008
-COPY --from=target /etc/yum.repos.d/ubi.repo /etc/yum.repos.d/ubi.repo
-COPY --from=target /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
-
-ENV UBI_PACKAGES="systemd-libs systemd-devel glibc glibc-devel gcc libstdc++-devel libstdc++-static kernel-headers"
-
-RUN apt-get update && apt-get install --no-install-recommends -y dnf && \
-    dnf install --releasever=8 --forcearch="${TARGET_ARCH}" \
-        --installroot=$SYSROOT_PATH/ --repo=ubi-8-baseos --repo=ubi-8-appstream \
-        --repo=ubi-8-codeready-builder -y $UBI_PACKAGES && \
-    # Linker file to hint where the linker can find libgcc_s as the packaged symlink is broken \
-    printf "/* GNU ld script\n*/\n\nOUTPUT_FORMAT(elf64-%s)\n\n GROUP ( /usr/lib64/libgcc_s.so.1  AS_NEEDED ( /usr/lib64/libgcc_s.so.1 ) )" \
-           "$(echo ${TARGET_ARCH} | tr '_' '-' )" > $SYSROOT_PATH/usr/lib64/libgcc_s.so
-
-# Set up env vars so that the compilers know to link against the target image libraries rather than the base image's
-ENV LD_LIBRARY_PATH="-L $SYSROOT_PATH/usr/lib/gcc/${TARGET_ARCH}-redhat-linux/8/ -L $SYSROOT_PATH/usr/lib64"
-
-ENV COMMON_GNU_RUSTFLAGS="-Clink-arg=--sysroot=$SYSROOT_PATH -Clink-arg=-fuse-ld=lld"
-ENV COMMON_GNU_CFLAGS="--sysroot $SYSROOT_PATH -isysroot=$SYSROOT_PATH"
-
-ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS="${COMMON_GNU_RUSTFLAGS} -Clink-arg=--target=x86_64-unknown-linux-gnu"
-ENV CFLAGS_x86_64_unknown_linux_gnu="${CFLAGS_x86_64_unknown_linux_gnu} ${COMMON_GNU_CFLAGS} ${LD_LIBRARY_PATH}"
-ENV CXXFLAGS_x86_64_unknown_linux_gnu="${CXXFLAGS_x86_64_unknown_linux_gnu} ${COMMON_GNU_CFLAGS}"
-
-ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS="${COMMON_GNU_RUSTFLAGS} -Clink-arg=--target=aarch64-unknown-linux-gnu"
-ENV CFLAGS_aarch64_unknown_linux_gnu="${CFLAGS_aarch64_unknown_linux_gnu} ${COMMON_GNU_CFLAGS} ${LD_LIBRARY_PATH}"
-ENV CXXFLAGS_aarch64_unknown_linux_gnu="${CXXFLAGS_aarch64_unknown_linux_gnu} ${COMMON_GNU_CFLAGS}"
-
-ENV LDFLAGS="-fuse-ld=lld"
-ENV SYSTEMD_LIB_DIR="$SYSROOT_PATH/lib64"
-
-ENV TARGET_CFLAGS=CFLAGS_${TARGET_ARCH}_unknown_linux_gnu
-ENV TARGET_CXXFLAGS=CXXFLAGS_${TARGET_ARCH}_unknown_linux_gnu
+COPY --from=target /etc/yum.repos.d/ubi.repo $SYSROOT_PATH/etc/yum.repos.d/ubi.repo
+COPY --from=target /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release $SYSROOT_PATH/etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
 
 # Add the actual agent source files
 COPY . .
 
-RUN env
+# Set up ubi sysroot
+RUN scripts/ubi8-sysroot.sh "${TARGET_ARCH}" "${UBI_VERSION}" > /tmp/ubi8.env
 
 # Rebuild the agent
+# hadolint ignore=SC1091
 RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     --mount=type=cache,target=/opt/rust/cargo/registry  \
     --mount=type=cache,target=/opt/logdna-agent-v2/target \
@@ -87,9 +58,7 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     if [ -n "${TARGET}" ]; then export TARGET_ARG="--target ${TARGET}"; fi; \
     export ${BUILD_ENVS?};  \
     if [ -z "$SCCACHE_ENDPOINT" ]; then unset SCCACHE_ENDPOINT; fi; \
-    export EXTRA_CFLAGS=${!TARGET_CFLAGS}; \
-    export EXTRA_CXXFLAGS=${!TARGET_CXXFLAGS}; \
-    export BINDGEN_EXTRA_CLANG_ARGS="${!TARGET_CXXFLAGS}"; \
+    set -a; source /tmp/ubi8.env; set +a && env && \
     cargo build --manifest-path bin/Cargo.toml --no-default-features ${FEATURES} --release $TARGET_ARG && \
     llvm-strip ./target/${TARGET}/release/logdna-agent && \
     cp ./target/${TARGET}/release/logdna-agent /logdna-agent && \
