@@ -33,8 +33,8 @@ SHELLCHECK_IMAGE := $(SHELLCHECK_IMAGE)
 WORKDIR :=/build
 DOCKER := DOCKER_BUILDKIT=1 docker
 DOCKER_DISPATCH := ARCH=$(ARCH) ./docker/dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
-DOCKER_JOURNALD_DISPATCH := BUILD_IMAGE=${RUST_IMAGE} ARCH=$(ARCH) ./docker/journald_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
-DOCKER_KIND_DISPATCH := BUILD_IMAGE=${RUST_IMAGE} ARCH=$(ARCH) ./docker/kind_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
+DOCKER_JOURNALD_DISPATCH := BUILD_IMAGE=$(RUST_IMAGE) ARCH=$(ARCH) ./docker/journald_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
+DOCKER_KIND_DISPATCH := BUILD_IMAGE=$(RUST_IMAGE) ARCH=$(ARCH) ./docker/kind_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
 DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/logdna-agent-v2
 DOCKER_PUBLIC_IMAGE ?= docker.io/logdna/logdna-agent
 DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
