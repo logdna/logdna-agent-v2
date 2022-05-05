@@ -13,10 +13,8 @@ use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBind
 use kube::api::{Api, ListParams, LogParams, PostParams, WatchEvent};
 use kube::{Client, ResourceExt};
 
-mod common;
-
 // workaround for unused functions in different features: https://github.com/rust-lang/rust/issues/46379
-pub use common::*;
+use crate::common;
 
 async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
     let pods: Api<Pod> = Api::namespaced(client, namespace);

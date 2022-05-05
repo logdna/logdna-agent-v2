@@ -1,17 +1,15 @@
-use common::AgentSettings;
-pub use common::*;
+use crate::common::AgentSettings;
+use crate::common::{self, *};
 use logdna_metrics_recorder::*;
 use prometheus_parse::Value;
 use rand::Rng;
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufReader, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::tempdir;
-
-mod common;
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
@@ -53,11 +51,13 @@ async fn test_retry_disk_limit() {
     settings.config_file = config_file_path.to_str();
 
     let mut agent_handle = common::spawn_agent(settings);
-    let agent_stderr = agent_handle.stderr.take().unwrap();
-    common::consume_output(agent_stderr);
+
+    let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
 
     let (server_result, _) = tokio::join!(server, async move {
         // Wait for the agent to bootstrap and then start generating some log data
+        common::wait_for_event("Enabling filesystem", &mut agent_stderr);
+        common::consume_output(agent_stderr.into_inner());
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         for _ in 0..5 {
             gen_log_data(&mut log_file).await;
@@ -127,18 +127,21 @@ async fn test_retry_location() {
     settings.metrics_port = Some(metrics_port);
 
     let mut agent_handle = common::spawn_agent(settings);
-    let agent_stderr = agent_handle.stderr.take().unwrap();
-    common::consume_output(agent_stderr);
+    let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
 
     let (server_result, _) = tokio::join!(server, async move {
         // Wait for the agent to bootstrap and then start generating some log data
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-        gen_log_data(&mut log_file).await;
+        common::wait_for_event("Enabling filesystem", &mut agent_stderr);
+        common::consume_output(agent_stderr.into_inner());
+        writeln!(&mut log_file, "test").unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(timeout * 3)).await;
 
         // Check that a retry file was created in the retry dir
-        let matches = std::fs::read_dir(retry_dir).unwrap().filter(
-            |r| !matches!(r, Ok(path) if path.file_name().to_string_lossy().ends_with("\\.retry")),
-        );
+        let matches = std::fs::read_dir(retry_dir).unwrap().filter(|r| {
+            log::debug!("{:?}", r);
+            !matches!(r, Ok(path) if path.file_name().to_string_lossy().ends_with("\\.retry"))
+        });
         assert!(matches.count() > 0);
 
         shutdown_ingest();
@@ -189,11 +192,13 @@ async fn test_retry_after_timeout() {
     let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &address);
     settings.config_file = config_file_path.to_str();
     let mut agent_handle = common::spawn_agent(settings);
-    let agent_stderr = agent_handle.stderr.take().unwrap();
-    common::consume_output(agent_stderr);
+    let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
 
     let (server_result, _) = tokio::join!(server, async move {
         // Wait for the server to catch up
+        //
+        common::wait_for_event("Enabling filesystem", &mut agent_stderr);
+        common::consume_output(agent_stderr.into_inner());
         tokio::time::sleep(tokio::time::Duration::from_millis(400)).await;
 
         let file_lines = &["hello\n", " world\n", " world2\n", " world3\n", " world4\n"];
@@ -267,12 +272,14 @@ async fn test_retry_is_not_made_before_retry_base_delay_ms() {
 
     let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &address);
     settings.config_file = config_file_path.to_str();
+
     let mut agent_handle = common::spawn_agent(settings);
-    let agent_stderr = agent_handle.stderr.take().unwrap();
-    common::consume_output(agent_stderr);
+    let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
 
     let (server_result, _) = tokio::join!(server, async move {
         // Wait for the server to catch up
+        common::wait_for_event("Enabling filesystem", &mut agent_stderr);
+        common::consume_output(agent_stderr.into_inner());
         tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
         write!(file, "hello\nworld\n").unwrap();
@@ -311,9 +318,9 @@ async fn gen_log_data(file: &mut File) {
 async fn test_retry_metrics_emitted() {
     let _ = env_logger::Builder::from_default_env().try_init();
     let timeout = 200;
-    let base_delay_ms = 300;
-    let step_delay_ms = 100;
-    let metrics_port = 9881;
+    let base_delay_ms = 50;
+    let step_delay_ms = 50;
+    let metrics_port = 9882;
 
     let log_dir = tempdir().unwrap().into_path();
     let log_file_path = log_dir.join("test.log");
@@ -348,16 +355,16 @@ async fn test_retry_metrics_emitted() {
     settings.metrics_port = Some(metrics_port);
 
     let mut agent_handle = common::spawn_agent(settings);
-    let agent_stderr = agent_handle.stderr.take().unwrap();
-    common::consume_output(agent_stderr);
+    let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
 
+    common::wait_for_event("Enabling filesystem", &mut agent_stderr);
+    common::consume_output(agent_stderr.into_inner());
     // This creates a new thread that scrapes the metrics from the agent process and
     // stores all the values for the retry metrics under test.
     let recorder = MetricsRecorder::start(metrics_port, Some(Duration::from_millis(100)));
 
     let (ingest_result, metrics_result) = tokio::join!(server, async move {
         // Wait for the agent to bootstrap and then start generating some log data
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         gen_log_data(&mut log_file).await;
 
         // Signal to the mock ingestor to start doing random rejections on log data.
@@ -371,10 +378,12 @@ async fn test_retry_metrics_emitted() {
         tokio::time::sleep(tokio::time::Duration::from_millis(6000)).await;
         gen_log_data(&mut log_file).await;
 
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
         shutdown_ingest();
         recorder.stop().await
     });
 
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     // Shut down processes
     ingest_result.unwrap();
     agent_handle.kill().unwrap();

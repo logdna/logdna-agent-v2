@@ -11,7 +11,7 @@ RUST_IMAGE_BASE ?= buster
 RUST_IMAGE_TAG ?= rust-$(RUST_IMAGE_BASE)-1-stable
 RUST_IMAGE ?= $(RUST_IMAGE_REPO):$(RUST_IMAGE_TAG)-$(ARCH)
 
-RUST_IMAGE_SUFFIX ?=
+RUST_IMAGE_SUFFIX?=
 ifneq ($(RUST_IMAGE_SUFFIX),)
 	RUST_IMAGE := $(RUST_IMAGE)-$(RUST_IMAGE_SUFFIX)
 endif
@@ -33,8 +33,8 @@ SHELLCHECK_IMAGE := $(SHELLCHECK_IMAGE)
 WORKDIR :=/build
 DOCKER := DOCKER_BUILDKIT=1 docker
 DOCKER_DISPATCH := ARCH=$(ARCH) ./docker/dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
-DOCKER_JOURNALD_DISPATCH := ARCH=$(ARCH) ./docker/journald_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
-DOCKER_KIND_DISPATCH := ARCH=$(ARCH) ./docker/kind_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
+DOCKER_JOURNALD_DISPATCH := BUILD_IMAGE=${RUST_IMAGE} ARCH=$(ARCH) ./docker/journald_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
+DOCKER_KIND_DISPATCH := BUILD_IMAGE=${RUST_IMAGE} ARCH=$(ARCH) ./docker/kind_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
 DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/logdna-agent-v2
 DOCKER_PUBLIC_IMAGE ?= docker.io/logdna/logdna-agent
 DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
@@ -48,7 +48,10 @@ BENCH_COMMAND = CACHE_TARGET="false" $(DOCKER_DISPATCH) $(BENCH_IMAGE)
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
-INTEGRATION_TEST_THREADS ?= 1
+# max($(nproc)/4, 1)
+TEST_THREADS ?= $(shell threads=$$(echo $$(nproc)/4 | bc); echo $$(( threads > 1 ? threads: 1)))
+TEST_THREADS_ARG = --test-threads=$(TEST_THREADS)
+
 K8S_TEST_CREATE_CLUSTER ?= true
 
 VCS_REF := $(shell git rev-parse --short HEAD)
@@ -83,6 +86,7 @@ else
 	PULL_OPTS :=
 endif
 
+STATIC ?= 0
 ARCH_TRIPLE?=$(ARCH)-linux-gnu
 TARGET?=$(ARCH)-unknown-linux-gnu
 STATIC ?= 0
@@ -142,6 +146,14 @@ ifneq ($(TARGET),)
 	TARGET_DOCKER_ARG= --target $(TARGET)
 endif
 
+.PHONY:vendor
+vendor:
+	$(RUST_COMMAND) "" "cargo vendor >> .cargo/config"
+
+.PHONY:build-test
+build-test:
+	$(RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "cargo build $(TARGET_DOCKER_ARG) --profile=test"
+
 .PHONY:build
 build: ## Build the agent
 	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG)"
@@ -155,30 +167,33 @@ check: ## Run unit tests
 	$(RUST_COMMAND) "" "cargo check --all-targets"
 
 .PHONY:test
-test: test-journald ## Run unit tests
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test --no-run && cargo test $(TESTS)"
+test: unit-test test-journald ## Run unit tests
+
+.PHONY:unit-test
+unit-test:
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) --no-run && cargo test $(TARGET_DOCKER_ARG) $(TESTS) -- --nocapture"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
 	$(eval FEATURES := $(FEATURES) integration_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(FEATURES_ARG) --release --manifest-path bin/Cargo.toml $(TESTS) -- --nocapture --test-threads=$(INTEGRATION_TEST_THREADS)"
+	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) -- --nocapture $(TEST_THREADS_ARG)"
 
 .PHONY:k8s-test
 k8s-test: ## Run integration tests using k8s kind
-	$(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "cargo test --manifest-path bin/Cargo.toml --features k8s_tests -- --nocapture"
+	$(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) --manifest-path bin/Cargo.toml --features k8s_tests -- --nocapture"
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
 	$(eval FEATURES := $(FEATURES) journald_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald -- --nocapture --test-threads=1"
+	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald -- --nocapture --test-threads=1"
 
 .PHONY:bench
 bench:
-	$(BENCH_COMMAND) "--privileged --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "PERF=\$$(find /usr/bin -type f -wholename /usr/bin/perf\* | head -n1) cargo run --release --manifest-path bench/Cargo.toml --bin=throughput /dict.txt -o /tmp/out $(PROFILE) --file-history 3 --line-count 10000000 --file-size 20000000 && mv /tmp/flamegraph.svg ."
+	$(BENCH_COMMAND) "--privileged --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "PERF=\$$(find /usr/bin -type f -wholename /usr/bin/perf\* | head -n1) cargo run --release --manifest-path bench/Cargo.toml --bin=throughput /dict.txt -o /tmp/out $(PROFILE) --file-history 3 --line-count 100000000 --file-size 20000000 && mv /tmp/flamegraph.svg ."
 
 .PHONY:clean
 clean: ## Clean all artifacts from the build process
-	$(RUST_COMMAND) "" "rm -fr target/* \$$CARGO_HOME/registry/* \$$CARGO_HOME/git/*"
+	$(RUST_COMMAND) "" "rm -fr target/* \$$CARGO_HOME/registry/* \$$CARGO_HOME/git/* vendor/* bench/target/* .cargo/config"
 
 .PHONY:clean-docker
 clean-docker: ## Cleans the intermediate and final agent images left over from the build-image target
@@ -521,7 +536,7 @@ help: ## Prints out a helpful description of each possible target
 init-qemu: ## register qemu in binfmt on x86_64 hosts
 	@set -e
 	echo "Host: " && hostname && uname -a && blkid && docker info && echo && free -h && echo && df -h && echo && lscpu && echo
-	if [ "$(shell uname -m)" = "x86_64" ]; then \
+	bash -c "if [ '$(shell uname -m)' = 'x86_64' ]; then \
 		if [ ! -f /proc/sys/fs/binfmt_misc/qemu-aarch64 ]; then \
 			( \
 				flock 201; \
@@ -529,7 +544,7 @@ init-qemu: ## register qemu in binfmt on x86_64 hosts
 			) 201>/tmp/qemu_binfmt; \
 		else \
 			echo Skipping qemu init - already applied; \
-		fi \
+		fi; \
 	else \
 		echo Skipping qemu init - non x86_64 host; \
-	fi
+	fi"
