@@ -1,12 +1,15 @@
 # syntax = docker/dockerfile:1.0-experimental
 
-ARG UBI_VERSION=8.5
+ARG UBI_MAJOR_VERSION=8
+ARG UBI_MINOR_VERSION=5
+ARG UBI_VERSION=${UBI_MAJOR_VERSION}.${UBI_MINOR_VERSION}
+
 ARG TARGET_ARCH=x86_64
 ARG BUILD_IMAGE
 # Image that runs natively on the BUILDPLATFORM to produce cross compile
 # artifacts
 
-FROM --platform=${TARGETPLATFORM} registry.access.redhat.com/ubi8/ubi-minimal:${UBI_VERSION} as target
+FROM --platform=${TARGETPLATFORM} registry.access.redhat.com/ubi${UBI_MAJOR_VERSION}/ubi-minimal:${UBI_VERSION} as target
 
 FROM --platform=${BUILDPLATFORM} ${BUILD_IMAGE} as build
 
@@ -31,6 +34,8 @@ ARG BUILD_ENVS
 
 ARG TARGET
 
+ARG UBI_MAJOR_VERSION
+ARG UBI_MINOR_VERSION
 ARG UBI_VERSION
 
 ENV RUST_LOG=rustc_codegen_ssa::back::link=info
@@ -47,7 +52,7 @@ COPY --from=target /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release $SYSROOT_PATH/etc
 COPY . .
 
 # Set up ubi sysroot
-RUN scripts/ubi8-sysroot.sh "${TARGET_ARCH}" "${UBI_VERSION}" > /tmp/ubi8.env
+RUN scripts/ubi${UBI_MAJOR_VERSION}-sysroot.sh "${TARGET_ARCH}" "${UBI_MAJOR_VERSION}" "${UBI_MINOR_VERSION}" > /tmp/ubi${UBI_MAJOR_VERSION}.env
 
 # Rebuild the agent
 # hadolint ignore=SC1091
@@ -58,16 +63,14 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     if [ -n "${TARGET}" ]; then export TARGET_ARG="--target ${TARGET}"; fi; \
     export ${BUILD_ENVS?};  \
     if [ -z "$SCCACHE_ENDPOINT" ]; then unset SCCACHE_ENDPOINT; fi; \
-    set -a; source /tmp/ubi8.env; set +a && env && \
+    set -a; source /tmp/ubi${UBI_MAJOR_VERSION}.env; set +a && env && \
     cargo build --manifest-path bin/Cargo.toml --no-default-features ${FEATURES} --release $TARGET_ARG && \
     llvm-strip ./target/${TARGET}/release/logdna-agent && \
     cp ./target/${TARGET}/release/logdna-agent /logdna-agent && \
     sccache --show-stats
 
-ARG UBI_VERSION
-
 # Use Red Hat Universal Base Image Minimal as the final base image
-FROM --platform=${TARGETPLATFORM} registry.access.redhat.com/ubi8/ubi-minimal:${UBI_VERSION}
+FROM --platform=${TARGETPLATFORM} registry.access.redhat.com/ubi${UBI_MAJOR_VERSION}/ubi-minimal:${UBI_VERSION}
 
 ARG REPO
 ARG BUILD_TIMESTAMP
