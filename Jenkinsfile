@@ -51,21 +51,18 @@ pipeline {
                 sh "make init-qemu"
             }
         }
-        stage('Lint and Test') {
-            environment {
-                CREDS_FILE = credentials('pipeline-e2e-creds')
-                LOGDNA_HOST = "logs.use.stage.logdna.net"
+        stage('Vendor') {
+            steps {
+                sh """
+                    mkdir -p .cargo || /bin/true
+                    make vendor
+                """
             }
+        }
+        stage('Lint and Unit Test') {
             parallel {
-                stage('Lint, Unit and Integration Tests'){
+                stage('Lint'){
                     steps {
-                        script {
-                            def creds = readJSON file: CREDS_FILE
-                            // Assumes the pipeline-e2e-creds format remains the same. Chase
-                            // refer to the e2e tests's README's authorization docs for the
-                            // current structure
-                            LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
-                        }
                         withCredentials([[
                                            $class: 'AmazonWebServicesCredentialsBinding',
                                            credentialsId: 'aws',
@@ -74,32 +71,72 @@ pipeline {
                                          ]]){
                             sh """
                               make lint
-                              make test
-                              make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
                             """
                         }
                     }
-                    post {
-                        success {
-                            sh "make clean"
+                }
+                stage('Unit Tests'){
+                    steps {
+                        withCredentials([[
+                                           $class: 'AmazonWebServicesCredentialsBinding',
+                                           credentialsId: 'aws',
+                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                         ]]){
+                            sh """
+                              make -j2 test
+                            """
+                        }
+                    }
+                }
+            }
+        }
+        stage('Test') {
+            environment {
+                CREDS_FILE = credentials('pipeline-e2e-creds')
+                LOGDNA_HOST = "logs.use.stage.logdna.net"
+            }
+            parallel {
+                stage('Integration Tests'){
+                    steps {
+                        script {
+                            def creds = readJSON file: CREDS_FILE
+                            // Assumes the pipeline-e2e-creds format remains the same. Chase
+                            // refer to the e2e tests's README's authorization docs for the
+                            // current structure
+                            LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
+                            TEST_THREADS = sh (script: 'threads=$(echo $(nproc)/4 | bc); echo $(( threads > 1 ? threads: 1))', returnStdout: true).trim()
+                        }
+                        withCredentials([[
+                                           $class: 'AmazonWebServicesCredentialsBinding',
+                                           credentialsId: 'aws',
+                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                         ]]){
+                            sh """
+                              TEST_THREADS="${TEST_THREADS}" make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
+                            """
                         }
                     }
                 }
                 stage('Run K8s Integration Tests') {
                     steps {
-                        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                            withCredentials([[
-                                              $class: 'AmazonWebServicesCredentialsBinding',
-                                              credentialsId: 'aws',
-                                              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                             ]]) {
-                                sh '''
-                                    make k8s-test
-                                '''
-                            }
+                        withCredentials([[
+                                            $class: 'AmazonWebServicesCredentialsBinding',
+                                            credentialsId: 'aws',
+                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                            ]]) {
+                            sh """
+                                make k8s-test
+                            """
                         }
                     }
+                }
+            }
+            post {
+                always {
+                    sh "make clean"
                 }
             }
         }

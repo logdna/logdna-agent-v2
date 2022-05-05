@@ -1,5 +1,3 @@
-mod common;
-
 use std::io::BufReader;
 use std::time::Duration;
 
@@ -7,8 +5,7 @@ use float_cmp::approx_eq;
 use prometheus_parse::{Sample, Value};
 use tempfile::tempdir;
 
-use common::AgentSettings;
-pub use common::*;
+use crate::common::{self, start_ingester, AgentSettings};
 use logdna_metrics_recorder::*;
 
 fn check_fs_bytes(samples: &[Sample]) {

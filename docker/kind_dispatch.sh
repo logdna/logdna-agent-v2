@@ -37,7 +37,7 @@ DOCKER_BUILDKIT=1 docker build $curpath/.. \
   -t "$image" \
   --pull \
   --progress=plain \
-  --build-arg BUILD_IMAGE=docker.io/logdna/build-images:rust-buster-1-stable-$(get_host_arch) \
+  --build-arg BUILD_IMAGE=$BUILD_IMAGE \
   --build-arg SCCACHE_BUCKET=$SCCACHE_BUCKET \
   --build-arg SCCACHE_REGION=$SCCACHE_REGION
 
