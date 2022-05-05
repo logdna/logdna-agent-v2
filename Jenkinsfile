@@ -105,7 +105,7 @@ pipeline {
                             // refer to the e2e tests's README's authorization docs for the
                             // current structure
                             LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
-                            TEST_THREADS = sh (script: 'echo "$(nproc)/4"| bc', returnStdout: true).trim()
+                            TEST_THREADS = sh (script: 'threads=$(echo $(nproc)/4 | bc); echo $(( threads > 1 ? threads: 1))', returnStdout: true).trim()
                         }
                         withCredentials([[
                                            $class: 'AmazonWebServicesCredentialsBinding',

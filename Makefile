@@ -48,7 +48,8 @@ BENCH_COMMAND = CACHE_TARGET="false" $(DOCKER_DISPATCH) $(BENCH_IMAGE)
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
 
-TEST_THREADS ?= $(shell echo "$$(nproc)/4" | bc)
+# max($(nproc)/4, 1)
+TEST_THREADS ?= $(shell threads=$$(echo $$(nproc)/4 | bc); echo $$(( threads > 1 ? threads: 1)))
 TEST_THREADS_ARG = --test-threads=$(TEST_THREADS)
 
 K8S_TEST_CREATE_CLUSTER ?= true
