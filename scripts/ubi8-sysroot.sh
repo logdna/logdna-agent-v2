@@ -19,7 +19,7 @@ dnf install --releasever="${UBI_MAJOR_VERSION}" --forcearch="${TARGET_ARCH}" \
 
 # Linker file to hint where the linker can find libgcc_s as the packaged symlink is broken \
 printf "/* GNU ld script\n*/\n\nOUTPUT_FORMAT(elf64-%s)\n\n GROUP ( /usr/lib64/libgcc_s.so.1  AS_NEEDED ( /usr/lib64/libgcc_s.so.1 ) )" \
-       "$(echo ${TARGET_ARCH} | tr '_' '-' )" > $SYSROOT_PATH/usr/lib64/libgcc_s.so
+       "$(echo "${TARGET_ARCH}" | tr '_' '-' )" > "$SYSROOT_PATH/usr/lib64/libgcc_s.so"
 
 GCC_VERSION=8
 # Set up env vars so that the compilers know to link against the target image libraries rather than the base image's
@@ -27,13 +27,13 @@ LD_LIBRARY_PATH="-L $SYSROOT_PATH/usr/lib/gcc/${TARGET_ARCH}-redhat-linux/${GCC_
 COMMON_GNU_RUSTFLAGS="-Clink-arg=--sysroot=$SYSROOT_PATH -Clink-arg=-fuse-ld=lld"
 COMMON_GNU_CFLAGS="--sysroot $SYSROOT_PATH -isysroot=$SYSROOT_PATH"
 
-printf "CARGO_TARGET_%s_UNKNOWN_LINUX_GNU_RUSTFLAGS=\"%s -Clink-arg=--target=%s-unknown-linux-gnu\"\n" "$(printf ${TARGET_ARCH} | tr '[:lower:]' '[:upper:]')" "${COMMON_GNU_RUSTFLAGS}" "${TARGET_ARCH}"
+printf "CARGO_TARGET_%s_UNKNOWN_LINUX_GNU_RUSTFLAGS=\"%s -Clink-arg=--target=%s-unknown-linux-gnu\"\n" "$(printf "%s" "${TARGET_ARCH}" | tr '[:lower:]' '[:upper:]')" "${COMMON_GNU_RUSTFLAGS}" "${TARGET_ARCH}"
 
 cflags=$(printf "\${CFLAGS_%s_unknown_linux_gnu} %s %s" "${TARGET_ARCH}" "${COMMON_GNU_CFLAGS}" "${LD_LIBRARY_PATH}")
 cxxflags=$(printf "\${CXXFLAGS_%s_unknown_linux_gnu} %s" "${TARGET_ARCH}" "${COMMON_GNU_CFLAGS}")
 
-echo $(printf "CFLAGS_%s_unknown_linux_gnu=\"%s\"" "${TARGET_ARCH}" "${cflags}")
-echo $(printf "CXXFLAGS_%s_unknown_linux_gnu=\"%s\"" "${TARGET_ARCH}" "${cxxflags}")
+echo "CFLAGS_${TARGET_ARCH}_unknown_linux_gnu=\"${cflags}\""
+echo "CXXFLAGS_${TARGET_ARCH}_unknown_linux_gnu=\"${cxxflags}\""
 
 echo EXTRA_CFLAGS=\""${cflags}"\"
 echo EXTRA_CXXFLAGS=\""${cxxflags}"\"
