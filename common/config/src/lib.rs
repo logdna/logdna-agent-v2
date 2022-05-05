@@ -97,11 +97,21 @@ pub struct LogConfig {
     pub lookback: Lookback,
     pub use_k8s_enrichment: K8sTrackingConf,
     pub log_k8s_events: K8sTrackingConf,
+    pub k8s_exclude_rule: Option<K8sRules>,
+    pub k8s_include_rule: Option<K8sRules>,
 }
 
 #[derive(Debug)]
 pub struct JournaldConfig {
     pub paths: Vec<PathBuf>,
+}
+
+#[derive(Debug)]
+pub struct K8sRules {
+    pub namespace: Vec<String>,
+    pub pod: Vec<String>,
+    pub label: Vec<String>,
+    pub annotation: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -295,6 +305,8 @@ impl TryFrom<RawConfig> for Config {
                 argv::env::LOG_K8S_EVENTS,
                 K8sTrackingConf::Never,
             ),
+            k8s_exclude_rule: None,
+            k8s_include_rule: None,
         };
 
         if log.use_k8s_enrichment == K8sTrackingConf::Never

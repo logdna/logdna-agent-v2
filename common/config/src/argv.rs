@@ -8,11 +8,6 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
-use self::env::K8S_EXCLUSION_ANNOTATION;
-use self::env::K8S_EXCLUSION_LABEL;
-use self::env::K8S_EXCLUSION_NAMESPACE;
-use self::env::K8S_EXCLUSION_POD;
-
 // Symbol that will be populated in the main.rs file
 extern "Rust" {
     static PKG_VERSION: &'static str;
@@ -46,8 +41,6 @@ pub mod env {
     pub const LINE_INCLUSION: &str = "LOGDNA_LINE_INCLUSION_REGEX";
     pub const K8S_EXCLUSION_NAMESPACE: &str = "LOGDNA_K8S_EXCLUSION_NAMESPACE";
     pub const K8S_EXCLUSION_POD: &str = "LOGDNA_K8S_EXCLUSION_POD";
-    pub const K8S_EXCLUSION_LABEL: &str = "LOGDNA_K8S_EXCLUSION_LABEL";
-    pub const K8S_EXCLUSION_ANNOTATION: &str = "LOGDNA_K8S_EXCLUSION_ANNOTATION";
     pub const REDACT: &str = "LOGDNA_REDACT_REGEX";
     pub const INGEST_TIMEOUT: &str = "LOGDNA_INGEST_TIMEOUT";
     pub const INGEST_BUFFER_SIZE: &str = "LOGDNA_INGEST_BUFFER_SIZE";
@@ -208,11 +201,11 @@ pub struct ArgumentOptions {
     #[structopt(long = "k8s-exclusion-pod", env = env::K8S_EXCLUSION_POD)]
     k8s_exclusion_pod: Option<Vec<String>>,
 
-    #[structopt(long = "k8s-exclusion-label", env = env::K8S_EXCLUSION_LABEL)]
-    k8s_exclusion_label: Option<Vec<String>>,
+    #[structopt(long = "k8s-inclusion-namespace", env = env::K8S_EXCLUSION_NAMESPACE)]
+    k8s_include_namespace: Option<Vec<String>>,
 
-    #[structopt(long = "k8s-exclusion-annotation", env = env::K8S_EXCLUSION_ANNOTATION)]
-    k8s_exclusion_annotation: Option<Vec<String>>,
+    #[structopt(long = "k8s-inclusion-pod", env = env::K8S_EXCLUSION_POD)]
+    k8s_include_pod: Option<Vec<String>>,
 
     /// List of regex patterns used to mask matching sensitive information (such as PII) before
     /// sending it in the log line.
@@ -348,11 +341,15 @@ impl ArgumentOptions {
         );
 
         set_k8s_rules(
-            &mut raw.log.k8s_exclude_rules,
+            &mut raw.log.k8s_exclude,
             self.k8s_exclusion_namespace,
             self.k8s_exclusion_pod,
-            self.k8s_exclusion_label,
-            self.k8s_exclusion_annotation,
+        );
+
+        set_k8s_rules(
+            &mut raw.log.k8s_include,
+            self.k8s_include_namespace,
+            self.k8s_include_pod,
         );
 
         if !self.journald_paths.is_empty() {
@@ -482,25 +479,14 @@ fn set_k8s_rules(
     existing: &mut Option<K8sRules>,
     namespace: Option<Vec<String>>,
     pod: Option<Vec<String>>,
-    label: Option<Vec<String>>,
-    annotation: Option<Vec<String>>,
 ) {
     let k8s_rules = existing.get_or_insert(K8sRules::default());
-    if namespace.is_some() {
-        k8s_rules
-            .namespace
-            .append(&mut with_csv(namespace.unwrap()))
+    if let Some(name) = namespace {
+        k8s_rules.namespace.append(&mut with_csv(name))
     };
-    if pod.is_some() {
-        k8s_rules.pod.append(&mut with_csv(pod.unwrap()))
-    };
-    if label.is_some() {
-        k8s_rules.label.append(&mut with_csv(label.unwrap()))
-    };
-    if annotation.is_some() {
-        k8s_rules
-            .annotation
-            .append(&mut with_csv(annotation.unwrap()))
+
+    if let Some(p) = pod {
+        k8s_rules.pod.append(&mut with_csv(p))
     };
 }
 
@@ -696,16 +682,21 @@ mod test {
         assert_eq!(config.log.log_k8s_events, None);
         assert_eq!(config.log.db_path, None);
         assert_eq!(config.log.metrics_port, None);
+        assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
         assert_eq!(
-            config.log.k8s_exclude_rules,
+            config.log.k8s_exclude,
             Some(K8sRules {
                 namespace: Vec::new(),
                 pod: Vec::new(),
-                label: Vec::new(),
-                annotation: Vec::new(),
             })
         );
-        assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
+        assert_eq!(
+            config.log.k8s_include,
+            Some(K8sRules {
+                namespace: Vec::new(),
+                pod: Vec::new(),
+            })
+        );
     }
 
     #[test]

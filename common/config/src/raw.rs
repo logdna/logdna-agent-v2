@@ -4,7 +4,6 @@ use http::types::params::Params;
 use humanize_rs::bytes::Bytes;
 use serde::de::{Deserializer, Error, Unexpected, Visitor};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
 use std::io::{ErrorKind, Seek, SeekFrom};
@@ -292,7 +291,9 @@ pub struct LogConfig {
     pub use_k8s_enrichment: Option<String>,
     pub log_k8s_events: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub k8s_exclude_rules: Option<K8sRules>,
+    pub k8s_exclude: Option<K8sRules>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub k8s_include: Option<K8sRules>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
@@ -336,17 +337,12 @@ impl Merge for Rules {
 pub struct K8sRules {
     pub namespace: Vec<String>,
     pub pod: Vec<String>,
-    pub label: Vec<String>,
-    pub annotation: Vec<String>,
 }
 
 impl Merge for K8sRules {
     fn merge(&mut self, other: &Self, default: &Self) {
         self.namespace.merge(&other.namespace, &default.namespace);
         self.pod.merge(&other.pod, &default.pod);
-        self.label.merge(&other.label, &default.annotation);
-        self.annotation
-            .merge(&other.annotation, &default.annotation);
     }
 }
 
@@ -439,7 +435,8 @@ impl Default for LogConfig {
             lookback: None,
             use_k8s_enrichment: None,
             log_k8s_events: None,
-            k8s_exclude_rules: None,
+            k8s_exclude: None,
+            k8s_include: None,
         }
     }
 }
@@ -463,8 +460,10 @@ impl Merge for LogConfig {
             .merge(&other.use_k8s_enrichment, &default.use_k8s_enrichment);
         self.log_k8s_events
             .merge(&other.log_k8s_events, &default.log_k8s_events);
-        self.k8s_exclude_rules
-            .merge(&other.k8s_exclude_rules, &default.k8s_exclude_rules);
+        self.k8s_exclude
+            .merge(&other.k8s_exclude, &default.k8s_exclude);
+        self.k8s_include
+            .merge(&other.k8s_include, &default.k8s_include);
     }
 }
 
@@ -502,8 +501,9 @@ mod tests {
         assert!(new_config.is_ok());
         let new_config = new_config.unwrap();
         assert_eq!(config, new_config);
-        assert_eq!(config.log.k8s_exclude_rules, None);
         assert_eq!(config.startup, k8s_config);
+        assert_eq!(config.log.k8s_exclude, None);
+        assert_eq!(config.log.k8s_include, None);
     }
 
     #[test]
