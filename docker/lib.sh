@@ -42,7 +42,7 @@ get_sccache_args() {
 		fi
 		echo "-v $sccache_dir:/var/cache/sccache:Z --env SCCACHE_DIR=/var/cache/sccache"
 	else
-        if [ -n "$SCCACHE_ENDPOINT" ]; then APPEND="--env SCCACHE_ENDPOINT=$SCCACHE_ENDPOINT"; fi
+		if [ -n "$SCCACHE_ENDPOINT" ]; then APPEND="--env SCCACHE_ENDPOINT=$SCCACHE_ENDPOINT"; fi
 		echo "--env SCCACHE_BUCKET=$SCCACHE_BUCKET --env SCCACHE_REGION=$SCCACHE_REGION --env AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY --env AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID $APPEND"
 	fi
 }

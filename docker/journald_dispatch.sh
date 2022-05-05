@@ -20,7 +20,7 @@ _term() {
 
 echo "ARCH=$ARCH"
 
-docker build -t "$image" --build-arg "ARCH=$ARCH" -f "$curpath/journald/Dockerfile" "$curpath/.."
+docker build -t "$image" --build-arg "UID=$(id -u)" --build-arg "BUILD_IMAGE=$BUILD_IMAGE" --build-arg "ARCH=$ARCH" -f "$curpath/journald/Dockerfile" "$curpath/.."
 
 trap _term TERM
 trap _term INT

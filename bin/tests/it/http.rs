@@ -1,11 +1,9 @@
-use common::AgentSettings;
+use crate::common::{self, AgentSettings};
 pub use common::*;
 use std::fs::File;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tempfile::tempdir;
-
-mod common;
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
