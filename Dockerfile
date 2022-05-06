@@ -1,14 +1,26 @@
 # syntax = docker/dockerfile:1.0-experimental
-ARG BUILD_IMAGE
-ARG TARGET
 
-FROM ${BUILD_IMAGE} as build
+ARG UBI_MAJOR_VERSION=8
+ARG UBI_MINOR_VERSION=5
+ARG UBI_VERSION=${UBI_MAJOR_VERSION}.${UBI_MINOR_VERSION}
+
+ARG TARGET_ARCH=x86_64
+ARG BUILD_IMAGE
+# Image that runs natively on the BUILDPLATFORM to produce cross compile
+# artifacts
+
+FROM --platform=${TARGETPLATFORM} registry.access.redhat.com/ubi${UBI_MAJOR_VERSION}/ubi-minimal:${UBI_VERSION} as target
+
+FROM --platform=${BUILDPLATFORM} ${BUILD_IMAGE} as build
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ARG TARGET_ARCH
+ARG TARGET
 
 ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 
 ARG FEATURES
-
 
 ARG SCCACHE_BUCKET
 ARG SCCACHE_REGION
@@ -22,19 +34,28 @@ ARG BUILD_ENVS
 
 ARG TARGET
 
-ARG RUSTFLAGS
-ENV RUSTFLAGS=${RUSTFLAGS}
+ARG UBI_MAJOR_VERSION
+ARG UBI_MINOR_VERSION
+ARG UBI_VERSION
 
 ENV RUST_LOG=rustc_codegen_ssa::back::link=info
 
 # Create the directory for agent repo
 WORKDIR /opt/logdna-agent-v2
 
+# Grab target image repo info for packages we want to link against.
+# hadolint ignore=DL3008
+COPY --from=target /etc/yum.repos.d/ubi.repo $SYSROOT_PATH/etc/yum.repos.d/ubi.repo
+COPY --from=target /etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release $SYSROOT_PATH/etc/pki/rpm-gpg/RPM-GPG-KEY-redhat-release
+
 # Add the actual agent source files
 COPY . .
 
-RUN env
+# Set up ubi sysroot
+RUN scripts/ubi${UBI_MAJOR_VERSION}-sysroot.sh "${TARGET_ARCH}" "${UBI_MAJOR_VERSION}" "${UBI_MINOR_VERSION}" > /tmp/ubi${UBI_MAJOR_VERSION}.env
+
 # Rebuild the agent
+# hadolint ignore=SC1091
 RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     --mount=type=cache,target=/opt/rust/cargo/registry  \
     --mount=type=cache,target=/opt/logdna-agent-v2/target \
@@ -42,13 +63,14 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     if [ -n "${TARGET}" ]; then export TARGET_ARG="--target ${TARGET}"; fi; \
     export ${BUILD_ENVS?};  \
     if [ -z "$SCCACHE_ENDPOINT" ]; then unset SCCACHE_ENDPOINT; fi; \
+    set -a; source /tmp/ubi${UBI_MAJOR_VERSION}.env; set +a && env && \
     cargo build --manifest-path bin/Cargo.toml --no-default-features ${FEATURES} --release $TARGET_ARG && \
-    strip ./target/${TARGET}/release/logdna-agent && \
+    llvm-strip ./target/${TARGET}/release/logdna-agent && \
     cp ./target/${TARGET}/release/logdna-agent /logdna-agent && \
     sccache --show-stats
 
 # Use Red Hat Universal Base Image Minimal as the final base image
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.4
+FROM --platform=${TARGETPLATFORM} registry.access.redhat.com/ubi${UBI_MAJOR_VERSION}/ubi-minimal:${UBI_VERSION}
 
 ARG REPO
 ARG BUILD_TIMESTAMP

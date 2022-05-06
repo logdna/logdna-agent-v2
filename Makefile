@@ -7,7 +7,7 @@ export ARCH ?= x86_64
 # The image repo and tag can be modified e.g.
 # `make build RUST_IMAGE=docker.io/rust:latest
 RUST_IMAGE_REPO ?= docker.io/logdna/build-images
-RUST_IMAGE_BASE ?= buster
+RUST_IMAGE_BASE ?= bullseye
 RUST_IMAGE_TAG ?= rust-$(RUST_IMAGE_BASE)-1-stable
 RUST_IMAGE ?= $(RUST_IMAGE_REPO):$(RUST_IMAGE_TAG)-$(ARCH)
 
@@ -33,8 +33,8 @@ SHELLCHECK_IMAGE := $(SHELLCHECK_IMAGE)
 WORKDIR :=/build
 DOCKER := DOCKER_BUILDKIT=1 docker
 DOCKER_DISPATCH := ARCH=$(ARCH) ./docker/dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
-DOCKER_JOURNALD_DISPATCH := ARCH=$(ARCH) ./docker/journald_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
-DOCKER_KIND_DISPATCH := ARCH=$(ARCH) ./docker/kind_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
+DOCKER_JOURNALD_DISPATCH := BUILD_IMAGE=$(RUST_IMAGE) ARCH=$(ARCH) ./docker/journald_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
+DOCKER_KIND_DISPATCH := BUILD_IMAGE=$(RUST_IMAGE) ARCH=$(ARCH) ./docker/kind_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
 DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/logdna-agent-v2
 DOCKER_PUBLIC_IMAGE ?= docker.io/logdna/logdna-agent
 DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
@@ -335,7 +335,7 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
 		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
 		--build-arg TARGET=$(TARGET) \
-		--build-arg RUSTFLAGS='$(RUSTFLAGS)' \
+		--build-arg TARGET_ARCH=$(ARCH) \
 		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
 		--build-arg FEATURES='$(FEATURES_ARG)' \
@@ -345,7 +345,6 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
 		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
-	if [ ! -z "$(PULL_OPTS)" ]; then $(DOCKER) pull $(RUST_IMAGE); fi
 
 .PHONY:build-image-debian
 build-image-debian: ## Build a docker image as specified in the Dockerfile.debian
@@ -357,7 +356,6 @@ build-image-debian: ## Build a docker image as specified in the Dockerfile.debia
 		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
 		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
 		--build-arg TARGET=$(TARGET) \
-		--build-arg RUSTFLAGS='$(RUSTFLAGS)' \
 		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
 		--build-arg FEATURES='$(FEATURES_ARG)' \
@@ -378,7 +376,6 @@ build-image-debug: ## Build a docker image as specified in the Dockerfile.debug
 		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
 		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
 		--build-arg TARGET=$(TARGET) \
-		--build-arg RUSTFLAGS='$(RUSTFLAGS)' \
 		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
 		--build-arg FEATURES='$(FEATURES_ARG)' \
@@ -447,7 +444,7 @@ publish-s3-binary:
 	aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent
 
 define publish_images
-	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(shell docker images -q $(REPO):$(IMAGE_TAG)) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
+	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(BUILD_TAG) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
 	@set -e; \
 	arch=$(shell docker inspect --format "{{.Architecture}}" $(REPO):$(IMAGE_TAG)); \
 	arr=($(TARGET_VERSIONS)); \
@@ -459,7 +456,7 @@ define publish_images
 endef
 
 define publish_images_multi
-	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(shell docker images -q $(REPO):$(IMAGE_TAG)) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
+	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(BUILD_TAG) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
 	@set -e; \
 	arr=($(TARGET_VERSIONS)); \
 	for version in $${arr[@]}; do \

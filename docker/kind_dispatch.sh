@@ -27,6 +27,10 @@ trap _term INT
 echo "Building socat image"
 DOCKER_BUILDKIT=1 docker build -t "socat:local" $curpath/socat
 
+if [ -z "${BUILD_IMAGE}" ]; then
+    BUILD_IMAGE="docker.io/logdna/build-images:rust-bullseye-1-stable-$(get_host_arch)"
+fi
+
 echo "Building Agent Image"
 DOCKER_BUILDKIT=1 docker build $curpath/.. \
   -f Dockerfile.debian \
