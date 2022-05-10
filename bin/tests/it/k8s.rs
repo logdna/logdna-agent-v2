@@ -916,6 +916,7 @@ async fn test_k8s_enrichment() {
         let map = received.lock().await;
 
         let result = map.iter().find(|(k, _)| k.contains(pod_name));
+        //println!("*** RESULT: {:?}", result.unwrap());
         assert!(result.is_some());
 
         let (_, pod_file_info) = result.unwrap();
