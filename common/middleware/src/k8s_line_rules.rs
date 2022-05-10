@@ -3,12 +3,6 @@ use http::types::body::LineBufferMut;
 use regex::bytes::RegexSet;
 use thiserror::Error;
 
-//lazy_static! {
-//    static ref K8S_FILE_REG: Regex = Regex::new(
-//        r#"^/([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)-([a-z0-9]{64}).log$"#
-//    ).unwrap_or_else(|e| panic!("K8S_FILE_REG Regex::new() failed: {}", e));
-//}
-
 pub struct K8sLineRules {
     namespace: RegexSet,
     pod_name: RegexSet,
@@ -23,11 +17,11 @@ pub enum K8sLineRulesError {
 impl K8sLineRules {
     pub fn new(namespace: String, pod_name: String) -> Result<K8sLineRules, K8sLineRulesError> {
         let namespace_regex = format!(
-            r#"^([a-z0-9A-Z\-.]+)_{}_([a-z0-9A-Z\-.]+)-([a-z0-9]{{64}}).log$"#,
+            r#"/([a-z0-9A-Z\-.]+)_{}_([a-z0-9A-Z\-.]+)-([a-z0-9]{{64}}).log$"#,
             regex::escape(&namespace),
         );
         let pod_name_regex = format!(
-            r#"^{}_([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)-([a-z0-9]{{64}}).log$"#,
+            r#"/{}_([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)-([a-z0-9]{{64}}).log$"#,
             regex::escape(&pod_name),
         );
         Ok(K8sLineRules {
@@ -40,7 +34,8 @@ impl K8sLineRules {
         &self,
         line: &'a mut dyn LineBufferMut,
     ) -> Status<&'a mut dyn LineBufferMut> {
-        let value = line.get_line_buffer().unwrap();
+        //let line_value = line.get_line_buffer().unwrap();
+        let file_value = line.get_file().unwrap();
 
         // If it doesn't match any inclusion rule -> skip
         //if !self.inclusion.is_empty() && !self.inclusion.is_match(value) {
@@ -48,11 +43,11 @@ impl K8sLineRules {
         //}
 
         // If any exclusion rule matches -> skip
-        if self.namespace.is_match(value) {
+        if self.namespace.is_match(file_value.as_bytes()) {
             return Status::Skip;
         }
 
-        if self.pod_name.is_match(value) {
+        if self.pod_name.is_match(file_value.as_bytes()) {
             return Status::Skip;
         }
 
@@ -78,11 +73,13 @@ impl Middleware for K8sLineRules {
 
 #[cfg(test)]
 mod tests {
+    use http::types::body::LineBuilder;
+
     use super::*;
 
     #[test]
     fn test_k8s_line_rule_new() {
-        let test_file_path = r#"pod-name_namespace_socat-listener-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log"#;
+        let test_file_path = r#"/var/log/containers/pod-name_namespace_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log"#;
 
         let namespace = String::from("namespace");
         let pod_name = String::from("pod-name");
@@ -90,5 +87,16 @@ mod tests {
 
         assert!(k8s_rules.namespace.is_match(test_file_path.as_bytes()));
         assert!(k8s_rules.pod_name.is_match(test_file_path.as_bytes()));
+    }
+
+    #[test]
+    fn test_k8s_line_rule_namespace_pod() {
+        let mut test_line = LineBuilder::new()
+            .line("test-info")
+            .file("/var/log/containers/pod-name_namespace_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log");
+
+        let k8s_rules = K8sLineRules::new("namespace".to_string(), "pod-name".to_string());
+        let status = k8s_rules.unwrap().process(&mut test_line);
+        assert!(matches!(status, Status::Skip));
     }
 }
