@@ -5,8 +5,19 @@ use multimap::MultiMap;
 use regex::{Regex, RegexSet};
 use thiserror::Error;
 
+const NAMESPACE_KEY: &str = "namespace";
+const POD_NAME_KEY: &str = "pod";
+const LABEL_KEY: &str = "label";
+const ANNOTATION_KEY: &str = "annotation";
+
 lazy_static! {
-    static ref REG_KEYVAL: Regex = Regex::new(r#"^([a-z0-9]+):([a-z0-9]*(|-)[a-z]+)"#).unwrap();
+    static ref REG_KEYVAL: Regex = Regex::new(r#"^([a-z0-9]+):([a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
+    static ref REG_NAMESPACE: Regex = Regex::new(r#"^namespace:([a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
+    static ref REG_POD: Regex = Regex::new(r#"^pod:([a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
+    static ref REG_LABEL: Regex =
+        Regex::new(r#"^label.([a-z0-9]*(|-)[a-z0-9]+:[a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
+    static ref REG_ANNOTATION: Regex =
+        Regex::new(r#"^annotation.([a-z0-9]*(|-)[a-z0-9]+:[a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
 }
 
 pub struct K8sLineRules {
@@ -14,6 +25,11 @@ pub struct K8sLineRules {
     pod_name: RegexSet,
     labels: MultiMap<String, String>,
     annotations: MultiMap<String, String>,
+}
+
+pub struct K8sLineFilter {
+    exclusion: Option<K8sLineRules>,
+    inclusion: Option<K8sLineRules>,
 }
 
 #[derive(Clone, Debug, Error)]
@@ -67,6 +83,11 @@ impl K8sLineRules {
             labels: label_map,
             annotations: annotation_map,
         })
+
+        //Ok(K8sLineFilter {
+        //    exclusion: Some(k8s_exclusion_line_rules),
+        //    inclusion: None,
+        //})
     }
 
     fn process_line<'a>(
@@ -135,12 +156,80 @@ impl Middleware for K8sLineRules {
     }
 }
 
+fn get_rule_object(rules: &[String]) -> MultiMap<&str, String> {
+    let mut rules_vec = MultiMap::new();
+    for rule in rules.iter() {
+        match REG_NAMESPACE.captures(rule) {
+            Some(val) => {
+                rules_vec.insert(
+                    NAMESPACE_KEY,
+                    val.get(1).map(|m| m.as_str()).unwrap().to_string(),
+                );
+            }
+            None => (),
+        }
+        match REG_POD.captures(rule) {
+            Some(val) => {
+                rules_vec.insert(
+                    POD_NAME_KEY,
+                    val.get(1).map(|m| m.as_str()).unwrap().to_string(),
+                );
+            }
+            None => (),
+        }
+        match REG_LABEL.captures(rule) {
+            Some(val) => {
+                rules_vec.insert(
+                    LABEL_KEY,
+                    val.get(1).map(|m| m.as_str()).unwrap().to_string(),
+                );
+            }
+            None => (),
+        }
+        match REG_ANNOTATION.captures(rule) {
+            Some(val) => {
+                rules_vec.insert(
+                    ANNOTATION_KEY,
+                    val.get(1).map(|m| m.as_str()).unwrap().to_string(),
+                );
+            }
+            None => (),
+        }
+    }
+
+    rules_vec
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use http::types::body::{KeyValueMap, LineBuilder};
 
-    //TODO: add empty test
+    #[test]
+    fn test_option_parsing_rules() {
+        let test_vec: Vec<String> = vec![
+            "namespace:testnamespace".to_string(),
+            "pod:some-name".to_string(),
+            "namespace:othernamespace".to_string(),
+            "label.app:name".to_string(),
+            "label.type:network".to_string(),
+            "annotation.owner:secret-agent".to_string(),
+        ];
+
+        let rule_results = get_rule_object(&test_vec);
+        let namespace_results = rule_results.get_vec("namespace").unwrap();
+        let pod_results = rule_results.get_vec("pod").unwrap();
+        let label_results = rule_results.get_vec("label").unwrap();
+        let annotation_results = rule_results.get_vec("annotation").unwrap();
+
+        assert_eq!(namespace_results[0], "testnamespace");
+        assert_eq!(namespace_results[1], "othernamespace");
+        assert_eq!(pod_results[0], "some-name");
+        assert_eq!(label_results[0], "app:name");
+        assert_eq!(label_results[1], "type:network");
+        assert_eq!(annotation_results[0], "owner:secret-agent");
+    }
+
     #[test]
     fn test_k8s_line_rules_undefined() {
         let namespace = &[];
