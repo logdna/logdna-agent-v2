@@ -20,16 +20,17 @@ lazy_static! {
         Regex::new(r#"^annotation.([a-z0-9]*(|-)[a-z0-9]+:[a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
 }
 
-pub struct K8sLineRules {
-    namespace: RegexSet,
-    pod_name: RegexSet,
-    labels: MultiMap<String, String>,
-    annotations: MultiMap<String, String>,
+#[derive(Debug)]
+struct K8sLineRules {
+    namespace: Option<RegexSet>,
+    pod_name: Option<RegexSet>,
+    labels: Option<MultiMap<String, String>>,
+    annotations: Option<MultiMap<String, String>>,
 }
 
 pub struct K8sLineFilter {
-    exclusion: Option<K8sLineRules>,
-    inclusion: Option<K8sLineRules>,
+    exclusion: K8sLineRules,
+    //inclusion: K8sLineRules,
 }
 
 #[derive(Clone, Debug, Error)]
@@ -38,56 +39,18 @@ pub enum K8sLineRulesError {
     RegexError(regex::Error),
 }
 
-impl K8sLineRules {
+impl K8sLineFilter {
     pub fn new(
-        namespace: &[String],
-        pod_name: &[String],
-        labels: &[String],
-        annotations: &[String],
-    ) -> Result<K8sLineRules, K8sLineRulesError> {
-        let mut namespace_regex_set = Vec::with_capacity(namespace.len());
-        let mut pod_regex_set = Vec::with_capacity(pod_name.len());
-        let mut label_map: MultiMap<String, String> = MultiMap::new();
-        let mut annotation_map: MultiMap<String, String> = MultiMap::new();
+        exclusion: &[String],
+        //inclusion: &[String],
+    ) -> Result<K8sLineFilter, K8sLineRulesError> {
+        let k8s_exclusion_line_rules = set_k8s_line_rule(exclusion);
+        //let k8s_inclusion_line_rules = set_k8s_line_rule(inclusion);
 
-        for ns in namespace.iter() {
-            namespace_regex_set.push(format!(
-                r#"/([a-z0-9A-Z\-.]+)_{}_([a-z0-9A-Z\-.]+)-([a-z0-9]{{64}}).log$"#,
-                regex::escape(ns),
-            ));
-        }
-
-        for p in pod_name.iter() {
-            pod_regex_set.push(format!(
-                r#"/{}_([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)-([a-z0-9]{{64}}).log$"#,
-                regex::escape(p),
-            ));
-        }
-
-        for label in labels.iter() {
-            let capture = REG_KEYVAL.captures(label).unwrap();
-            let key: String = capture.get(1).map(|m| m.as_str()).unwrap().to_string();
-            let value: String = capture.get(2).map(|m| m.as_str()).unwrap().to_string();
-            label_map.insert(key, value)
-        }
-        for annotation in annotations.iter() {
-            let capture = REG_KEYVAL.captures(annotation).unwrap();
-            let key: String = capture.get(1).map(|m| m.as_str()).unwrap().to_string();
-            let value: String = capture.get(2).map(|m| m.as_str()).unwrap().to_string();
-            annotation_map.insert(key, value)
-        }
-
-        Ok(K8sLineRules {
-            namespace: RegexSet::new(namespace_regex_set).map_err(K8sLineRulesError::RegexError)?,
-            pod_name: RegexSet::new(pod_regex_set).map_err(K8sLineRulesError::RegexError)?,
-            labels: label_map,
-            annotations: annotation_map,
+        Ok(K8sLineFilter {
+            exclusion: k8s_exclusion_line_rules.unwrap(),
+            //inclusion: k8s_inclusion_line_rules.unwrap(),
         })
-
-        //Ok(K8sLineFilter {
-        //    exclusion: Some(k8s_exclusion_line_rules),
-        //    inclusion: None,
-        //})
     }
 
     fn process_line<'a>(
@@ -104,17 +67,16 @@ impl K8sLineRules {
         //}
 
         // If any exclusion rule matches -> skip
-        if RegexSet::is_match(&self.namespace, file_value) {
+        if RegexSet::is_match(self.exclusion.namespace.as_ref().unwrap(), file_value) {
             return Status::Skip;
         }
 
-        if RegexSet::is_match(&self.pod_name, file_value) {
+        if RegexSet::is_match(self.exclusion.pod_name.as_ref().unwrap(), file_value) {
             return Status::Skip;
         }
 
-        // TODO: need to account for HashMap<String, Vec<String>> using map.get_vec()
         for (k, v) in label_value.iter() {
-            if let Some(value) = self.labels.get_vec(k) {
+            if let Some(value) = self.exclusion.labels.as_ref().unwrap().get_vec(k) {
                 for i in value.iter() {
                     if i == v {
                         return Status::Skip;
@@ -123,7 +85,7 @@ impl K8sLineRules {
             }
         }
         for (k, v) in annotation_value.iter() {
-            if let Some(value) = self.annotations.get_vec(k) {
+            if let Some(value) = self.exclusion.annotations.as_ref().unwrap().get_vec(k) {
                 for i in value.iter() {
                     if i == v {
                         return Status::Skip;
@@ -136,14 +98,15 @@ impl K8sLineRules {
     }
 }
 
-impl Middleware for K8sLineRules {
+impl Middleware for K8sLineFilter {
     fn run(&self) {}
 
     fn process<'a>(&self, line: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
-        if self.namespace.is_empty()
-            && self.pod_name.is_empty()
-            && self.labels.is_empty()
-            && self.annotations.is_empty()
+        println!("*** WTF: {:?}", self.exclusion);
+        if self.exclusion.namespace.is_none()
+            && self.exclusion.pod_name.is_none()
+            && self.exclusion.labels.is_none()
+            && self.exclusion.annotations.is_none()
         {
             // Avoid unnecessary allocations when no rules were defined
             return Status::Ok(line);
@@ -154,6 +117,63 @@ impl Middleware for K8sLineRules {
             Some(_) => self.process_line(line),
         }
     }
+}
+
+fn set_k8s_line_rule(rules: &[String]) -> Result<K8sLineRules, K8sLineRulesError> {
+    if rules.is_empty() {
+        return Ok(K8sLineRules {
+            namespace: None,
+            pod_name: None,
+            labels: None,
+            annotations: None,
+        });
+    }
+
+    let rule_object = get_rule_object(rules);
+    println!("*** RULE_OBJECT: {:?}", rule_object);
+
+    let namespace = rule_object.get_vec(NAMESPACE_KEY).unwrap();
+    let mut namespace_regex_set = Vec::with_capacity(namespace.len());
+    for ns in namespace.iter() {
+        namespace_regex_set.push(format!(
+            r#"/([a-z0-9A-Z\-.]+)_{}_([a-z0-9A-Z\-.]+)-([a-z0-9]{{64}}).log$"#,
+            regex::escape(ns),
+        ));
+    }
+
+    let pod_name = rule_object.get_vec(POD_NAME_KEY).unwrap();
+    let mut pod_regex_set = Vec::with_capacity(pod_name.len());
+    for p in pod_name.iter() {
+        pod_regex_set.push(format!(
+            r#"/{}_([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)-([a-z0-9]{{64}}).log$"#,
+            regex::escape(p),
+        ));
+    }
+
+    let mut label_map: MultiMap<String, String> = MultiMap::new();
+    let labels = rule_object.get_vec(LABEL_KEY).unwrap();
+    for label in labels.iter() {
+        let capture = REG_KEYVAL.captures(label).unwrap();
+        let key: String = capture.get(1).map(|m| m.as_str()).unwrap().to_string();
+        let value: String = capture.get(2).map(|m| m.as_str()).unwrap().to_string();
+        label_map.insert(key, value)
+    }
+
+    let mut annotation_map: MultiMap<String, String> = MultiMap::new();
+    let annotations = rule_object.get_vec(ANNOTATION_KEY).unwrap();
+    for annotation in annotations.iter() {
+        let capture = REG_KEYVAL.captures(annotation).unwrap();
+        let key: String = capture.get(1).map(|m| m.as_str()).unwrap().to_string();
+        let value: String = capture.get(2).map(|m| m.as_str()).unwrap().to_string();
+        annotation_map.insert(key, value)
+    }
+
+    Ok(K8sLineRules {
+        namespace: Some(RegexSet::new(namespace_regex_set).map_err(K8sLineRulesError::RegexError)?),
+        pod_name: Some(RegexSet::new(pod_regex_set).map_err(K8sLineRulesError::RegexError)?),
+        labels: Some(label_map),
+        annotations: Some(annotation_map),
+    })
 }
 
 fn get_rule_object(rules: &[String]) -> MultiMap<&str, String> {
@@ -232,15 +252,10 @@ mod tests {
 
     #[test]
     fn test_k8s_line_rules_undefined() {
-        let namespace = &[];
-        let pod_name = &[];
-        let test_label = &[];
-        let test_annotation = &[];
-        let k8s_rules =
-            K8sLineRules::new(namespace, pod_name, test_label, test_annotation).unwrap();
-
+        let exclusion = &[];
+        //let inclusion = &[];
+        let k8s_rules = K8sLineFilter::new(exclusion).unwrap();
         let mut test_line = LineBuilder::new();
-
         let status = k8s_rules.process(&mut test_line);
         assert!(matches!(status, Status::Ok(_)));
     }
@@ -252,18 +267,34 @@ mod tests {
         let test_app_name_1 = "other-name".to_string();
         let test_owner_name = "secret-agent".to_string();
 
-        let namespace = &[String::from("namespace")];
-        let pod_name = &[String::from("pod-name")];
-        let test_label = &[String::from("app:app-name"), String::from("app:other-name")];
-        let test_annotation = &[String::from("owner:secret-agent")];
-        let k8s_rules =
-            K8sLineRules::new(namespace, pod_name, test_label, test_annotation).unwrap();
+        //let inclusion = &[];
+        let exclusion = &[
+            "namespace:namespace".to_string(),
+            "pod:pod-name".to_string(),
+            "label.app:app-name".to_string(),
+            "label.app:other-name".to_string(),
+            "annotation.owner:secret-agent".to_string(),
+        ];
+        let k8s_rules = K8sLineFilter::new(exclusion).unwrap();
 
-        assert!(k8s_rules.namespace.is_match(test_file_path));
-        assert!(k8s_rules.pod_name.is_match(test_file_path));
+        assert!(k8s_rules
+            .exclusion
+            .namespace
+            .as_ref()
+            .unwrap()
+            .is_match(test_file_path));
+        assert!(k8s_rules
+            .exclusion
+            .pod_name
+            .as_ref()
+            .unwrap()
+            .is_match(test_file_path));
         assert_eq!(
             k8s_rules
+                .exclusion
                 .labels
+                .as_ref()
+                .unwrap()
                 .get_vec("app")
                 .iter()
                 .map(|v| v[0].clone())
@@ -272,7 +303,10 @@ mod tests {
         );
         assert_eq!(
             k8s_rules
+                .exclusion
                 .labels
+                .as_ref()
+                .unwrap()
                 .get_vec("app")
                 .iter()
                 .map(|v| v[1].clone())
@@ -281,7 +315,10 @@ mod tests {
         );
         assert_eq!(
             k8s_rules
+                .exclusion
                 .annotations
+                .as_ref()
+                .unwrap()
                 .get_vec("owner")
                 .iter()
                 .map(|v| v[0].clone())
@@ -292,17 +329,15 @@ mod tests {
 
     #[test]
     fn test_k8s_line_rule_exclude() {
-        let test_namespace = &[String::from("logdna-agent")];
-        let test_pod_name = &[String::from("pod-name")];
-        let test_label = &[
-            String::from("app:name"),
-            String::from("app:other-name"),
-            String::from("type:network"),
+        //let inclusion = &[];
+        let exclusion = &[
+            "namespace:logdna-agent".to_string(),
+            "pod:pod-name".to_string(),
+            "label.app:name".to_string(),
+            "label.app:other-name".to_string(),
+            "annotation.owner:secret-agent".to_string(),
         ];
-        let test_annotation = &[String::from("owner:secret-agent")];
-
-        let k8s_rules =
-            K8sLineRules::new(test_namespace, test_pod_name, test_label, test_annotation);
+        let k8s_rules = K8sLineFilter::new(exclusion);
 
         // Test no match
         let mut label_kv_map = KeyValueMap::new();
