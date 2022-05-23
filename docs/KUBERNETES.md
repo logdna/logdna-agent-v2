@@ -47,6 +47,7 @@ kubectl apply -f https://assets.logdna.com/clients/logdna-agent/3/agent-resource
 * [Collecting Node Journald Logs](#collecting-node-journald-logs)
   * [Enabling Journald on the Node](#enabling-journald-on-the-node)
   * [Enabling Journald Monitoring on the Agent](#enabling-journald-monitoring-on-the-agent)
+* [GKE Autopilot](#gke-autopilot)
 
 ## Installing
 
@@ -253,3 +254,11 @@ kubectl patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"add
    - name: LOGDNA_JOURNALD_PATHS
      value: /var/log/journal
  ```
+
+### GKE Autopilot
+
+Use `k8s/agent-resources-no-cap.yaml` to deploy Agent in GKE Autopilot or other clusters that do not allow DAC.
+
+__NOTE__ In this "no-cap" deployment Agent does not support the "stateful" mode mentioned in [documentation about enabling "statefulness" for the agent](KUBERNETES.md#enabling-persistent-agent-state).
+
+
