@@ -30,7 +30,7 @@ struct K8sLineRules {
 
 pub struct K8sLineFilter {
     exclusion: K8sLineRules,
-    //inclusion: K8sLineRules,
+    inclusion: K8sLineRules,
 }
 
 #[derive(Clone, Debug, Error)]
@@ -42,14 +42,14 @@ pub enum K8sLineRulesError {
 impl K8sLineFilter {
     pub fn new(
         exclusion: &[String],
-        //inclusion: &[String],
+        inclusion: &[String],
     ) -> Result<K8sLineFilter, K8sLineRulesError> {
         let k8s_exclusion_line_rules = set_k8s_line_rule(exclusion);
-        //let k8s_inclusion_line_rules = set_k8s_line_rule(inclusion);
+        let k8s_inclusion_line_rules = set_k8s_line_rule(inclusion);
 
         Ok(K8sLineFilter {
             exclusion: k8s_exclusion_line_rules.unwrap(),
-            //inclusion: k8s_inclusion_line_rules.unwrap(),
+            inclusion: k8s_inclusion_line_rules.unwrap(),
         })
     }
 
@@ -62,33 +62,69 @@ impl K8sLineFilter {
         let annotation_value = line.get_annotations().unwrap();
 
         // If it doesn't match any inclusion rule -> skip
-        //if !self.inclusion.is_empty() && !self.inclusion.is_match(value) {
-        //    return Status::Skip;
-        //}
-
-        // If any exclusion rule matches -> skip
-        if RegexSet::is_match(self.exclusion.namespace.as_ref().unwrap(), file_value) {
+        if self.inclusion.namespace.is_some()
+            && !RegexSet::is_match(self.inclusion.namespace.as_ref().unwrap(), file_value)
+        {
             return Status::Skip;
         }
-
-        if RegexSet::is_match(self.exclusion.pod_name.as_ref().unwrap(), file_value) {
+        if self.inclusion.pod_name.is_some()
+            && !RegexSet::is_match(self.inclusion.pod_name.as_ref().unwrap(), file_value)
+        {
             return Status::Skip;
         }
-
-        for (k, v) in label_value.iter() {
-            if let Some(value) = self.exclusion.labels.as_ref().unwrap().get_vec(k) {
-                for i in value.iter() {
-                    if i == v {
-                        return Status::Skip;
+        if let Some(lables) = self.inclusion.labels.as_ref() {
+            for (k, v) in label_value.iter() {
+                if let Some(value) = lables.get_vec(k) {
+                    for i in value.iter() {
+                        if i != v {
+                            return Status::Skip;
+                        }
                     }
                 }
             }
         }
-        for (k, v) in annotation_value.iter() {
-            if let Some(value) = self.exclusion.annotations.as_ref().unwrap().get_vec(k) {
-                for i in value.iter() {
-                    if i == v {
-                        return Status::Skip;
+        if let Some(annotations) = self.inclusion.annotations.as_ref() {
+            for (k, v) in annotation_value.iter() {
+                if let Some(value) = annotations.get_vec(k) {
+                    for i in value.iter() {
+                        if i != v {
+                            return Status::Skip;
+                        }
+                    }
+                }
+            }
+        }
+
+        // If any exclusion rule matches -> skip
+        if let Some(namespace) = self.exclusion.namespace.as_ref() {
+            if RegexSet::is_match(namespace, file_value) {
+                return Status::Skip;
+            }
+        }
+
+        if let Some(pod_name) = self.exclusion.pod_name.as_ref() {
+            if RegexSet::is_match(pod_name, file_value) {
+                return Status::Skip;
+            }
+        }
+        if let Some(lables) = self.exclusion.labels.as_ref() {
+            for (k, v) in label_value.iter() {
+                if let Some(value) = lables.get_vec(k) {
+                    for i in value.iter() {
+                        if i == v {
+                            return Status::Skip;
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(annotations) = self.exclusion.annotations.as_ref() {
+            for (k, v) in annotation_value.iter() {
+                if let Some(value) = annotations.get_vec(k) {
+                    for i in value.iter() {
+                        if i == v {
+                            return Status::Skip;
+                        }
                     }
                 }
             }
@@ -102,11 +138,14 @@ impl Middleware for K8sLineFilter {
     fn run(&self) {}
 
     fn process<'a>(&self, line: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
-        println!("*** WTF: {:?}", self.exclusion);
         if self.exclusion.namespace.is_none()
             && self.exclusion.pod_name.is_none()
             && self.exclusion.labels.is_none()
             && self.exclusion.annotations.is_none()
+            && self.inclusion.namespace.is_none()
+            && self.inclusion.pod_name.is_none()
+            && self.inclusion.labels.is_none()
+            && self.inclusion.annotations.is_none()
         {
             // Avoid unnecessary allocations when no rules were defined
             return Status::Ok(line);
@@ -120,60 +159,66 @@ impl Middleware for K8sLineFilter {
 }
 
 fn set_k8s_line_rule(rules: &[String]) -> Result<K8sLineRules, K8sLineRulesError> {
+    let mut k8s_line_rules = K8sLineRules {
+        namespace: None,
+        pod_name: None,
+        labels: None,
+        annotations: None,
+    };
+
     if rules.is_empty() {
-        return Ok(K8sLineRules {
-            namespace: None,
-            pod_name: None,
-            labels: None,
-            annotations: None,
-        });
+        return Ok(k8s_line_rules);
     }
 
     let rule_object = get_rule_object(rules);
-    println!("*** RULE_OBJECT: {:?}", rule_object);
 
-    let namespace = rule_object.get_vec(NAMESPACE_KEY).unwrap();
-    let mut namespace_regex_set = Vec::with_capacity(namespace.len());
-    for ns in namespace.iter() {
-        namespace_regex_set.push(format!(
-            r#"/([a-z0-9A-Z\-.]+)_{}_([a-z0-9A-Z\-.]+)-([a-z0-9]{{64}}).log$"#,
-            regex::escape(ns),
-        ));
+    if let Some(namespace) = rule_object.get_vec(NAMESPACE_KEY) {
+        let mut namespace_regex_set = Vec::with_capacity(namespace.len());
+        for ns in namespace.iter() {
+            namespace_regex_set.push(format!(
+                r#"/([a-z0-9A-Z\-.]+)_{}_([a-z0-9A-Z\-.]+)-([a-z0-9]{{64}}).log$"#,
+                regex::escape(ns),
+            ));
+        }
+        k8s_line_rules.namespace =
+            Some(RegexSet::new(namespace_regex_set).map_err(K8sLineRulesError::RegexError)?);
     }
 
-    let pod_name = rule_object.get_vec(POD_NAME_KEY).unwrap();
-    let mut pod_regex_set = Vec::with_capacity(pod_name.len());
-    for p in pod_name.iter() {
-        pod_regex_set.push(format!(
-            r#"/{}_([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)-([a-z0-9]{{64}}).log$"#,
-            regex::escape(p),
-        ));
+    if let Some(pod_name) = rule_object.get_vec(POD_NAME_KEY) {
+        let mut pod_regex_set = Vec::with_capacity(pod_name.len());
+        for p in pod_name.iter() {
+            pod_regex_set.push(format!(
+                r#"/{}_([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)-([a-z0-9]{{64}}).log$"#,
+                regex::escape(p),
+            ));
+        }
+        k8s_line_rules.pod_name =
+            Some(RegexSet::new(pod_regex_set).map_err(K8sLineRulesError::RegexError)?);
     }
 
-    let mut label_map: MultiMap<String, String> = MultiMap::new();
-    let labels = rule_object.get_vec(LABEL_KEY).unwrap();
-    for label in labels.iter() {
-        let capture = REG_KEYVAL.captures(label).unwrap();
-        let key: String = capture.get(1).map(|m| m.as_str()).unwrap().to_string();
-        let value: String = capture.get(2).map(|m| m.as_str()).unwrap().to_string();
-        label_map.insert(key, value)
+    if let Some(labels) = rule_object.get_vec(LABEL_KEY) {
+        let mut label_map: MultiMap<String, String> = MultiMap::new();
+        for label in labels.iter() {
+            let capture = REG_KEYVAL.captures(label).unwrap();
+            let key: String = capture.get(1).map(|m| m.as_str()).unwrap().to_string();
+            let value: String = capture.get(2).map(|m| m.as_str()).unwrap().to_string();
+            label_map.insert(key, value)
+        }
+        k8s_line_rules.labels = Some(label_map);
     }
 
-    let mut annotation_map: MultiMap<String, String> = MultiMap::new();
-    let annotations = rule_object.get_vec(ANNOTATION_KEY).unwrap();
-    for annotation in annotations.iter() {
-        let capture = REG_KEYVAL.captures(annotation).unwrap();
-        let key: String = capture.get(1).map(|m| m.as_str()).unwrap().to_string();
-        let value: String = capture.get(2).map(|m| m.as_str()).unwrap().to_string();
-        annotation_map.insert(key, value)
+    if let Some(annotations) = rule_object.get_vec(ANNOTATION_KEY) {
+        let mut annotation_map: MultiMap<String, String> = MultiMap::new();
+        for annotation in annotations.iter() {
+            let capture = REG_KEYVAL.captures(annotation).unwrap();
+            let key: String = capture.get(1).map(|m| m.as_str()).unwrap().to_string();
+            let value: String = capture.get(2).map(|m| m.as_str()).unwrap().to_string();
+            annotation_map.insert(key, value)
+        }
+        k8s_line_rules.annotations = Some(annotation_map);
     }
 
-    Ok(K8sLineRules {
-        namespace: Some(RegexSet::new(namespace_regex_set).map_err(K8sLineRulesError::RegexError)?),
-        pod_name: Some(RegexSet::new(pod_regex_set).map_err(K8sLineRulesError::RegexError)?),
-        labels: Some(label_map),
-        annotations: Some(annotation_map),
-    })
+    Ok(k8s_line_rules)
 }
 
 fn get_rule_object(rules: &[String]) -> MultiMap<&str, String> {
@@ -253,8 +298,8 @@ mod tests {
     #[test]
     fn test_k8s_line_rules_undefined() {
         let exclusion = &[];
-        //let inclusion = &[];
-        let k8s_rules = K8sLineFilter::new(exclusion).unwrap();
+        let inclusion = &[];
+        let k8s_rules = K8sLineFilter::new(exclusion, inclusion).unwrap();
         let mut test_line = LineBuilder::new();
         let status = k8s_rules.process(&mut test_line);
         assert!(matches!(status, Status::Ok(_)));
@@ -267,7 +312,7 @@ mod tests {
         let test_app_name_1 = "other-name".to_string();
         let test_owner_name = "secret-agent".to_string();
 
-        //let inclusion = &[];
+        let inclusion = &[];
         let exclusion = &[
             "namespace:namespace".to_string(),
             "pod:pod-name".to_string(),
@@ -275,7 +320,7 @@ mod tests {
             "label.app:other-name".to_string(),
             "annotation.owner:secret-agent".to_string(),
         ];
-        let k8s_rules = K8sLineFilter::new(exclusion).unwrap();
+        let k8s_rules = K8sLineFilter::new(exclusion, inclusion).unwrap();
 
         assert!(k8s_rules
             .exclusion
@@ -328,8 +373,59 @@ mod tests {
     }
 
     #[test]
+    fn test_k8s_line_rule_include() {
+        let exclusion = &[];
+        let inclusion = &[
+            "namespace:namespace".to_string(),
+            "label.app:crazyapp".to_string(),
+        ];
+        let k8s_rules = K8sLineFilter::new(exclusion, inclusion);
+
+        // Test no match
+        let mut label_kv_map = KeyValueMap::new();
+        let mut annotation_kv_map = KeyValueMap::new();
+        let mut test_line = LineBuilder::new()
+            .line("test-info")
+            .file("/var/log/containers/random-name_namespace_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log")
+            .labels(label_kv_map.add("app", "crazyapp"))
+            .annotations(annotation_kv_map.add("owner", "random-agent"));
+        let mut status = k8s_rules.as_ref().unwrap().process(&mut test_line);
+        assert!(matches!(status, Status::Ok(_)));
+
+        label_kv_map = KeyValueMap::new();
+        annotation_kv_map = KeyValueMap::new();
+        test_line = LineBuilder::new()
+            .line("test-info")
+            .file("/var/log/containers/random-pod_logdna-agent_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log")
+            .labels(label_kv_map.add("app", "crazyapp"))
+            .annotations(annotation_kv_map.add("owner", "random-agent"));
+        status = k8s_rules.as_ref().unwrap().process(&mut test_line);
+        assert!(matches!(status, Status::Skip));
+
+        label_kv_map = KeyValueMap::new();
+        annotation_kv_map = KeyValueMap::new();
+        test_line = LineBuilder::new()
+            .line("test-info")
+            .file("/var/log/containers/random-pod_namespace_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log")
+            .labels(label_kv_map.add("app", "crazyapp"))
+            .annotations(annotation_kv_map.add("owner", "random-agent"));
+        status = k8s_rules.as_ref().unwrap().process(&mut test_line);
+        assert!(matches!(status, Status::Ok(_)));
+
+        label_kv_map = KeyValueMap::new();
+        annotation_kv_map = KeyValueMap::new();
+        test_line = LineBuilder::new()
+            .line("test-info")
+            .file("/var/log/containers/random-pod_namespace_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log")
+            .labels(label_kv_map.add("app", "thisapp"))
+            .annotations(annotation_kv_map.add("owner", "random-agent"));
+        status = k8s_rules.as_ref().unwrap().process(&mut test_line);
+        assert!(matches!(status, Status::Skip));
+    }
+
+    #[test]
     fn test_k8s_line_rule_exclude() {
-        //let inclusion = &[];
+        let inclusion = &[];
         let exclusion = &[
             "namespace:logdna-agent".to_string(),
             "pod:pod-name".to_string(),
@@ -337,7 +433,7 @@ mod tests {
             "label.app:other-name".to_string(),
             "annotation.owner:secret-agent".to_string(),
         ];
-        let k8s_rules = K8sLineFilter::new(exclusion);
+        let k8s_rules = K8sLineFilter::new(exclusion, inclusion);
 
         // Test no match
         let mut label_kv_map = KeyValueMap::new();
@@ -391,6 +487,39 @@ mod tests {
             .file("/var/log/containers/random-pod_namespace_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log")
             .labels(label_kv_map.add("app", "randomapp"))
             .annotations(annotation_kv_map.add("owner", "secret-agent"));
+        status = k8s_rules.as_ref().unwrap().process(&mut test_line);
+        assert!(matches!(status, Status::Skip));
+    }
+
+    #[test]
+    fn test_line_rule_include_exclude() {
+        let inclusion = &[
+            "namespace:mezmo-agent".to_string(),
+            "label.type:networking".to_string(),
+        ];
+        let exclusion = &[
+            "pod:name".to_string(),
+            "annotation.owner:random-agent".to_string(),
+        ];
+        let k8s_rules = K8sLineFilter::new(exclusion, inclusion);
+
+        let mut label_kv_map = KeyValueMap::new();
+        let mut annotation_kv_map = KeyValueMap::new();
+        let mut test_line = LineBuilder::new()
+            .line("test-info")
+            .file("/var/log/containers/random-name_mezmo-agent_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log")
+            .labels(label_kv_map.add("type", "networking"))
+            .annotations(annotation_kv_map.add("owner", "secret-agent"));
+        let mut status = k8s_rules.as_ref().unwrap().process(&mut test_line);
+        assert!(matches!(status, Status::Ok(_)));
+
+        label_kv_map = KeyValueMap::new();
+        annotation_kv_map = KeyValueMap::new();
+        test_line = LineBuilder::new()
+            .line("test-info")
+            .file("/var/log/containers/random-name_mezmo-agent_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log")
+            .labels(label_kv_map.add("type", "networking"))
+            .annotations(annotation_kv_map.add("owner", "random-agent"));
         status = k8s_rules.as_ref().unwrap().process(&mut test_line);
         assert!(matches!(status, Status::Skip));
     }
