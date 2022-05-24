@@ -1,4 +1,4 @@
-use crate::raw::{Config as RawConfig, K8sRules, Rules};
+use crate::raw::{Config as RawConfig, Rules};
 use fs::lookback::Lookback;
 use http::types::params::{Params, Tags};
 use humanize_rs::bytes::Bytes;
@@ -39,8 +39,8 @@ pub mod env {
     pub const K8S_STARTUP_LEASE: &str = "LOGDNA_K8S_STARTUP_LEASE";
     pub const LINE_EXCLUSION: &str = "LOGDNA_LINE_EXCLUSION_REGEX";
     pub const LINE_INCLUSION: &str = "LOGDNA_LINE_INCLUSION_REGEX";
-    pub const K8S_EXCLUSION_NAMESPACE: &str = "LOGDNA_K8S_EXCLUSION_NAMESPACE";
-    pub const K8S_EXCLUSION_POD: &str = "LOGDNA_K8S_EXCLUSION_POD";
+    pub const K8S_METADATA_INCLUSION: &str = "LOGDNA_K8S_METADATA_INCLUSION";
+    pub const K8S_METADATA_EXCLUSION: &str = "LOGDNA_K8S_METADATA_EXCLUSION";
     pub const REDACT: &str = "LOGDNA_REDACT_REGEX";
     pub const INGEST_TIMEOUT: &str = "LOGDNA_INGEST_TIMEOUT";
     pub const INGEST_BUFFER_SIZE: &str = "LOGDNA_INGEST_BUFFER_SIZE";
@@ -195,17 +195,11 @@ pub struct ArgumentOptions {
     #[structopt(long, env = env::LINE_INCLUSION)]
     line_inclusion: Vec<String>,
 
-    #[structopt(long = "k8s-exclusion-namespace", env = env::K8S_EXCLUSION_NAMESPACE)]
-    k8s_exclusion_namespace: Option<Vec<String>>,
+    #[structopt(long = "k8-metadata-inclusion", env = env::K8S_METADATA_INCLUSION)]
+    k8s_metadata_inclusion: Option<Vec<String>>,
 
-    #[structopt(long = "k8s-exclusion-pod", env = env::K8S_EXCLUSION_POD)]
-    k8s_exclusion_pod: Option<Vec<String>>,
-
-    #[structopt(long = "k8s-inclusion-namespace", env = env::K8S_EXCLUSION_NAMESPACE)]
-    k8s_include_namespace: Option<Vec<String>>,
-
-    #[structopt(long = "k8s-inclusion-pod", env = env::K8S_EXCLUSION_POD)]
-    k8s_include_pod: Option<Vec<String>>,
+    #[structopt(long = "k8s-metadata-exclusion", env = env::K8S_METADATA_EXCLUSION)]
+    k8s_metadta_exclusion: Option<Vec<String>>,
 
     /// List of regex patterns used to mask matching sensitive information (such as PII) before
     /// sending it in the log line.
@@ -340,18 +334,6 @@ impl ArgumentOptions {
             self.inclusion_regex,
         );
 
-        set_k8s_rules(
-            &mut raw.log.k8s_exclude,
-            self.k8s_exclusion_namespace,
-            self.k8s_exclusion_pod,
-        );
-
-        set_k8s_rules(
-            &mut raw.log.k8s_include,
-            self.k8s_include_namespace,
-            self.k8s_include_pod,
-        );
-
         if !self.journald_paths.is_empty() {
             let paths = raw.journald.paths.get_or_insert(Vec::new());
             with_csv(self.journald_paths)
@@ -391,6 +373,20 @@ impl ArgumentOptions {
             with_csv(self.line_inclusion)
                 .iter()
                 .for_each(|v| regex.push(v.clone()));
+        }
+
+        if self.k8s_metadata_inclusion.is_some() {
+            let values = raw.log.k8s_metadata_include.get_or_insert(Vec::new());
+            with_csv(self.k8s_metadata_inclusion.unwrap())
+                .iter()
+                .for_each(|v| values.push(v.clone()));
+        }
+
+        if self.k8s_metadta_exclusion.is_some() {
+            let values = raw.log.k8s_metadata_exclude.get_or_insert(Vec::new());
+            with_csv(self.k8s_metadta_exclusion.unwrap())
+                .iter()
+                .for_each(|v| values.push(v.clone()));
         }
 
         if !self.line_redact.is_empty() {
@@ -473,21 +469,6 @@ fn set_rules(existing: &mut Option<Rules>, glob: Vec<String>, regex: Vec<String>
     let rules = existing.get_or_insert(Rules::default());
     rules.glob.append(&mut with_csv(glob));
     rules.regex.append(&mut with_csv(regex));
-}
-
-fn set_k8s_rules(
-    existing: &mut Option<K8sRules>,
-    namespace: Option<Vec<String>>,
-    pod: Option<Vec<String>>,
-) {
-    let k8s_rules = existing.get_or_insert(K8sRules::default());
-    if let Some(name) = namespace {
-        k8s_rules.namespace.append(&mut with_csv(name))
-    };
-
-    if let Some(p) = pod {
-        k8s_rules.pod.append(&mut with_csv(p))
-    };
 }
 
 pub fn split_by_comma(v: &str) -> Vec<String> {
@@ -680,23 +661,11 @@ mod test {
         );
         assert_eq!(config.log.use_k8s_enrichment, None);
         assert_eq!(config.log.log_k8s_events, None);
+        assert_eq!(config.log.k8s_metadata_include, None);
+        assert_eq!(config.log.k8s_metadata_exclude, None);
         assert_eq!(config.log.db_path, None);
         assert_eq!(config.log.metrics_port, None);
         assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
-        assert_eq!(
-            config.log.k8s_exclude,
-            Some(K8sRules {
-                namespace: Vec::new(),
-                pod: Vec::new(),
-            })
-        );
-        assert_eq!(
-            config.log.k8s_include,
-            Some(K8sRules {
-                namespace: Vec::new(),
-                pod: Vec::new(),
-            })
-        );
     }
 
     #[test]
