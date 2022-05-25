@@ -9,6 +9,16 @@ preemptionPolicy: PreemptLowerPriority
 globalDefault: false
 description: "Logdna Agent"
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: logdna-agent
+  namespace: logdna-agent
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 3.6.0-dev
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -103,13 +113,11 @@ spec:
       priorityClassName: logdna-agent-ds-priority
       containers:
         - name: logdna-agent
-          image: logdna/logdna-agent:3.6.0-dev
+          image: logdna/logdna-agent-no-cap:3.6.0-dev
+          command: ["./logdna-agent-no-cap"]
           imagePullPolicy: Always
           securityContext:
-            privileged: true
             capabilities:
-              add:
-                - DAC_READ_SEARCH
               drop:
                 - all
           env:
@@ -121,9 +129,7 @@ spec:
             - name: LOGDNA_LOOKBACK
               value: smallfiles
             - name: LOGDNA_DB_PATH
-              value: /var/lib/logdna
-            - name: LOGDNA_ENDPOINT
-              value: /supertenant/logs/ingest
+              value: /tmp
             - name: POD_APP_LABEL
               valueFrom:
                 fieldRef:
@@ -148,33 +154,11 @@ spec:
           volumeMounts:
             - name: varlog
               mountPath: /var/log
-            - name: vardata
-              mountPath: /var/data
-            - name: varliblogdna
-              mountPath: /var/lib/logdna
-            - name: varlibdockercontainers
-              mountPath: /var/lib/docker/containers
               readOnly: true
-            - name: mnt
-              mountPath: /mnt
-              readOnly: true
-            - name: osrelease
-              mountPath: /etc/os-release
-            - name: logdnahostname
-              mountPath: /etc/logdna-hostname
       volumes:
         - name: varlog
           hostPath:
             path: /var/log
-        - name: vardata
-          hostPath:
-            path: /var/data
-        - name: varliblogdna
-          hostPath:
-            path: /var/lib/logdna
-        - name: varlibdockercontainers
-          hostPath:
-            path: /var/lib/docker/containers
         - name: mnt
           hostPath:
             path: /mnt
