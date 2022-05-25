@@ -792,6 +792,37 @@ mod test {
     }
 
     #[test]
+    fn merge_k8s_inclusion_exclusion() {
+        let argv = ArgumentOptions {
+            k8s_metadata_inclusion: Some(vec_strings![
+                "namespace:test-namespace",
+                "label.app:test-name"
+            ]),
+            k8s_metadta_exclusion: Some(vec_strings![
+                "pod:another-namespace",
+                "annotation:another-name"
+            ]),
+            ..ArgumentOptions::default()
+        };
+        let config = argv.merge(RawConfig::default());
+
+        assert_eq!(
+            config.log.k8s_metadata_include,
+            Some(vec_strings![
+                "namespace:test-namespace",
+                "label.app:test-name"
+            ])
+        );
+        assert_eq!(
+            config.log.k8s_metadata_exclude,
+            Some(vec_strings![
+                "pod:another-namespace",
+                "annotation:another-name"
+            ])
+        );
+    }
+
+    #[test]
     fn merge_paths() {
         let argv = ArgumentOptions {
             log_dirs: vec_strings!("/my/path", "/my/other/path"),

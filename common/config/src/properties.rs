@@ -265,7 +265,7 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
     }
 
     if let Some(value) = map.get(&K8S_METADATA_EXCLUSION) {
-        let k8s_rules = result.log.line_inclusion_regex.get_or_insert(Vec::new());
+        let k8s_rules = result.log.k8s_metadata_exclude.get_or_insert(Vec::new());
         argv::split_by_comma(value)
             .iter()
             .for_each(|v| k8s_rules.push(v.to_string()));

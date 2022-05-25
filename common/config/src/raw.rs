@@ -738,6 +738,8 @@ inclusion_rules = /a/glob/include/**/*
 inclusion_regex_rules = /a/regex/include/.*
 line_exclusion_regex = a.*, b.*
 line_inclusion_regex = c.+
+k8s_metadata_inclusion = namespace:test-name, label.app:name
+k8s_metadata_exclusion = namespace:other-name, label.app:other-name
 # needs escaping in java properties
 redact_regex = \\\\S+@\\\\S+\\\\.\\\\S+
 ingest_timeout = 9999
@@ -792,6 +794,14 @@ ingest_buffer_size = 3145728
         assert_eq!(
             config.log.line_redact_regex,
             Some(vec_strings![r"\S+@\S+\.\S+"])
+        );
+        assert_eq!(
+            config.log.k8s_metadata_include,
+            Some(vec_strings!["namespace:test-name", "label.app:name"])
+        );
+        assert_eq!(
+            config.log.k8s_metadata_exclude,
+            Some(vec_strings!["namespace:other-name", "label.app:other-name"])
         );
         Ok(())
     }
