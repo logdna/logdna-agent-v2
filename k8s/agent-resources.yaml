@@ -1,4 +1,14 @@
 ---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: logdna-agent-ds-priority
+  namespace: logdna-agent
+value: 1000000
+preemptionPolicy: PreemptLowerPriority
+globalDefault: false
+description: "Logdna Agent"
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -100,6 +110,7 @@ spec:
         app.kubernetes.io/version: 3.6.0-dev
     spec:
       serviceAccountName: logdna-agent
+      priorityClassName: logdna-agent-ds-priority
       containers:
         - name: logdna-agent
           image: logdna/logdna-agent:3.6.0-dev
