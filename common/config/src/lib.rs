@@ -97,8 +97,8 @@ pub struct LogConfig {
     pub lookback: Lookback,
     pub use_k8s_enrichment: K8sTrackingConf,
     pub log_k8s_events: K8sTrackingConf,
-    pub k8s_metadata_include: Option<Vec<String>>,
-    pub k8s_metadata_exclude: Option<Vec<String>>,
+    pub k8s_metadata_include: Vec<String>,
+    pub k8s_metadata_exclude: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -297,8 +297,8 @@ impl TryFrom<RawConfig> for Config {
                 argv::env::LOG_K8S_EVENTS,
                 K8sTrackingConf::Never,
             ),
-            k8s_metadata_include: None,
-            k8s_metadata_exclude: None,
+            k8s_metadata_include: raw.log.k8s_metadata_include.unwrap_or_default(),
+            k8s_metadata_exclude: raw.log.k8s_metadata_exclude.unwrap_or_default(),
         };
 
         if log.use_k8s_enrichment == K8sTrackingConf::Never

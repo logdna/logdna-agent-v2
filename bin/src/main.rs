@@ -207,8 +207,8 @@ async fn main() {
 
     if config.log.use_k8s_enrichment == K8sTrackingConf::Always {
         match K8sLineFilter::new(
-            &config.log.k8s_metadata_exclude.unwrap(),
-            &config.log.k8s_metadata_include.unwrap(),
+            &config.log.k8s_metadata_exclude,
+            &config.log.k8s_metadata_include,
         ) {
             Ok(v) => executor.register(v),
             Err(e) => {
