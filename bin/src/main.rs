@@ -24,6 +24,7 @@ use k8s::middleware::K8sMetadata;
 use k8s::{create_k8s_client_default_from_env, K8sTrackingConf};
 use kube::Client as Kube_Client;
 use metrics::Metrics;
+use middleware::k8s_line_rules::K8sLineFilter;
 use middleware::line_rules::LineRules;
 use middleware::meta_rules::{MetaRules, MetaRulesConfig};
 use middleware::Executor;
@@ -203,6 +204,19 @@ async fn main() {
             None
         }
     };
+
+    if config.log.use_k8s_enrichment == K8sTrackingConf::Always {
+        match K8sLineFilter::new(
+            &config.log.k8s_metadata_exclude.unwrap(),
+            &config.log.k8s_metadata_include.unwrap(),
+        ) {
+            Ok(v) => executor.register(v),
+            Err(e) => {
+                error!("k8s line rule is invalid {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
 
     match LineRules::new(
         &config.log.line_exclusion_regex,
