@@ -11,13 +11,14 @@ const LABEL_KEY: &str = "label";
 const ANNOTATION_KEY: &str = "annotation";
 
 lazy_static! {
-    static ref REG_KEYVAL: Regex = Regex::new(r#"^([a-z0-9]+):([a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
+    static ref REG_KEYVAL: Regex =
+        Regex::new(r#"^([a-z0-9]+(|-|.|/)*[a-z0-9]*):([a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
     static ref REG_NAMESPACE: Regex = Regex::new(r#"^namespace:([a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
     static ref REG_POD: Regex = Regex::new(r#"^pod:([a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
     static ref REG_LABEL: Regex =
-        Regex::new(r#"^label.([a-z0-9]*(|-)[a-z0-9]+:[a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
+        Regex::new(r#"^label.([a-z0-9]+(|-|.|/)*[a-z0-9]*:[a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
     static ref REG_ANNOTATION: Regex =
-        Regex::new(r#"^annotation.([a-z0-9]*(|-)[a-z0-9]+:[a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
+        Regex::new(r#"^annotation.([a-z0-9]+(|-|.|/)*[a-z0-9]*:[a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
 }
 
 #[derive(Debug)]
@@ -201,7 +202,7 @@ fn set_k8s_line_rule(rules: &[String]) -> Result<K8sLineRules, K8sLineRulesError
         for label in labels.iter() {
             let capture = REG_KEYVAL.captures(label).unwrap();
             let key: String = capture.get(1).map(|m| m.as_str()).unwrap().to_string();
-            let value: String = capture.get(2).map(|m| m.as_str()).unwrap().to_string();
+            let value: String = capture.get(3).map(|m| m.as_str()).unwrap().to_string();
             label_map.insert(key, value)
         }
         k8s_line_rules.labels = Some(label_map);
@@ -212,7 +213,7 @@ fn set_k8s_line_rule(rules: &[String]) -> Result<K8sLineRules, K8sLineRulesError
         for annotation in annotations.iter() {
             let capture = REG_KEYVAL.captures(annotation).unwrap();
             let key: String = capture.get(1).map(|m| m.as_str()).unwrap().to_string();
-            let value: String = capture.get(2).map(|m| m.as_str()).unwrap().to_string();
+            let value: String = capture.get(3).map(|m| m.as_str()).unwrap().to_string();
             annotation_map.insert(key, value)
         }
         k8s_line_rules.annotations = Some(annotation_map);
@@ -276,7 +277,7 @@ mod tests {
             "namespace:testnamespace".to_string(),
             "pod:some-name".to_string(),
             "namespace:othernamespace".to_string(),
-            "label.app:name".to_string(),
+            "label.app.kubernetes.io/name:some-name".to_string(),
             "label.type:network".to_string(),
             "annotation.owner:secret-agent".to_string(),
         ];
@@ -290,7 +291,7 @@ mod tests {
         assert_eq!(namespace_results[0], "testnamespace");
         assert_eq!(namespace_results[1], "othernamespace");
         assert_eq!(pod_results[0], "some-name");
-        assert_eq!(label_results[0], "app:name");
+        assert_eq!(label_results[0], "app.kubernetes.io/name:some-name");
         assert_eq!(label_results[1], "type:network");
         assert_eq!(annotation_results[0], "owner:secret-agent");
     }
@@ -316,8 +317,8 @@ mod tests {
         let exclusion = &[
             "namespace:namespace".to_string(),
             "pod:pod-name".to_string(),
-            "label.app:app-name".to_string(),
-            "label.app:other-name".to_string(),
+            "label.app.kubernetes.io/name:app-name".to_string(),
+            "label.app.kubernetes.io/name:other-name".to_string(),
             "annotation.owner:secret-agent".to_string(),
         ];
         let k8s_rules = K8sLineFilter::new(exclusion, inclusion).unwrap();
@@ -340,7 +341,7 @@ mod tests {
                 .labels
                 .as_ref()
                 .unwrap()
-                .get_vec("app")
+                .get_vec("app.kubernetes.io/name")
                 .iter()
                 .map(|v| v[0].clone())
                 .collect::<String>(),
@@ -352,7 +353,7 @@ mod tests {
                 .labels
                 .as_ref()
                 .unwrap()
-                .get_vec("app")
+                .get_vec("app.kubernetes.io/name")
                 .iter()
                 .map(|v| v[1].clone())
                 .collect::<String>(),
@@ -381,7 +382,6 @@ mod tests {
         ];
         let k8s_rules = K8sLineFilter::new(exclusion, inclusion);
 
-        // Test no match
         let mut label_kv_map = KeyValueMap::new();
         let mut annotation_kv_map = KeyValueMap::new();
         let mut test_line = LineBuilder::new()
@@ -429,8 +429,8 @@ mod tests {
         let exclusion = &[
             "namespace:logdna-agent".to_string(),
             "pod:pod-name".to_string(),
-            "label.app:name".to_string(),
-            "label.app:other-name".to_string(),
+            "label.app.kubernetes.io/name:name".to_string(),
+            "label.app.kubernetes.io/name:other-name".to_string(),
             "annotation.owner:secret-agent".to_string(),
         ];
         let k8s_rules = K8sLineFilter::new(exclusion, inclusion);
@@ -474,7 +474,7 @@ mod tests {
         test_line = LineBuilder::new()
             .line("test-info")
             .file("/var/log/containers/random-pod_namespace_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log")
-            .labels(label_kv_map.add("app", "other-name"))
+            .labels(label_kv_map.add("app.kubernetes.io/name", "other-name"))
             .annotations(annotation_kv_map.add("owner", "random-agent"));
         status = k8s_rules.as_ref().unwrap().process(&mut test_line);
         assert!(matches!(status, Status::Skip));
