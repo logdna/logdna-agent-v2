@@ -615,7 +615,7 @@ key = abcdef01
     #[test]
     fn test_file_not_found() {
         assert!(matches!(
-            Config::parse("/non/existent/path.conf").map_err(|es| es.into_iter().nth(0).unwrap()),
+            Config::parse("/non/existent/path.conf").map_err(|es| es.into_iter().next().unwrap()),
             Err(ConfigError::Io(_))
         ));
     }
@@ -626,7 +626,7 @@ key = abcdef01
         let file_name = dir.path().join("test.conf");
         fs::write(&file_name, "")?;
         assert!(matches!(
-            Config::parse(&file_name).map_err(|es| es.into_iter().nth(0).unwrap()),
+            Config::parse(&file_name).map_err(|es| es.into_iter().next().unwrap()),
             Err(ConfigError::Serde(_))
         ));
         Ok(())
@@ -638,7 +638,7 @@ key = abcdef01
         let file_name = dir.path().join("test.yaml");
         fs::write(&file_name, "SOMEPROPERTY::: AZSZ")?;
         assert!(matches!(
-            Config::parse(&file_name).map_err(|es| es.into_iter().nth(0).unwrap()),
+            Config::parse(&file_name).map_err(|es| es.into_iter().next().unwrap()),
             Err(ConfigError::Serde(_))
         ));
         Ok(())
@@ -650,7 +650,7 @@ key = abcdef01
         let file_name = dir.path().join("test.yaml");
         fs::write(&file_name, "http: true")?;
         assert!(matches!(
-            Config::parse(&file_name).map_err(|es| es.into_iter().nth(0).unwrap()),
+            Config::parse(&file_name).map_err(|es| es.into_iter().next().unwrap()),
             Err(ConfigError::Serde(_))
         ));
         Ok(())

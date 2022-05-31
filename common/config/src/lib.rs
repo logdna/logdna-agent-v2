@@ -424,7 +424,8 @@ mod tests {
     pub static PKG_VERSION: &str = "test";
 
     use std::env;
-    use std::fs::{remove_file, OpenOptions};
+    use std::fs::OpenOptions;
+    use std::io::Write;
 
     use scopeguard::guard;
 
@@ -550,26 +551,30 @@ mod tests {
 
     #[test]
     fn e2e() {
-        let _ = remove_file("test.yaml");
+        let tempdir = tempfile::TempDir::new().unwrap();
+        let path = tempdir.path().to_path_buf();
+        let path = path.join("test.yaml");
 
         let file = OpenOptions::new()
             .create(true)
             .write(true)
             .read(true)
-            .open("test.yaml")
+            .open(&path)
             .unwrap();
 
-        guard(file, |file| {
+        guard(file, |mut file| {
             let args = vec![OsString::new()];
-            serde_yaml::to_writer(file, &RawConfig::default()).unwrap();
+            serde_yaml::to_writer(&mut file, &RawConfig::default()).unwrap();
+            file.flush().unwrap();
 
             env::remove_var(argv::env::INGESTION_KEY);
             env::remove_var(argv::env::INGESTION_KEY_ALTERNATE);
             env::remove_var(argv::env::INCLUSION_RULES_DEPRECATED);
-            env::set_var(argv::env::CONFIG_FILE, "test.yaml");
+            env::set_var(argv::env::CONFIG_FILE, path);
             assert!(Config::new(args.clone()).is_err());
 
             env::set_var(argv::env::INGESTION_KEY, "ingestion_key_test");
+
             assert!(Config::new(args.clone()).is_ok());
 
             let old_len = Config::new(args.clone())
@@ -583,8 +588,6 @@ mod tests {
                 old_len + 2,
                 Config::new(args).unwrap().log.rules.inclusion_list().len()
             );
-
-            remove_file("test.yaml").unwrap();
         });
     }
 
