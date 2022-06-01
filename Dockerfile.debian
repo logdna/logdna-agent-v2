@@ -1,7 +1,7 @@
 # syntax = docker/dockerfile:1.0-experimental
 ARG BUILD_IMAGE
 
-FROM ${BUILD_IMAGE} as build
+FROM --platform=${BUILDPLATFORM} ${BUILD_IMAGE} as build
 
 ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
@@ -9,10 +9,14 @@ ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy
 ARG FEATURES
 
 ARG SCCACHE_BUCKET
-ENV SCCACHE_BUCKET=${SCCACHE_BUCKET}
-
 ARG SCCACHE_REGION
-ENV SCCACHE_REGION=${SCCACHE_REGION}
+ARG SCCACHE_ENDPOINT
+ARG SCCACHE_SERVER_PORT=4226
+ARG SCCACHE_RECACHE
+ARG AWS_ACCESS_KEY_ID
+ARG AWS_SECRET_ACCESS_KEY
+
+ENV RUST_LOG=rustc_codegen_ssa::back::link=info
 
 # Create the directory for agent repo
 WORKDIR /opt/logdna-agent-v2
@@ -21,12 +25,18 @@ WORKDIR /opt/logdna-agent-v2
 COPY . .
 
 # Rebuild the agent
-RUN --mount=type=cache,target=/opt/rust/cargo/registry  \
+# hadolint ignore=SC1091
+RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
+    --mount=type=cache,target=/opt/rust/cargo/registry \
     --mount=type=cache,target=/opt/logdna-agent-v2/target \
+    set -a; \
     if [ -z "$SCCACHE_BUCKET" ]; then unset RUSTC_WRAPPER; fi; \
+    if [ -z "$SCCACHE_ENDPOINT" ]; then unset SCCACHE_ENDPOINT; fi; \
+    if [ -z "$SCCACHE_RECACHE" ]; then unset SCCACHE_RECACHE; fi; \
+    set +a && env && \
     cargo build --manifest-path bin/Cargo.toml ${FEATURES} --release && \
     strip ./target/release/logdna-agent && \
-    cp ./target/release/logdna-agent logdna-agent && \
+    cp ./target/release/logdna-agent /logdna-agent && \
     sccache --show-stats
 
 # Use Debian as agent base image
@@ -56,7 +66,7 @@ ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 
 # Copy the agent binary from the build stage
-COPY --from=build /opt/logdna-agent-v2/logdna-agent /work/
+COPY --from=build /logdna-agent /work/
 WORKDIR /work/
 
 RUN apt update -y \

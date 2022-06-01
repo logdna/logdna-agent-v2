@@ -63,6 +63,7 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     if [ -n "${TARGET}" ]; then export TARGET_ARG="--target ${TARGET}"; fi; \
     export ${BUILD_ENVS?};  \
     if [ -z "$SCCACHE_ENDPOINT" ]; then unset SCCACHE_ENDPOINT; fi; \
+    if [ -z "$SCCACHE_RECACHE" ]; then unset SCCACHE_RECACHE; fi; \
     set -a; source /tmp/ubi${UBI_MAJOR_VERSION}.env; set +a && env && \
     cargo build --manifest-path bin/Cargo.toml --no-default-features ${FEATURES} --release $TARGET_ARG && \
     llvm-strip ./target/${TARGET}/release/logdna-agent && \

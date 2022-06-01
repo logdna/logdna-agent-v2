@@ -39,6 +39,7 @@ DOCKER_BUILDKIT=1 docker build $curpath/.. \
   --progress=plain \
   --build-arg BUILD_IMAGE=$BUILD_IMAGE \
   --build-arg SCCACHE_BUCKET=$SCCACHE_BUCKET \
+  --build-arg SCCACHE_BUCKET=$SCCACHE_ENDPOINT \
   --build-arg SCCACHE_REGION=$SCCACHE_REGION
 
 echo "Loading into kind"
