@@ -181,7 +181,7 @@ test: unit-test test-journald ## Run unit tests
 
 .PHONY:unit-test
 unit-test:
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) --no-run && cargo test $(TARGET_DOCKER_ARG) $(TESTS) -- --nocapture"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run $(TESTS) --nocapture"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
@@ -191,12 +191,12 @@ integration-test: ## Run integration tests using image with additional tools
 .PHONY:k8s-test
 k8s-test: build-image-debian ## Run integration tests using k8s kind
 	$(DOCKER) tag $(REPO):$(IMAGE_TAG) $(REPO):local
-	IMAGE_TAG=$(IMAGE_TAG) $(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) --manifest-path bin/Cargo.toml --features k8s_tests -- --nocapture"
+	IMAGE_TAG=$(IMAGE_TAG) $(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "cargo nextest run $(TARGET_DOCKER_ARG) --manifest-path bin/Cargo.toml --features k8s_tests -- --nocapture"
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
 	$(eval FEATURES := $(FEATURES) journald_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald -- --nocapture --test-threads=1"
+	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald --test-threads=1"
 
 .PHONY:bench
 bench:
