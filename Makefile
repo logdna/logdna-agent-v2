@@ -366,6 +366,7 @@ build-image-debian: ## Build a docker image as specified in the Dockerfile.debia
 	$(DOCKER) build . -f Dockerfile.debian -t $(REPO):$(IMAGE_TAG) \
 		$(PULL_OPTS) \
 		--progress=plain \
+		--platform=linux/${DEB_ARCH_NAME_${ARCH}} \
 		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
 		--rm \
 		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
@@ -386,6 +387,7 @@ build-image-debug: ## Build a docker image as specified in the Dockerfile.debug
 	$(DOCKER) build . -f Dockerfile.debug -t $(REPO):$(IMAGE_TAG) \
 		$(PULL_OPTS) \
 		--progress=plain \
+		--platform=linux/${DEB_ARCH_NAME_${ARCH}} \
 		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
 		--rm \
 		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
