@@ -131,7 +131,7 @@ TEST_RULES=
 define TEST_RULE
 TEST_RULES=$(TEST_RULES)test-$(1): <> Run unit tests for $(1) crate\\n
 test-$(1):
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=1 --env RUST_LOG=$(RUST_LOG)" "cargo test -p $(1) $(TESTS) -- --nocapture"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=1 --env RUST_LOG=$(RUST_LOG)" "cargo nextest run -p $(1) $(TESTS) --nocapture"
 endef
 
 CRATES=$(shell sed -e '/members/,/]/!d' Cargo.toml | tail -n +2 | $(_TAC) | tail -n +2 | $(_TAC) | sed 's/,//' | xargs -n1 -I{} sh -c 'grep -E "^name *=" {}/Cargo.toml | tail -n1' | sed 's/name *= *"\([A-Za-z0-9_\-]*\)"/\1/' | awk '!/journald/{print $0}')
@@ -171,21 +171,21 @@ test: unit-test test-journald ## Run unit tests
 
 .PHONY:unit-test
 unit-test:
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) --no-run && cargo test $(TARGET_DOCKER_ARG) $(TESTS) -- --nocapture"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run $(TESTS) --nocapture"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
 	$(eval FEATURES := $(FEATURES) integration_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) -- --nocapture $(TEST_THREADS_ARG)"
+	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run --retries=5 $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) $(TEST_THREADS_ARG)"
 
 .PHONY:k8s-test
 k8s-test: ## Run integration tests using k8s kind
-	$(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) --manifest-path bin/Cargo.toml --features k8s_tests -- --nocapture"
+	$(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "cargo nextest run --manifest-path bin/Cargo.toml --features k8s_tests --nocapture"
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
 	$(eval FEATURES := $(FEATURES) journald_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo test $(TARGET_DOCKER_ARG) $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald -- --nocapture --test-threads=1"
+	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald --test-threads=1 --retries=5"
 
 .PHONY:bench
 bench:
