@@ -42,6 +42,7 @@ fn get_file_for_path(fs: &FileSystem, next_path: &std::path::Path) -> Option<Ent
     None
 }
 
+#[allow(clippy::await_holding_refcell_ref)]
 async fn handle_event(
     event: Event,
     fs: &FileSystem,
