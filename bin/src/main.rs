@@ -39,6 +39,8 @@ use tokio::time::Duration;
 mod dep_audit;
 mod stream_adapter;
 
+use capabilities::{Capabilities, Capability, Flag};
+
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
@@ -53,6 +55,27 @@ pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
+    let mut capability_set = Capabilities::new().unwrap();
+    capability_set.reset_all();
+
+    let flags = [Capability::CAP_DAC_READ_SEARCH];
+
+    capability_set.update(&flags, Flag::Permitted, true);
+    capability_set.update(&flags, Flag::Effective, true);
+    capability_set.update(&flags, Flag::Inheritable, true);
+
+    println!("Working set - {}", capability_set);
+
+    match capability_set.apply() {
+        Ok(_) => {
+            let current = Capabilities::from_current_proc().unwrap();
+            info!("Current - {}", current);
+        }
+        Err(e) => {
+            panic!("Unable to apply capabilities - {}", e.to_string());
+        }
+    }
+
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
 

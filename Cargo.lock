@@ -309,6 +309,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1db59621ec70f09c5e9b597b220c7a2b43611f4710dc03ceb8748637775692c"
 
 [[package]]
+name = "capabilities"
+version = "0.3.0"
+source = "git+https://github.com/gcmurphy/rust-capabilities?rev=bb01f0c#bb01f0c6fe9866317ae596193cef707c335c0d2c"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "cargo_metadata"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1514,6 +1522,7 @@ dependencies = [
  "auditable",
  "auditable-build",
  "bytes",
+ "capabilities",
  "config",
  "env_logger 0.8.4",
  "escargot",
