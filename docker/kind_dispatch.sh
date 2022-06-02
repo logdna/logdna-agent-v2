@@ -4,8 +4,6 @@ set -e
 
 curpath=$(realpath $(dirname "$0"))
 
-image="logdna-agent-kind:building"
-
 kind_network=$($curpath/kind_start.sh $3)
 
 # shellcheck source=/dev/null
@@ -27,21 +25,6 @@ trap _term INT
 echo "Building socat image"
 DOCKER_BUILDKIT=1 docker build -t "socat:local" $curpath/socat
 
-if [ -z "${BUILD_IMAGE}" ]; then
-    BUILD_IMAGE="docker.io/logdna/build-images:rust-bullseye-1-stable-$(get_host_arch)"
-fi
-
-echo "Building Agent Image"
-DOCKER_BUILDKIT=1 docker build $curpath/.. \
-  -f Dockerfile.debian \
-  -t "$image" \
-  --pull \
-  --progress=plain \
-  --build-arg BUILD_IMAGE=$BUILD_IMAGE \
-  --build-arg SCCACHE_BUCKET=$SCCACHE_BUCKET \
-  --build-arg SCCACHE_BUCKET=$SCCACHE_ENDPOINT \
-  --build-arg SCCACHE_REGION=$SCCACHE_REGION
-
 echo "Loading into kind"
 
 if [ -z "$BUILD_TAG" ]
@@ -51,7 +34,7 @@ else
   cluster_name=$(echo $BUILD_TAG | tr '[:upper:]' '[:lower:]' | tail -c 32)
 fi
 
-kind load docker-image $image --name $cluster_name
+kind load docker-image "logdna-agent-v2:local" --name $cluster_name
 kind load docker-image "socat:local" --name $cluster_name
 
 echo "Creating k8s resources"

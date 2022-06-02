@@ -1,7 +1,6 @@
 #!/usr/bin/env sh
 
 curpath=$(dirname "$0")
-image="logdna-agent-kind:building"
 create_cluster=${2:-true}
 
 if [ -z "$BUILD_TAG" ]
