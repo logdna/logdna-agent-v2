@@ -420,7 +420,6 @@ dependencies = [
  "http 0.1.0",
  "humanize-rs",
  "java-properties",
- "k8s",
  "lazy_static",
  "log",
  "scopeguard",
@@ -429,6 +428,7 @@ dependencies = [
  "structopt",
  "sysinfo",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
@@ -1680,6 +1680,7 @@ dependencies = [
 name = "middleware"
 version = "0.1.0"
 dependencies = [
+ "config",
  "http 0.1.0",
  "lazy_static",
  "log",

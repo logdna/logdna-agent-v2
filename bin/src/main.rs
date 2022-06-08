@@ -4,7 +4,7 @@ extern crate log;
 use futures::Stream;
 
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
-use config::{Config, DbPath};
+use config::{self, Config, DbPath, K8sTrackingConf};
 use env_logger::Env;
 use fs::tail;
 use futures::StreamExt;
@@ -20,14 +20,15 @@ use journald::journalctl::create_journalctl_source;
 use k8s::event_source::K8sEventStream;
 use k8s::lease::{get_available_lease, K8S_STARTUP_LEASE_LABEL, K8S_STARTUP_LEASE_RETRY_ATTEMPTS};
 
+use k8s::create_k8s_client_default_from_env;
 use k8s::middleware::K8sMetadata;
-use k8s::{create_k8s_client_default_from_env, K8sTrackingConf};
 use kube::Client as Kube_Client;
 use metrics::Metrics;
 use middleware::line_rules::LineRules;
 use middleware::meta_rules::{MetaRules, MetaRulesConfig};
 use middleware::Executor;
 
+use config::env_vars;
 use pin_utils::pin_mut;
 use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
@@ -55,25 +56,15 @@ pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
-    let mut capability_set = Capabilities::new().unwrap();
-    capability_set.reset_all();
-
-    let flags = [Capability::CAP_DAC_READ_SEARCH];
-
-    capability_set.update(&flags, Flag::Permitted, true);
-    capability_set.update(&flags, Flag::Effective, true);
-    capability_set.update(&flags, Flag::Inheritable, true);
-
-    println!("Working set - {}", capability_set);
-
-    match capability_set.apply() {
-        Ok(_) => {
-            let current = Capabilities::from_current_proc().unwrap();
-            info!("Current - {}", current);
-        }
-        Err(e) => {
-            panic!("Unable to apply capabilities - {}", e.to_string());
-        }
+    // must be done at the very beginning
+    if (std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
+        || std::path::Path::new("/.dockerenv").exists())
+        && (std::env::var_os(env_vars::LOGDNA_NO_CAP).is_none()
+            || !std::env::current_exe()
+                .unwrap_or_default()
+                .ends_with("-no-cap"))
+    {
+        set_capabilities();
     }
 
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
@@ -592,3 +583,28 @@ async fn get_signal() -> &'static str {
     ctrl_c().await.unwrap();
     "CTRL+C"
 }
+
+#[cfg(unix)]
+fn set_capabilities() {
+    let mut capability_set = Capabilities::new().unwrap();
+    capability_set.reset_all();
+
+    let flags = [Capability::CAP_DAC_READ_SEARCH];
+
+    capability_set.update(&flags, Flag::Permitted, true);
+    capability_set.update(&flags, Flag::Effective, true);
+    capability_set.update(&flags, Flag::Inheritable, true);
+
+    match capability_set.apply() {
+        Ok(_) => {
+            let current = Capabilities::from_current_proc().unwrap();
+            info!("Current - {}", current);
+        }
+        Err(e) => {
+            panic!("Unable to apply capabilities - {}", e);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn init_capabilities() {}
