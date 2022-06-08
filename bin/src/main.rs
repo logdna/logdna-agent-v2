@@ -57,10 +57,9 @@ pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[tokio::main(flavor = "multi_thread")]
 async fn main() {
     // must be done at the very beginning
-    if (std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
-        || std::path::Path::new("/.dockerenv").exists())
+    if std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
         && (std::env::var_os(env_vars::LOGDNA_NO_CAP).is_none()
-            || !std::env::current_exe()
+            && !std::env::current_exe()
                 .unwrap_or_default()
                 .ends_with("-no-cap"))
     {
