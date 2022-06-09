@@ -40,8 +40,6 @@ use tokio::time::Duration;
 mod dep_audit;
 mod stream_adapter;
 
-use capabilities::{Capabilities, Capability, Flag};
-
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
@@ -54,19 +52,32 @@ pub static PKG_NAME: &str = env!("CARGO_PKG_NAME");
 #[no_mangle]
 pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() {
-    // must be done at the very beginning
+fn main() {
+    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+
+    // must be done before any threads are started
+    #[cfg(target_os = "linux")]
     if std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
         && std::env::var_os(env_vars::LOGDNA_NO_CAP).is_none()
         && !std::env::current_exe()
             .unwrap_or_default()
             .ends_with("-no-cap")
     {
-        set_capabilities();
+        match set_capabilities() {
+            Ok(r) if r => debug!("Using Capabilties to bypass filesystem permissions"),
+            _ => warn!("failed to adopt capabilities to bypass DAC. The agent will only be able to access files accessible to it's user/group"),
+        }
     }
 
-    env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
+    // Set up tokio runtime and block on agent main loop
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(_main())
+}
+
+async fn _main() {
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
 
     // Actually use the data to work around a bug in rustc:
@@ -583,26 +594,34 @@ async fn get_signal() -> &'static str {
     "CTRL+C"
 }
 
-#[cfg(unix)]
-fn set_capabilities() {
-    let mut capability_set = Capabilities::new().unwrap();
-    capability_set.reset_all();
+#[cfg(target_os = "linux")]
+fn set_capabilities() -> Result<bool, capctl::Error> {
+    use capctl::caps::{Cap, CapState};
 
-    let flags = [Capability::CAP_DAC_READ_SEARCH];
-
-    capability_set.update(&flags, Flag::Permitted, true);
-    capability_set.update(&flags, Flag::Effective, true);
-    capability_set.update(&flags, Flag::Inheritable, true);
-
-    match capability_set.apply() {
-        Ok(_) => {
-            let current = Capabilities::from_current_proc().unwrap();
-            info!("Current - {}", current);
-        }
-        Err(e) => {
-            panic!("Unable to apply capabilities - {}", e);
-        }
+    // Get the caps for the current pid
+    let mut cap_state = CapState::get_current()?;
+    trace!(
+        "initial caps -\npermitted {:?}\neffective {:?}\ninherited {:?}",
+        cap_state.permitted,
+        cap_state.effective,
+        cap_state.inheritable
+    );
+    if cap_state.permitted.has(Cap::DAC_READ_SEARCH) {
+        cap_state.effective.add(Cap::DAC_READ_SEARCH);
+        cap_state.set_current()?;
     }
+    let cap_state = CapState::get_current()?;
+    trace!(
+        "new capabilities -\npermitted {:?}\neffective {:?}\ninherited {:?}",
+        cap_state.permitted,
+        cap_state.effective,
+        cap_state.inheritable
+    );
+    // Check if we haver DAC_READ_SEARCH or DAC_OVERRIDE
+    Ok(cap_state
+        .effective
+        .iter()
+        .any(|cap| [Cap::DAC_READ_SEARCH, Cap::DAC_OVERRIDE].contains(&cap)))
 }
 
 #[cfg(windows)]
