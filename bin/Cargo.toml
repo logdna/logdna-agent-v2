@@ -47,10 +47,8 @@ pin-utils = "0.1"
 auditable = "0.1"
 miniz_oxide = "0.4"
 
-[target.'cfg(any(unix, macos))'.dependencies.capabilities]
-git = "https://github.com/gcmurphy/rust-capabilities"
-rev = "bb01f0c"
-
+[target.'cfg(any(unix, macos))'.dependencies]
+capng = { version = "0.2" }
 
 [features]
 default = []

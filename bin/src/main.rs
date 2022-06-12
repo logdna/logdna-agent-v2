@@ -40,7 +40,7 @@ use tokio::time::Duration;
 mod dep_audit;
 mod stream_adapter;
 
-use capabilities::{Capabilities, Capability, Flag};
+use capng;
 
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
@@ -585,24 +585,33 @@ async fn get_signal() -> &'static str {
 
 #[cfg(unix)]
 fn set_capabilities() {
-    let mut capability_set = Capabilities::new().unwrap();
-    capability_set.reset_all();
+    capng::get_caps_process().unwrap();
 
-    let flags = [Capability::CAP_DAC_READ_SEARCH];
+    /*
+       let mut capability_set = Capabilities::new().unwrap();
+       capability_set.reset_all();
 
-    capability_set.update(&flags, Flag::Permitted, true);
-    capability_set.update(&flags, Flag::Effective, true);
-    capability_set.update(&flags, Flag::Inheritable, true);
+       let current = Capabilities::from_current_proc().unwrap();
+       panic!("Current capabilities - {}", current);
 
-    match capability_set.apply() {
-        Ok(_) => {
-            let current = Capabilities::from_current_proc().unwrap();
-            info!("Current - {}", current);
-        }
-        Err(e) => {
-            panic!("Unable to apply capabilities - {}", e);
-        }
-    }
+       let _contents = std::fs::read_to_string("/var/log/kernel.log").unwrap();
+
+       let flags = [Capability::CAP_DAC_READ_SEARCH];
+
+       capability_set.update(&flags, Flag::Permitted, true);
+       capability_set.update(&flags, Flag::Effective, true);
+       capability_set.update(&flags, Flag::Inheritable, true);
+
+       match capability_set.apply() {
+           Ok(_) => {
+               let current = Capabilities::from_current_proc().unwrap();
+               info!("New  capabilities - {}", current);
+           }
+           Err(e) => {
+               panic!("Unable to apply capabilities - {}", e);
+           }
+       }
+    */
 }
 
 #[cfg(windows)]

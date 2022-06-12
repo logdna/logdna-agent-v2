@@ -9,7 +9,7 @@ UBI_VERSION="${UBI_MAJOR_VERSION}.${UBI_MINOR_VERSION}"
 
 SYSROOT_PATH="/sysroot/ubi-$UBI_VERSION"
 
-ubi_packages="systemd-libs systemd-devel glibc glibc-devel gcc libstdc++-devel libstdc++-static kernel-headers"
+ubi_packages="systemd-libs systemd-devel glibc glibc-devel gcc libstdc++-devel libstdc++-static kernel-headers libcap-ng-devel"
 
 apt-get update 1>&2 && apt-get install --no-install-recommends -y dnf 1>&2
 dnf install --releasever="${UBI_MAJOR_VERSION}" --forcearch="${TARGET_ARCH}" \
