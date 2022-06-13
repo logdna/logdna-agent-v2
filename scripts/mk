@@ -4,11 +4,12 @@ OWN_PATH=$(readlink -f "$0")
 OWN_DIR=$(dirname "$OWN_PATH")
 pushd "$OWN_DIR/.."
 export DOCKER_BUILDKIT=1
-echo "[default]" > "${PWD}/.aws_creds_static"
-echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> "${PWD}/.aws_creds_static"
-echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> "${PWD}/.aws_creds_static"
-time make ARCH="${ARCH:-$(uname -m)}" AWS_SHARED_CREDENTIALS_FILE="${PWD}/.aws_creds_static" "$@"
-rm "${PWD}/.aws_creds_static"
+AWS_CREDS=$(mktemp /tmp/.aws_creds_static.XXXXXX)
+echo "[default]" > "${AWS_CREDS}"
+echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> "${AWS_CREDS}"
+echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> "${AWS_CREDS}"
+time make ARCH="${ARCH:-$(uname -m)}" AWS_SHARED_CREDENTIALS_FILE="${AWS_CREDS}" "$@"
+rm "${AWS_CREDS}"
 echo
 echo @@@@@@  SUCCESS  @@@@@@
 echo

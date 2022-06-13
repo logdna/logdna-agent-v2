@@ -113,14 +113,15 @@ spec:
       priorityClassName: logdna-agent-ds-priority
       containers:
         - name: logdna-agent
-          image: logdna/logdna-agent-no-cap:3.6.0-dev
-          command: ["./logdna-agent-no-cap"]
+          image: logdna/logdna-agent:3.6.0-dev
           imagePullPolicy: Always
           securityContext:
             capabilities:
               drop:
                 - all
           env:
+            - name: LOGDNA_NO_CAP
+              value:
             - name: LOGDNA_INGESTION_KEY
               valueFrom:
                 secretKeyRef:

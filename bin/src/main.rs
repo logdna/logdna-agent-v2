@@ -66,9 +66,6 @@ fn main() {
         if (std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
             || std::path::Path::new("/.dockerenv").exists())
             && std::env::var_os(env_vars::LOGDNA_NO_CAP).is_none()
-            && !std::env::current_exe()
-                .unwrap_or_default()
-                .ends_with("-no-cap")
         {
             match set_capabilities() {
                 Ok(r) if r => debug!("Using Capabilities to bypass filesystem permissions"),

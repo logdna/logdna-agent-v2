@@ -76,7 +76,6 @@ RUN apt update -y \
     && rm -rf /var/cache/apt \
     && chmod -R 777 . \
     && setcap "cap_dac_read_search+p" /work/logdna-agent \
-    && ln -s /work/logdna-agent /work/logdna-agent-no-cap \
     && groupadd -g 5000 logdna \
     && useradd -u 5000 -g logdna logdna
 
