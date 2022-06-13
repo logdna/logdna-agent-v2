@@ -128,7 +128,10 @@ pipeline {
                                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                             ]]) {
                             sh """
-                                make k8s-test
+                                echo "[default]" > ${PWD}/.aws_creds_k8s-test
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_k8s-test
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_k8s-test
+                                make k8s-test AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_k8s-test
                             """
                         }
                     }
@@ -137,6 +140,7 @@ pipeline {
             post {
                 always {
                     sh "make clean"
+                    sh "rm -f ${PWD}/.aws_creds_k8s-test"
                 }
             }
         }

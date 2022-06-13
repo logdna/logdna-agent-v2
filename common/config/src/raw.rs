@@ -200,7 +200,7 @@ pub struct Config {
 
 impl Config {
     /// Tries to parse from java properties format and then using
-    pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self, ConfigError> {
+    pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self, Vec<ConfigError>> {
         let path = path.as_ref();
         let is_default_path = path.to_string_lossy() == argv::DEFAULT_YAML_FILE;
         let conf_files = if is_default_path {
@@ -213,7 +213,7 @@ impl Config {
         };
 
         let indiv_confs = try_load_confs(&conf_files);
-        let (final_conf, mut error_list) = merge_all_confs(indiv_confs);
+        let (final_conf, error_list) = merge_all_confs(indiv_confs);
         for conf_err in &error_list {
             if !matches!(conf_err, ConfigError::Io(ref err) if is_default_path && err.kind() == ErrorKind::NotFound)
             {
@@ -224,11 +224,12 @@ impl Config {
         // Default to returning the first error encountered as this would most likely be the first error
         // encounted in the old implementation. This will panic if there is nothing in the error_list but
         // that is probably fine since it's a state that should never be hit.
-        final_conf.ok_or_else(|| {
-            error_list
-                .pop()
-                .expect("no configuration loaded and no errors reported")
-        })
+        match (final_conf, error_list) {
+            (Some(final_conf), _) => Ok(final_conf),
+            (None, error_list) if error_list.is_empty() => Ok(Config::default()),
+            (None, error_list) if !error_list.is_empty() => Err(error_list),
+            (None, _) => unreachable!(),
+        }
     }
 }
 
@@ -626,7 +627,7 @@ key = abcdef01
     #[test]
     fn test_file_not_found() {
         assert!(matches!(
-            Config::parse("/non/existent/path.conf"),
+            Config::parse("/non/existent/path.conf").map_err(|es| es.into_iter().next().unwrap()),
             Err(ConfigError::Io(_))
         ));
     }
@@ -637,7 +638,7 @@ key = abcdef01
         let file_name = dir.path().join("test.conf");
         fs::write(&file_name, "")?;
         assert!(matches!(
-            Config::parse(&file_name),
+            Config::parse(&file_name).map_err(|es| es.into_iter().next().unwrap()),
             Err(ConfigError::Serde(_))
         ));
         Ok(())
@@ -649,7 +650,7 @@ key = abcdef01
         let file_name = dir.path().join("test.yaml");
         fs::write(&file_name, "SOMEPROPERTY::: AZSZ")?;
         assert!(matches!(
-            Config::parse(&file_name),
+            Config::parse(&file_name).map_err(|es| es.into_iter().next().unwrap()),
             Err(ConfigError::Serde(_))
         ));
         Ok(())
@@ -661,7 +662,7 @@ key = abcdef01
         let file_name = dir.path().join("test.yaml");
         fs::write(&file_name, "http: true")?;
         assert!(matches!(
-            Config::parse(&file_name),
+            Config::parse(&file_name).map_err(|es| es.into_iter().next().unwrap()),
             Err(ConfigError::Serde(_))
         ));
         Ok(())

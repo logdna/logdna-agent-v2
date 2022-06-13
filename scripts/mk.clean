@@ -5,6 +5,7 @@ OWN_DIR=$(dirname "$OWN_PATH")
 pushd "$OWN_DIR/.."
 rm -rf ./target
 rm -rf ./bin/target
+rm -f perf.data*
 echo
 echo @@@@@@  SUCCESS  @@@@@@
 echo

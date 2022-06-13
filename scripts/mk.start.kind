@@ -27,17 +27,6 @@ source ./docker/lib.sh
 echo "Building socat image"
 DOCKER_BUILDKIT=1 docker build -t "socat:local" ./docker/socat
 
-echo "Building Agent Image"
-image="logdna-agent-kind:building"
-DOCKER_BUILDKIT=1 docker build . \
-  -f Dockerfile.debian \
-  -t "$image" \
-  --pull \
-  --progress=plain \
-  --build-arg BUILD_IMAGE=docker.io/logdna/build-images:rust-bullseye-1-stable-$(get_host_arch) \
-  --build-arg SCCACHE_BUCKET=$SCCACHE_BUCKET \
-  --build-arg SCCACHE_REGION=$SCCACHE_REGION
-
 echo "Loading into kind"
 
 if [ -z "$BUILD_TAG" ]
@@ -47,7 +36,7 @@ else
   cluster_name=$(echo $BUILD_TAG | tr '[:upper:]' '[:lower:]' | tail -c 32)
 fi
 
-kind load docker-image $image --name "$cluster_name"
+kind load docker-image "logdna-agent-v2:local" --name "$cluster_name"
 kind load docker-image "socat:local" --name "$cluster_name"
 
 

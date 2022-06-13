@@ -424,7 +424,7 @@ async fn create_agent_ds(
 
     //// Set up agent
     let ds = get_agent_ds_yaml(
-        "logdna-agent-kind:building",
+        "logdna-agent-v2:local",
         ingester_addr,
         "false",
         agent_name,
