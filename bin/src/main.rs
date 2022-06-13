@@ -62,7 +62,7 @@ fn main() {
         // apply capabilities only when:
         // - k8s
         // - docker
-        // - exe filename ends with "-no-cap" (symlinked)
+        // - exe filename does not ends with "-no-cap" (symlinked)
         if (std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
             || std::path::Path::new("/.dockerenv").exists())
             && std::env::var_os(env_vars::LOGDNA_NO_CAP).is_none()
@@ -618,7 +618,8 @@ fn set_capabilities() -> Result<bool, capctl::Error> {
         cap_state.effective,
         cap_state.inheritable
     );
-    // this needs: setcap "cap_dac_read_search+p" /work/logdna-agent
+    // needs in image:
+    // # setcap "cap_dac_read_search+p" /work/logdna-agent
     cap_state.effective.add(Cap::DAC_READ_SEARCH);
     cap_state.inheritable.add(Cap::DAC_READ_SEARCH);
     cap_state.set_current()?;
