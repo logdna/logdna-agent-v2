@@ -4,6 +4,7 @@ extern crate humanize_rs;
 
 use std::convert::{TryFrom, TryInto};
 use std::ffi::OsString;
+use std::fmt;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -16,13 +17,13 @@ use fs::lookback::Lookback;
 use fs::rule::{RuleDef, Rules};
 use fs::tail::DirPathBuf;
 use http::types::request::{Encoding, RequestTemplate, Schema};
-use k8s::K8sTrackingConf;
 
 use crate::argv::ArgumentOptions;
 use crate::error::ConfigError;
 use crate::raw::Config as RawConfig;
 
 mod argv;
+pub mod env_vars;
 pub mod error;
 mod properties;
 pub mod raw;
@@ -83,6 +84,47 @@ pub struct HttpConfig {
     // Development only settings
     pub retry_base_delay: Duration,
     pub retry_step_delay: Duration,
+}
+
+#[derive(Clone, core::fmt::Debug, PartialEq)]
+pub enum K8sTrackingConf {
+    Always,
+    Never,
+}
+
+impl Default for K8sTrackingConf {
+    fn default() -> Self {
+        K8sTrackingConf::Never
+    }
+}
+
+impl fmt::Display for K8sTrackingConf {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                K8sTrackingConf::Always => "always",
+                K8sTrackingConf::Never => "never",
+            }
+        )
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+#[error("{0}")]
+pub struct ParseK8sTrackingConf(String);
+
+impl std::str::FromStr for K8sTrackingConf {
+    type Err = ParseK8sTrackingConf;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "always" => Ok(K8sTrackingConf::Always),
+            "never" => Ok(K8sTrackingConf::Never),
+            _ => Err(ParseK8sTrackingConf(format!("failed to parse {}", s))),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -163,12 +205,12 @@ impl TryFrom<RawConfig> for Config {
         let mut template_builder = RequestTemplate::builder();
 
         template_builder.api_key(raw.http.ingestion_key.filter(|s| !s.is_empty()).ok_or(
-            ConfigError::MissingFieldOrEnvVar("http.ingestion_key", argv::env::INGESTION_KEY),
+            ConfigError::MissingFieldOrEnvVar("http.ingestion_key", env_vars::INGESTION_KEY),
         )?);
 
         let use_ssl = raw.http.use_ssl.ok_or(ConfigError::MissingFieldOrEnvVar(
             "http.use_ssl",
-            argv::env::USE_SSL,
+            env_vars::USE_SSL,
         ))?;
 
         if use_ssl {
@@ -182,7 +224,7 @@ impl TryFrom<RawConfig> for Config {
             .use_compression
             .ok_or(ConfigError::MissingFieldOrEnvVar(
                 "http.use_compression",
-                argv::env::USE_COMPRESSION,
+                env_vars::USE_COMPRESSION,
             ))?;
 
         let gzip_level = raw
@@ -190,7 +232,7 @@ impl TryFrom<RawConfig> for Config {
             .gzip_level
             .ok_or(ConfigError::MissingFieldOrEnvVar(
                 "http.gzip_level",
-                argv::env::GZIP_LEVEL,
+                env_vars::GZIP_LEVEL,
             ))?;
 
         if use_compression {
@@ -200,11 +242,11 @@ impl TryFrom<RawConfig> for Config {
         }
 
         template_builder.host(raw.http.host.filter(|s| !s.is_empty()).ok_or(
-            ConfigError::MissingFieldOrEnvVar("http.host", argv::env::HOST),
+            ConfigError::MissingFieldOrEnvVar("http.host", env_vars::HOST),
         )?);
 
         template_builder.endpoint(raw.http.endpoint.filter(|s| !s.is_empty()).ok_or(
-            ConfigError::MissingFieldOrEnvVar("http.endpoint", argv::env::ENDPOINT),
+            ConfigError::MissingFieldOrEnvVar("http.endpoint", env_vars::ENDPOINT),
         )?);
 
         template_builder.params(
@@ -287,12 +329,12 @@ impl TryFrom<RawConfig> for Config {
                 .unwrap_or_else(|| Ok(Lookback::default()))?,
             use_k8s_enrichment: parse_k8s_tracking_or_warn(
                 raw.log.use_k8s_enrichment,
-                argv::env::USE_K8S_LOG_ENRICHMENT,
+                env_vars::USE_K8S_LOG_ENRICHMENT,
                 K8sTrackingConf::Always,
             ),
             log_k8s_events: parse_k8s_tracking_or_warn(
                 raw.log.log_k8s_events,
-                argv::env::LOG_K8S_EVENTS,
+                env_vars::LOG_K8S_EVENTS,
                 K8sTrackingConf::Never,
             ),
         };
@@ -567,13 +609,13 @@ mod tests {
             serde_yaml::to_writer(&mut file, &RawConfig::default()).unwrap();
             file.flush().unwrap();
 
-            env::remove_var(argv::env::INGESTION_KEY);
-            env::remove_var(argv::env::INGESTION_KEY_ALTERNATE);
-            env::remove_var(argv::env::INCLUSION_RULES_DEPRECATED);
-            env::set_var(argv::env::CONFIG_FILE, path);
+            env::remove_var(env_vars::INGESTION_KEY);
+            env::remove_var(env_vars::INGESTION_KEY_ALTERNATE);
+            env::remove_var(env_vars::INCLUSION_RULES_DEPRECATED);
+            env::set_var(env_vars::CONFIG_FILE, path);
             assert!(Config::new(args.clone()).is_err());
 
-            env::set_var(argv::env::INGESTION_KEY, "ingestion_key_test");
+            env::set_var(env_vars::INGESTION_KEY, "ingestion_key_test");
 
             assert!(Config::new(args.clone()).is_ok());
 
@@ -583,7 +625,7 @@ mod tests {
                 .rules
                 .inclusion_list()
                 .len();
-            env::set_var(argv::env::INCLUSION_RULES, "test.log,test2.log");
+            env::set_var(env_vars::INCLUSION_RULES, "test.log,test2.log");
             assert_eq!(
                 old_len + 2,
                 Config::new(args).unwrap().log.rules.inclusion_list().len()

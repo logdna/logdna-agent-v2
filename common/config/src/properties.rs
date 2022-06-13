@@ -1,4 +1,4 @@
-use crate::argv::env;
+use crate::env_vars;
 use crate::error::ConfigError;
 use crate::raw::{Config, Rules};
 use crate::{argv, get_hostname};
@@ -13,7 +13,7 @@ use std::str::FromStr;
 
 macro_rules! from_env_name {
     ($key: ident) => {
-        static $key: Key = Key::FromEnv(env::$key);
+        static $key: Key = Key::FromEnv(env_vars::$key);
     };
 }
 
@@ -24,7 +24,7 @@ static TAGS: Key = Key::Name("tags");
 static OS_HOSTNAME: Key = Key::Name("hostname");
 static EXCLUSION_RULES: Key = Key::Name("exclude");
 static EXCLUSION_REGEX_RULES: Key = Key::Name("exclude_regex");
-static IBM_HOST_DEPRECATED: Key = Key::Name(env::IBM_HOST_DEPRECATED);
+static IBM_HOST_DEPRECATED: Key = Key::Name(env_vars::IBM_HOST_DEPRECATED);
 
 // New keys: reuse the same name from env vars, removing the LOGDNA_ prefix and
 // setting it to lowercase

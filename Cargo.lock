@@ -309,6 +309,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1db59621ec70f09c5e9b597b220c7a2b43611f4710dc03ceb8748637775692c"
 
 [[package]]
+name = "capctl"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "526c6a8746a7cfb052c15d20259c4f5c021966affdc7c960c71ca640f824c801"
+dependencies = [
+ "bitflags",
+ "cfg-if",
+ "libc",
+]
+
+[[package]]
 name = "cargo_metadata"
 version = "0.11.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -412,7 +423,6 @@ dependencies = [
  "http 0.1.0",
  "humanize-rs",
  "java-properties",
- "k8s",
  "lazy_static",
  "log",
  "scopeguard",
@@ -421,6 +431,7 @@ dependencies = [
  "structopt",
  "sysinfo",
  "tempfile",
+ "thiserror",
 ]
 
 [[package]]
@@ -1514,6 +1525,7 @@ dependencies = [
  "auditable",
  "auditable-build",
  "bytes",
+ "capctl",
  "config",
  "env_logger 0.8.4",
  "escargot",
@@ -1543,6 +1555,7 @@ dependencies = [
  "proptest",
  "rand",
  "rcgen",
+ "regex",
  "rustls",
  "rustls-pemfile",
  "serde",
@@ -1558,6 +1571,7 @@ dependencies = [
  "tokio-stream",
  "tokio-test",
  "types",
+ "users",
  "wait-timeout",
 ]
 
@@ -1671,6 +1685,7 @@ dependencies = [
 name = "middleware"
 version = "0.1.0"
 dependencies = [
+ "config",
  "http 0.1.0",
  "lazy_static",
  "log",
@@ -3283,6 +3298,16 @@ dependencies = [
  "idna",
  "matches",
  "percent-encoding",
+]
+
+[[package]]
+name = "users"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24cc0f6d6f267b73e5a2cadf007ba8f9bc39c6a6f9666f8cf25ea809a153b032"
+dependencies = [
+ "libc",
+ "log",
 ]
 
 [[package]]

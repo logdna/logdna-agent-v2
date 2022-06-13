@@ -5,7 +5,13 @@ OWN_DIR=$(dirname "$OWN_PATH")
 pushd "$OWN_DIR/.."
 rm -rf ./target
 rm -rf ./bin/target
+rm -rf ./bench/target
 rm -f perf.data*
+rm -f *.svg
+rm -f *.log
+rm -f .kind_config
+rm -f ./docker/.kind_config*
+rm -f ./bin/tests/cli.proptest-regressions
 echo
 echo @@@@@@  SUCCESS  @@@@@@
 echo

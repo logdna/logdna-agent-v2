@@ -1,8 +1,9 @@
+use crate::env_vars;
 use crate::raw::{Config as RawConfig, Rules};
+use crate::K8sTrackingConf;
 use fs::lookback::Lookback;
 use http::types::params::{Params, Tags};
 use humanize_rs::bytes::Bytes;
-use k8s::K8sTrackingConf;
 use std::env::var as env_var;
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -11,53 +12,6 @@ use structopt::StructOpt;
 // Symbol that will be populated in the main.rs file
 extern "Rust" {
     static PKG_VERSION: &'static str;
-}
-
-pub mod env {
-    pub const INGESTION_KEY: &str = "LOGDNA_INGESTION_KEY";
-    pub const CONFIG_FILE: &str = "LOGDNA_CONFIG_FILE";
-    pub const LOG_DIRS: &str = "LOGDNA_LOG_DIRS";
-    pub const TAGS: &str = "LOGDNA_TAGS";
-    pub const HOST: &str = "LOGDNA_HOST";
-    pub const ENDPOINT: &str = "LOGDNA_ENDPOINT";
-    pub const USE_SSL: &str = "LOGDNA_USE_SSL";
-    pub const USE_COMPRESSION: &str = "LOGDNA_USE_COMPRESSION";
-    pub const GZIP_LEVEL: &str = "LOGDNA_GZIP_LEVEL";
-    pub const EXCLUSION_RULES: &str = "LOGDNA_EXCLUSION_RULES";
-    pub const EXCLUSION_REGEX_RULES: &str = "LOGDNA_EXCLUSION_REGEX_RULES";
-    pub const INCLUSION_RULES: &str = "LOGDNA_INCLUSION_RULES";
-    pub const INCLUSION_REGEX_RULES: &str = "LOGDNA_INCLUSION_REGEX_RULES";
-    pub const HOSTNAME: &str = "LOGDNA_HOSTNAME";
-    pub const IP: &str = "LOGDNA_IP";
-    pub const MAC: &str = "LOGDNA_MAC";
-    pub const JOURNALD_PATHS: &str = "LOGDNA_JOURNALD_PATHS";
-    pub const LOOKBACK: &str = "LOGDNA_LOOKBACK";
-    pub const DB_PATH: &str = "LOGDNA_DB_PATH";
-    pub const METRICS_PORT: &str = "LOGDNA_METRICS_PORT";
-    pub const USE_K8S_LOG_ENRICHMENT: &str = "LOGDNA_USE_K8S_LOG_ENRICHMENT";
-    pub const LOG_K8S_EVENTS: &str = "LOGDNA_LOG_K8S_EVENTS";
-    pub const K8S_STARTUP_LEASE: &str = "LOGDNA_K8S_STARTUP_LEASE";
-    pub const LINE_EXCLUSION: &str = "LOGDNA_LINE_EXCLUSION_REGEX";
-    pub const LINE_INCLUSION: &str = "LOGDNA_LINE_INCLUSION_REGEX";
-    pub const REDACT: &str = "LOGDNA_REDACT_REGEX";
-    pub const INGEST_TIMEOUT: &str = "LOGDNA_INGEST_TIMEOUT";
-    pub const INGEST_BUFFER_SIZE: &str = "LOGDNA_INGEST_BUFFER_SIZE";
-    pub const RETRY_DIR: &str = "LOGDNA_RETRY_DIR";
-    pub const RETRY_DISK_LIMIT: &str = "LOGDNA_RETRY_DISK_LIMIT";
-
-    pub const INGESTION_KEY_ALTERNATE: &str = "LOGDNA_AGENT_KEY";
-    pub const CONFIG_FILE_DEPRECATED: &str = "DEFAULT_CONF_FILE";
-    pub const HOST_DEPRECATED: &str = "LDLOGHOST";
-    pub const IBM_HOST_DEPRECATED: &str = "LOGDNA_LOGHOST";
-    pub const ENDPOINT_DEPRECATED: &str = "LDLOGPATH";
-    pub const USE_SSL_DEPRECATED: &str = "LDLOGSSL";
-    pub const USE_COMPRESSION_DEPRECATED: &str = "COMPRESS";
-    pub const GZIP_LEVEL_DEPRECATED: &str = "GZIP_COMPRESS_LEVEL";
-    pub const LOG_DIRS_DEPRECATED: &str = "LOG_DIRS";
-    pub const EXCLUSION_RULES_DEPRECATED: &str = "LOGDNA_EXCLUDE";
-    pub const EXCLUSION_REGEX_RULES_DEPRECATED: &str = "LOGDNA_EXCLUDE_REGEX";
-    pub const INCLUSION_RULES_DEPRECATED: &str = "LOGDNA_INCLUDE";
-    pub const INCLUSION_REGEX_RULES_DEPRECATED: &str = "LOGDNA_INCLUDE_REGEX";
 }
 
 pub const DEFAULT_YAML_FILE: &str = "/etc/logdna/config.yaml";
@@ -69,7 +23,7 @@ pub const DEFAULT_CONF_FILE: &str = "/etc/logdna.conf";
 #[structopt(name = "LogDNA Agent", about = "A resource-efficient log collection agent that forwards logs to LogDNA.", version = unsafe { PKG_VERSION })]
 pub struct ArgumentOptions {
     /// The ingestion key associated with your LogDNA account
-    #[structopt(long, short, env = env::INGESTION_KEY)]
+    #[structopt(long, short, env = env_vars::INGESTION_KEY)]
     key: Option<String>,
 
     /// The config filename.
@@ -81,121 +35,121 @@ pub struct ArgumentOptions {
         short,
         long,
         parse(from_os_str),
-        env = env::CONFIG_FILE,
+        env = env_vars::CONFIG_FILE,
         default_value = DEFAULT_YAML_FILE
     )]
     pub config: PathBuf,
 
     /// The host to forward logs to. Defaults to "logs.logdna.com"
-    #[structopt(long, env = env::HOST)]
+    #[structopt(long, env = env_vars::HOST)]
     host: Option<String>,
 
     /// The endpoint to forward logs to. Defaults to "/logs/agent"
-    #[structopt(long, env = env::ENDPOINT)]
+    #[structopt(long, env = env_vars::ENDPOINT)]
     endpoint_path: Option<String>,
 
     /// Determines whether to use TLS for sending logs. Defaults to "true".
-    #[structopt(long, env = env::USE_SSL)]
+    #[structopt(long, env = env_vars::USE_SSL)]
     use_ssl: Option<bool>,
 
     /// Determines whether to compress logs before sending. Defaults to "true".
-    #[structopt(long, env = env::USE_COMPRESSION)]
+    #[structopt(long, env = env_vars::USE_COMPRESSION)]
     use_compression: Option<bool>,
 
     /// If compression is enabled, this is the gzip compression level to use. Defaults to 2.
-    #[structopt(long, env = env::GZIP_LEVEL)]
+    #[structopt(long, env = env_vars::GZIP_LEVEL)]
     gzip_level: Option<u32>,
 
     /// The hostname metadata to attach to lines forwarded from this agent (defaults to
     /// os.hostname())
-    #[structopt(long, env = env::HOSTNAME)]
+    #[structopt(long, env = env_vars::HOSTNAME)]
     os_hostname: Option<String>,
 
     /// The IP metadata to attach to lines forwarded from this agent
-    #[structopt(long, env = env::IP)]
+    #[structopt(long, env = env_vars::IP)]
     ip: Option<String>,
 
     /// The MAC metadata to attach to lines forwarded from this agent
-    #[structopt(long = "mac-address", env = env::MAC)]
+    #[structopt(long = "mac-address", env = env_vars::MAC)]
     mac: Option<String>,
 
     /// Adds log directories to scan, in addition to the default (/var/log)
-    #[structopt(long = "logdir", short = "d", env = env::LOG_DIRS)]
+    #[structopt(long = "logdir", short = "d", env = env_vars::LOG_DIRS)]
     log_dirs: Vec<String>,
 
     /// List of glob patterns to exclude files from monitoring, to add to the default set of
     /// exclusion rules.
-    #[structopt(long = "exclude", env = env::EXCLUSION_RULES)]
+    #[structopt(long = "exclude", env = env_vars::EXCLUSION_RULES)]
     exclusion_rules: Vec<String>,
 
     /// List of regex patterns to exclude files from monitoring
-    #[structopt(long = "exclude-regex", env = env::EXCLUSION_REGEX_RULES)]
+    #[structopt(long = "exclude-regex", env = env_vars::EXCLUSION_REGEX_RULES)]
     exclusion_regex: Vec<String>,
 
     /// List of glob patterns to includes files for monitoring, to add to the default set of
     /// inclusion rules (*.log)
-    #[structopt(long = "include", env = env::INCLUSION_RULES)]
+    #[structopt(long = "include", env = env_vars::INCLUSION_RULES)]
     inclusion_rules: Vec<String>,
 
     /// List of regex patterns to include files from monitoring
-    #[structopt(long = "include-regex", env = env::INCLUSION_REGEX_RULES)]
+    #[structopt(long = "include-regex", env = env_vars::INCLUSION_REGEX_RULES)]
     inclusion_regex: Vec<String>,
 
     /// List of paths (directories or files) of journald paths to monitor,
     /// for example: /var/log/journal or /run/systemd/journal
-    #[structopt(long, env = env::JOURNALD_PATHS)]
+    #[structopt(long, env = env_vars::JOURNALD_PATHS)]
     journald_paths: Vec<String>,
 
     /// The lookback strategy on startup ("smallfiles", "start" or "none").
     /// Defaults to "smallfiles".
-    #[structopt(long, env = env::LOOKBACK)]
+    #[structopt(long, env = env_vars::LOOKBACK)]
     lookback: Option<Lookback>,
 
     /// List of tags metadata to attach to lines forwarded from this agent
-    #[structopt(long, short, env = env::TAGS)]
+    #[structopt(long, short, env = env_vars::TAGS)]
     tags: Vec<String>,
 
     /// Determines whether the agent should query the K8s API to enrich log lines from
     /// other pods ("always" or "never").  Defaults to "always".
-    #[structopt(long, env = env::USE_K8S_LOG_ENRICHMENT)]
+    #[structopt(long, env = env_vars::USE_K8S_LOG_ENRICHMENT)]
     use_k8s_enrichment: Option<K8sTrackingConf>,
 
     /// Determines whether  the agent should log Kubernetes resource events. This setting only
     /// affects tracking and logging Kubernetes resource changes via watches. When disabled,
     /// the agent may still query k8s metadata to enrich log lines from other pods depending on
     /// the value of `use_k8s_enrichment` setting value ("always" or "never"). Defaults to "never".
-    #[structopt(long, env = env::LOG_K8S_EVENTS)]
+    #[structopt(long, env = env_vars::LOG_K8S_EVENTS)]
     log_k8s_events: Option<K8sTrackingConf>,
 
     /// Determine wheather or not to look for available K8s startup leases before attempting
     /// to start the agent; used to throttle startup on very large K8s clusters.
     /// Defaults to "off".
-    #[structopt(long = "startup-lease", env = env::K8S_STARTUP_LEASE)]
+    #[structopt(long = "startup-lease", env = env_vars::K8S_STARTUP_LEASE)]
     k8s_startup_lease: Option<String>,
 
     /// The directory in which the agent will store its state database. Note that the agent must
     /// have write access to the directory and be a persistent volume.
     /// Defaults to "/var/lib/logdna-agent/"
-    #[structopt(long, env = env::DB_PATH)]
+    #[structopt(long, env = env_vars::DB_PATH)]
     db_path: Option<String>,
 
     /// The port number to expose a Prometheus endpoint target with the agent metrics.
-    #[structopt(long, env = env::METRICS_PORT)]
+    #[structopt(long, env = env_vars::METRICS_PORT)]
     metrics_port: Option<u16>,
 
     /// List of regex patterns to exclude log lines.
     /// When set, the Agent will NOT send log lines that match any of these patterns.
-    #[structopt(long, env = env::LINE_EXCLUSION)]
+    #[structopt(long, env = env_vars::LINE_EXCLUSION)]
     line_exclusion: Vec<String>,
 
     /// List of regex patterns to include log lines.
     /// When set, the Agent will send ONLY log lines that match any of these patterns.
-    #[structopt(long, env = env::LINE_INCLUSION)]
+    #[structopt(long, env = env_vars::LINE_INCLUSION)]
     line_inclusion: Vec<String>,
 
     /// List of regex patterns used to mask matching sensitive information (such as PII) before
     /// sending it in the log line.
-    #[structopt(long, env = env::REDACT)]
+    #[structopt(long, env = env_vars::REDACT)]
     line_redact: Vec<String>,
 
     /// Show the current agent settings from the configuration sources (default config file
@@ -205,23 +159,23 @@ pub struct ArgumentOptions {
 
     /// The timeout on requests to the ingestion API in milliseconds.
     /// Defaults to 10000 ms.
-    #[structopt(long, env = env::INGEST_TIMEOUT)]
+    #[structopt(long, env = env_vars::INGEST_TIMEOUT)]
     ingest_timeout: Option<u64>,
 
     /// The maximum size, in bytes, of log content that will be sent to the ingestion API.
     /// Defaults to 2097152 (2 MB).
-    #[structopt(long, env = env::INGEST_BUFFER_SIZE)]
+    #[structopt(long, env = env_vars::INGEST_BUFFER_SIZE)]
     ingest_buffer_size: Option<usize>,
 
     /// The location where retry data is stored before successfully sent to the ingestion API.
     /// Defaults to /tmp/logdna.
-    #[structopt(long, env = env::RETRY_DIR)]
+    #[structopt(long, env = env_vars::RETRY_DIR)]
     retry_dir: Option<String>,
 
     /// When set, limits the amount of disk space the agent will use to store log lines that
     /// need to be resent to the ingestion API. Values can be defined with units of KB, MB, GB,
     /// etc. Numbers need to be integer values.
-    #[structopt(long, env = env::RETRY_DISK_LIMIT)]
+    #[structopt(long, env = env_vars::RETRY_DISK_LIMIT)]
     retry_disk_limit: Option<Bytes<u64>>,
 }
 
@@ -389,14 +343,14 @@ impl ArgumentOptions {
 
     fn parse_deprecated(options: ArgumentOptions) -> ArgumentOptions {
         let mut options = options;
-        if let Ok(v) = env_var(env::INGESTION_KEY_ALTERNATE) {
+        if let Ok(v) = env_var(env_vars::INGESTION_KEY_ALTERNATE) {
             // Do not warn about alternate name for key
             options.key = Some(v);
         }
 
         macro_rules! deprecated_env {
             ($key: ident, $var_name: ident, Option<$ftype: ty>) => {
-                if let Ok(v) = env_var(env::$var_name) {
+                if let Ok(v) = env_var(env_vars::$var_name) {
                     if let Ok(parsed) = std::str::FromStr::from_str(&v) {
                         options.$key = Some(parsed);
                         info!("Using deprecated env var '$var_name'");
@@ -406,7 +360,7 @@ impl ArgumentOptions {
                 }
             };
             ($key: ident, $var_name: ident, $ftype: ty) => {
-                if let Ok(v) = env_var(env::$var_name) {
+                if let Ok(v) = env_var(env_vars::$var_name) {
                     if let Ok(parsed) = std::str::FromStr::from_str(&v) {
                         options.$key = parsed;
                         info!("Using deprecated env var '$var_name'");
@@ -419,7 +373,7 @@ impl ArgumentOptions {
 
         macro_rules! deprecated_env_vec {
             ($key: ident, $var_name: ident) => {
-                if let Ok(v) = env_var(env::$var_name) {
+                if let Ok(v) = env_var(env_vars::$var_name) {
                     options.$key = with_csv(vec![v]);
                     info!("Using deprecated env var '$var_name'");
                 }
