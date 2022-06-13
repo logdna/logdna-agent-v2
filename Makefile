@@ -241,7 +241,7 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION)
 
 define publish_images
-	$(eval TARGET_VERSIONS := $(BUILD_VERSION) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(shell docker images -q $(REPO):$(BUILD_TAG)) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
+	$(eval TARGET_VERSIONS := $(BUILD_VERSION) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(shell docker images -q $(REPO):$(BUILD_TAG)) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
 	@for version in $(TARGET_VERSIONS); do \
 		$(DOCKER) tag $(REPO):$(BUILD_TAG) $(1):$${version}; \
 		$(DOCKER) push $(1):$${version}; \
