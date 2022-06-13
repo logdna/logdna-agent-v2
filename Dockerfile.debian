@@ -82,4 +82,5 @@ RUN apt update -y \
     && groupadd -g 5000 logdna \
     && useradd -u 5000 -g logdna logdna
 
+
 CMD ["./logdna-agent"]

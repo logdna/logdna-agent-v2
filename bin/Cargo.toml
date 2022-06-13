@@ -47,8 +47,11 @@ pin-utils = "0.1"
 auditable = "0.1"
 miniz_oxide = "0.4"
 
+regex = "1"
+users = "*"
+
 [target.'cfg(any(unix, macos))'.dependencies]
-capng = { version = "0.2" }
+capctl = "0.2"
 
 [features]
 default = []

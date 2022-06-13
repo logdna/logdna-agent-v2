@@ -309,12 +309,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c1db59621ec70f09c5e9b597b220c7a2b43611f4710dc03ceb8748637775692c"
 
 [[package]]
-name = "capng"
-version = "0.2.2"
+name = "capctl"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6f8e9448233603643e42606121d95f5f8d4e015b3e7619a51593864dd902575"
+checksum = "526c6a8746a7cfb052c15d20259c4f5c021966affdc7c960c71ca640f824c801"
 dependencies = [
  "bitflags",
+ "cfg-if",
  "libc",
 ]
 
@@ -1524,7 +1525,7 @@ dependencies = [
  "auditable",
  "auditable-build",
  "bytes",
- "capng",
+ "capctl",
  "config",
  "env_logger 0.8.4",
  "escargot",
@@ -1554,6 +1555,7 @@ dependencies = [
  "proptest",
  "rand",
  "rcgen",
+ "regex",
  "rustls",
  "rustls-pemfile",
  "serde",
@@ -1569,6 +1571,7 @@ dependencies = [
  "tokio-stream",
  "tokio-test",
  "types",
+ "users",
  "wait-timeout",
 ]
 
@@ -3295,6 +3298,16 @@ dependencies = [
  "idna",
  "matches",
  "percent-encoding",
+]
+
+[[package]]
+name = "users"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "24cc0f6d6f267b73e5a2cadf007ba8f9bc39c6a6f9666f8cf25ea809a153b032"
+dependencies = [
+ "libc",
+ "log",
 ]
 
 [[package]]
