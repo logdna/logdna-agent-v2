@@ -65,7 +65,7 @@ fn main() {
         // - exe filename does not ends with "-no-cap" (symlinked)
         if (std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
             || std::path::Path::new("/.dockerenv").exists())
-            && std::env::var_os(env_vars::LOGDNA_NO_CAP).is_none()
+            && std::env::var_os(env_vars::NO_CAP).is_none()
         {
             match set_capabilities() {
                 Ok(r) if r => debug!("Using Capabilities to bypass filesystem permissions"),
@@ -94,7 +94,7 @@ async fn _main() {
     dep_audit::get_auditable_dependency_list()
         .map_or_else(|e| trace!("{}", e), |d| trace!("{}", d));
 
-    let config = match Config::new(std::env::args_os()) {
+    let config = match Config::new_from_env() {
         Ok(v) => v,
         Err(e) => {
             error!("config error: {}", e);

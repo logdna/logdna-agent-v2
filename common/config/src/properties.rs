@@ -65,8 +65,10 @@ struct Map {
 impl<'a> Map {
     fn get(&'a self, key: &'static Key) -> Option<&'a String> {
         match key {
-            // Remove prefix "LOGDNA_" and lowercase
-            Key::FromEnv(k) => self.inner.get(&k[7..].to_lowercase()),
+            // Remove prefix "MZ_" and lowercase
+            Key::FromEnv(k) => self
+                .inner
+                .get(&k[crate::MEZMO_PREFIX.len()..].to_lowercase()),
             Key::Name(k) => self.inner.get(*k),
         }
     }

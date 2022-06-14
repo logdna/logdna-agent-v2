@@ -151,12 +151,21 @@ pub struct K8sStartupLeaseConfig {
     pub option: String,
 }
 
+const LOGDNA_PREFIX: &str = "LOGDNA_";
+const MEZMO_PREFIX: &str = "MZ_";
+
 impl Config {
+    pub fn new_from_env() -> Result<Self, ConfigError> {
+        Config::process_logdna_env_vars();
+        Config::new(std::env::args_os())
+    }
+
     pub fn new<I>(args: I) -> Result<Self, ConfigError>
     where
         I: IntoIterator,
         I::Item: Into<OsString> + Clone,
     {
+        Config::process_logdna_env_vars();
         let argv_options = ArgumentOptions::from_args_with_all_env_vars(args);
         let list_settings = argv_options.list_settings;
         let config_path = argv_options.config.clone();
@@ -195,6 +204,21 @@ impl Config {
         info!("starting with the following options: \n{}", yaml_str);
 
         Config::try_from(raw_config)
+    }
+
+    fn process_logdna_env_vars() {
+        std::env::vars_os()
+            .filter(|(n, _)| {
+                n.clone()
+                    .into_string()
+                    .unwrap_or_default()
+                    .starts_with(LOGDNA_PREFIX)
+            })
+            .for_each(|(name, value)| {
+                let new_name = MEZMO_PREFIX.to_string()
+                    + &name.into_string().unwrap_or_default()[LOGDNA_PREFIX.len()..];
+                std::env::set_var(new_name, value)
+            });
     }
 }
 
