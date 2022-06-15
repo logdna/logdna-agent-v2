@@ -206,12 +206,18 @@ async fn main() {
     };
 
     if config.log.use_k8s_enrichment == K8sTrackingConf::Always {
-        //println!("\n*** CONFIG: {:?} {:?}\n", config.log.k8s_metadata_exclude, config.log.k8s_metadata_include);
+        println!(
+            "\n*** MAIN CONFIG: {:?} {:?}\n",
+            config.log.k8s_metadata_exclude, config.log.k8s_metadata_include
+        );
         match K8sLineFilter::new(
             &config.log.k8s_metadata_exclude,
             &config.log.k8s_metadata_include,
         ) {
-            Ok(v) => executor.register(v),
+            Ok(v) => {
+                println!("*** REGISTERING: {:?}", v);
+                executor.register(v)
+            }
             Err(e) => {
                 error!("k8s line rule is invalid {}", e);
                 std::process::exit(1);

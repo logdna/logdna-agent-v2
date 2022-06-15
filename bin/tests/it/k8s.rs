@@ -556,6 +556,14 @@ fn get_agent_ds_yaml(
                                     "value": enrich_logs_with_k8s,
                                 },
                                 {
+                                    "name": "LOGDNA_K8S_METADATA_INCLUSION",
+                                    "value": "namespace:default"
+                                },
+                                {
+                                    "name": "LOGDNA_K8S_METADATA_EXCLUSION",
+                                    "value": "label.app.kubernetes.io/name:filter-pod"
+                                },
+                                {
                                     "name": "POD_APP_LABEL",
                                     "valueFrom": {
                                         "fieldRef": {
@@ -916,7 +924,7 @@ async fn test_k8s_enrichment() {
         let map = received.lock().await;
 
         let result = map.iter().find(|(k, _)| k.contains(pod_name));
-        //println!("\n*** K8s LINE RESULT: {:?}\n", result);
+        //println!("\n*** K8s LINE RESULT: {:?}\n", map);
         assert!(result.is_some());
 
         let (_, pod_file_info) = result.unwrap();
@@ -950,6 +958,14 @@ async fn test_k8s_enrichment() {
         let label = job_file_info.label.as_ref();
         assert!(label.is_some());
         assert_eq!(label.unwrap()["job-name"], "sample-job");
+
+        // Ensure k8s exclusion filter working
+        let result = map.iter().find(|(k, _)| k.contains("filter-pod"));
+        assert!(result.is_none());
+
+        // Ensure k8s inclustion is filter out non default namespaces
+        let result = map.iter().find(|(k, _)| k.contains("k8s-enrichment"));
+        assert!(result.is_none());
 
         shutdown_handle();
     });
@@ -1014,7 +1030,7 @@ async fn test_k8s_events_logged() {
             agent_namespace,
             &mock_ingester_socket_addr_str,
             "always",
-            "always",
+            "never",
             "warn",
             "off",
         )

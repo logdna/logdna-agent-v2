@@ -1,5 +1,5 @@
 use crate::{Middleware, Status};
-use http::types::body::LineBufferMut;
+use http::types::body::{KeyValueMap, LineBufferMut};
 use lazy_static::lazy_static;
 use multimap::MultiMap;
 use regex::{Regex, RegexSet};
@@ -29,6 +29,7 @@ struct K8sLineRules {
     annotations: Option<MultiMap<String, String>>,
 }
 
+#[derive(Debug)]
 pub struct K8sLineFilter {
     exclusion: K8sLineRules,
     inclusion: K8sLineRules,
@@ -45,6 +46,7 @@ impl K8sLineFilter {
         exclusion: &[String],
         inclusion: &[String],
     ) -> Result<K8sLineFilter, K8sLineRulesError> {
+        println!("*** K8s NEW {:?}", exclusion);
         let k8s_exclusion_line_rules = set_k8s_line_rule(exclusion);
         let k8s_inclusion_line_rules = set_k8s_line_rule(inclusion);
 
@@ -58,9 +60,14 @@ impl K8sLineFilter {
         &self,
         line: &'a mut dyn LineBufferMut,
     ) -> Status<&'a mut dyn LineBufferMut> {
+        //println!("*** LOG LINE: {:?}", &line.get_file());
+        //println!("*** LOG LABELS: {:?}", &line.get_labels());
+        //println!("*** LOG ANNOTATIONS: {:?}", &line.get_annotations());
+        let empty_map: KeyValueMap = KeyValueMap::new();
+        //println!("*** PROCCESS CONFIG: {:?}", self.exclusion.namespace);
         let file_value = line.get_file().unwrap();
-        let label_value = line.get_labels().unwrap();
-        let annotation_value = line.get_annotations().unwrap();
+        let label_value = line.get_labels().unwrap_or(&empty_map);
+        let annotation_value = line.get_annotations().unwrap_or(&empty_map);
 
         // If it doesn't match any inclusion rule -> skip
         if self.inclusion.namespace.is_some()
@@ -167,6 +174,8 @@ fn set_k8s_line_rule(rules: &[String]) -> Result<K8sLineRules, K8sLineRulesError
         annotations: None,
     };
 
+    println!("*** SET RULE: {:?}", rules);
+
     if rules.is_empty() {
         return Ok(k8s_line_rules);
     }
@@ -218,6 +227,8 @@ fn set_k8s_line_rule(rules: &[String]) -> Result<K8sLineRules, K8sLineRulesError
         }
         k8s_line_rules.annotations = Some(annotation_map);
     }
+
+    println!("*** K8s LINE RULE: {:?}", k8s_line_rules);
 
     Ok(k8s_line_rules)
 }
@@ -382,18 +393,16 @@ mod tests {
         ];
         let k8s_rules = K8sLineFilter::new(exclusion, inclusion);
 
-        let mut label_kv_map = KeyValueMap::new();
-        let mut annotation_kv_map = KeyValueMap::new();
+        // This leaves labels and annotations intentionally None for testing
         let mut test_line = LineBuilder::new()
             .line("test-info")
-            .file("/var/log/containers/random-name_namespace_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log")
-            .labels(label_kv_map.add("app", "crazyapp"))
-            .annotations(annotation_kv_map.add("owner", "random-agent"));
+            .file("/var/log/containers/random-name_namespace_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log");
+        println!("*** TESTLINE: {:?}", test_line);
         let mut status = k8s_rules.as_ref().unwrap().process(&mut test_line);
         assert!(matches!(status, Status::Ok(_)));
 
-        label_kv_map = KeyValueMap::new();
-        annotation_kv_map = KeyValueMap::new();
+        let mut label_kv_map = KeyValueMap::new();
+        let mut annotation_kv_map = KeyValueMap::new();
         test_line = LineBuilder::new()
             .line("test-info")
             .file("/var/log/containers/random-pod_logdna-agent_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log")
