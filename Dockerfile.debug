@@ -75,7 +75,7 @@ RUN apt update -y \
                    dnsutils vim curl procps net-tools gdbserver -y \
     && rm -rf /var/cache/apt \
     && chmod -R 777 . \
-    && setcap "cap_dac_read_search+eip" /work/logdna-agent \
+    && setcap "cap_dac_read_search+p" /work/logdna-agent \
     && groupadd -g 5000 logdna \
     && useradd -u 5000 -g logdna logdna
 

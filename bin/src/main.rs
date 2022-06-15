@@ -4,7 +4,7 @@ extern crate log;
 use futures::Stream;
 
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
-use config::{Config, DbPath};
+use config::{self, Config, DbPath, K8sTrackingConf};
 use env_logger::Env;
 use fs::tail;
 use futures::StreamExt;
@@ -20,8 +20,8 @@ use journald::journalctl::create_journalctl_source;
 use k8s::event_source::K8sEventStream;
 use k8s::lease::{get_available_lease, K8S_STARTUP_LEASE_LABEL, K8S_STARTUP_LEASE_RETRY_ATTEMPTS};
 
+use k8s::create_k8s_client_default_from_env;
 use k8s::middleware::K8sMetadata;
-use k8s::{create_k8s_client_default_from_env, K8sTrackingConf};
 use kube::Client as Kube_Client;
 use metrics::Metrics;
 use middleware::k8s_line_rules::K8sLineFilter;
@@ -29,6 +29,7 @@ use middleware::line_rules::LineRules;
 use middleware::meta_rules::{MetaRules, MetaRulesConfig};
 use middleware::Executor;
 
+use config::env_vars;
 use pin_utils::pin_mut;
 use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
@@ -52,11 +53,43 @@ pub static PKG_NAME: &str = env!("CARGO_PKG_NAME");
 #[no_mangle]
 pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() {
+fn main() {
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
 
+    // must be done at the very beginning and before other threads started
+    #[cfg(target_os = "linux")]
+    {
+        // apply capabilities only when:
+        // - k8s
+        // - docker
+        // - exe filename does not ends with "-no-cap" (symlinked)
+        if (std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
+            || std::path::Path::new("/.dockerenv").exists())
+            && std::env::var_os(env_vars::LOGDNA_NO_CAP).is_none()
+        {
+            match set_capabilities() {
+                Ok(r) if r => debug!("Using Capabilities to bypass filesystem permissions"),
+                _ => warn!("Failed to adopt capabilities to bypass DAC. The agent will only be able to access files accessible to it's user/group"),
+            }
+        }
+        let status =
+            std::fs::read_to_string("/proc/self/status").expect("Failed to read /proc/self/status");
+        let re = regex::Regex::new(r"(?m)^((Cap|Cpu|Seccomp|Groups|Uid|Gid).+?)$").unwrap();
+        for cap in re.captures_iter(status.as_str()) {
+            info!("{}", &cap[0]);
+        }
+    }
+
+    // Set up tokio runtime and block on agent main loop
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(_main())
+}
+
+async fn _main() {
     // Actually use the data to work around a bug in rustc:
     // https://github.com/rust-lang/rust/issues/47384
     dep_audit::get_auditable_dependency_list()
@@ -589,4 +622,36 @@ async fn get_signal() -> &'static str {
 async fn get_signal() -> &'static str {
     ctrl_c().await.unwrap();
     "CTRL+C"
+}
+
+#[cfg(target_os = "linux")]
+fn set_capabilities() -> Result<bool, capctl::Error> {
+    use capctl::caps::{Cap, CapState};
+
+    // Get the caps for the current pid
+    let mut cap_state = CapState::get_current()?;
+    trace!(
+        "initial caps -\npermitted {:?}\neffective {:?}\ninherited {:?}",
+        cap_state.permitted,
+        cap_state.effective,
+        cap_state.inheritable
+    );
+    // needs in image:
+    // # setcap "cap_dac_read_search+p" /work/logdna-agent
+    cap_state.effective.add(Cap::DAC_READ_SEARCH);
+    cap_state.inheritable.add(Cap::DAC_READ_SEARCH);
+    cap_state.set_current()?;
+
+    let cap_state = CapState::get_current()?;
+    trace!(
+        "new capabilities -\npermitted {:?}\neffective {:?}\ninherited {:?}",
+        cap_state.permitted,
+        cap_state.effective,
+        cap_state.inheritable
+    );
+    // Check if we have DAC_READ_SEARCH or DAC_OVERRIDE
+    Ok(cap_state
+        .effective
+        .iter()
+        .any(|cap| [Cap::DAC_READ_SEARCH, Cap::DAC_OVERRIDE].contains(&cap)))
 }

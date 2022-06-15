@@ -43,9 +43,13 @@ futures = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "signal", "time"] }
 tokio-stream = "0.1"
 pin-utils = "0.1"
-
+regex = "1"
 auditable = "0.1"
 miniz_oxide = "0.4"
+
+
+[target.'cfg(any(unix, macos))'.dependencies]
+capctl = "0.2"
 
 [features]
 default = []

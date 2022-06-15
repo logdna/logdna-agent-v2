@@ -608,6 +608,9 @@ fn get_agent_ds_yaml(
                                 }
                             },
                             "securityContext": {
+                                "runAsUser": 5000,
+                                "runAsGroup": 5000,
+                                "fsGroup": 5000,
                                 "capabilities": {
                                     "add": [
                                         "DAC_READ_SEARCH"
