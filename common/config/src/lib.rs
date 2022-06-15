@@ -155,12 +155,7 @@ const LOGDNA_PREFIX: &str = "LOGDNA_";
 const MEZMO_PREFIX: &str = "MZ_";
 
 impl Config {
-    pub fn new_from_env() -> Result<Self, ConfigError> {
-        Config::process_logdna_env_vars();
-        Config::new(std::env::args_os())
-    }
-
-    fn new<I>(args: I) -> Result<Self, ConfigError>
+    pub fn new<I>(args: I) -> Result<Self, ConfigError>
     where
         I: IntoIterator,
         I::Item: Into<OsString> + Clone,
@@ -205,7 +200,7 @@ impl Config {
         Config::try_from(raw_config)
     }
 
-    fn process_logdna_env_vars() {
+    pub fn process_logdna_env_vars() {
         std::env::vars_os()
             .filter(|(n, _)| {
                 n.clone()
@@ -636,6 +631,9 @@ mod tests {
             env::remove_var(env_vars::INGESTION_KEY_ALTERNATE);
             env::remove_var(env_vars::INCLUSION_RULES_DEPRECATED);
             env::set_var(env_vars::CONFIG_FILE, path);
+
+            Config::process_logdna_env_vars();
+
             assert!(Config::new(args.clone()).is_err());
 
             env::set_var(env_vars::INGESTION_KEY, "ingestion_key_test");

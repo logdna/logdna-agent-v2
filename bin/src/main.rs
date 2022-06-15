@@ -53,6 +53,9 @@ pub static PKG_NAME: &str = env!("CARGO_PKG_NAME");
 pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
+    // covert logdna env vars to mezmo ones
+    Config::process_logdna_env_vars();
+
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
 
@@ -93,7 +96,7 @@ async fn _main() {
     dep_audit::get_auditable_dependency_list()
         .map_or_else(|e| trace!("{}", e), |d| trace!("{}", d));
 
-    let config = match Config::new_from_env() {
+    let config = match Config::new(std::env::args_os()) {
         Ok(v) => v,
         Err(e) => {
             error!("config error: {}", e);
