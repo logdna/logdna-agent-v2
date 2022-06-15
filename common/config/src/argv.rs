@@ -147,10 +147,10 @@ pub struct ArgumentOptions {
     #[structopt(long, env = env_vars::LINE_INCLUSION)]
     line_inclusion: Vec<String>,
 
-    #[structopt(long = "k8-metadata-inclusion", env = env::K8S_METADATA_INCLUSION)]
+    #[structopt(long = "k8-metadata-inclusion", env = env_vars::K8S_METADATA_INCLUSION)]
     k8s_metadata_inclusion: Option<Vec<String>>,
 
-    #[structopt(long = "k8s-metadata-exclusion", env = env::K8S_METADATA_EXCLUSION)]
+    #[structopt(long = "k8s-metadata-exclusion", env = env_vars::K8S_METADATA_EXCLUSION)]
     k8s_metadta_exclusion: Option<Vec<String>>,
 
     /// List of regex patterns used to mask matching sensitive information (such as PII) before
