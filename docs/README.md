@@ -18,9 +18,7 @@ The LogDNA agent is a resource-efficient log collection client that forwards log
     <tr>
       <td>
         <ul>
-As part of Company name change, we will be changing the name of our agent to <b>mezmo-agent</b>. This will happen over a series of releases.
-In <b>3.6</b> we will be introducing environment variables prefixed with <b>MZ_</b> in addition to the existing <b>LOGDNA_</b>. In <b>3.7</b> we will release both the agent binaries and yaml files with mezmo in the names. Here again we will do this in tandem with the logdna name.
-In our <b>4.0</b> version, we will fully deprecate all previous references to <b>LOGDNA_</b> and logdna.
+As part of the new company name change, we will be changing the name of our agent to <b>mezmo-agent</b>. This will happen over a series of releases. In <b>3.6</b> we will be introducing environment variables prefixed with <b>MZ_</b> in addition to the existing prefix of <b>LOGDNA_</b>. In <b>3.7</b> we will release both the agent binaries and yaml files with mezmo in the names. Here again we will do this in tandem with the logdna name. In our <b>4.0</b> version, we will fully deprecate all previous references to <b>LOGDNA_</b> and logdna.
         </ul>
       </td>
     </tr>
