@@ -217,7 +217,7 @@ impl Config {
             .for_each(|(name, value)| {
                 let new_name = MEZMO_PREFIX.to_string()
                     + &name.into_string().unwrap_or_default()[LOGDNA_PREFIX.len()..];
-                std::env::set_var(new_name, value)
+                std::env::set_var(new_name, value);
             });
     }
 }
@@ -663,5 +663,16 @@ mod tests {
         let mut raw = RawConfig::default();
         raw.http.ingestion_key = Some("dummy-test-key".to_string());
         Config::try_from(raw).unwrap()
+    }
+
+    #[test]
+    fn test_process_logdna_env_vars() {
+        env::set_var("LOGDNA_TEST", "LOGDNA_TEST");
+        env::set_var("LOGDNA_", "LOGDNA_");
+        env::set_var("MZ_SOME", "MZ_SOME");
+        Config::process_logdna_env_vars();
+        assert_eq!(env::var("MZ_TEST").unwrap(), "LOGDNA_TEST");
+        assert_eq!(env::var("MZ_").unwrap(), "LOGDNA_");
+        assert_eq!(env::var("MZ_SOME").unwrap(), "MZ_SOME");
     }
 }

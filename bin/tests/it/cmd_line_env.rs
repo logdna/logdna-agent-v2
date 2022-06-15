@@ -334,6 +334,81 @@ fn test_invalid_command_line_arguments_should_exit() {
 fn test_environment_variables_should_set_config() {
     test_command(
         |cmd| {
+            cmd.env("MZ_INGESTION_KEY", "123")
+                .env("MZ_LOG_DIRS", "/d3/,/d4/")
+                .env("MZ_TAGS", "d, e, f ")
+                .env("MZ_HOST", "my_server")
+                .env("MZ_ENDPOINT", "/path/endpoint")
+                .env("MZ_USE_SSL", "false")
+                .env("MZ_USE_COMPRESSION", "true")
+                .env("MZ_GZIP_LEVEL", "1")
+                .env("MZ_EXCLUSION_RULES", "w.*")
+                .env("MZ_EXCLUSION_REGEX_RULES", "x.*")
+                .env("MZ_INCLUSION_RULES", "y.*")
+                .env("MZ_INCLUSION_REGEX_RULES", "z.*")
+                .env("MZ_HOSTNAME", "my_os_host")
+                .env("MZ_IP", "8.8.8.8")
+                .env("MZ_MAC", "22-23-45-67-89-AB-CD-EF")
+                .env("MZ_JOURNALD_PATHS", "/j/d")
+                .env("MZ_LOOKBACK", "none")
+                .env("MZ_DB_PATH", "/var/lib/some-other-folder/")
+                .env("MZ_METRICS_PORT", "9097")
+                .env("MZ_USE_K8S_LOG_ENRICHMENT", "always")
+                .env("MZ_LOG_K8S_EVENTS", "never")
+                .env("MZ_LINE_EXCLUSION_REGEX", "exc_re")
+                .env("MZ_LINE_INCLUSION_REGEX", "inc_re")
+                .env("MZ_REDACT_REGEX", "c@d.com")
+                .env("MZ_INGEST_TIMEOUT", "123456")
+                .env("MZ_INGEST_BUFFER_SIZE", "987654")
+                .env("MZ_RETRY_DIR", "/tmp/logdna/env")
+                .env("MZ_RETRY_DISK_LIMIT", "7 KB");
+        },
+        |d| {
+            assert!(contains("tags: \"d,e,f\"").eval(d));
+            assert!(is_match(r"log:\s+dirs:\s+\- /var/log/\s+\- /d3/\s+\- /d4/")
+                .unwrap()
+                .eval(d));
+            assert!(contains("host: my_server").eval(d));
+            assert!(contains("endpoint: /path/endpoint").eval(d));
+            assert!(contains("use_ssl: false").eval(d));
+            assert!(contains("use_compression: true").eval(d));
+            assert!(contains("gzip_level: 1").eval(d));
+            assert!(contains("hostname: my_os_host").eval(d));
+            assert!(contains("ip: 8.8.8.8").eval(d));
+            assert!(contains("mac: 22-23-45-67-89-AB-CD-EF").eval(d));
+            assert!(contains("lookback: none").eval(d));
+            assert!(contains("db_path: /var/lib/some-other-folder/").eval(d));
+            assert!(contains("metrics_port: 9097").eval(d));
+            assert!(contains("j/d").eval(d));
+            assert!(contains("use_k8s_enrichment: always").eval(d));
+            assert!(contains("log_k8s_events: never").eval(d));
+            assert!(contains("w.*").eval(d));
+            assert!(contains("x.*").eval(d));
+            assert!(contains("y.*").eval(d));
+            assert!(contains("z.*").eval(d));
+            assert!(contains("j/d").eval(d));
+            assert!(is_match(r"line_exclusion_regex:\s+\- exc_re")
+                .unwrap()
+                .eval(d));
+            assert!(is_match(r"line_inclusion_regex:\s+\- inc_re")
+                .unwrap()
+                .eval(d));
+            assert!(is_match(r"line_redact_regex:\s+\- c@d.com")
+                .unwrap()
+                .eval(d));
+            assert!(contains("timeout: 123456").eval(d));
+            assert!(contains("body_size: 987654").eval(d));
+            assert!(contains("retry_dir: /tmp/logdna/env").eval(d));
+            assert!(contains("retry_disk_limit: 7000").eval(d));
+        },
+    );
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_logdna_environment_variables_should_set_config() {
+    test_command(
+        |cmd| {
             cmd.env("LOGDNA_INGESTION_KEY", "123")
                 .env("LOGDNA_LOG_DIRS", "/d3/,/d4/")
                 .env("LOGDNA_TAGS", "d, e, f ")

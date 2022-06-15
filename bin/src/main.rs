@@ -59,10 +59,9 @@ fn main() {
     // must be done at the very beginning and before other threads started
     #[cfg(target_os = "linux")]
     {
-        // apply capabilities only when:
+        // apply capabilities only when running under:
         // - k8s
         // - docker
-        // - exe filename does not ends with "-no-cap" (symlinked)
         if (std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
             || std::path::Path::new("/.dockerenv").exists())
             && std::env::var_os(env_vars::NO_CAP).is_none()
