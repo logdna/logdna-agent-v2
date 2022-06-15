@@ -160,12 +160,11 @@ impl Config {
         Config::new(std::env::args_os())
     }
 
-    pub fn new<I>(args: I) -> Result<Self, ConfigError>
+    fn new<I>(args: I) -> Result<Self, ConfigError>
     where
         I: IntoIterator,
         I::Item: Into<OsString> + Clone,
     {
-        Config::process_logdna_env_vars();
         let argv_options = ArgumentOptions::from_args_with_all_env_vars(args);
         let list_settings = argv_options.list_settings;
         let config_path = argv_options.config.clone();
