@@ -390,6 +390,25 @@ mod tests {
     }
 
     #[test]
+    fn test_k8s_line_rule_no_file() {
+        let exclusion = &[];
+        let inclusion = &[
+            "namespace:namespace".to_string(),
+            "label.app:crazyapp".to_string(),
+        ];
+        let k8s_rules = K8sLineFilter::new(exclusion, inclusion);
+
+        let label_kv_map = KeyValueMap::new();
+        let annotation_kv_map = KeyValueMap::new();
+        let mut test_line = LineBuilder::new()
+            .line("test-info")
+            .labels(label_kv_map.add("app", "crazyapp"))
+            .annotations(annotation_kv_map.add("owner", "random-agent"));
+        let status = k8s_rules.as_ref().unwrap().process(&mut test_line);
+        assert!(matches!(status, Status::Ok(_)));
+    }
+
+    #[test]
     fn test_k8s_line_rule_include() {
         let exclusion = &[];
         let inclusion = &[
