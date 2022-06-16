@@ -12,13 +12,14 @@ const ANNOTATION_KEY: &str = "annotation";
 
 lazy_static! {
     static ref REG_KEYVAL: Regex =
-        Regex::new(r#"^([a-z0-9]+(|-|.|/)*[a-z0-9]*):([a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
+        Regex::new(r#"^([a-z0-9]+(|-|.|/)*[a-z0-9]*):([a-z0-9]*((|-)[a-z0-9])*)"#).unwrap();
     static ref REG_NAMESPACE: Regex = Regex::new(r#"^namespace:([a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
     static ref REG_POD: Regex = Regex::new(r#"^pod:([a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
     static ref REG_LABEL: Regex =
-        Regex::new(r#"^label.([a-z0-9]+(|-|.|/)*[a-z0-9]*:[a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
+        Regex::new(r#"^label.([a-z0-9]+(|-|.|/)*[a-z0-9]*:[a-z0-9]*((|-)[a-z0-9])*)"#).unwrap();
     static ref REG_ANNOTATION: Regex =
-        Regex::new(r#"^annotation.([a-z0-9]+(|-|.|/)*[a-z0-9]*:[a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
+        Regex::new(r#"^annotation.([a-z0-9]+(|-|.|/)*[a-z0-9]*:[a-z0-9]*((|-)[a-z0-9])*)"#)
+            .unwrap();
 }
 
 #[derive(Debug)]
@@ -63,9 +64,13 @@ impl K8sLineFilter {
         //println!("*** LOG LINE: {:?}", &line.get_file());
         //println!("*** LOG LABELS: {:?}", &line.get_labels());
         //println!("*** LOG ANNOTATIONS: {:?}", &line.get_annotations());
-        let empty_map: KeyValueMap = KeyValueMap::new();
+        let file_value = match line.get_file() {
+            Some(val) => val,
+            None => return Status::Ok(line),
+        };
         //println!("*** PROCCESS CONFIG: {:?}", self.exclusion.namespace);
-        let file_value = line.get_file().unwrap();
+        //let file_value = line.get_file().unwrap();
+        let empty_map: KeyValueMap = KeyValueMap::new();
         let label_value = line.get_labels().unwrap_or(&empty_map);
         let annotation_value = line.get_annotations().unwrap_or(&empty_map);
 

@@ -1033,7 +1033,7 @@ async fn test_k8s_events_logged() {
             agent_namespace,
             &mock_ingester_socket_addr_str,
             "always",
-            "never",
+            "always",
             "warn",
             "off",
         )
@@ -1043,6 +1043,7 @@ async fn test_k8s_events_logged() {
         tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
         let map = received.lock().await;
 
+        //println!("\n*** K8s LINE RESULT: {:?}\n", map);
         let unknown_log_lines = map.get(" unknown").unwrap();
 
         let mut found_event = false;
