@@ -151,6 +151,9 @@ pub struct K8sStartupLeaseConfig {
     pub option: String,
 }
 
+const LOGDNA_PREFIX: &str = "LOGDNA_";
+const MEZMO_PREFIX: &str = "MZ_";
+
 impl Config {
     pub fn new<I>(args: I) -> Result<Self, ConfigError>
     where
@@ -195,6 +198,21 @@ impl Config {
         info!("starting with the following options: \n{}", yaml_str);
 
         Config::try_from(raw_config)
+    }
+
+    pub fn process_logdna_env_vars() {
+        std::env::vars_os()
+            .filter(|(n, _)| {
+                n.clone()
+                    .into_string()
+                    .unwrap_or_default()
+                    .starts_with(LOGDNA_PREFIX)
+            })
+            .for_each(|(name, value)| {
+                let new_name = MEZMO_PREFIX.to_string()
+                    + &name.into_string().unwrap_or_default()[LOGDNA_PREFIX.len()..];
+                std::env::set_var(new_name, value);
+            });
     }
 }
 
@@ -613,6 +631,9 @@ mod tests {
             env::remove_var(env_vars::INGESTION_KEY_ALTERNATE);
             env::remove_var(env_vars::INCLUSION_RULES_DEPRECATED);
             env::set_var(env_vars::CONFIG_FILE, path);
+
+            Config::process_logdna_env_vars();
+
             assert!(Config::new(args.clone()).is_err());
 
             env::set_var(env_vars::INGESTION_KEY, "ingestion_key_test");
@@ -639,5 +660,16 @@ mod tests {
         let mut raw = RawConfig::default();
         raw.http.ingestion_key = Some("dummy-test-key".to_string());
         Config::try_from(raw).unwrap()
+    }
+
+    #[test]
+    fn test_process_logdna_env_vars() {
+        env::set_var("LOGDNA_TEST", "LOGDNA_TEST");
+        env::set_var("LOGDNA_", "LOGDNA_");
+        env::set_var("MZ_SOME", "MZ_SOME");
+        Config::process_logdna_env_vars();
+        assert_eq!(env::var("MZ_TEST").unwrap(), "LOGDNA_TEST");
+        assert_eq!(env::var("MZ_").unwrap(), "LOGDNA_");
+        assert_eq!(env::var("MZ_SOME").unwrap(), "MZ_SOME");
     }
 }

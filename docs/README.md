@@ -5,6 +5,27 @@
 
 The LogDNA agent is a resource-efficient log collection client that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
 
+
+<table>
+  <thead>
+    <tr>
+      <td align="left">
+        :information_source: Information
+      </td>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>
+        <ul>
+As part of the new company name change, we will be changing the name of our agent to <b>mezmo-agent</b>. This will happen over a series of releases. In <b>3.6</b> we will be introducing environment variables prefixed with <b>MZ_</b> in addition to the existing prefix of <b>LOGDNA_</b>. In <b>3.7</b> we will release both the agent binaries and yaml files with mezmo in the names. Here again we will do this in tandem with the logdna name. In our <b>4.0</b> version, we will fully deprecate all previous references to <b>LOGDNA_</b> and logdna.
+        </ul>
+      </td>
+    </tr>
+  </tbody>
+</table>
+
+
 [Rustc Version 1.46+]: https://img.shields.io/badge/rustc-1.42+-lightgray.svg
 [rustc]: https://blog.rust-lang.org/2020/03/12/Rust-1.42.html
 [Join us at the LogDNA community forum]: https://community.logdna.com
