@@ -286,11 +286,11 @@ async fn main() -> Result<(), std::io::Error> {
     );
 
     let agent_cmd = agent_cmd
-        .env("LOGDNA_LOG_DIRS", opt.out_dir.clone())
-        .env("LOGDNA_HOST", address)
-        .env("LOGDNA_INGESTION_KEY", ingestion_key)
-        .env("LOGDNA_METRICS_PORT", "9881")
-        .env("LOGDNA_USE_SSL", "false")
+        .env("MZ_LOG_DIRS", opt.out_dir.clone())
+        .env("MZ_HOST", address)
+        .env("MZ_INGESTION_KEY", ingestion_key)
+        .env("MZ_METRICS_PORT", "9881")
+        .env("MZ_USE_SSL", "false")
         .env("RUST_LOG", "info")
         .env("RUST_BACKTRACE", "full")
         .stdout(Stdio::piped())

@@ -26,7 +26,7 @@ static EXCLUSION_RULES: Key = Key::Name("exclude");
 static EXCLUSION_REGEX_RULES: Key = Key::Name("exclude_regex");
 static IBM_HOST_DEPRECATED: Key = Key::Name(env_vars::IBM_HOST_DEPRECATED);
 
-// New keys: reuse the same name from env vars, removing the LOGDNA_ prefix and
+// New keys: reuse the same name from env vars, removing the MZ_ prefix and
 // setting it to lowercase
 from_env_name!(ENDPOINT);
 from_env_name!(HOST);
@@ -67,8 +67,10 @@ struct Map {
 impl<'a> Map {
     fn get(&'a self, key: &'static Key) -> Option<&'a String> {
         match key {
-            // Remove prefix "LOGDNA_" and lowercase
-            Key::FromEnv(k) => self.inner.get(&k[7..].to_lowercase()),
+            // Remove prefix "MZ_" and lowercase
+            Key::FromEnv(k) => self
+                .inner
+                .get(&k[crate::MEZMO_PREFIX.len()..].to_lowercase()),
             Key::Name(k) => self.inner.get(*k),
         }
     }
@@ -118,7 +120,7 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
     match (map.get_string(&HOST), map.get_string(&IBM_HOST_DEPRECATED)) {
         (Some(_), Some(_)) => {
             return Err(ConfigError::PropertyInvalid(
-                "entries for both host and LOGDNA_LOGHOST found".to_string(),
+                "entries for both host and LOGDNA_LOGHOST(deprecated) found".to_string(),
             ))
         }
         (Some(value), _) => result.http.host = Some(value),

@@ -54,19 +54,21 @@ pub static PKG_NAME: &str = env!("CARGO_PKG_NAME");
 pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
+    // covert logdna env vars to mezmo ones
+    Config::process_logdna_env_vars();
+
     env_logger::Builder::from_env(Env::default().default_filter_or("info")).init();
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
 
     // must be done at the very beginning and before other threads started
     #[cfg(target_os = "linux")]
     {
-        // apply capabilities only when:
+        // apply capabilities only when running under:
         // - k8s
         // - docker
-        // - exe filename does not ends with "-no-cap" (symlinked)
         if (std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
             || std::path::Path::new("/.dockerenv").exists())
-            && std::env::var_os(env_vars::LOGDNA_NO_CAP).is_none()
+            && std::env::var_os(env_vars::NO_CAP).is_none()
         {
             match set_capabilities() {
                 Ok(r) if r => debug!("Using Capabilities to bypass filesystem permissions"),
