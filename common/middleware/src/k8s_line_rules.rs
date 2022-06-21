@@ -79,9 +79,9 @@ impl K8sLineFilter {
         {
             return Status::Skip;
         }
-        if let Some(lables) = self.inclusion.labels.as_ref() {
+        if let Some(labels) = self.inclusion.labels.as_ref() {
             for (k, v) in label_value.iter() {
-                if let Some(value) = lables.get_vec(k) {
+                if let Some(value) = labels.get_vec(k) {
                     for i in value.iter() {
                         if i != v {
                             return Status::Skip;
@@ -114,9 +114,9 @@ impl K8sLineFilter {
                 return Status::Skip;
             }
         }
-        if let Some(lables) = self.exclusion.labels.as_ref() {
+        if let Some(labels) = self.exclusion.labels.as_ref() {
             for (k, v) in label_value.iter() {
-                if let Some(value) = lables.get_vec(k) {
+                if let Some(value) = labels.get_vec(k) {
                     for i in value.iter() {
                         if i == v {
                             return Status::Skip;

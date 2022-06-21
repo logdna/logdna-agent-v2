@@ -966,7 +966,7 @@ async fn test_k8s_enrichment() {
         let result = map.iter().find(|(k, _)| k.contains("filter-pod"));
         assert!(result.is_none());
 
-        // Ensure k8s inclustion is filter out non default namespaces
+        // Ensure k8s inclusion is filter out non default namespaces
         let result = map.iter().find(|(k, _)| k.contains("k8s-enrichment"));
         assert!(result.is_none());
 

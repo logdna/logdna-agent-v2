@@ -191,6 +191,8 @@ options are available:
 |`LOGDNA_INCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE_REGEX`|Comma separated list of regex patterns to include files from monitoring||
 |`LOGDNA_LINE_EXCLUSION_REGEX`|Comma separated list of regex patterns to exclude log lines. When set, the Agent will NOT send log lines that match any of these patterns.||
 |`LOGDNA_LINE_INCLUSION_REGEX`|Comma separated list of regex patterns to include log lines. When set, the Agent will send ONLY log lines that match any of these patterns.||
+|`LOGDNA_K8S_METADATA_EXCLUSION`|Comma separated list of Kubernetes selectors to exclude log lines associated with various Kubernetes resources||
+|`LOGDNA_K8S_METADATA_INCLUSION`|Comma separated list of Kubernetes selectors to include log lines associated with various Kubernetes resources||
 |`LOGDNA_REDACT_REGEX`|Comma separated list of regex patterns used to mask matching sensitive information (such as PII) before sending it in the log line.||
 |`LOGDNA_JOURNALD_PATHS`|Comma separated list of paths (directories or files) of journald paths to monitor||
 |`LOGDNA_LOOKBACK`|The lookback strategy on startup|`none`|
@@ -319,6 +321,30 @@ Notes:
 * Note that we use commas as separators for environment variable values, making it not possible to use the comma character (,) as a valid value. We are addressing this limitation in upcoming versions. If you need to use the comma character in a regular expression, use the unicode character reference: `\u002C`, for example: `hello\u002C world` matches `hello, world`.
 * All regular expressions are case-sensitive by default. If you don't want to differentiate between upper and lower-case letters, use non-capturing groups with a flag: `(?flags:exp)`, for example: `(?i:my_case_insensitive_regex)`
 * LogDNA also provides post-ingestion <a href="https://docs.logdna.com/docs/excluding-log-lines" target="_blank">exclusion rules</a> to control what log data is displayed and stored in LogDNA.
+
+### Configuration for Kubernetes Metadata Filtering
+
+The Agent can be configured to filter log lines that are associated with various Kubernetes resources. For example, include only log lines coming from a given namespace and/or exclude lines coming from a resource with a specific label or annotation. Currently, we support filtering on four different fields: namespace, pod, label and annotation. The following is an example of the nomenclature for each of the various fields:
+
+```
+"name": "LOGDNA_K8S_METADATA_EXCLUSION"
+  "value": "namespace:<value>, pod:<value>, label.<key>:<value>, annotation.<key>:<value>"
+``` 
+
+So, a sample configuration might look something like:
+
+```
+"name": "LOGDNA_K8S_METADATA_INCLUSION"
+  "value": "namespace:default"
+
+"name": "LOGDNA_K8S_METADATA_EXCLUSION"
+  "value": "label.app.kubernetes.io/name:sample-app, annotation.user:sample-user"
+```
+ 
+ In the above configuration, the agent will return all log lines coming from the "default" Kubernetes namespace, but filter out anything with a label key/value of `app.kubernetes.io/name:sample-app` or an annotation with a key/value of `user:sample-user`. If both inclusion and exclusion filters are present in the configuration, the Agent will apply the inclusion rule first, followed by the exclusion rule.  
+
+**Note:**
+For the key/value files, only integers [0-9], lower case letters [a-z] and the characters `.`, `/`, `-` are supported. We also do not support nested label or annotation structures. 
 
 ### Resource Limits
 
