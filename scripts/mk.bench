@@ -2,4 +2,5 @@
 OWN_PATH=$(readlink -f "$0")
 OWN_DIR=$(dirname "$OWN_PATH")
 # use local images first
-"$OWN_DIR"/mk bench PULL=0
+"$OWN_DIR"/mk bench PULL=0 $*
+
