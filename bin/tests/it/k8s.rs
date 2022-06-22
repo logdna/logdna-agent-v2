@@ -967,7 +967,7 @@ async fn test_k8s_enrichment() {
         assert!(result.is_none());
 
         // Ensure k8s inclusion is filter out non default namespaces
-        let result = map.iter().find(|(k, _)| k.contains("k8s-enrichment"));
+        let result = map.iter().find(|(k, _)| k.contains("kube-system"));
         assert!(result.is_none());
 
         shutdown_handle();
@@ -1043,7 +1043,6 @@ async fn test_k8s_events_logged() {
         tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
         let map = received.lock().await;
 
-        //println!("\n*** K8s LINE RESULT: {:?}\n", map);
         let unknown_log_lines = map.get(" unknown").unwrap();
 
         let mut found_event = false;
