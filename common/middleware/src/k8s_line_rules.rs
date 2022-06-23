@@ -13,8 +13,9 @@ const ANNOTATION_KEY: &str = "annotation";
 lazy_static! {
     static ref REG_KEYVAL: Regex =
         Regex::new(r#"^([a-z0-9]+(|-|.|/)*[a-z0-9]*):([a-z0-9]*((|-)[a-z0-9])*)"#).unwrap();
-    static ref REG_NAMESPACE: Regex = Regex::new(r#"^namespace:([a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
-    static ref REG_POD: Regex = Regex::new(r#"^pod:([a-z0-9]*(|-)[a-z0-9]+)"#).unwrap();
+    static ref REG_NAMESPACE: Regex =
+        Regex::new(r#"^namespace:([a-z0-9]*((|-)[a-z0-9])*)"#).unwrap();
+    static ref REG_POD: Regex = Regex::new(r#"^pod:([a-z0-9]*((|-)[a-z0-9])*)"#).unwrap();
     static ref REG_LABEL: Regex =
         Regex::new(r#"^label.([a-z0-9]+(|-|.|/)*[a-z0-9]*:[a-z0-9]*((|-)[a-z0-9])*)"#).unwrap();
     static ref REG_ANNOTATION: Regex =
@@ -280,9 +281,9 @@ mod tests {
     #[test]
     fn test_option_parsing_rules() {
         let test_vec: Vec<String> = vec![
-            "namespace:testnamespace".to_string(),
+            "namespace:test-name-space".to_string(),
             "pod:some-name".to_string(),
-            "namespace:othernamespace".to_string(),
+            "namespace:other-name-space".to_string(),
             "label.app.kubernetes.io/name:some-name".to_string(),
             "label.type:network".to_string(),
             "annotation.owner:secret-agent".to_string(),
@@ -294,8 +295,8 @@ mod tests {
         let label_results = rule_results.get_vec("label").unwrap();
         let annotation_results = rule_results.get_vec("annotation").unwrap();
 
-        assert_eq!(namespace_results[0], "testnamespace");
-        assert_eq!(namespace_results[1], "othernamespace");
+        assert_eq!(namespace_results[0], "test-name-space");
+        assert_eq!(namespace_results[1], "other-name-space");
         assert_eq!(pod_results[0], "some-name");
         assert_eq!(label_results[0], "app.kubernetes.io/name:some-name");
         assert_eq!(label_results[1], "type:network");
