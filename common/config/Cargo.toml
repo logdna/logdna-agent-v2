@@ -18,6 +18,8 @@ thiserror = "1.0"
 log = "0.4"
 sysinfo = "0.15"
 structopt = "0.3"
+strum = "0.24"
+strum_macros = "0.24"
 java-properties = "1"
 humanize-rs = "0.1"
 
