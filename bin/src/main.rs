@@ -4,7 +4,7 @@ extern crate log;
 use futures::Stream;
 
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
-use config::{self, Config, DbPath, K8sTrackingConf};
+use config::{self, Config, DbPath, K8sLeaseConf, K8sTrackingConf};
 use env_logger::Env;
 use fs::tail;
 use futures::StreamExt;
@@ -159,9 +159,9 @@ async fn _main() {
     let mut k8s_claimed_lease: Option<String> = None;
     let k8s_event_stream = match create_k8s_client_default_from_env(user_agent) {
         Ok(k8s_client) => {
-            info!("K8s Config Startup Option: {:?}", &config.startup.option);
+            info!("K8s Config Startup Option: {:?}", &config.startup);
             check_startup_lease_status(
-                Some(&config.startup.option),
+                Some(&config.startup),
                 &mut k8s_claimed_lease,
                 k8s_client.clone(),
             )
@@ -538,22 +538,22 @@ async fn _main() {
 }
 
 async fn check_startup_lease_status(
-    start_option: Option<&str>,
+    start_option: Option<&K8sLeaseConf>,
     claimed_lease_ref: &mut Option<String>,
     client: Kube_Client,
 ) {
     let max_attempts = match start_option {
-        Some("attempt") => {
+        Some(K8sLeaseConf::Attempt) => {
             info!("Getting agent-startup-lease (making limited attempts)");
             K8S_STARTUP_LEASE_RETRY_ATTEMPTS
         }
-        Some("always") => {
+        Some(K8sLeaseConf::Always) => {
             info!("Getting agent-startup-lease (trying forever)");
             -1
         }
         _ => {
             info!(
-                "Kubernetes cluster initialised, K8s startup lease set to: {:?}",
+                "Kubernetes cluster initialized, K8s startup lease set to: {:?}",
                 start_option
             );
             return;
@@ -579,7 +579,7 @@ async fn check_startup_lease_status(
             }
             None => {
                 attempts += 1;
-                info!("No lease availabe at this time. Waiting 1 second...");
+                info!("No lease available at this time. Waiting 1 second...");
                 tokio::time::sleep(Duration::from_millis(1000)).await;
             }
         };

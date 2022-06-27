@@ -70,7 +70,7 @@ pub struct Config {
     pub http: HttpConfig,
     pub log: LogConfig,
     pub journald: JournaldConfig,
-    pub startup: K8sStartupLeaseConfig,
+    pub startup: K8sLeaseConf,
 }
 
 #[derive(Debug)]
@@ -121,9 +121,22 @@ pub struct JournaldConfig {
     pub paths: Vec<PathBuf>,
 }
 
-#[derive(Debug)]
-pub struct K8sStartupLeaseConfig {
-    pub option: String,
+#[derive(Clone, core::fmt::Debug, Display, EnumString, PartialEq)]
+pub enum K8sLeaseConf {
+    #[strum(serialize = "off")]
+    Off,
+
+    #[strum(serialize = "attempt")]
+    Attempt,
+
+    #[strum(serialize = "always")]
+    Always,
+}
+
+impl Default for K8sLeaseConf {
+    fn default() -> Self {
+        K8sLeaseConf::Off
+    }
 }
 
 const LOGDNA_PREFIX: &str = "LOGDNA_";
@@ -363,9 +376,11 @@ impl TryFrom<RawConfig> for Config {
             }
         }
 
-        let startup = K8sStartupLeaseConfig {
-            option: raw.startup.option.unwrap_or_default(),
-        };
+        let startup = parse_k8s_enum_config_or_warn(
+            raw.startup.option,
+            env_vars::K8S_STARTUP_LEASE,
+            K8sLeaseConf::Off,
+        );
 
         let journald = JournaldConfig {
             paths: raw.journald.paths.unwrap_or_default().into_iter().collect(),
@@ -532,6 +547,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["/var/log/"]
         );
+        assert_eq!(config.startup, K8sLeaseConf::Off);
     }
 
     #[test]
