@@ -194,7 +194,7 @@ options are available:
 |`LOGDNA_REDACT_REGEX`|Comma separated list of regex patterns used to mask matching sensitive information (such as PII) before sending it in the log line.||
 |`LOGDNA_JOURNALD_PATHS`|Comma separated list of paths (directories or files) of journald paths to monitor||
 |`LOGDNA_LOOKBACK`|The lookback strategy on startup|`none`|
-|`LOGDNA_K8S_STARTUP_LEASE`|Determines whether or not to use K8 leases on startup|Off|
+|`LOGDNA_K8S_STARTUP_LEASE`|Determines whether or not to use K8 leases on startup|`Off`|
 |`LOGDNA_USE_K8S_LOG_ENRICHMENT`|Determines whether the agent should query the K8s API to enrich log lines from other pods.|`always`|
 |`LOGDNA_LOG_K8S_EVENTS`|Determines whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
 |`LOGDNA_DB_PATH`|The directory in which the agent will store its state database. Note that the agent must have write access to the directory and be a persistent volume.|`/var/lib/logdna`|
