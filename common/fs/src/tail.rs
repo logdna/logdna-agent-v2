@@ -61,7 +61,7 @@ async fn handle_event(
                     let path_display = entry.path().display();
                     // If the file's passes the rules tail it
                     info!("initialize event for file {}", path_display);
-                    if fs.is_initial_dir_target(&entry.path()) {
+                    if fs.is_initial_dir_target(entry.path()) {
                         return data.borrow_mut().tail(paths).await;
                     }
                 }
@@ -72,7 +72,7 @@ async fn handle_event(
 
                         let entries = &fs.entries.borrow();
                         let final_entry = entries.get(final_target)?;
-                        let paths = fs.resolve_valid_paths(final_entry, &entries);
+                        let paths = fs.resolve_valid_paths(final_entry, entries);
                         debug!("paths: {:#?}", paths);
                         let path = final_entry.path();
 
@@ -138,15 +138,16 @@ async fn handle_event(
                 if paths.is_empty() {
                     None
                 } else {
-                    if let Entry::Symlink { link, .. } = entry {
-                        if let Some(link) = link {
-                            if let Some(real_entry) = fs.lookup(link, &entries) {
-                                if let Some(r_entry) = entries.get(real_entry) {
-                                    entry = r_entry
-                                }
-                            } else {
-                                info!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths);
+                    if let Entry::Symlink {
+                        link: Some(link), ..
+                    } = entry
+                    {
+                        if let Some(real_entry) = fs.lookup(link, &entries) {
+                            if let Some(r_entry) = entries.get(real_entry) {
+                                entry = r_entry
                             }
+                        } else {
+                            info!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths);
                         }
                     }
                     if let Entry::File { data, .. } = entry {

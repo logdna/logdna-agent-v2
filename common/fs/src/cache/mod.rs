@@ -324,7 +324,7 @@ impl FileSystem {
                 .collect::<Vec<_>>()
                 .iter()
             {
-                if let Err(e) = fs.insert(&path, &mut initial_dir_events, &mut entries) {
+                if let Err(e) = fs.insert(path, &mut initial_dir_events, &mut entries) {
                     // It can failed due to file restrictions
                     debug!(
                         "Initial recursive scan insertion of {} failed: {}",
@@ -474,7 +474,7 @@ impl FileSystem {
         }
     }
 
-    fn is_reachable<'a>(
+    fn is_reachable(
         &self,
         cuts: &mut Vec<PathBuf>,
         target: &Path,
@@ -485,15 +485,12 @@ impl FileSystem {
         let mut target: Cow<Path> = Cow::from(target);
         if let Ok(entry_key) = self.get_first_entry(&target) {
             let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
-            match entry {
+            if let Entry::Symlink { link, .. } = entry {
                 // If target is a symlink then we should not traverse it again in recursive calls
-                Entry::Symlink { link, .. } => {
-                    if let Some(link) = link.clone() {
-                        cuts.push(target.to_path_buf());
-                        target = Cow::from(link.clone());
-                    }
+                if let Some(link) = link.clone() {
+                    cuts.push(target.to_path_buf());
+                    target = Cow::from(link);
                 }
-                _ => (),
             }
         }
 
@@ -684,7 +681,7 @@ impl FileSystem {
         }
 
         // If we already know about it warn and return
-        if let Some(_) = self.watch_descriptors.get(path) {
+        if self.watch_descriptors.get(path).is_some() {
             warn!("watch descriptor for {} already exists...", path.display());
             return Ok(None);
         }
@@ -694,12 +691,12 @@ impl FileSystem {
                 trace!("inserting file {}", path.display());
 
                 self.wd_by_inode.insert(inode, path.into());
-                let offsets = self.get_initial_offset(&path, inode.into());
+                let offsets = self.get_initial_offset(path, inode.into());
 
                 let new_entry = Entry::File {
                     path: path.into(),
                     data: RefCell::new(
-                        TailedFile::new(&path, offsets, Some(self.resume_events_send.clone()))
+                        TailedFile::new(path, offsets, Some(self.resume_events_send.clone()))
                             .map_err(Error::File)?,
                     ),
                 };
@@ -727,14 +724,12 @@ impl FileSystem {
                 trace!("registered watcher for directory {:#?}", path);
                 events.push(Event::New(new_key));
 
-                for dir_entry in contents {
-                    if let Ok(dir_entry) = dir_entry {
-                        if let Err(e) = self.insert(&dir_entry.path(), events, _entries) {
-                            info!(
-                                "error found when inserting child entry for {:?}: {}",
-                                path, e
-                            );
-                        }
+                for dir_entry in contents.flatten() {
+                    if let Err(e) = self.insert(&dir_entry.path(), events, _entries) {
+                        info!(
+                            "error found when inserting child entry for {:?}: {}",
+                            path, e
+                        );
                     }
                 }
                 new_key
@@ -763,7 +758,7 @@ impl FileSystem {
                     // Manually insert the parent directory for symlink target so that we receive deletes if it's not here
                     if self.watch_descriptors.get(parent).is_none() {
                         let new_entry = Entry::Dir {
-                            children: HashMap::from(Children::default()),
+                            children: Children::default(),
                             path: parent.into(),
                         };
                         let new_key = _entries.insert(new_entry);
@@ -787,7 +782,7 @@ impl FileSystem {
                                 // Manually insert the parent directory for symlink target so that we receive deletes if it's not here
                                 if self.watch_descriptors.get(parent).is_none() {
                                     let new_entry = Entry::Dir {
-                                        children: HashMap::from(Children::default()),
+                                        children: Children::default(),
                                         path: parent.into(),
                                     };
                                     let new_key = _entries.insert(new_entry);
@@ -797,7 +792,7 @@ impl FileSystem {
 
                             // FIXME: Insert the target as a symlink target
 
-                            match self.insert(&target, events, _entries) {
+                            match self.insert(target, events, _entries) {
                                 Err(e) => {
                                     // The insert of the target failed, the changes to the symlink itself
                                     // are going to be tracked, continue
@@ -888,19 +883,20 @@ impl FileSystem {
             }
         }
 
-        if let Entry::Symlink { link, .. } = entry.deref() {
-            if let Some(link) = link {
-                let entries = match self.symlinks.get_mut(link) {
-                    Some(v) => v,
-                    None => {
-                        error!("attempted to remove untracked symlink {:?}", path);
-                        return;
-                    }
-                };
-                entries.retain(|other| *other != entry_key);
-                if entries.is_empty() {
-                    self.symlinks.remove(link);
+        if let Entry::Symlink {
+            link: Some(link), ..
+        } = entry.deref()
+        {
+            let entries = match self.symlinks.get_mut(link) {
+                Some(v) => v,
+                None => {
+                    error!("attempted to remove untracked symlink {:?}", path);
+                    return;
                 }
+            };
+            entries.retain(|other| *other != entry_key);
+            if entries.is_empty() {
+                self.symlinks.remove(link);
             }
         }
         info!("unwatching {:?}", path);
@@ -915,7 +911,7 @@ impl FileSystem {
     ) -> FsResult<()> {
         trace!("removing {:#?}", path);
         let entry_key = self.lookup(path, _entries).ok_or(Error::Lookup)?;
-        let parent = path.parent().map(|p| self.lookup(p, _entries)).flatten();
+        let parent = path.parent().and_then(|p| self.lookup(p, _entries));
 
         if let Some(parent) = parent {
             trace!("checking if we need to remove {:#?}", path);
@@ -965,9 +961,7 @@ impl FileSystem {
                 }
                 Entry::Symlink { ref link, path } => {
                     trace!("We're removing a symlink, check if we should unwatch it's target");
-                    let mut cuts = Vec::new();
-
-                    cuts.push(path.clone());
+                    let mut cuts = vec![path.clone()];
                     info!("Removing {:?} from symlinks", path);
                     let non_initial_paths_under = link
                         .as_deref()
@@ -985,7 +979,7 @@ impl FileSystem {
                                 })
                                 .collect()
                         })
-                        .unwrap_or_else(|| Vec::new());
+                        .unwrap_or_else(Vec::new);
 
                     // Clean up self
                     self.unregister(entry_key, _entries);
@@ -1005,7 +999,7 @@ impl FileSystem {
                             let ret = self
                                 .watch_descriptors
                                 .get(path)
-                                .map(|entry_keys| entry_keys.into_iter());
+                                .map(|entry_keys| entry_keys.iter());
                             info!("debug watch_descriptors lookup: {:?}", ret);
                             ret
                         })
@@ -1048,7 +1042,7 @@ impl FileSystem {
         to_path: &Path,
         _entries: &mut EntryMap,
     ) -> FsResult<Vec<Event>> {
-        let new_parent = to_path.parent().map(|p| self.lookup(p, _entries)).flatten();
+        let new_parent = to_path.parent().and_then(|p| self.lookup(p, _entries));
 
         let mut events = Vec::new();
         match self.lookup(from_path, _entries) {
@@ -1066,11 +1060,7 @@ impl FileSystem {
                     .to_owned();
 
                 // Try to remove from parent
-                if let Some(parent) = from_path
-                    .parent()
-                    .map(|p| self.lookup(p, _entries))
-                    .flatten()
-                {
+                if let Some(parent) = from_path.parent().and_then(|p| self.lookup(p, _entries)) {
                     _entries
                         .get_mut(parent)
                         .ok_or(Error::ParentLookup)?
@@ -1776,8 +1766,7 @@ mod tests {
                     let fs = fs.clone();
                     move |e| {
                         (
-                            lookup_entry_path!(fs, e.as_ref().unwrap().0.as_ref().unwrap().key())
-                                .clone(),
+                            lookup_entry_path!(fs, e.as_ref().unwrap().0.as_ref().unwrap().key()),
                             e,
                         )
                     }
@@ -2227,8 +2216,7 @@ mod tests {
                     let fs = fs.clone();
                     move |e| {
                         (
-                            lookup_entry_path!(fs, e.as_ref().unwrap().0.as_ref().unwrap().key())
-                                .clone(),
+                            lookup_entry_path!(fs, e.as_ref().unwrap().0.as_ref().unwrap().key()),
                             e,
                         )
                     }

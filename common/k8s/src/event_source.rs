@@ -263,7 +263,6 @@ impl K8sEventStream {
         ))
     }
 
-    #[allow(clippy::map_flatten)]
     async fn get_oldest_pod(
         api: Api<Pod>,
         label: &str,
@@ -275,14 +274,10 @@ impl K8sEventStream {
             .filter_map(|p| -> Option<(Option<u64>, &Time, &str)> {
                 if let (pod_gen, Some(pod_started_at), Some(pod_name)) = (
                     // get pod generation, it will be there if there is an update strategy
-                    p.metadata
-                        .labels
-                        .as_ref()
-                        .map(|l| {
-                            l.get("pod-template-generation")
-                                .and_then(|g| g.parse::<u64>().ok())
-                        })
-                        .flatten(),
+                    p.metadata.labels.as_ref().and_then(|l| {
+                        l.get("pod-template-generation")
+                            .and_then(|g| g.parse::<u64>().ok())
+                    }),
                     get_pod_started_at(p),
                     p.metadata.name.as_ref(),
                 ) {

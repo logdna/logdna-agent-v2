@@ -369,7 +369,7 @@ fn test_exclusion_rules() {
 
 #[ignore] // Broken by Glob syntax change
 #[test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
+// #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_include_only_rules() {
     let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().unwrap().into_path();
