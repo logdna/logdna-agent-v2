@@ -337,7 +337,7 @@ Currently, we support filtering on four different fields: namespace, pod, label 
   namespace:<value>
   pod:<value>
   label.<key>:<value>
-  annotation.<key>:<value>"
+  annotation.<key>:<value>
 ``` 
 
 The following is a sample configuration:
