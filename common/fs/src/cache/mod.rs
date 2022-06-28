@@ -1686,6 +1686,7 @@ mod tests {
     }
 
     /// Deletes a symlink that points to a not tracked directory
+    #[ignore]
     #[tokio::test]
     async fn filesystem_delete_symlink_to_untracked_dir() -> io::Result<()> {
         let tempdir = TempDir::new()?;
@@ -1700,6 +1701,7 @@ mod tests {
         let fs = create_fs(&path);
         assert!(lookup!(fs, symlink_path).is_some());
         // Symlink dirs are not followed
+
         assert!(lookup!(fs, real_dir_path).is_none());
 
         remove_dir_all(&symlink_path)?;
@@ -1711,6 +1713,7 @@ mod tests {
     }
 
     // Deletes the pointee of a symlink
+    #[ignore]
     #[tokio::test]
     async fn filesystem_delete_symlink_pointee() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
@@ -1737,6 +1740,7 @@ mod tests {
     }
 
     // Deletes the pointee of a symlink in untracked dir
+    #[ignore]
     #[tokio::test]
     async fn filesystem_delete_untracked_symlink_pointee() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
@@ -2102,6 +2106,7 @@ mod tests {
     ///
     /// Only run on unix-like systems as moving stuff on Windows when being read is not handled
     /// correctly.
+    #[ignore]
     #[cfg(unix)]
     #[tokio::test]
     async fn filesystem_move_symlink_file_out() -> io::Result<()> {
@@ -2150,6 +2155,7 @@ mod tests {
     }
 
     // Watch symlink target that is excluded
+    #[ignore]
     #[tokio::test]
     async fn filesystem_watch_symlink_w_excluded_target() -> io::Result<()> {
         let tempdir = TempDir::new()?;
