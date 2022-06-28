@@ -11,7 +11,8 @@ RUST_IMAGE_BASE ?= bullseye
 RUST_IMAGE_TAG ?= rust-$(RUST_IMAGE_BASE)-1-stable
 RUST_IMAGE ?= $(RUST_IMAGE_REPO):$(RUST_IMAGE_TAG)-$(ARCH)
 
-RUST_IMAGE_SUFFIX?=
+# Temp suffix until cargo xwin is merged to build-images
+RUST_IMAGE_SUFFIX?=5b0f3a3c77754fc3
 ifneq ($(RUST_IMAGE_SUFFIX),)
 	RUST_IMAGE := $(RUST_IMAGE)-$(RUST_IMAGE_SUFFIX)
 endif
@@ -86,11 +87,20 @@ else
 	PULL_OPTS :=
 endif
 
+CARGO_COMMAND:=cargo
+
 STATIC ?= 0
 ARCH_TRIPLE?=$(ARCH)-linux-gnu
 TARGET?=$(ARCH)-unknown-linux-gnu
-STATIC ?= 0
-ifeq ($(STATIC), 1)
+WINDOWS?=
+
+ifneq ($(WINDOWS),)
+	TARGET=$(ARCH)-pc-windows-msvc
+	BINDGEN_EXTRA_CLANG_ARGS:=
+	RUSTFLAGS:=
+	CARGO_COMMAND:=cargo xwin
+	BIN_SUFFIX=.exe
+else ifeq ($(STATIC), 1)
 	ARCH_TRIPLE=$(ARCH)-linux-musl
 	RUSTFLAGS:=-C link-self-contained=yes -Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc -L /usr/local/$(ARCH)-linux-musl/lib/ -l static=stdc++ $(RUSTFLAGS)
 	BINDGEN_EXTRA_CLANG_ARGS:=-I /usr/local/$(ARCH)-linux-musl/include
@@ -156,11 +166,11 @@ build-test:
 
 .PHONY:build
 build: ## Build the agent
-	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG)"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG)"
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
-	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' cargo build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && $(ARCH_TRIPLE)-strip ./target/$(TARGET)/release/logdna-agent"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && llvm-strip ./target/$(TARGET)/release/logdna-agent${BIN_SUFFIX}"
 
 .PHONY:check
 check: ## Run unit tests

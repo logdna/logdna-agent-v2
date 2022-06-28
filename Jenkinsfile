@@ -231,6 +231,21 @@ pipeline {
                         }
                     }
                 }
+                stage('Build windows release binary x86_64') {
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh '''
+                                ARCH=x86_64 WINDOWS=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static_x86_64
+                                rm ${PWD}/.aws_creds_static_x86_64
+                            '''
+                        }
+                    }
+                }
             }
         }
         stage('Check Publish Images') {

@@ -6,10 +6,9 @@ use std::collections::HashMap;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::{BufRead, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Path};
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc::TryRecvError;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
@@ -32,54 +31,6 @@ static AGENT_COMMANDS: Lazy<Mutex<CargoCommandByFeatureMap>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 pub static LINE: &str = "Nov 30 09:14:47 sample-host-name sampleprocess[1204]: Hello from process";
-
-pub struct FileContext {
-    pub file_path: PathBuf,
-    pub stop_handle: Box<dyn FnOnce() -> i32>,
-}
-
-pub fn start_append_to_file(dir: &Path, delay_ms: u64) -> FileContext {
-    let file_path = dir.join("appended.log");
-    let inner_file_path = file_path.clone();
-    debug!("appending to {:#?}", inner_file_path);
-    let (tx, rx) = mpsc::channel();
-
-    let thread = thread::spawn(move || {
-        let mut file = OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(&inner_file_path)?;
-
-        let delay = time::Duration::from_millis(delay_ms);
-
-        let mut lines_written = 0;
-        while let Err(TryRecvError::Empty) = rx.try_recv() {
-            if let Err(e) = writeln!(file, "{}", LINE) {
-                eprintln!("Couldn't write to file: {}", e);
-                return Err(e);
-            }
-            lines_written += 1;
-            if lines_written % 10 == 0 {
-                file.sync_all()?;
-                thread::sleep(delay);
-            }
-        }
-
-        file.flush()?;
-        Ok(lines_written)
-    });
-
-    let stop_handle = move || {
-        tx.send("STOP").unwrap();
-        // Return the total lines
-        thread.join().unwrap().ok().unwrap()
-    };
-
-    FileContext {
-        file_path,
-        stop_handle: Box::new(stop_handle),
-    }
-}
 
 pub fn append_to_file(file_path: &Path, lines: i32, sync_every: i32) -> Result<(), std::io::Error> {
     let mut file = OpenOptions::new()

@@ -1,6 +1,6 @@
 use std::fs;
 use std::fs::{File, OpenOptions};
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -119,48 +119,6 @@ fn api_key_present() {
     .eval(&output));
 
     handle.wait().unwrap();
-}
-
-#[test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
-fn test_read_file_appended_in_the_background() {
-    let _ = env_logger::Builder::from_default_env().try_init();
-    let dir = tempdir().expect("Could not create temp dir").into_path();
-
-    let mut settings = AgentSettings::new(dir.to_str().unwrap());
-    settings.log_level = Some("debug,notify_stream=trace,fs::cache=trace");
-    let mut agent_handle = common::spawn_agent(settings);
-    let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
-
-    common::wait_for_event("Enabling filesystem", &mut stderr_reader);
-    thread::sleep(std::time::Duration::from_millis(5000));
-
-    let context = common::start_append_to_file(&dir, 5);
-
-    let mut line = String::new();
-    let mut occurrences = 0;
-    let expected_occurrences = 10;
-
-    let instant = std::time::Instant::now();
-
-    for _safeguard in 0..250 {
-        assert!(instant.elapsed() < Duration::from_secs(20));
-        stderr_reader.read_line(&mut line).unwrap();
-        debug!("Checking line for 'sendings lines for', line:  {:#?}", line);
-        if line.contains("sendings lines for") && line.contains("appended.log") {
-            occurrences += 1;
-        }
-        line.clear();
-
-        if occurrences == expected_occurrences {
-            break;
-        }
-    }
-
-    let total_lines_written = (context.stop_handle)();
-    assert!(total_lines_written > 0);
-    assert_eq!(occurrences, expected_occurrences);
-    agent_handle.kill().unwrap();
 }
 
 #[test]
