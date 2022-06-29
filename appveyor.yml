@@ -23,6 +23,7 @@ install:
   - cargo -vV
 
 test_script:
+  - cargo build --release
   - cargo test --no-default-features
   - cargo test --no-default-features --features integration_tests --test cli test_tags -- --nocapture
 

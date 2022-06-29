@@ -3,7 +3,6 @@ use core::time;
 use rand::seq::IteratorRandom;
 
 use std::collections::HashMap;
-use std::fs;
 use std::fs::OpenOptions;
 use std::io::{BufRead, Write};
 use std::path::Path;
@@ -297,12 +296,6 @@ pub fn assert_agent_running(agent_handle: &mut Child) {
     }
 }
 
-pub fn create_dirs<P: AsRef<Path>>(dirs: &[P]) {
-    for dir in dirs {
-        fs::create_dir(dir).expect("Unable to create dir");
-    }
-}
-
 pub fn open_files_include(id: u32, file: &Path) -> Option<String> {
     let child = Command::new("lsof")
         .args(&["-l", "-p", &id.to_string()])
@@ -321,19 +314,6 @@ pub fn open_files_include(id: u32, file: &Path) -> Option<String> {
     } else {
         None
     }
-}
-
-pub fn is_file_open(file: &Path) -> bool {
-    let child = Command::new("lsof")
-        .args(&[file.to_str().unwrap()])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("failed to execute child");
-
-    let output = child.wait_with_output().expect("failed to wait on child");
-    // lsof will success when file is found
-    output.status.success()
 }
 
 pub fn get_available_port() -> Option<u16> {

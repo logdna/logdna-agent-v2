@@ -237,6 +237,19 @@ fn test_send_sigint_does_not_leave_file_descriptor() {
 
 #[cfg(unix)]
 fn test_signals(signal: nix::sys::signal::Signal) {
+    fn is_file_open(file: &std::path::Path) -> bool {
+        let child = Command::new("lsof")
+            .args(&[file.to_str().unwrap()])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("failed to execute child");
+
+        let output = child.wait_with_output().expect("failed to wait on child");
+        // lsof will success when file is found
+        output.status.success()
+    }
+
     use wait_timeout::ChildExt;
 
     let dir = tempdir().expect("Could not create temp dir").into_path();
@@ -252,7 +265,7 @@ fn test_signals(signal: nix::sys::signal::Signal) {
     common::append_to_file(&file_path, 100, 50).expect("Could not append");
 
     // Verify that the file is shown in the open files
-    assert!(common::is_file_open(&file_path));
+    assert!(is_file_open(&file_path));
 
     nix::sys::signal::kill(nix::unistd::Pid::from_raw(process_id as i32), signal).unwrap();
 
@@ -266,7 +279,7 @@ fn test_signals(signal: nix::sys::signal::Signal) {
     );
 
     //Verify that file descriptor doesn't appear any more
-    assert!(!common::is_file_open(&file_path));
+    assert!(!is_file_open(&file_path));
 }
 
 #[test]
@@ -538,6 +551,12 @@ fn test_append_after_symlinks_delete() {
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 fn test_directory_symlinks_delete() {
+    fn create_dirs<P: AsRef<std::path::Path>>(dirs: &[P]) {
+        for dir in dirs {
+            std::fs::create_dir(dir).expect("Unable to create dir");
+        }
+    }
+
     let _ = env_logger::Builder::from_default_env().try_init();
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
     let data_dir = tempdir().expect("Could not create temp dir").into_path();
@@ -551,7 +570,7 @@ fn test_directory_symlinks_delete() {
     let file3_path = dir_1_2_1_path.join("file3.log");
     let symlink_path = log_dir.join("dir_1_link");
 
-    common::create_dirs(&[&dir_1_path, &dir_1_1_path, &dir_1_2_path, &dir_1_2_1_path]);
+    create_dirs(&[&dir_1_path, &dir_1_1_path, &dir_1_2_path, &dir_1_2_1_path]);
 
     common::append_to_file(&file1_path, 100, 50).expect("Could not append");
     common::append_to_file(&file2_path, 100, 50).expect("Could not append");
@@ -581,7 +600,7 @@ fn test_directory_symlinks_delete() {
 }
 
 #[tokio::test]
-#[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
+#[cfg(all(target_os = "linux", feature = "integration_tests"))]
 async fn test_z_journald_support() {
     let _ = env_logger::Builder::from_default_env().try_init();
     tokio::time::sleep(Duration::from_millis(500)).await;
@@ -623,8 +642,7 @@ async fn test_z_journald_support() {
 }
 
 #[tokio::test]
-#[cfg(feature = "integration_tests")]
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "integration_tests"))]
 async fn test_journalctl_support() {
     let _ = env_logger::Builder::from_default_env().try_init();
     assert_eq!(systemd::journal::print(6, "Sample info"), 0);
@@ -1066,6 +1084,7 @@ async fn test_lookback_restarting_agent() {
 
 #[tokio::test]
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
+#[cfg(unix)]
 async fn test_symlink_initialization_both_included() {
     let _ = env_logger::Builder::from_default_env().try_init();
     let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();

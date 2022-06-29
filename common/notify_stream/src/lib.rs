@@ -190,10 +190,12 @@ mod tests {
 
     use futures::StreamExt;
     use pin_utils::pin_mut;
-    use predicates::prelude::*;
     use std::fs::{self, File};
     use std::io::{self, Write};
     use tempfile::tempdir;
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    use predicates::prelude::*;
 
     static DELAY: Duration = Duration::from_millis(200);
 
