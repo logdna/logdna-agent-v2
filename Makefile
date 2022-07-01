@@ -95,18 +95,21 @@ TARGET?=$(ARCH)-unknown-linux-gnu
 WINDOWS?=
 
 ifneq ($(WINDOWS),)
+	FEATURES?=
 	TARGET=$(ARCH)-pc-windows-msvc
 	BINDGEN_EXTRA_CLANG_ARGS:=
 	RUSTFLAGS:=
 	CARGO_COMMAND:=cargo xwin
 	BIN_SUFFIX=.exe
 else ifeq ($(STATIC), 1)
+	FEATURES?=
 	ARCH_TRIPLE=$(ARCH)-linux-musl
 	RUSTFLAGS:=-C link-self-contained=yes -Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc -L /usr/local/$(ARCH)-linux-musl/lib/ -l static=stdc++ $(RUSTFLAGS)
 	BINDGEN_EXTRA_CLANG_ARGS:=-I /usr/local/$(ARCH)-linux-musl/include
 	TARGET=$(ARCH)-unknown-linux-musl
 	BUILD_ENVS=ROCKSDB_LIB_DIR=/usr/local/rocksdb/$(ARCH)-linux-musl/lib ROCKSDB_INCLUDE_DIR=/usr/local/rocksdb/$(ARCH)-linux-musl/include ROCKSDB_STATIC=1 JEMALLOC_SYS_WITH_LG_PAGE=16
 else
+	FEATURES?=libjournald
 	RUSTFLAGS:=
 endif
 
@@ -129,7 +132,6 @@ RUST_LOG?=info
 
 space := $(subst ,, )
 comma := ,
-FEATURES?=libjournald
 FEATURES_ARG=$(if $(FEATURES),--features $(subst $(space),$(comma),$(FEATURES)))
 
 join-with = $(subst $(space),$1,$(strip $2))
