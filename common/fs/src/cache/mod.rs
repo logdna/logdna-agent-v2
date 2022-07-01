@@ -627,10 +627,9 @@ impl FileSystem {
     ) {
         let mut base_components: Vec<OsString> = into_components(entry.path());
         base_components.append(&mut components); // add components already discovered from previous recursive step
-        let path: PathBuf = base_components.iter().collect();
-        if self.is_initial_dir_target(&path) {
+        if self.is_initial_dir_target(&entry.path()) {
             // only want paths that fall in our watch window
-            paths.push(path); // condense components of path that lead to the true entry into a PathBuf
+            paths.push(entry.path().to_path_buf());
         }
 
         let raw_components = base_components.as_slice();
@@ -1190,11 +1189,12 @@ impl FileSystem {
         // The file should validate the file rules or be a directory
         if self.master_rules.passes(path) != Status::Ok {
             if let Ok(metadata) = std::fs::metadata(path) {
-                return metadata.is_dir();
+                let is_dir = metadata.is_dir();
+                debug!("{:#?} passes master rules too, is_dir? {:#?}", path, is_dir);
+                return is_dir
             }
             return false;
         }
-        debug!("{:#?} passes master rules took, so it's a dir", path);
         true
     }
 
