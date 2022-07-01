@@ -479,7 +479,7 @@ impl FileSystem {
         target: &Path,
         _entries: &EntryMap,
     ) -> FsResult<bool> {
-        info!("checking if {:#?} is reachable", target);
+        debug!("checking if {:#?} is reachable", target);
 
         let mut target: Cow<Path> = Cow::from(target);
         if let Ok(entry_key) = self.get_first_entry(&target) {
@@ -497,7 +497,7 @@ impl FileSystem {
         if !cuts.iter().any(|cut| cut == &target)
             && (self.is_initial_dir_target(&target) || self.is_symlink_target(&target, _entries))
         {
-            info!("short circuit {:?} is reachable", target);
+            trace!("short circuit {:?} is reachable", target);
             return Ok(true);
         }
 
@@ -522,7 +522,7 @@ impl FileSystem {
             }
             target = Cow::from(parent.to_path_buf());
         }
-        info!("{:?} is reachable?: {}", target, path_to_root);
+        trace!("{:?} is reachable?: {}", target, path_to_root);
         Ok(path_to_root)
     }
 
@@ -550,7 +550,6 @@ impl FileSystem {
                 };
             }
         }
-        //info!("referring symlinks {:?}", referring);
         referring
     }
 
@@ -698,7 +697,6 @@ impl FileSystem {
                             .map_err(Error::File)?,
                     ),
                 };
-                info!("incremented fs tracked file metric");
                 Metrics::fs().increment_tracked_files();
                 let new_key = self.register_as_child(new_entry, _entries)?;
                 trace!("registered watcher for file {:#?}", path);
@@ -960,7 +958,6 @@ impl FileSystem {
                 Entry::Symlink { ref link, path } => {
                     trace!("We're removing a symlink, check if we should unwatch it's target");
                     let mut cuts = vec![path.clone()];
-                    info!("Removing {:?} from symlinks", path);
                     let non_initial_paths_under = link
                         .as_deref()
                         .map(|link| {
@@ -988,9 +985,7 @@ impl FileSystem {
                         .iter()
                         .filter_map(|path| {
                             let is_reachable = self.is_reachable(&mut cuts, path, _entries).ok();
-                            info!("debug is_reachable: {:?}", is_reachable);
                             let ret = is_reachable.and_then(|b| (!b).then(|| path));
-                            info!("debug is_reachable_and_then!b: {:?}", ret);
                             ret
                         })
                         .filter_map(|path| {
@@ -998,7 +993,6 @@ impl FileSystem {
                                 .watch_descriptors
                                 .get(path)
                                 .map(|entry_keys| entry_keys.iter());
-                            info!("debug watch_descriptors lookup: {:?}", ret);
                             ret
                         })
                         .flatten()
@@ -1146,7 +1140,7 @@ impl FileSystem {
                         Entry::Symlink { link, .. } => {
                             if let Some(link) = link {
                                 if link == path {
-                                    info!("Is a symlink target {:?}", path);
+                                    trace!("Is a symlink target {:?}", path);
                                     return true;
                                 }
                             }
@@ -1163,7 +1157,7 @@ impl FileSystem {
                 };
             }
         }
-        info!("Not a symlink target {:?}", path);
+        trace!("Not a symlink target {:?}", path);
         false
     }
 
