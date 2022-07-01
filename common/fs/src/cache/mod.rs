@@ -48,7 +48,9 @@ pub const EVENT_STREAM_BUFFER_COUNT: usize = 1000;
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("error watching: {0:?} {1:?}")]
-    Watch(PathBuf, notify_stream::Error),
+    Watch(Option<PathBuf>, notify_stream::Error),
+    #[error("error need to rescan")]
+    Rescan,
     #[error("got event for untracked watch descriptor: {0:?}")]
     WatchEvent(PathBuf),
     #[error("unexpected existing entry")]
@@ -416,12 +418,9 @@ impl FileSystem {
                     "There was an error mapping a file change: {:?} ({:?})",
                     e, p
                 );
-                Ok(Vec::new())
+                Err(Error::Watch(p, e))
             }
-            WatchEvent::Rescan => {
-                // TODO: Propagate up so we can restart
-                Ok(Vec::new())
-            }
+            WatchEvent::Rescan => Err(Error::Rescan),
         };
 
         if let Err(e) = result {
@@ -841,7 +840,7 @@ impl FileSystem {
         } else {
             self.watcher
                 .watch(&path, RecursiveMode::NonRecursive)
-                .map_err(|e| Error::Watch(path.to_path_buf(), e))?;
+                .map_err(|e| Error::Watch(Some(path.to_path_buf()), e))?;
         }
         info!("watching {:?}", path);
         self.watch_descriptors

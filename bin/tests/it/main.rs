@@ -5,5 +5,5 @@ mod http;
 mod metrics;
 mod retries;
 
-#[cfg(target_os="linux")]
+#[cfg(target_os = "linux")]
 mod k8s;

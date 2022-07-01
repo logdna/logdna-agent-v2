@@ -12,10 +12,10 @@ use http::batch::TimedRequestBatcherStreamExt;
 use http::client::{Client, ClientError, SendStatus};
 use http::retry::{retry, RetryItem};
 
-#[cfg(all(feature = "libjournald", target_os="linux"))]
+#[cfg(all(feature = "libjournald", target_os = "linux"))]
 use journald::libjournald::source::create_source;
 
-#[cfg(target_os="linux")]
+#[cfg(target_os = "linux")]
 use journald::journalctl::create_journalctl_source;
 
 use k8s::event_source::K8sEventStream;
@@ -286,7 +286,7 @@ async fn _main() {
         .map(|s| Duration::from_millis(s.parse().unwrap()))
         .unwrap_or(FS_EVENT_DELAY);
 
-    #[cfg(all(feature = "libjournald", target_os="linux"))]
+    #[cfg(all(feature = "libjournald", target_os = "linux"))]
     let (journalctl_source, journald_source) = if config.journald.paths.is_empty() {
         let journalctl_source = create_journalctl_source()
             .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
@@ -302,7 +302,7 @@ async fn _main() {
         )
     };
 
-    #[cfg(all(not(feature = "libjournald"), target_os="linux"))]
+    #[cfg(all(not(feature = "libjournald"), target_os = "linux"))]
     let journalctl_source = create_journalctl_source()
         .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
         .map_err(|e| warn!("Error initializing journalctl source: {}", e))
@@ -322,7 +322,13 @@ async fn _main() {
     let fs_source = tail::RestartingTailer::new(
         ds_source_params,
         // TODO check for any conditions that require the tailer to restart
-        |_item| false,
+        |item| match item {
+            Err(fs::cache::Error::Rescan) => {
+                warn!("rescanning stream");
+                true
+            }
+            _ => false,
+        },
         |params| {
             let watched_dirs = params.0.clone();
             let rules = params.1.clone();
@@ -364,17 +370,17 @@ async fn _main() {
     pin_mut!(fs_source);
     pin_mut!(k8s_event_source);
 
-    #[cfg(target_os="linux")]
+    #[cfg(target_os = "linux")]
     pin_mut!(journalctl_source);
 
-    #[cfg(all(feature = "libjournald", target_os="linux"))]
+    #[cfg(all(feature = "libjournald", target_os = "linux"))]
     pin_mut!(journald_source);
 
     let mut k8s_event_source: Option<std::pin::Pin<&mut _>> = k8s_event_source.as_pin_mut();
-    #[cfg(target_os="linux")]
+    #[cfg(target_os = "linux")]
     let mut journalctl_source: Option<std::pin::Pin<&mut _>> = journalctl_source.as_pin_mut();
 
-    #[cfg(all(feature = "libjournald", target_os="linux"))]
+    #[cfg(all(feature = "libjournald", target_os = "linux"))]
     let mut journald_source: Option<std::pin::Pin<&mut _>> = journald_source.as_pin_mut();
 
     let mut sources: futures::stream::SelectAll<&mut (dyn Stream<Item = _> + Unpin)> =
@@ -383,7 +389,7 @@ async fn _main() {
     info!("Enabling filesystem");
     sources.push(&mut fs_source);
 
-    #[cfg(all(feature = "libjournald", target_os="linux"))]
+    #[cfg(all(feature = "libjournald", target_os = "linux"))]
     if let Some(s) = journald_source.as_mut() {
         info!("Enabling journald event source");
         sources.push(s)
@@ -391,7 +397,7 @@ async fn _main() {
         info!("Enabling journalctl event source");
         sources.push(s)
     }
-    #[cfg(all(not(feature = "libjournald"), target_os="linux"))]
+    #[cfg(all(not(feature = "libjournald"), target_os = "linux"))]
     if let Some(s) = journalctl_source.as_mut() {
         info!("Enabling journalctl event source");
         sources.push(s)
