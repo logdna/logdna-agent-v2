@@ -285,7 +285,7 @@ Take a look at enabling journald monitoring for [Kubernetes](KUBERNETES.md#colle
 
 A Kubernetes event is exactly what it sounds like: a resource type that is automatically generated when state changes occur in other resources, or when errors or other messages manifest across the system. Monitoring events is useful for debugging your Kubernetes cluster.
 
-By default, the LogDNA agent captures Kubernetes events (and OpenShift events, as well, since OpenShift is built on top of Kubernetes clusters).
+By default, the LogDNA agent does not capture Kubernetes events (and OpenShift events, as well, since OpenShift is built on top of Kubernetes clusters).
 
 To control whether the LogDNA agent collects Kubernetes events, configure the `LOGDNA_LOG_K8S_EVENTS` environment variable using on of these two values:
 
