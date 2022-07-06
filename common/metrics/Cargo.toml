@@ -6,7 +6,7 @@ edition = "2018"
 
 [dependencies]
 lazy_static = "1.0"
-tikv-jemalloc-ctl = "0.4.1"
+tikv-jemalloc-ctl = "0.5"
 json = "0.12"
 log = "0.4"
 prometheus = { version = "0.12", features = ["process"] }
