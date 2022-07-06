@@ -33,7 +33,7 @@ state = { package = "state", path = "../common/state" }
 bytes = "1"
 time = "0.3"
 async-trait = "0.1"
-kube = { version = "0.69", default-features = false, features = ["rustls-tls"] }
+kube = { version = "0.73", default-features = false, features = ["rustls-tls"] }
 log = "0.4"
 env_logger = "0.9"
 anyhow = "1"
