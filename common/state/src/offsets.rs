@@ -7,6 +7,8 @@ use crate::{FileId, Span, SpanVec};
 
 use serde::{Deserialize, Serialize};
 
+use vec_collections::AbstractVecMap;
+
 pub type Offset = (FileId, Span);
 
 #[derive(Debug, Error)]
