@@ -31,14 +31,15 @@ if [ -z "$BUILD_TAG" ]
 then
   cluster_name=agent-dev-cluster
 else
-  cluster_name=$(echo $BUILD_TAG | tr '[:upper:]' '[:lower:]' | tail -c 32)
+  cluster_name=$(echo $BUILD_TAG | tr '[:upper:]' '[:lower:]' | tail -c 32 | sed 's/^-*//g')
 fi
 
 kind load docker-image "logdna-agent-v2:local" --name $cluster_name
 kind load docker-image "socat:local" --name $cluster_name
 
 echo "Creating k8s resources"
-KUBECONFIG=$curpath/.kind_config_host kubectl apply -f $curpath/kind/test-resources.yaml
+KUBECONFIG=$curpath/.kind_config_host kubectl apply -f $curpath/kind/test-resources.yaml 
+KUBECONFIG=$curpath/.kind_config_host kubectl apply -f $curpath/kind/metrics-server.yaml 
 
 # Run the integration test binary in docker on the same network as the kubernetes cluster
 if [ "$HOST_MACHINE" = "Mac" ]; then

@@ -94,7 +94,6 @@ subjects:
     namespace: logdna-agent
 ---
 apiVersion: apps/v1
-kind: DaemonSet
 metadata:
   name: logdna-agent
   namespace: logdna-agent
@@ -140,6 +139,8 @@ spec:
               value: smallfiles
             - name: LOGDNA_DB_PATH
               value: /var/lib/logdna
+            - name: MZ_LOG_METRIC_SERVER_STATS
+              value: always
             - name: POD_APP_LABEL
               valueFrom:
                 fieldRef:

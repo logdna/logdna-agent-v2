@@ -1,16 +1,16 @@
 #[macro_use]
 extern crate log;
 
-use futures::Stream;
-
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
 use config::{self, Config, DbPath, K8sTrackingConf};
 use env_logger::Env;
 use fs::tail;
+use futures::Stream;
 use futures::StreamExt;
 use http::batch::TimedRequestBatcherStreamExt;
 use http::client::{Client, ClientError, SendStatus};
 use http::retry::{retry, RetryItem};
+use k8s::metrics_stats_aggregator::MetricsStatsAggregator;
 
 #[cfg(feature = "libjournald")]
 use journald::libjournald::source::create_source;
@@ -134,6 +134,8 @@ async fn _main() {
         .map(|os| (os.write_handle(), os.flush_handle()));
 
     let user_agent = config.http.template.user_agent.clone();
+    let metric_agent = config.http.template.user_agent.clone();
+
     let (retry, retry_stream) = retry(
         config.http.retry_dir,
         config.http.retry_base_delay,
@@ -237,6 +239,28 @@ async fn _main() {
             warn!("Unable to initialize kubernetes client: {}", e);
             None
         }
+    };
+
+    // TODO Leader Election
+    let metric_stats_source = match config.log.log_metric_server_stats {
+        K8sTrackingConf::Never => None,
+        K8sTrackingConf::Always => match create_k8s_client_default_from_env(metric_agent) {
+            Ok(client) => {
+                let metric_stats_aggregator = MetricsStatsAggregator::new(client);
+                Some(
+                    metric_stats_aggregator
+                        .start_metrics_call_task()
+                        .map(StrictOrLazyLineBuilder::Strict),
+                )
+            }
+            Err(e) => {
+                warn!(
+                    "Unable to initialize kubernetes client for the reporter: {}",
+                    e
+                );
+                None
+            }
+        },
     };
 
     match LineRules::new(
@@ -344,15 +368,18 @@ async fn _main() {
     pin_mut!(fs_source);
     pin_mut!(k8s_event_source);
     pin_mut!(journalctl_source);
-
     #[cfg(feature = "libjournald")]
     pin_mut!(journald_source);
+
+    pin_mut!(metric_stats_source);
 
     let mut k8s_event_source: Option<std::pin::Pin<&mut _>> = k8s_event_source.as_pin_mut();
     let mut journalctl_source: Option<std::pin::Pin<&mut _>> = journalctl_source.as_pin_mut();
 
     #[cfg(feature = "libjournald")]
     let mut journald_source: Option<std::pin::Pin<&mut _>> = journald_source.as_pin_mut();
+
+    let mut metric_server_source: Option<std::pin::Pin<&mut _>> = metric_stats_source.as_pin_mut();
 
     let mut sources: futures::stream::SelectAll<&mut (dyn Stream<Item = _> + Unpin)> =
         futures::stream::SelectAll::new();
@@ -376,6 +403,11 @@ async fn _main() {
 
     if let Some(k) = k8s_event_source.as_mut() {
         info!("Enabling k8s_event_source");
+        sources.push(k)
+    };
+
+    if let Some(k) = metric_server_source.as_mut() {
+        info!("Enabling metrics_server_watcher");
         sources.push(k)
     };
 
