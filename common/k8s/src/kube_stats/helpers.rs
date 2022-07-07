@@ -88,7 +88,7 @@ mod tests {
     async fn test_cpu_empty() {
         let result = convert_cpu_usage_to_milli("");
 
-        assert_eq!(result.unwrap(), 0);
+        assert_eq!(result, None);
     }
 
     #[tokio::test]
@@ -102,7 +102,7 @@ mod tests {
     async fn test_unknown_cpu_unit() {
         let result = convert_cpu_usage_to_milli("100rrr");
 
-        assert_eq!(result.unwrap(), 0);
+        assert_eq!(result, None);
     }
 
     #[tokio::test]
@@ -130,14 +130,14 @@ mod tests {
     async fn test_memory_empty() {
         let result = convert_memory_usage_to_bytes("");
 
-        assert_eq!(result.unwrap(), 0);
+        assert_eq!(result, None);
     }
 
     #[tokio::test]
     async fn test_memory_empty_but_unit() {
         let result = convert_memory_usage_to_bytes("ki");
 
-        assert_eq!(result.unwrap(), 0);
+        assert_eq!(result, None);
     }
 
     #[tokio::test]

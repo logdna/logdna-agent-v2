@@ -314,10 +314,10 @@ mod tests {
 
         let result = container_builder.build();
 
-        assert_eq!(result.cpu_limit, Some(0));
-        assert_eq!(result.cpu_request, Some(0));
-        assert_eq!(result.memory_limit, Some(0));
-        assert_eq!(result.memory_request, Some(0));
+        assert_eq!(result.cpu_limit, None);
+        assert_eq!(result.cpu_request, None);
+        assert_eq!(result.memory_limit, None);
+        assert_eq!(result.memory_request, None);
     }
 
     fn create_state(state: String) -> ContainerState {
