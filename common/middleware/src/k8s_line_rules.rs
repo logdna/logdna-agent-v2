@@ -83,10 +83,8 @@ impl K8sLineFilter {
         if let Some(labels) = self.inclusion.labels.as_ref() {
             for (k, v) in label_value.iter() {
                 if let Some(value) = labels.get_vec(k) {
-                    for i in value.iter() {
-                        if i != v {
-                            return Status::Skip;
-                        }
+                    if !value.contains(v) {
+                        return Status::Skip;
                     }
                 }
             }
@@ -94,10 +92,8 @@ impl K8sLineFilter {
         if let Some(annotations) = self.inclusion.annotations.as_ref() {
             for (k, v) in annotation_value.iter() {
                 if let Some(value) = annotations.get_vec(k) {
-                    for i in value.iter() {
-                        if i != v {
-                            return Status::Skip;
-                        }
+                    if !value.contains(v) {
+                        return Status::Skip;
                     }
                 }
             }
@@ -118,10 +114,8 @@ impl K8sLineFilter {
         if let Some(labels) = self.exclusion.labels.as_ref() {
             for (k, v) in label_value.iter() {
                 if let Some(value) = labels.get_vec(k) {
-                    for i in value.iter() {
-                        if i == v {
-                            return Status::Skip;
-                        }
+                    if value.contains(v) {
+                        return Status::Skip;
                     }
                 }
             }
@@ -129,10 +123,8 @@ impl K8sLineFilter {
         if let Some(annotations) = self.exclusion.annotations.as_ref() {
             for (k, v) in annotation_value.iter() {
                 if let Some(value) = annotations.get_vec(k) {
-                    for i in value.iter() {
-                        if i == v {
-                            return Status::Skip;
-                        }
+                    if value.contains(v) {
+                        return Status::Skip;
                     }
                 }
             }
@@ -405,6 +397,7 @@ mod tests {
         let inclusion = &[
             "namespace:namespace".to_string(),
             "label.app:crazyapp".to_string(),
+            "label.app:thisapp".to_string(),
         ];
         let k8s_rules = K8sLineFilter::new(exclusion, inclusion);
 
@@ -430,7 +423,7 @@ mod tests {
         test_line = LineBuilder::new()
             .line("test-info")
             .file("/var/log/containers/random-pod_namespace_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log")
-            .labels(label_kv_map.add("app", "crazyapp"))
+            .labels(label_kv_map.add("app", "thisapp"))
             .annotations(annotation_kv_map.add("owner", "random-agent"));
         status = k8s_rules.as_ref().unwrap().process(&mut test_line);
         assert!(matches!(status, Status::Ok(_)));
@@ -440,10 +433,10 @@ mod tests {
         test_line = LineBuilder::new()
             .line("test-info")
             .file("/var/log/containers/random-pod_namespace_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log")
-            .labels(label_kv_map.add("app", "thisapp"))
+            .labels(label_kv_map.add("app", "crazyapp"))
             .annotations(annotation_kv_map.add("owner", "random-agent"));
         status = k8s_rules.as_ref().unwrap().process(&mut test_line);
-        assert!(matches!(status, Status::Skip));
+        assert!(matches!(status, Status::Ok(_)));
     }
 
     #[test]
@@ -464,7 +457,7 @@ mod tests {
         let mut test_line = LineBuilder::new()
             .line("test-info")
             .file("/var/log/containers/random-name_namespace_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log")
-            .labels(label_kv_map.add("app", "crazyapp"))
+            .labels(label_kv_map.add("thisapp", "crazyapp"))
             .annotations(annotation_kv_map.add("owner", "random-agent"));
         let mut status = k8s_rules.as_ref().unwrap().process(&mut test_line);
         assert!(matches!(status, Status::Ok(_)));
@@ -498,6 +491,16 @@ mod tests {
             .line("test-info")
             .file("/var/log/containers/random-pod_namespace_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log")
             .labels(label_kv_map.add("app.kubernetes.io/name", "other-name"))
+            .annotations(annotation_kv_map.add("owner", "random-agent"));
+        status = k8s_rules.as_ref().unwrap().process(&mut test_line);
+        assert!(matches!(status, Status::Skip));
+
+        label_kv_map = KeyValueMap::new();
+        annotation_kv_map = KeyValueMap::new();
+        test_line = LineBuilder::new()
+            .line("test-info")
+            .file("/var/log/containers/random-pod_namespace_app-name-63d7c40bf1ece5ff559f49ef2da8f01163df85f611027a9d4bf5fef6e1a643bc.log")
+            .labels(label_kv_map.add("app.kubernetes.io/name", "name"))
             .annotations(annotation_kv_map.add("owner", "random-agent"));
         status = k8s_rules.as_ref().unwrap().process(&mut test_line);
         assert!(matches!(status, Status::Skip));
