@@ -113,10 +113,8 @@ fn build_pod_metric_map(
     pod_usage_map: &mut HashMap<String, Value>,
 ) {
     for pod_metric in pod_metrics {
-        let containers = pod_metric.data["containers"].as_array();
-
-        if let Some(..) = containers {
-            for container in containers.unwrap() {
+        if let Some(containers) = pod_metric.data["containers"].as_array() {
+            for container in containers {
                 let container_name = container["name"].as_str();
 
                 if container_name.is_none() {
@@ -209,7 +207,7 @@ fn build_cluster_stats(node_stats: &Vec<NodeStats>) -> ClusterStats {
             pods_allocatable_is_present = true;
             pods_allocatable += node_stat.pods_allocatable.unwrap();
         }
-        
+
         if node_stat.pods_capacity.is_some() {
             pods_capacity_is_present = true;
             pods_capacity += node_stat.pods_capacity.unwrap();
@@ -282,12 +280,10 @@ fn format_pod_str(
             translated_pod_container.pod_stats.controller.clone()
         );
 
-        let controller_stats = controller_map.get(&controller_key);
-
-        if let Some(..) = controller_stats {
+        if let Some(controller_stats) = controller_map.get(&controller_key) {
             translated_pod_container
                 .controller_stats
-                .copy_stats(controller_stats.unwrap());
+                .copy_stats(controller_stats);
         }
 
         let display_str = format!(
@@ -489,14 +485,13 @@ fn build_extended_pod_stat(
     container_status: Option<&ContainerStatus>,
     translated_pod: &PodStats,
 ) -> Option<ExtendedPodStats> {
-    let usage = pod_usage_map.get(&container.name);
-    if let Some(..) = usage {
+    if let Some(usage) = pod_usage_map.get(&container.name) {
         let translated_container = ContainerStats::builder(
             container,
             container_status.as_ref().unwrap(),
             container_status.unwrap().state.as_ref().unwrap(),
-            usage.unwrap()["cpu"].as_str().unwrap_or(""),
-            usage.unwrap()["memory"].as_str().unwrap_or(""),
+            usage["cpu"].as_str().unwrap_or(""),
+            usage["memory"].as_str().unwrap_or(""),
         )
         .build();
 
@@ -533,14 +528,13 @@ fn process_nodes(
             .get(name)
             .unwrap_or(&default_pod_container_stats);
 
-        let usage = node_usage_map.get(name);
-        if let Some(..) = usage {
+        if let Some(usage) = node_usage_map.get(name) {
             let translated_node = NodeStats::builder(
                 &node,
                 node_pod_stats,
                 node_container_stats,
-                usage.unwrap()["cpu"].as_str().unwrap_or(""),
-                usage.unwrap()["memory"].as_str().unwrap_or(""),
+                usage["cpu"].as_str().unwrap_or(""),
+                usage["memory"].as_str().unwrap_or(""),
             )
             .build();
 

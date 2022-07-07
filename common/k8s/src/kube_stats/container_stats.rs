@@ -1,4 +1,4 @@
-use chrono::Local;
+use chrono::Utc;
 use k8s_openapi::api::core::v1::{Container, ContainerState, ContainerStatus};
 use serde::{Deserialize, Serialize};
 
@@ -119,28 +119,23 @@ impl ContainerStatsBuilder<'_> {
         if self.c.image.is_some() {
             let container_image = self.c.image.clone().unwrap();
 
-            let split = container_image.split_once(':');
-
-            if let Some(..) = split {
-                image = split.unwrap().0.to_string();
-                image_tag = split.unwrap().1.to_string();
+            if let Some(split) = container_image.split_once(':') {
+                image = split.0.to_string();
+                image_tag = split.1.to_string();
             }
         }
 
-        let running = self.c_state.running.as_ref();
         let terminated = self.c_state.terminated.as_ref();
 
-        if let Some(..) = running {
+        if let Some(running) = self.c_state.running.as_ref() {
             state = "Running".to_string();
 
-            let started_at = running.unwrap().started_at.as_ref().map(|s| s.0);
-
-            if let Some(..) = started_at {
-                container_age = Local::now()
-                    .signed_duration_since(started_at.unwrap())
+            if let Some(started_at) = running.started_at.as_ref().map(|s| s.0) {
+                container_age = Utc::now()
+                    .signed_duration_since(started_at)
                     .num_milliseconds();
 
-                started = started_at.unwrap().timestamp_millis();
+                started = started_at.timestamp_millis();
             }
         } else if terminated.is_some() {
             state = "Terminated".to_string()
@@ -148,12 +143,10 @@ impl ContainerStatsBuilder<'_> {
             state = "Waiting".to_string()
         }
 
-        let last_status_state = self.c_status.last_state.as_ref();
-
-        if let Some(..) = last_status_state {
-            let last_running = last_status_state.unwrap().running.as_ref();
-            let last_terminated = last_status_state.unwrap().terminated.as_ref();
-            let last_waiting = last_status_state.unwrap().waiting.as_ref();
+        if let Some(last_status_state) = self.c_status.last_state.as_ref() {
+            let last_running = last_status_state.running.as_ref();
+            let last_terminated = last_status_state.terminated.as_ref();
+            let last_waiting = last_status_state.waiting.as_ref();
 
             if last_waiting.is_some() {
                 last_state = String::from("Waiting");
@@ -184,15 +177,10 @@ impl ContainerStatsBuilder<'_> {
             last_finished = None;
             last_started = None;
         }
-
-        let resources = self.c.resources.as_ref();
-
-        if let Some(..) = resources {
-            let limits = resources.unwrap().limits.as_ref();
-
-            if let Some(..) = limits {
-                let cpu = limits.unwrap().get("cpu");
-                let memory = limits.unwrap().get("memory");
+        if let Some(resources) = self.c.resources.as_ref() {
+            if let Some(limits) = resources.limits.as_ref() {
+                let cpu = limits.get("cpu");
+                let memory = limits.get("memory");
 
                 cpu_limit = cpu
                     .map(|cpu| convert_cpu_usage_to_milli(cpu.0.as_str()))
@@ -203,11 +191,9 @@ impl ContainerStatsBuilder<'_> {
                     .unwrap_or(None);
             }
 
-            let requests = resources.unwrap().requests.as_ref();
-
-            if let Some(..) = requests {
-                let cpu = requests.unwrap().get("cpu");
-                let memory = requests.unwrap().get("memory");
+            if let Some(requests) = resources.requests.as_ref() {
+                let cpu = requests.get("cpu");
+                let memory = requests.get("memory");
 
                 cpu_request = cpu
                     .map(|cpu| convert_cpu_usage_to_milli(cpu.0.as_str()))

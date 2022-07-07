@@ -1,4 +1,4 @@
-use chrono::Local;
+use chrono::Utc;
 use k8s_openapi::api::core::v1::Node;
 use serde::{Deserialize, Serialize};
 
@@ -258,7 +258,7 @@ impl NodeStatsBuilder<'_> {
                             if condition.last_heartbeat_time.is_some() {
                                 let heartbeat = condition.last_heartbeat_time.clone().unwrap();
 
-                                ready_heartbeat_age = Local::now()
+                                ready_heartbeat_age = Utc::now()
                                     .signed_duration_since(heartbeat.0)
                                     .num_milliseconds();
 
@@ -275,7 +275,7 @@ impl NodeStatsBuilder<'_> {
                             if condition.last_transition_time.is_some() {
                                 let transition = condition.last_transition_time.clone().unwrap();
 
-                                ready_transition_age = Local::now()
+                                ready_transition_age = Utc::now()
                                     .signed_duration_since(transition.0)
                                     .num_milliseconds();
 
@@ -292,7 +292,7 @@ impl NodeStatsBuilder<'_> {
 
         if self.n.metadata.creation_timestamp.is_some() {
             let node_created = self.n.metadata.creation_timestamp.clone().unwrap();
-            age = Local::now()
+            age = Utc::now()
                 .signed_duration_since(node_created.0)
                 .num_milliseconds();
 

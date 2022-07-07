@@ -1,4 +1,4 @@
-use chrono::Local;
+use chrono::Utc;
 use k8s_openapi::{api::core::v1::Pod, apimachinery::pkg::apis::meta::v1::OwnerReference};
 use serde::{Deserialize, Serialize};
 
@@ -101,7 +101,7 @@ impl PodStatsBuilder<'_> {
                 if status.start_time.is_some() {
                     let pod_created = status.start_time.clone().unwrap();
 
-                    pod_age = Local::now()
+                    pod_age = Utc::now()
                         .signed_duration_since(pod_created.0)
                         .num_milliseconds();
 
