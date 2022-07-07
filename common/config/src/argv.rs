@@ -121,7 +121,7 @@ pub struct ArgumentOptions {
     #[structopt(long, env = env_vars::LOG_K8S_EVENTS)]
     log_k8s_events: Option<K8sTrackingConf>,
 
-    /// Determine wheather or not to look for available K8s startup leases before attempting
+    /// Determine whether or not to look for available K8s startup leases before attempting
     /// to start the agent; used to throttle startup on very large K8s clusters.
     /// Defaults to "off".
     #[structopt(long = "startup-lease", env = env_vars::K8S_STARTUP_LEASE)]
@@ -147,11 +147,13 @@ pub struct ArgumentOptions {
     #[structopt(long, env = env_vars::LINE_INCLUSION)]
     line_inclusion: Vec<String>,
 
-    #[structopt(long = "k8-metadata-inclusion", env = env_vars::K8S_METADATA_INCLUSION)]
-    k8s_metadata_inclusion: Option<Vec<String>>,
+    /// List of Kubernetes pod metadata to include in log lines.
+    #[structopt(long = "k8-metadata-line-inclusion", env = env_vars::K8S_METADATA_LINE_INCLUSION)]
+    k8s_metadata_line_inclusion: Option<Vec<String>>,
 
-    #[structopt(long = "k8s-metadata-exclusion", env = env_vars::K8S_METADATA_EXCLUSION)]
-    k8s_metadta_exclusion: Option<Vec<String>>,
+    /// List of Kubernetes pod metadata to exclude in log lines.
+    #[structopt(long = "k8s-metadata-line-exclusion", env = env_vars::K8S_METADATA_LINE_EXCLUSION)]
+    k8s_metadata_line_exclusion: Option<Vec<String>>,
 
     /// List of regex patterns used to mask matching sensitive information (such as PII) before
     /// sending it in the log line.
@@ -327,16 +329,16 @@ impl ArgumentOptions {
                 .for_each(|v| regex.push(v.clone()));
         }
 
-        if self.k8s_metadata_inclusion.is_some() {
+        if self.k8s_metadata_line_inclusion.is_some() {
             let values = raw.log.k8s_metadata_include.get_or_insert(Vec::new());
-            with_csv(self.k8s_metadata_inclusion.unwrap())
+            with_csv(self.k8s_metadata_line_inclusion.unwrap())
                 .iter()
                 .for_each(|v| values.push(v.clone()));
         }
 
-        if self.k8s_metadta_exclusion.is_some() {
+        if self.k8s_metadata_line_exclusion.is_some() {
             let values = raw.log.k8s_metadata_exclude.get_or_insert(Vec::new());
-            with_csv(self.k8s_metadta_exclusion.unwrap())
+            with_csv(self.k8s_metadata_line_exclusion.unwrap())
                 .iter()
                 .for_each(|v| values.push(v.clone()));
         }
@@ -746,12 +748,12 @@ mod test {
     #[test]
     fn merge_k8s_inclusion_exclusion() {
         let argv = ArgumentOptions {
-            k8s_metadata_inclusion: Some(vec_strings![
+            k8s_metadata_line_inclusion: Some(vec_strings![
                 "namespace:test-namespace",
                 "label.app:test-name"
             ]),
-            k8s_metadta_exclusion: Some(vec_strings![
-                "pod:another-namespace",
+            k8s_metadata_line_exclusion: Some(vec_strings![
+                "name:another-namespace",
                 "annotation:another-name"
             ]),
             ..ArgumentOptions::default()
@@ -768,7 +770,7 @@ mod test {
         assert_eq!(
             config.log.k8s_metadata_exclude,
             Some(vec_strings![
-                "pod:another-namespace",
+                "name:another-namespace",
                 "annotation:another-name"
             ])
         );

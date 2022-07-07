@@ -43,8 +43,8 @@ from_env_name!(DB_PATH);
 from_env_name!(METRICS_PORT);
 from_env_name!(USE_K8S_LOG_ENRICHMENT);
 from_env_name!(LOG_K8S_EVENTS);
-from_env_name!(K8S_METADATA_INCLUSION);
-from_env_name!(K8S_METADATA_EXCLUSION);
+from_env_name!(K8S_METADATA_LINE_INCLUSION);
+from_env_name!(K8S_METADATA_LINE_EXCLUSION);
 from_env_name!(K8S_STARTUP_LEASE);
 from_env_name!(LINE_EXCLUSION);
 from_env_name!(LINE_INCLUSION);
@@ -259,14 +259,14 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
             .for_each(|v| regex_rules.push(v.to_string()));
     }
 
-    if let Some(value) = map.get(&K8S_METADATA_INCLUSION) {
+    if let Some(value) = map.get(&K8S_METADATA_LINE_INCLUSION) {
         let k8s_rules = result.log.k8s_metadata_include.get_or_insert(Vec::new());
         argv::split_by_comma(value)
             .iter()
             .for_each(|v| k8s_rules.push(v.to_string()));
     }
 
-    if let Some(value) = map.get(&K8S_METADATA_EXCLUSION) {
+    if let Some(value) = map.get(&K8S_METADATA_LINE_EXCLUSION) {
         let k8s_rules = result.log.k8s_metadata_exclude.get_or_insert(Vec::new());
         argv::split_by_comma(value)
             .iter()

@@ -739,8 +739,8 @@ inclusion_rules = /a/glob/include/**/*
 inclusion_regex_rules = /a/regex/include/.*
 line_exclusion_regex = a.*, b.*
 line_inclusion_regex = c.+
-k8s_metadata_inclusion = namespace:test-name, label.app:name
-k8s_metadata_exclusion = namespace:other-name, label.app:other-name
+k8s_metadata_line_inclusion = namespace:test-name, label.app:name
+k8s_metadata_line_exclusion = namespace:other-name, label.app:other-name
 # needs escaping in java properties
 redact_regex = \\\\S+@\\\\S+\\\\.\\\\S+
 ingest_timeout = 9999

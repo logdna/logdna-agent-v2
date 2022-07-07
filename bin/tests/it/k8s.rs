@@ -556,11 +556,11 @@ fn get_agent_ds_yaml(
                                     "value": enrich_logs_with_k8s,
                                 },
                                 {
-                                    "name": "LOGDNA_K8S_METADATA_INCLUSION",
+                                    "name": "LOGDNA_K8S_METADATA_LINE_INCLUSION",
                                     "value": "namespace:default"
                                 },
                                 {
-                                    "name": "LOGDNA_K8S_METADATA_EXCLUSION",
+                                    "name": "LOGDNA_K8S_METADATA_LINE_EXCLUSION",
                                     "value": "label.app.kubernetes.io/name:filter-pod"
                                 },
                                 {

@@ -6,7 +6,7 @@ use regex::{Regex, RegexSet};
 use thiserror::Error;
 
 const NAMESPACE_KEY: &str = "namespace";
-const POD_NAME_KEY: &str = "pod";
+const POD_NAME_KEY: &str = "name";
 const LABEL_KEY: &str = "label";
 const ANNOTATION_KEY: &str = "annotation";
 
@@ -15,7 +15,7 @@ lazy_static! {
         Regex::new(r#"^([a-z0-9]+(|-|.|/)*[a-z0-9]*):([a-z0-9]*((|-)[a-z0-9])*)"#).unwrap();
     static ref REG_NAMESPACE: Regex =
         Regex::new(r#"^namespace:([a-z0-9]*((|-)[a-z0-9])*)"#).unwrap();
-    static ref REG_POD: Regex = Regex::new(r#"^pod:([a-z0-9]*((|-)[a-z0-9])*)"#).unwrap();
+    static ref REG_NAME: Regex = Regex::new(r#"^name:([a-z0-9]*((|-)[a-z0-9])*)"#).unwrap();
     static ref REG_LABEL: Regex =
         Regex::new(r#"^label.([a-z0-9]+(|-|.|/)*[a-z0-9]*:[a-z0-9]*((|-)[a-z0-9])*)"#).unwrap();
     static ref REG_ANNOTATION: Regex =
@@ -26,7 +26,7 @@ lazy_static! {
 #[derive(Debug)]
 struct K8sLineRules {
     namespace: Option<RegexSet>,
-    pod_name: Option<RegexSet>,
+    name: Option<RegexSet>,
     labels: Option<MultiMap<String, String>>,
     annotations: Option<MultiMap<String, String>>,
 }
@@ -75,8 +75,8 @@ impl K8sLineFilter {
         {
             return Status::Skip;
         }
-        if self.inclusion.pod_name.is_some()
-            && !RegexSet::is_match(self.inclusion.pod_name.as_ref().unwrap(), file_value)
+        if self.inclusion.name.is_some()
+            && !RegexSet::is_match(self.inclusion.name.as_ref().unwrap(), file_value)
         {
             return Status::Skip;
         }
@@ -106,8 +106,8 @@ impl K8sLineFilter {
             }
         }
 
-        if let Some(pod_name) = self.exclusion.pod_name.as_ref() {
-            if RegexSet::is_match(pod_name, file_value) {
+        if let Some(name) = self.exclusion.name.as_ref() {
+            if RegexSet::is_match(name, file_value) {
                 return Status::Skip;
             }
         }
@@ -139,11 +139,11 @@ impl Middleware for K8sLineFilter {
 
     fn process<'a>(&self, line: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
         if self.exclusion.namespace.is_none()
-            && self.exclusion.pod_name.is_none()
+            && self.exclusion.name.is_none()
             && self.exclusion.labels.is_none()
             && self.exclusion.annotations.is_none()
             && self.inclusion.namespace.is_none()
-            && self.inclusion.pod_name.is_none()
+            && self.inclusion.name.is_none()
             && self.inclusion.labels.is_none()
             && self.inclusion.annotations.is_none()
         {
@@ -161,7 +161,7 @@ impl Middleware for K8sLineFilter {
 fn set_k8s_line_rule(rules: &[String]) -> Result<K8sLineRules, K8sLineRulesError> {
     let mut k8s_line_rules = K8sLineRules {
         namespace: None,
-        pod_name: None,
+        name: None,
         labels: None,
         annotations: None,
     };
@@ -184,16 +184,16 @@ fn set_k8s_line_rule(rules: &[String]) -> Result<K8sLineRules, K8sLineRulesError
             Some(RegexSet::new(namespace_regex_set).map_err(K8sLineRulesError::RegexError)?);
     }
 
-    if let Some(pod_name) = rule_object.get_vec(POD_NAME_KEY) {
-        let mut pod_regex_set = Vec::with_capacity(pod_name.len());
-        for p in pod_name.iter() {
-            pod_regex_set.push(format!(
+    if let Some(name) = rule_object.get_vec(POD_NAME_KEY) {
+        let mut name_regex_set = Vec::with_capacity(name.len());
+        for n in name.iter() {
+            name_regex_set.push(format!(
                 r#"/{}_([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)-([a-z0-9]{{64}}).log$"#,
-                regex::escape(p),
+                regex::escape(n),
             ));
         }
-        k8s_line_rules.pod_name =
-            Some(RegexSet::new(pod_regex_set).map_err(K8sLineRulesError::RegexError)?);
+        k8s_line_rules.name =
+            Some(RegexSet::new(name_regex_set).map_err(K8sLineRulesError::RegexError)?);
     }
 
     if let Some(labels) = rule_object.get_vec(LABEL_KEY) {
@@ -233,7 +233,7 @@ fn get_rule_object(rules: &[String]) -> MultiMap<&str, String> {
             }
             None => (),
         }
-        match REG_POD.captures(rule) {
+        match REG_NAME.captures(rule) {
             Some(val) => {
                 rules_vec.insert(
                     POD_NAME_KEY,
@@ -274,7 +274,7 @@ mod tests {
     fn test_option_parsing_rules() {
         let test_vec: Vec<String> = vec![
             "namespace:test-name-space".to_string(),
-            "pod:some-name".to_string(),
+            "name:some-name".to_string(),
             "namespace:other-name-space".to_string(),
             "label.app.kubernetes.io/name:some-name".to_string(),
             "label.type:network".to_string(),
@@ -283,13 +283,13 @@ mod tests {
 
         let rule_results = get_rule_object(&test_vec);
         let namespace_results = rule_results.get_vec("namespace").unwrap();
-        let pod_results = rule_results.get_vec("pod").unwrap();
+        let name_results = rule_results.get_vec("name").unwrap();
         let label_results = rule_results.get_vec("label").unwrap();
         let annotation_results = rule_results.get_vec("annotation").unwrap();
 
         assert_eq!(namespace_results[0], "test-name-space");
         assert_eq!(namespace_results[1], "other-name-space");
-        assert_eq!(pod_results[0], "some-name");
+        assert_eq!(name_results[0], "some-name");
         assert_eq!(label_results[0], "app.kubernetes.io/name:some-name");
         assert_eq!(label_results[1], "type:network");
         assert_eq!(annotation_results[0], "owner:secret-agent");
@@ -315,7 +315,7 @@ mod tests {
         let inclusion = &[];
         let exclusion = &[
             "namespace:namespace".to_string(),
-            "pod:pod-name".to_string(),
+            "name:pod-name".to_string(),
             "label.app.kubernetes.io/name:app-name".to_string(),
             "label.app.kubernetes.io/name:other-name".to_string(),
             "annotation.owner:secret-agent".to_string(),
@@ -330,7 +330,7 @@ mod tests {
             .is_match(test_file_path));
         assert!(k8s_rules
             .exclusion
-            .pod_name
+            .name
             .as_ref()
             .unwrap()
             .is_match(test_file_path));
@@ -444,7 +444,7 @@ mod tests {
         let inclusion = &[];
         let exclusion = &[
             "namespace:logdna-agent".to_string(),
-            "pod:pod-name".to_string(),
+            "name:pod-name".to_string(),
             "label.app.kubernetes.io/name:name".to_string(),
             "label.app.kubernetes.io/name:other-name".to_string(),
             "annotation.owner:secret-agent".to_string(),
@@ -524,7 +524,7 @@ mod tests {
             "label.type:networking".to_string(),
         ];
         let exclusion = &[
-            "pod:name".to_string(),
+            "name:name".to_string(),
             "annotation.owner:random-agent".to_string(),
         ];
         let k8s_rules = K8sLineFilter::new(exclusion, inclusion);

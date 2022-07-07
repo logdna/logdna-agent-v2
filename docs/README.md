@@ -191,8 +191,8 @@ options are available:
 |`LOGDNA_INCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE_REGEX`|Comma separated list of regex patterns to include files from monitoring||
 |`LOGDNA_LINE_EXCLUSION_REGEX`|Comma separated list of regex patterns to exclude log lines. When set, the Agent will NOT send log lines that match any of these patterns.||
 |`LOGDNA_LINE_INCLUSION_REGEX`|Comma separated list of regex patterns to include log lines. When set, the Agent will send ONLY log lines that match any of these patterns.||
-|`LOGDNA_K8S_METADATA_EXCLUSION`|Comma separated list of Kubernetes selectors to exclude log lines associated with various Kubernetes resources||
-|`LOGDNA_K8S_METADATA_INCLUSION`|Comma separated list of Kubernetes selectors to include log lines associated with various Kubernetes resources||
+|`LOGDNA_K8S_METADATA_LINE_EXCLUSION`|Comma separated list of Kubernetes selectors to exclude log lines associated with various Kubernetes resources||
+|`LOGDNA_K8S_METADATA_LINE_INCLUSION`|Comma separated list of Kubernetes selectors to include log lines associated with various Kubernetes resources||
 |`LOGDNA_REDACT_REGEX`|Comma separated list of regex patterns used to mask matching sensitive information (such as PII) before sending it in the log line.||
 |`LOGDNA_JOURNALD_PATHS`|Comma separated list of paths (directories or files) of journald paths to monitor||
 |`LOGDNA_LOOKBACK`|The lookback strategy on startup|`none`|
@@ -324,18 +324,18 @@ Notes:
 
 ### Configuration for Kubernetes Metadata Filtering
 
-In addition to being able to write custom regex expressions, the Agent can be configured to filter log lines associated with various Kubernetes resources. For example, include only log lines coming from a given namespace. This can be useful because writing a custom regex expression for filtering out logs coming from a specific Kubernetes resources requires the user to know how Kubernetes formats it's log files. Using the Kubernetes filtering configuration makes this much easier.
+In addition to being able to write custom regex expressions, the Agent can be configured to filter log lines associated with various Kubernetes resources. Specifically, the agent filters on Kubernetes Pod metadata. For example, include only log lines coming from a given namespace. This can be useful because writing a custom regex expression for filtering out logs coming from a specific resources requires the user to know how Kubernetes formats it's log files. Using the Kubernetes filtering configuration makes this much easier. 
 
-You can configure the Kubernetes metadata filtering via the following environment variables:
+You can configure the Kubernetes Pod metadata filtering via the following environment variables:
 
-* include *only* log lines associated with a specific resource with `LOGDNA_K8S_METADATA_INCLUSION`
-* exclude log lines associated with specific resource with `LOGDNA_K8S_METADATA_EXCLUSION`
+* include *only* log lines associated with a specific resource with `LOGDNA_K8S_METADATA_LINE_INCLUSION`
+* exclude log lines associated with specific resource with `LOGDNA_K8S_METADATA_LINE_EXCLUSION`
 
 Currently, we support filtering on four different fields: namespace, pod, label and annotation. The following shows the nomenclature for each of the supported fields:
 
 ```
   namespace:<value>
-  pod:<value>
+  name:<value>
   label.<key>:<value>
   annotation.<key>:<value>
 ``` 
@@ -343,10 +343,10 @@ Currently, we support filtering on four different fields: namespace, pod, label 
 The following is a sample configuration:
 
 ```
-"name": "LOGDNA_K8S_METADATA_INCLUSION"
+"name": "LOGDNA_K8S_METADATA_LINE_INCLUSION"
   "value": "namespace:default"
 
-"name": "LOGDNA_K8S_METADATA_EXCLUSION"
+"name": "LOGDNA_K8S_METADATA_LINE_EXCLUSION"
   "value": "label.app.kubernetes.io/name:sample-app, annotation.user:sample-user"
 ```
  
