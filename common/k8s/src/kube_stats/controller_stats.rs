@@ -2,10 +2,10 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct ControllerStats {
-    pub controller_containers_ready: i32,
-    pub controller_containers_total: i32,
-    pub controller_pods_ready: i32,
-    pub controller_pods_total: i32,
+    pub controller_containers_ready: u32,
+    pub controller_containers_total: u32,
+    pub controller_pods_ready: u32,
+    pub controller_pods_total: u32,
 }
 
 impl Default for ControllerStats {

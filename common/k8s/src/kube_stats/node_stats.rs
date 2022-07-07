@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use super::helpers::{convert_cpu_usage_to_milli, convert_memory_usage_to_bytes};
 
-const CPU_MULTIPLIER: i64 = 1000;
+const CPU_MULTIPLIER: u64 = 1000;
 
 #[derive(Serialize, Deserialize)]
 pub struct NodeStats {
@@ -13,19 +13,21 @@ pub struct NodeStats {
     pub age: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub container_runtime_version: String,
-    pub containers_init: i32,
-    pub containers_ready: i32,
-    pub containers_running: i32,
-    pub containers_terminated: i32,
-    pub containers_total: i32,
-    pub containers_waiting: i32,
+    pub containers_init: u32,
+    pub containers_ready: u32,
+    pub containers_running: u32,
+    pub containers_terminated: u32,
+    pub containers_total: u32,
+    pub containers_waiting: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
-    pub cpu_allocatable: Option<i64>,
+    pub cpu_allocatable: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
-    pub cpu_capacity: Option<i64>,
-    pub cpu_usage: i32,
+    pub cpu_capacity: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "::serde_with::rust::unwrap_or_skip")]
+    pub cpu_usage: Option<u32>,
     pub created: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub ip_external: String,
@@ -37,27 +39,29 @@ pub struct NodeStats {
     pub kubelet_version: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
-    pub memory_allocatable: Option<i64>,
+    pub memory_allocatable: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
-    pub memory_capacity: Option<i64>,
+    pub memory_capacity: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
-    pub pods_allocatable: Option<i64>,
+    pub pods_allocatable: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
-    pub pods_capacity: Option<i64>,
-    pub memory_usage: i64,
+    pub pods_capacity: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "::serde_with::rust::unwrap_or_skip")]
+    pub memory_usage: Option<u64>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub node: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub os_image: String,
-    pub pods_failed: i32,
-    pub pods_pending: i32,
-    pub pods_running: i32,
-    pub pods_succeeded: i32,
-    pub pods_total: i32,
-    pub pods_unknown: i32,
+    pub pods_failed: u32,
+    pub pods_pending: u32,
+    pub pods_running: u32,
+    pub pods_succeeded: u32,
+    pub pods_total: u32,
+    pub pods_unknown: u32,
     pub ready_heartbeat_age: i64,
     pub ready_heartbeat_time: i64,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -133,12 +137,12 @@ impl NodeStatsBuilder<'_> {
         let mut ready_message = String::new();
         let mut ready_status = String::new();
 
-        let mut cpu_allocatable: Option<i64> = None;
-        let mut cpu_capacity: Option<i64> = None;
-        let mut memory_allocatable: Option<i64> = None;
-        let mut memory_capacity: Option<i64> = None;
-        let mut pods_allocatable: Option<i64> = None;
-        let mut pods_capacity: Option<i64> = None;
+        let mut cpu_allocatable: Option<u64> = None;
+        let mut cpu_capacity: Option<u64> = None;
+        let mut memory_allocatable: Option<u64> = None;
+        let mut memory_capacity: Option<u64> = None;
+        let mut pods_allocatable: Option<u64> = None;
+        let mut pods_capacity: Option<u64> = None;
 
         let mut created = 0;
         let mut ready_heartbeat_age = 0;
@@ -199,13 +203,13 @@ impl NodeStatsBuilder<'_> {
                     cpu_allocatable = cpu_quantity.and_then(|cpu_quantity| {
                         cpu_quantity
                             .0
-                            .parse::<i64>()
+                            .parse::<u64>()
                             .map(|q| q * CPU_MULTIPLIER)
                             .ok()
                     });
 
                     memory_allocatable = memory_quantity
-                        .map(|memory| Some(convert_memory_usage_to_bytes(memory.0.as_str())))
+                        .map(|memory| convert_memory_usage_to_bytes(memory.0.as_str()))
                         .unwrap_or(None);
 
                     pods_allocatable =
@@ -221,13 +225,13 @@ impl NodeStatsBuilder<'_> {
                     cpu_capacity = cpu_quantity.and_then(|cpu_quantity| {
                         cpu_quantity
                             .0
-                            .parse::<i64>()
+                            .parse::<u64>()
                             .map(|q| q * CPU_MULTIPLIER)
                             .ok()
                     });
 
                     memory_capacity = memory_quantity
-                        .map(|memory| Some(convert_memory_usage_to_bytes(memory.0.as_str())))
+                        .map(|memory| convert_memory_usage_to_bytes(memory.0.as_str()))
                         .unwrap_or(None);
 
                     pods_capacity =
@@ -345,12 +349,12 @@ impl NodeStatsBuilder<'_> {
 
 #[derive(Debug)]
 pub struct NodeContainerStats {
-    pub containers_waiting: i32,
-    pub containers_total: i32,
-    pub containers_terminated: i32,
-    pub containers_running: i32,
-    pub containers_ready: i32,
-    pub containers_init: i32,
+    pub containers_waiting: u32,
+    pub containers_total: u32,
+    pub containers_terminated: u32,
+    pub containers_running: u32,
+    pub containers_ready: u32,
+    pub containers_init: u32,
 }
 
 impl Default for NodeContainerStats {
@@ -400,12 +404,12 @@ impl NodeContainerStats {
 
 #[derive(Debug)]
 pub struct NodePodStats {
-    pub pods_failed: i32,
-    pub pods_pending: i32,
-    pub pods_running: i32,
-    pub pods_succeeded: i32,
-    pub pods_unknown: i32,
-    pub pods_total: i32,
+    pub pods_failed: u32,
+    pub pods_pending: u32,
+    pub pods_running: u32,
+    pub pods_succeeded: u32,
+    pub pods_unknown: u32,
+    pub pods_total: u32,
 }
 
 impl Default for NodePodStats {
@@ -490,8 +494,8 @@ mod tests {
         assert_eq!(result.containers_waiting, 0);
         assert_eq!(result.cpu_allocatable.unwrap(), 123000);
         assert_eq!(result.cpu_capacity.unwrap(), 123000);
-        assert_eq!(result.cpu_usage, 1000);
-        assert_eq!(result.memory_usage, 1);
+        assert_eq!(result.cpu_usage.unwrap(), 1000);
+        assert_eq!(result.memory_usage.unwrap(), 1);
         assert_eq!(result.ip, "a2".to_string());
         assert_eq!(result.ip_external, "a1".to_string());
         assert_eq!(result.kernel_version, "kernel".to_string());

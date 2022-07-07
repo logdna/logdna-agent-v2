@@ -11,11 +11,13 @@ pub struct ContainerStats {
     pub container: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
-    pub cpu_limit: Option<i32>,
+    pub cpu_limit: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
-    pub cpu_request: Option<i32>,
-    pub cpu_usage: i32,
+    pub cpu_request: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "::serde_with::rust::unwrap_or_skip")]
+    pub cpu_usage: Option<u32>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub image_tag: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -32,11 +34,13 @@ pub struct ContainerStats {
     pub last_state: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
-    pub memory_limit: Option<i64>,
+    pub memory_limit: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
-    pub memory_request: Option<i64>,
-    pub memory_usage: i64,
+    pub memory_request: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(with = "::serde_with::rust::unwrap_or_skip")]
+    pub memory_usage: Option<u64>,
     pub ready: bool,
     pub restarts: i32,
     pub started: i64,
@@ -191,11 +195,11 @@ impl ContainerStatsBuilder<'_> {
                 let memory = limits.unwrap().get("memory");
 
                 cpu_limit = cpu
-                    .map(|cpu| Some(convert_cpu_usage_to_milli(cpu.0.as_str())))
+                    .map(|cpu| convert_cpu_usage_to_milli(cpu.0.as_str()))
                     .unwrap_or(None);
 
                 memory_limit = memory
-                    .map(|memory| Some(convert_memory_usage_to_bytes(memory.0.as_str())))
+                    .map(|memory| convert_memory_usage_to_bytes(memory.0.as_str()))
                     .unwrap_or(None);
             }
 
@@ -206,11 +210,11 @@ impl ContainerStatsBuilder<'_> {
                 let memory = requests.unwrap().get("memory");
 
                 cpu_request = cpu
-                    .map(|cpu| Some(convert_cpu_usage_to_milli(cpu.0.as_str())))
+                    .map(|cpu| convert_cpu_usage_to_milli(cpu.0.as_str()))
                     .unwrap_or(None);
 
                 memory_request = memory
-                    .map(|memory| Some(convert_memory_usage_to_bytes(memory.0.as_str())))
+                    .map(|memory| convert_memory_usage_to_bytes(memory.0.as_str()))
                     .unwrap_or(None);
             }
         }
@@ -264,8 +268,8 @@ mod tests {
 
         assert_eq!(result.image, "test-image".to_string());
         assert_eq!(result.image_tag, "1234:1234".to_string());
-        assert_eq!(result.memory_usage, 1);
-        assert_eq!(result.cpu_usage, 1000);
+        assert_eq!(result.memory_usage.unwrap(), 1);
+        assert_eq!(result.cpu_usage.unwrap(), 1000);
         assert_eq!(result.state, "Running".to_string());
         assert_eq!(result.cpu_limit.unwrap(), 123000);
         assert_eq!(result.cpu_request.unwrap(), 123000);
