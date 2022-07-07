@@ -100,7 +100,8 @@ impl From<Event> for EventLog {
 
         let duration = age.map(|age| {
             if age > Duration::weeks(0) {
-                age.to_std().map(|d|humantime::format_duration(d).to_string()).unwrap(/*Safe to unwrap as we checked it's positive*/)
+                let age_val = age.to_std().map(|d|humantime::format_duration(d).to_string()).unwrap(/*Safe to unwrap as we checked it's positive*/);
+                format!("over {}", age_val)
             } else {
                 "just now".to_string()
             }
@@ -120,6 +121,7 @@ impl From<Event> for EventLog {
                 (Some(r), None, None, true, Some(m)) => Some(format!("{}  {}", r, m)),
                 _ => None,
             },
+            level: "Normal".to_string(),
             kube: EventLogLineInner {
                 type_: "event".to_string(),
                 action,
@@ -155,6 +157,7 @@ impl From<Event> for EventLog {
 struct EventLogLine {
     #[serde(skip_serializing_if = "Option::is_none")]
     message: Option<String>,
+    level: String,
     kube: EventLogLineInner,
 }
 
