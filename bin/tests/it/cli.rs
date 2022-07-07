@@ -648,7 +648,7 @@ async fn test_journalctl_support() {
         }
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
 
         let map = received.lock().await;
 
