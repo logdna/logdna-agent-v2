@@ -8,6 +8,7 @@ use tempfile::tempdir;
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_http_buffer_size() {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().unwrap().into_path();
     let file_path = dir.join("test.log");
     let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
@@ -36,29 +37,27 @@ async fn test_http_buffer_size() {
     settings.ingest_buffer_size = Some("100"); // encourage buffer flushes every 2 test log lines
 
     let mut agent_handle = common::spawn_agent(settings);
-    let agent_stderr = agent_handle.stderr.take().unwrap();
-    common::consume_output(agent_stderr);
+    let mut agent_stderr = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
 
     let (server_result, _) = tokio::join!(mock_server, async move {
-        // wait for the agent process to get ready
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-
+        common::wait_for_event("Enabling filesystem", &mut agent_stderr);
+        common::consume_output(agent_stderr.into_inner());
         // generate some log data
         for _ in 0..10 {
             write!(file, "abcdefghijklmnop\n").unwrap();
         }
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(2500)).await;
 
         // Ensure that the agent sent each log message individually because each log line
         // filled the configured buffer capacity.
         let calls_made = call_counter.lock().unwrap();
-        assert_eq!(*calls_made, 5);
+        assert!(*calls_made >= 5, "{:#?}", *calls_made);
 
+        agent_handle.kill().unwrap();
         shutdown_handle();
     });
 
     server_result.unwrap();
-    agent_handle.kill().unwrap();
 }
