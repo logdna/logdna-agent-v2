@@ -1,8 +1,9 @@
+use crate::cache::get_inode;
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
+use std::fs::OpenOptions;
 use std::ops::DerefMut;
-use std::os::unix::fs::MetadataExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -321,20 +322,19 @@ pub struct TailedFile<T> {
 
 impl<T> TailedFile<T> {
     pub(crate) fn new(
-        path: &std::path::Path,
+        path: &Path,
         initial_offsets: SpanVec,
         resume_events_sender: Option<Sender<(u64, OffsetDateTime)>>,
     ) -> Result<Self, std::io::Error> {
+        let file = OpenOptions::new().read(true).open(path)?;
+        let inode = get_inode(path, Some(&file))?;
         Ok(Self {
             inner: Arc::new(Mutex::new(TailedFileInner {
-                reader: BufReader::new(tokio::fs::File::from_std(
-                    std::fs::OpenOptions::new().read(true).open(path)?,
-                ))
-                .compat(),
+                reader: BufReader::new(tokio::fs::File::from_std(file)).compat(),
                 buf: Vec::new(),
                 offset: 0,
                 initial_offsets,
-                inode: path.metadata()?.ino(),
+                inode,
             })),
             resume_events_sender,
             _phantom: std::marker::PhantomData::<T>,

@@ -11,3 +11,15 @@ pub enum Event {
     /// A file was deleted
     Delete(EntryKey),
 }
+
+#[cfg(test)]
+impl Event {
+    pub(crate) fn key(&self) -> EntryKey {
+        *match self {
+            Event::Initialize(key) => key,
+            Event::New(key) => key,
+            Event::Write(key) => key,
+            Event::Delete(key) => key,
+        }
+    }
+}

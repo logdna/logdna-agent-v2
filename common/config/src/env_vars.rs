@@ -28,6 +28,7 @@ pub const INGEST_TIMEOUT: &str = "MZ_INGEST_TIMEOUT";
 pub const INGEST_BUFFER_SIZE: &str = "MZ_INGEST_BUFFER_SIZE";
 pub const RETRY_DIR: &str = "MZ_RETRY_DIR";
 pub const RETRY_DISK_LIMIT: &str = "MZ_RETRY_DISK_LIMIT";
+pub const INTERNAL_FS_DELAY: &str = "MZ_INTERNAL_FS_DELAY";
 
 // unused or deprecated
 pub const INGESTION_KEY_ALTERNATE: &str = "LOGDNA_AGENT_KEY";

@@ -14,8 +14,24 @@ extern "Rust" {
     static PKG_VERSION: &'static str;
 }
 
+#[cfg(unix)]
 pub const DEFAULT_YAML_FILE: &str = "/etc/logdna/config.yaml";
-pub const DEFAULT_CONF_FILE: &str = "/etc/logdna.conf";
+
+#[cfg(windows)]
+pub const DEFAULT_YAML_FILE: &str = r"C:\ProgramData\logdna\config.yaml";
+
+#[cfg(unix)]
+pub fn default_conf_file() -> PathBuf {
+    PathBuf::from("/etc/logdna.conf")
+}
+
+#[cfg(windows)]
+pub fn default_conf_file() -> PathBuf {
+    let default_str = std::env::var("ALLUSERSPROFILE").unwrap_or(r"C:\ProgramData".into());
+    PathBuf::from(default_str)
+        .join("logdna")
+        .join("logdna.conf")
+}
 
 /// Contains the command and env var options.
 #[derive(StructOpt, Debug, Default, PartialEq)]
@@ -30,7 +46,8 @@ pub struct ArgumentOptions {
     /// When defined, it will try to parse in java properties format and in yaml format for
     /// backward compatibility.
     ///
-    /// By default will look in the paths: /etc/logdna/config.yaml and /etc/logdna.conf
+    /// By default will look in the paths: /etc/logdna/config.yaml and /etc/logdna.conf on
+    /// unix systems and %APPDATA% or C:\ProgramData on windows
     #[structopt(
         short,
         long,
@@ -73,7 +90,9 @@ pub struct ArgumentOptions {
     #[structopt(long = "mac-address", env = env_vars::MAC)]
     mac: Option<String>,
 
-    /// Adds log directories to scan, in addition to the default (/var/log)
+    /// Adds log directories to scan, in addition to the default.
+    ///
+    /// Defaults to "/var/log" on Linux and macOS and defaults to "C:\ProgramData\logs" on Windows.
     #[structopt(long = "logdir", short = "d", env = env_vars::LOG_DIRS)]
     log_dirs: Vec<String>,
 
@@ -129,7 +148,7 @@ pub struct ArgumentOptions {
 
     /// The directory in which the agent will store its state database. Note that the agent must
     /// have write access to the directory and be a persistent volume.
-    /// Defaults to "/var/lib/logdna-agent/"
+    /// Defaults to "/var/lib/logdna-agent/" on unix systems and %APPDATA% or C:\ProgramData\logdna\ on windows
     #[structopt(long, env = env_vars::DB_PATH)]
     db_path: Option<String>,
 
@@ -465,7 +484,13 @@ mod test {
     use humanize_rs::bytes::Unit;
     use std::env::set_var;
 
+    #[cfg(unix)]
     static EXCLUSION_GLOB_DEFAULT: &str = "/var/log/wtmp,/var/log/btmp,/var/log/utmp,/var/log/wtmpx,/var/log/btmpx,/var/log/utmpx,/var/log/asl/**,/var/log/sa/**,/var/log/sar*,/var/log/tallylog,/var/log/fluentd-buffers/**/*,/var/log/pods/**/*";
+
+    #[cfg(unix)]
+    static DEFAULT_LOG_DIR: &str = "/var/log";
+    #[cfg(windows)]
+    static DEFAULT_LOG_DIR: &str = r"C:\ProgramData\logs";
 
     macro_rules! vec_strings {
         ($($str:expr),*) => ({
@@ -583,7 +608,7 @@ mod test {
         assert_eq!(config.http.gzip_level, Some(2));
         assert_eq!(config.http.body_size, Some(2 * 1024 * 1024));
         assert_eq!(config.log.lookback, None);
-        assert_eq!(config.log.dirs, vec![PathBuf::from("/var/log/")]);
+        assert_eq!(config.log.dirs, vec![PathBuf::from(DEFAULT_LOG_DIR)]);
         assert_eq!(
             config.log.include,
             Some(Rules {
@@ -641,7 +666,7 @@ mod test {
         assert_eq!(params.mac, some_string!("ac::dc"));
         assert_eq!(
             config.log.dirs,
-            vec_paths!["/var/log", "/my/path", "/my/other/path"]
+            vec_paths![DEFAULT_LOG_DIR, "/my/path", "/my/other/path"]
         );
         assert_eq!(config.log.lookback, some_string!("start"));
         assert_eq!(config.log.use_k8s_enrichment, some_string!("always"));
@@ -662,7 +687,7 @@ mod test {
         let config = argv.merge(RawConfig::default());
         assert_eq!(
             config.log.dirs,
-            vec_paths!["/var/log", "/my/path", "/other"]
+            vec_paths![DEFAULT_LOG_DIR, "/my/path", "/other"]
         );
         assert_eq!(config.journald.paths, Some(vec_paths!["/a", "/b"]));
     }
@@ -683,14 +708,17 @@ mod test {
         let exclusion = config.log.exclude.unwrap();
         let inclusion = config.log.include.unwrap();
 
-        assert_eq!(
-            exclusion.glob,
-            EXCLUSION_GLOB_DEFAULT
-                .split(',')
-                .map(|x| x.to_string())
-                .chain(vec_strings!["/my/path", "/other"])
-                .collect::<Vec<String>>()
-        );
+        #[cfg(unix)]
+        let expected_exclusion = EXCLUSION_GLOB_DEFAULT
+            .split(',')
+            .map(|x| x.to_string())
+            .chain(vec_strings!["/my/path", "/other"])
+            .collect::<Vec<String>>();
+
+        #[cfg(windows)]
+        let expected_exclusion = vec_strings!["/my/path", "/other"];
+
+        assert_eq!(exclusion.glob, expected_exclusion);
         assert_eq!(exclusion.regex, vec_strings!["a", "b"]);
 
         assert_eq!(
