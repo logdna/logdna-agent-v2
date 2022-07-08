@@ -277,8 +277,8 @@ impl TryFrom<RawConfig> for Config {
         let info = str::replace(
             &format!(
                 "{}/{}",
-                sys.get_name().unwrap_or_else(|| "unknown".into()),
-                sys.get_version().unwrap_or_else(|| "unknown".into()),
+                sys.name().unwrap_or_else(|| "unknown".into()),
+                sys.os_version().unwrap_or_else(|| "unknown".into()),
             ),
             |c| !matches!(c, '\x20'..='\x7e'),
             "",
@@ -426,7 +426,7 @@ pub fn get_hostname() -> Option<String> {
         }
     }
 
-    System::new_with_specifics(RefreshKind::new()).get_host_name()
+    System::new_with_specifics(RefreshKind::new()).host_name()
 }
 
 fn print_settings(yaml: &str, config_path: &Path) {

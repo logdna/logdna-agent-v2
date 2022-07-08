@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use file_rotate::{FileRotate, RotationMode};
+use file_rotate::{compression::Compression, suffix::AppendCount, ContentLimit, FileRotate};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use logdna_metrics_recorder::*;
 use memmap2::MmapOptions;
@@ -361,8 +361,9 @@ async fn main() -> Result<(), std::io::Error> {
                     let mut count = 0;
                     let mut log = std::io::BufWriter::new(FileRotate::new(
                         out_file.clone(),
-                        RotationMode::BytesSurpassed(file_size),
-                        file_history,
+                        AppendCount::new(file_history),
+                        ContentLimit::Bytes(file_size),
+                        Compression::None,
                     ));
 
                     // Write first 5% of logs
@@ -404,8 +405,9 @@ async fn main() -> Result<(), std::io::Error> {
                     let mut count = 0;
                     let mut log = std::io::BufWriter::new(FileRotate::new(
                         out_file.clone(),
-                        RotationMode::BytesSurpassed(file_size),
-                        file_history,
+                        AppendCount::new(file_history),
+                        ContentLimit::Bytes(file_size),
+                        Compression::None,
                     ));
 
                     // Write first 5% of logs

@@ -1,4 +1,3 @@
-use pnet::datalink;
 use std::net::{SocketAddr, ToSocketAddrs};
 
 use tokio::io::AsyncWriteExt;
@@ -194,7 +193,7 @@ async fn start_line_proxy_pod(
 }
 
 fn ingester_public_addr(ingester_addr: impl ToSocketAddrs) -> SocketAddr {
-    let default_ip = datalink::interfaces()
+    let default_ip = pnet_datalink::interfaces()
         .iter()
         .find(|e| e.is_up() && !e.is_loopback() && !e.ips.is_empty())
         .expect("container should have an interface")
