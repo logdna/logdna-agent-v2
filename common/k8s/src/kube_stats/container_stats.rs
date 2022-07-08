@@ -122,6 +122,8 @@ impl ContainerStatsBuilder<'_> {
             if let Some(split) = container_image.split_once(':') {
                 image = split.0.to_string();
                 image_tag = split.1.to_string();
+            } else {
+                image = container_image;
             }
         }
 

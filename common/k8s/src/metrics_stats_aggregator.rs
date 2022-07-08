@@ -146,7 +146,6 @@ fn build_node_metric_map(
 }
 
 fn build_cluster_stats(node_stats: &Vec<NodeStats>) -> ClusterStats {
-
     macro_rules! aggregate_stat {
         ($acc_name:ident, $var_name:ident, $field_name:ident) => {
             $acc_name.$field_name = $acc_name.$field_name.map_or($var_name.$field_name, |current| {
