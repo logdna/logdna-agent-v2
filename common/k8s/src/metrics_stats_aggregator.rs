@@ -146,24 +146,16 @@ fn build_node_metric_map(
 }
 
 fn build_cluster_stats(node_stats: &Vec<NodeStats>) -> ClusterStats {
-    let mut cluster_stats = ClusterStats::new();
 
-    let mut cpu_usage = 0;
-    let mut cpu_usage_is_present = false;
-    let mut memory_usage = 0;
-    let mut memory_usage_is_present = false;
-    let mut cpu_allocatable = 0;
-    let mut cpu_allocatable_is_present = false;
-    let mut cpu_capacity = 0;
-    let mut cpu_capacity_is_present = false;
-    let mut memory_allocatable = 0;
-    let mut memory_allocatable_is_present = false;
-    let mut memory_capacity = 0;
-    let mut memory_capacity_is_present = false;
-    let mut pods_allocatable = 0;
-    let mut pods_allocatable_is_present = false;
-    let mut pods_capacity = 0;
-    let mut pods_capacity_is_present = false;
+    macro_rules! aggregate_stat {
+        ($acc_name:ident, $var_name:ident, $field_name:ident) => {
+            $acc_name.$field_name = $acc_name.$field_name.map_or($var_name.$field_name, |current| {
+                $var_name.$field_name.map(|new| current + new)
+            });
+        }
+    }
+
+    let mut cluster_stats = ClusterStats::new();
 
     for node_stat in node_stats {
         cluster_stats.containers_init += node_stat.containers_init;
@@ -172,47 +164,6 @@ fn build_cluster_stats(node_stats: &Vec<NodeStats>) -> ClusterStats {
         cluster_stats.containers_terminated += node_stat.containers_terminated;
         cluster_stats.containers_total += node_stat.containers_total;
         cluster_stats.containers_waiting += node_stat.containers_waiting;
-
-        if node_stat.cpu_usage.is_some() {
-            cpu_usage_is_present = true;
-            cpu_usage += node_stat.cpu_usage.unwrap();
-        }
-
-        if node_stat.memory_usage.is_some() {
-            memory_usage_is_present = true;
-            memory_usage += node_stat.memory_usage.unwrap();
-        }
-
-        if node_stat.cpu_allocatable.is_some() {
-            cpu_allocatable_is_present = true;
-            cpu_allocatable += node_stat.cpu_allocatable.unwrap();
-        }
-
-        if node_stat.cpu_capacity.is_some() {
-            cpu_capacity_is_present = true;
-            cpu_capacity += node_stat.cpu_capacity.unwrap();
-        }
-
-        if node_stat.memory_allocatable.is_some() {
-            memory_allocatable_is_present = true;
-            memory_allocatable += node_stat.memory_allocatable.unwrap();
-        }
-
-        if node_stat.memory_capacity.is_some() {
-            memory_capacity_is_present = true;
-            memory_capacity += node_stat.memory_capacity.unwrap();
-        }
-
-        if node_stat.pods_allocatable.is_some() {
-            pods_allocatable_is_present = true;
-            pods_allocatable += node_stat.pods_allocatable.unwrap();
-        }
-
-        if node_stat.pods_capacity.is_some() {
-            pods_capacity_is_present = true;
-            pods_capacity += node_stat.pods_capacity.unwrap();
-        }
-
         cluster_stats.pods_failed += node_stat.pods_failed;
         cluster_stats.pods_pending += node_stat.pods_pending;
         cluster_stats.pods_running += node_stat.pods_running;
@@ -220,6 +171,15 @@ fn build_cluster_stats(node_stats: &Vec<NodeStats>) -> ClusterStats {
         cluster_stats.pods_total += node_stat.pods_total;
         cluster_stats.pods_unknown += node_stat.pods_unknown;
         cluster_stats.nodes_total += 1;
+
+        aggregate_stat!(cluster_stats, node_stat, cpu_usage);
+        aggregate_stat!(cluster_stats, node_stat, memory_usage);
+        aggregate_stat!(cluster_stats, node_stat, cpu_allocatable);
+        aggregate_stat!(cluster_stats, node_stat, cpu_capacity);
+        aggregate_stat!(cluster_stats, node_stat, memory_allocatable);
+        aggregate_stat!(cluster_stats, node_stat, memory_capacity);
+        aggregate_stat!(cluster_stats, node_stat, pods_allocatable);
+        aggregate_stat!(cluster_stats, node_stat, pods_capacity);
 
         if node_stat.ready.unwrap_or(false) {
             cluster_stats.nodes_ready += 1;
@@ -231,39 +191,6 @@ fn build_cluster_stats(node_stats: &Vec<NodeStats>) -> ClusterStats {
             cluster_stats.nodes_unschedulable += 1;
         }
     }
-
-    if cpu_usage_is_present {
-        cluster_stats.cpu_usage = Some(cpu_usage);
-    }
-
-    if memory_usage_is_present {
-        cluster_stats.memory_usage = Some(memory_usage);
-    }
-
-    if cpu_allocatable_is_present {
-        cluster_stats.cpu_allocatable = Some(cpu_allocatable);
-    }
-
-    if cpu_capacity_is_present {
-        cluster_stats.cpu_capacity = Some(cpu_capacity);
-    }
-
-    if memory_allocatable_is_present {
-        cluster_stats.memory_allocatable = Some(memory_allocatable);
-    }
-
-    if memory_capacity_is_present {
-        cluster_stats.memory_capacity = Some(memory_capacity);
-    }
-
-    if pods_allocatable_is_present {
-        cluster_stats.pods_allocatable = Some(pods_allocatable);
-    }
-
-    if pods_capacity_is_present {
-        cluster_stats.pods_capacity = Some(pods_capacity);
-    }
-
     cluster_stats
 }
 
@@ -627,6 +554,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_build_cluster_stats_With_None() {
+        let mut node_stats: Vec<NodeStats> = Vec::new();
+
+        let mut stats1 = generate_node();
+        stats1.cpu_usage = None;
+        stats1.memory_allocatable = None;
+
+        node_stats.push(stats1);
+
+        let result = build_cluster_stats(&node_stats);
+
+        assert_eq!(result.cpu_usage, None);
+        assert_eq!(result.memory_allocatable, None);
+    }
+
+
+    #[tokio::test]
     async fn test_process_pods_does_not_panic() {
         let pods = ObjectList::<Pod> {
             metadata: ListMeta {
@@ -694,7 +638,7 @@ mod tests {
             containers_waiting: 1,
             cpu_allocatable: Some(1),
             cpu_capacity: Some(1),
-            cpu_usage: Some(0),
+            cpu_usage: None,
             created: 0,
             ip_external: "".to_string(),
             ip: "".to_string(),
@@ -702,7 +646,7 @@ mod tests {
             kubelet_version: "".to_string(),
             memory_allocatable: Some(1),
             memory_capacity: Some(1),
-            memory_usage: Some(1),
+            memory_usage: None,
             node: "".to_string(),
             os_image: "".to_string(),
             pods_failed: 1,

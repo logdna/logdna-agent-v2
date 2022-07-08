@@ -92,6 +92,13 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_cpu_0() {
+        let result = convert_cpu_usage_to_milli("0u");
+
+        assert_eq!(result.unwrap(), 0);
+    }
+
+    #[tokio::test]
     async fn test_cpu_unit_empty() {
         let result = convert_cpu_usage_to_milli("100");
 

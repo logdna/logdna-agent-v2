@@ -134,7 +134,6 @@ async fn _main() {
         .map(|os| (os.write_handle(), os.flush_handle()));
 
     let user_agent = config.http.template.user_agent.clone();
-    let metric_agent = config.http.template.user_agent.clone();
 
     let (retry, retry_stream) = retry(
         config.http.retry_dir,
@@ -159,7 +158,9 @@ async fn _main() {
     let mut executor = Executor::new();
 
     let mut k8s_claimed_lease: Option<String> = None;
-    let k8s_event_stream = match create_k8s_client_default_from_env(user_agent) {
+    let (k8s_event_stream, metric_stats_source) = match create_k8s_client_default_from_env(
+        user_agent.clone(),
+    ) {
         Ok(k8s_client) => {
             info!("K8s Config Startup Option: {:?}", &config.startup.option);
             check_startup_lease_status(
@@ -218,6 +219,30 @@ async fn _main() {
                 }
             };
 
+            // TODO Leader Election
+            let metric_stats_source = match config.log.log_metric_server_stats {
+                K8sTrackingConf::Never => None,
+                K8sTrackingConf::Always => {
+                    match create_k8s_client_default_from_env(user_agent.clone()) {
+                        Ok(client) => {
+                            let metric_stats_aggregator = MetricsStatsAggregator::new(client);
+                            Some(
+                                metric_stats_aggregator
+                                    .start_metrics_call_task()
+                                    .map(StrictOrLazyLineBuilder::Strict),
+                            )
+                        }
+                        Err(e) => {
+                            warn!(
+                                "Unable to initialize kubernetes client for the reporter: {}",
+                                e
+                            );
+                            None
+                        }
+                    }
+                }
+            };
+
             match k8s_claimed_lease.as_ref() {
                 Some(lease) => {
                     info!("Releasing lease: {:?}", lease);
@@ -231,36 +256,14 @@ async fn _main() {
                 None => {
                     info!("No K8s lease claimed during startup.");
                 }
-            }
+            };
 
-            k8s_event_stream
+            (k8s_event_stream, metric_stats_source)
         }
         Err(e) => {
             warn!("Unable to initialize kubernetes client: {}", e);
-            None
+            (None, None)
         }
-    };
-
-    // TODO Leader Election
-    let metric_stats_source = match config.log.log_metric_server_stats {
-        K8sTrackingConf::Never => None,
-        K8sTrackingConf::Always => match create_k8s_client_default_from_env(metric_agent) {
-            Ok(client) => {
-                let metric_stats_aggregator = MetricsStatsAggregator::new(client);
-                Some(
-                    metric_stats_aggregator
-                        .start_metrics_call_task()
-                        .map(StrictOrLazyLineBuilder::Strict),
-                )
-            }
-            Err(e) => {
-                warn!(
-                    "Unable to initialize kubernetes client for the reporter: {}",
-                    e
-                );
-                None
-            }
-        },
     };
 
     match LineRules::new(
