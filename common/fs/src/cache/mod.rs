@@ -96,7 +96,7 @@ impl TryFrom<&Path> for FsEntry {
                 target: match fs::read_link(path) {
                     Ok(p) => Some(p),
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
-                    Err(e) => Err(e)?,
+                    Err(e) => return Err(e),
                 },
             })
         } else if meta.file_type().is_dir() {

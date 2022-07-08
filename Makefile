@@ -11,8 +11,7 @@ RUST_IMAGE_BASE ?= bullseye
 RUST_IMAGE_TAG ?= rust-$(RUST_IMAGE_BASE)-1-stable
 RUST_IMAGE ?= $(RUST_IMAGE_REPO):$(RUST_IMAGE_TAG)-$(ARCH)
 
-# Temp suffix until cargo xwin is merged to build-images
-RUST_IMAGE_SUFFIX?=5b0f3a3c77754fc3
+RUST_IMAGE_SUFFIX?=
 ifneq ($(RUST_IMAGE_SUFFIX),)
 	RUST_IMAGE := $(RUST_IMAGE)-$(RUST_IMAGE_SUFFIX)
 endif

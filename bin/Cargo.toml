@@ -51,7 +51,7 @@ capctl = "0.2"
 
 # Dependency for linux integration tests
 [target.'cfg(target_os="linux")'.dependencies]
-systemd = { package = "systemd", version = "0.7", optional = true}
+systemd = { package = "systemd", version = "0.10", optional = true}
 
 [target.'cfg(unix)'.dependencies]
 tikv-jemallocator  = { version = "0.5", default-features = false, features = ["stats"] }
@@ -85,7 +85,6 @@ proptest = "1"
 tokio-test = "0.4"
 futures = "0.3"
 rand = "0.8"
-systemd = "0.10"
 nix = "0.24"
 wait-timeout = "0.2"
 hyper = { version = "0.14", features = ["http1"] }
@@ -98,7 +97,7 @@ serial_test = "0.8"
 
 [target.'cfg(target_os="linux")'.dev-dependencies]
 pnet = "0.28"
-systemd = { package = "systemd", version = "0.7" }
+systemd = { package = "systemd", version = "0.10" }
 
 [build-dependencies]
 auditable-build = { version = "0.1", optional = true }
