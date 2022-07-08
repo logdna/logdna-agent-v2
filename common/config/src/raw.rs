@@ -342,6 +342,8 @@ impl Merge for Config {
 
 impl Default for HttpConfig {
     fn default() -> Self {
+        let mut tmp = std::env::temp_dir();
+        tmp.push("logdna");
         HttpConfig {
             host: Some("logs.logdna.com".to_string()),
             endpoint: Some("/logs/agent".to_string()),
@@ -355,7 +357,7 @@ impl Default for HttpConfig {
                 .build()
                 .ok(),
             body_size: Some(2 * 1024 * 1024),
-            retry_dir: Some(PathBuf::from("/tmp/logdna")),
+            retry_dir: Some(tmp),
             retry_disk_limit: None,
             retry_base_delay_ms: None,
             retry_step_delay_ms: None,

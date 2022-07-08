@@ -282,7 +282,7 @@ async fn _main() {
     executor.init();
 
     // Use an internal env var to support running integration test w/o additional delays
-    let event_delay = std::env::var("LOGDNA_INTERNAL_FS_DELAY")
+    let event_delay = std::env::var(config::env_vars::INTERNAL_FS_DELAY)
         .map(|s| Duration::from_millis(s.parse().unwrap()))
         .unwrap_or(FS_EVENT_DELAY);
 
@@ -632,6 +632,7 @@ fn set_capabilities() -> Result<bool, capctl::Error> {
         cap_state.effective,
         cap_state.inheritable
     );
+
     // needs in image:
     // # setcap "cap_dac_read_search+p" /work/logdna-agent
     cap_state.effective.add(Cap::DAC_READ_SEARCH);

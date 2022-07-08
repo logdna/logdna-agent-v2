@@ -46,7 +46,8 @@ pub struct ArgumentOptions {
     /// When defined, it will try to parse in java properties format and in yaml format for
     /// backward compatibility.
     ///
-    /// By default will look in the paths: /etc/logdna/config.yaml and /etc/logdna.conf
+    /// By default will look in the paths: /etc/logdna/config.yaml and /etc/logdna.conf on
+    /// unix systems and %APPDATA% or C:\ProgramData on windows
     #[structopt(
         short,
         long,

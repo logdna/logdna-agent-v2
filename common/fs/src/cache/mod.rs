@@ -626,7 +626,7 @@ impl FileSystem {
     ) {
         let mut base_components: Vec<OsString> = into_components(entry.path());
         base_components.append(&mut components); // add components already discovered from previous recursive step
-        if self.is_initial_dir_target(&entry.path()) {
+        if self.is_initial_dir_target(entry.path()) {
             // only want paths that fall in our watch window
             paths.push(entry.path().to_path_buf());
         }
@@ -985,8 +985,7 @@ impl FileSystem {
                         .iter()
                         .filter_map(|path| {
                             let is_reachable = self.is_reachable(&mut cuts, path, _entries).ok();
-                            let ret = is_reachable.and_then(|b| (!b).then(|| path));
-                            ret
+                            is_reachable.and_then(|b| (!b).then(|| path))
                         })
                         .filter_map(|path| {
                             let ret = self
@@ -1185,7 +1184,7 @@ impl FileSystem {
             if let Ok(metadata) = std::fs::metadata(path) {
                 let is_dir = metadata.is_dir();
                 debug!("{:#?} passes master rules too, is_dir? {:#?}", path, is_dir);
-                return is_dir
+                return is_dir;
             }
             return false;
         }
