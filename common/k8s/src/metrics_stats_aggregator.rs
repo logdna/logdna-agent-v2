@@ -554,7 +554,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_build_cluster_stats_with_None() {
+    async fn test_build_cluster_stats_with_none() {
         let mut node_stats: Vec<NodeStats> = Vec::new();
 
         let mut stats1 = generate_node();
