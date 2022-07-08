@@ -16,14 +16,14 @@ time = "0.3"
 # journalctl
 combine = { package = "combine", version = "4" }
 bytes = { package = "bytes", version = "1" }
-tokio_util = { package = "tokio-util", version = "0.6", features = ["codec"] }
+tokio_util = { package = "tokio-util", version = "0.7", features = ["codec"] }
 
 # libjournald
-mio = { package = "mio" , version = "0.7", optional = true }
-systemd = { package = "systemd", version = "0.7", optional = true }
+mio = { package = "mio" , version = "0.8", optional = true }
+systemd = { package = "systemd", version = "0.10", optional = true }
 
 # tests
-serial_test = { version = "0.5", optional = true }
+serial_test = { version = "0.8", optional = true }
 
 [dev-dependencies]
 env_logger = "0.9"

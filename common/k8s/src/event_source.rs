@@ -15,7 +15,7 @@ use k8s_openapi::api::core::v1::{Event, ObjectReference, Pod};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::api::ListParams;
 use kube::{
-    runtime::{utils::try_flatten_touched, watcher},
+    runtime::{watcher, WatchStreamExt},
     Api, Client, Config,
 };
 
@@ -420,7 +420,8 @@ impl K8sEventStream {
         let params = ListParams::default();
 
         let latest_event_time_w = latest_event_time.clone();
-        try_flatten_touched(watcher(events, params))
+        watcher(events, params)
+            .touched_objects()
             .map_err(K8sEventStreamError::WatcherError)
             .filter({
                 move |event| {

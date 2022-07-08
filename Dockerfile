@@ -9,8 +9,10 @@ ARG BUILD_IMAGE
 # Image that runs natively on the BUILDPLATFORM to produce cross compile
 # artifacts
 
+# hadolint ignore=DL3029
 FROM --platform=${TARGETPLATFORM} registry.access.redhat.com/ubi${UBI_MAJOR_VERSION}/ubi-minimal:${UBI_VERSION} as target
 
+# hadolint ignore=DL3029
 FROM --platform=${BUILDPLATFORM} ${BUILD_IMAGE} as build
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -71,6 +73,7 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     sccache --show-stats
 
 # Use Red Hat Universal Base Image Minimal as the final base image
+# hadolint ignore=DL3029
 FROM --platform=${TARGETPLATFORM} registry.access.redhat.com/ubi${UBI_MAJOR_VERSION}/ubi-minimal:${UBI_VERSION}
 
 ARG REPO
