@@ -40,6 +40,12 @@ pub enum DbPath {
     Empty,
 }
 
+#[cfg(unix)]
+pub const DEFAULT_DB_PATH: &str = "/var/lib/logdna/";
+
+#[cfg(windows)]
+pub const DEFAULT_DB_PATH: &str = r"C:\ProgramData\logdna\";
+
 impl DbPath {
     pub fn from(db_path: Option<PathBuf>) -> Self {
         match db_path {
@@ -59,7 +65,7 @@ impl DbPath {
                     DbPath::Path(path)
                 }
             }
-            None => DbPath::Path(PathBuf::from("/var/lib/logdna/")),
+            None => DbPath::Path(PathBuf::from(DEFAULT_DB_PATH)),
         }
     }
 }

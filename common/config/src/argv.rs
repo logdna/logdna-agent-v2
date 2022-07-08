@@ -148,7 +148,7 @@ pub struct ArgumentOptions {
 
     /// The directory in which the agent will store its state database. Note that the agent must
     /// have write access to the directory and be a persistent volume.
-    /// Defaults to "/var/lib/logdna-agent/"
+    /// Defaults to "/var/lib/logdna-agent/" on unix systems and %APPDATA% or C:\ProgramData\logdna\ on windows
     #[structopt(long, env = env_vars::DB_PATH)]
     db_path: Option<String>,
 
