@@ -263,12 +263,6 @@ dependencies = [
 
 [[package]]
 name = "build-env"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e068f31938f954b695423ecaf756179597627d0828c0d3e48c0a722a8b23cf9e"
-
-[[package]]
-name = "build-env"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1522ac6ee801a11bf9ef3f80403f4ede6eb41291fac3dde3de09989679305f25"
@@ -713,6 +707,25 @@ checksum = "f82b0f4c27ad9f8bfd1f3208d882da2b09c301bc1c828fd3a00d0216d2fbbff6"
 dependencies = [
  "crc32fast",
  "miniz_oxide 0.5.3",
+]
+
+[[package]]
+name = "flexi_logger"
+version = "0.22.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ee9a6796ff68a1014f6665dac55341820f26e63ec706e58bfaee468cf0ac174f"
+dependencies = [
+ "ansi_term",
+ "atty",
+ "crossbeam-channel",
+ "crossbeam-queue",
+ "glob",
+ "lazy_static",
+ "log",
+ "regex",
+ "rustversion",
+ "thiserror",
+ "time 0.3.11",
 ]
 
 [[package]]
@@ -1274,7 +1287,7 @@ dependencies = [
  "metrics",
  "partial-io",
  "serial_test",
- "systemd 0.10.0",
+ "systemd",
  "time 0.3.11",
  "tokio",
  "tokio-test",
@@ -1505,22 +1518,11 @@ dependencies = [
 
 [[package]]
 name = "libsystemd-sys"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a40ce9d49a59af3c54dff74749f1ab14684fe485cdae0c92bd6d71ea8544d0c5"
-dependencies = [
- "build-env 0.2.0",
- "libc",
- "pkg-config",
-]
-
-[[package]]
-name = "libsystemd-sys"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed080163caa59cc29b34bce2209b737149a4bac148cd9a8b04e4c12822798119"
 dependencies = [
- "build-env 0.3.1",
+ "build-env",
  "libc",
  "pkg-config",
 ]
@@ -1564,6 +1566,7 @@ dependencies = [
  "config",
  "env_logger",
  "escargot",
+ "flexi_logger",
  "float-cmp",
  "fs",
  "futures",
@@ -1598,8 +1601,7 @@ dependencies = [
  "serde_yaml",
  "serial_test",
  "state",
- "systemd 0.10.0",
- "systemd 0.7.1",
+ "systemd",
  "tempfile",
  "tikv-jemallocator",
  "time 0.3.11",
@@ -1608,6 +1610,7 @@ dependencies = [
  "tokio-test",
  "types",
  "wait-timeout",
+ "winservice",
 ]
 
 [[package]]
@@ -2940,21 +2943,6 @@ dependencies = [
 
 [[package]]
 name = "systemd"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "954ca4554d4e42f566a6b6a159010c70dd328efcbdd0ee8b1d230cb4dba25af7"
-dependencies = [
- "cstr-argument",
- "foreign-types",
- "libc",
- "libsystemd-sys 0.7.1",
- "log",
- "memchr",
- "utf8-cstr",
-]
-
-[[package]]
-name = "systemd"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "afec0101d9ae8ab26aedf0840109df689938ea7e538aa03df4369f1854f11562"
@@ -2962,7 +2950,7 @@ dependencies = [
  "cstr-argument",
  "foreign-types",
  "libc",
- "libsystemd-sys 0.9.3",
+ "libsystemd-sys",
  "log",
  "memchr",
  "utf8-cstr",
@@ -3084,9 +3072,17 @@ version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72c91f41dcb2f096c05f0873d667dceec1087ce5bcf984ec8ffb19acddbb3217"
 dependencies = [
+ "itoa",
  "libc",
  "num_threads",
+ "time-macros",
 ]
+
+[[package]]
+name = "time-macros"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42657b1a6f4d817cda8e7a0ace261fe0cc946cf3a80314390b22cc61ae080792"
 
 [[package]]
 name = "tinyvec"
@@ -3609,6 +3605,11 @@ name = "windows_x86_64_msvc"
 version = "0.36.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c811ca4a8c853ef420abd8592ba53ddbbac90410fab6903b3e79972a631f7680"
+
+[[package]]
+name = "winservice"
+version = "0.1.1"
+source = "git+https://github.com/dkhokhlov/winservice.git#e9a82825fce1a6c3fb5a060381d8e66d8b2e1306"
 
 [[package]]
 name = "ws2_32-sys"

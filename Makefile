@@ -1,6 +1,7 @@
 REPO := logdna-agent-v2
 
 SHELLFLAGS := -ic
+.DEFAULT_GOAL := test
 
 # The target architecture the agent is to be compiled for
 export ARCH ?= x86_64
