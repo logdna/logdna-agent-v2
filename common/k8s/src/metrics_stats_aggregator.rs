@@ -148,10 +148,12 @@ fn build_node_metric_map(
 fn build_cluster_stats(node_stats: &Vec<NodeStats>) -> ClusterStats {
     macro_rules! aggregate_stat {
         ($acc_name:ident, $var_name:ident, $field_name:ident) => {
-            $acc_name.$field_name = $acc_name.$field_name.map_or($var_name.$field_name, |current| {
-                $var_name.$field_name.map(|new| current + new)
-            });
-        }
+            $acc_name.$field_name = $acc_name
+                .$field_name
+                .map_or($var_name.$field_name, |current| {
+                    $var_name.$field_name.map(|new| current + new)
+                });
+        };
     }
 
     let mut cluster_stats = ClusterStats::new();
@@ -567,7 +569,6 @@ mod tests {
         assert_eq!(result.cpu_usage, None);
         assert_eq!(result.memory_allocatable, None);
     }
-
 
     #[tokio::test]
     async fn test_process_pods_does_not_panic() {
