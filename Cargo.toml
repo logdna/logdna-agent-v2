@@ -9,8 +9,8 @@ members = [
     "common/middleware",
     "common/journald",
     "common/state",
-    "bench",
-    "utils/metrics-recorder"
+    "common/notify_stream",
+    "utils/metrics-recorder",
 ]
 
 [profile.release]

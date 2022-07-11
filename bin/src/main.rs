@@ -12,9 +12,10 @@ use http::batch::TimedRequestBatcherStreamExt;
 use http::client::{Client, ClientError, SendStatus};
 use http::retry::{retry, RetryItem};
 
-#[cfg(feature = "libjournald")]
+#[cfg(all(feature = "libjournald", target_os = "linux"))]
 use journald::libjournald::source::create_source;
 
+#[cfg(target_os = "linux")]
 use journald::journalctl::create_journalctl_source;
 
 use k8s::event_source::K8sEventStream;
@@ -29,7 +30,6 @@ use middleware::line_rules::LineRules;
 use middleware::meta_rules::{MetaRules, MetaRulesConfig};
 use middleware::Executor;
 
-use config::env_vars;
 use pin_utils::pin_mut;
 use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
@@ -38,9 +38,14 @@ use tokio::signal::*;
 use tokio::sync::Mutex;
 use tokio::time::Duration;
 
+#[cfg(feature = "dep_audit")]
 mod dep_audit;
 mod stream_adapter;
 
+/// Debounce filesystem event
+static FS_EVENT_DELAY: Duration = Duration::from_millis(10);
+
+#[cfg(unix)]
 #[global_allocator]
 static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
@@ -68,7 +73,7 @@ fn main() {
         // - docker
         if (std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
             || std::path::Path::new("/.dockerenv").exists())
-            && std::env::var_os(env_vars::NO_CAP).is_none()
+            && std::env::var_os(config::env_vars::NO_CAP).is_none()
         {
             match set_capabilities() {
                 Ok(r) if r => debug!("Using Capabilities to bypass filesystem permissions"),
@@ -94,6 +99,7 @@ fn main() {
 async fn _main() {
     // Actually use the data to work around a bug in rustc:
     // https://github.com/rust-lang/rust/issues/47384
+    #[cfg(feature = "dep_audit")]
     dep_audit::get_auditable_dependency_list()
         .map_or_else(|e| trace!("{}", e), |d| trace!("{}", d));
 
@@ -104,6 +110,20 @@ async fn _main() {
             std::process::exit(1);
         }
     };
+
+    tokio::spawn(async {
+        Metrics::log_periodically().await;
+    });
+
+    if let Some(port) = config.log.metrics_port {
+        info!("Enabling prometheus endpoint with agent metrics");
+        tokio::spawn(async move {
+            // Should panic when server exits
+            http::metrics_endpoint::serve(&port)
+                .await
+                .expect("metrics server error");
+        });
+    }
 
     let mut _agent_state = None;
     let mut offset_state = None;
@@ -275,7 +295,12 @@ async fn _main() {
 
     executor.init();
 
-    #[cfg(feature = "libjournald")]
+    // Use an internal env var to support running integration test w/o additional delays
+    let event_delay = std::env::var(config::env_vars::INTERNAL_FS_DELAY)
+        .map(|s| Duration::from_millis(s.parse().unwrap()))
+        .unwrap_or(FS_EVENT_DELAY);
+
+    #[cfg(all(feature = "libjournald", target_os = "linux"))]
     let (journalctl_source, journald_source) = if config.journald.paths.is_empty() {
         let journalctl_source = create_journalctl_source()
             .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
@@ -291,7 +316,7 @@ async fn _main() {
         )
     };
 
-    #[cfg(not(feature = "libjournald"))]
+    #[cfg(all(not(feature = "libjournald"), target_os = "linux"))]
     let journalctl_source = create_journalctl_source()
         .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
         .map_err(|e| warn!("Error initializing journalctl source: {}", e))
@@ -310,9 +335,10 @@ async fn _main() {
 
     let fs_source = tail::RestartingTailer::new(
         ds_source_params,
+        // TODO check for any conditions that require the tailer to restart
         |item| match item {
-            Err(fs::cache::Error::WatchOverflow) => {
-                warn!("overflowed kernel queue, restarting stream");
+            Err(fs::cache::Error::Rescan) => {
+                warn!("rescanning stream");
                 true
             }
             _ => false,
@@ -322,7 +348,7 @@ async fn _main() {
             let rules = params.1.clone();
             let lookback = params.2.clone();
             let offsets = params.3.clone();
-            let tailer = tail::Tailer::new(watched_dirs, rules, lookback, offsets);
+            let tailer = tail::Tailer::new(watched_dirs, rules, lookback, offsets, event_delay);
             async move { tail::process(tailer).expect("except Failed to create FS Tailer") }
         },
     )
@@ -357,15 +383,18 @@ async fn _main() {
 
     pin_mut!(fs_source);
     pin_mut!(k8s_event_source);
+
+    #[cfg(target_os = "linux")]
     pin_mut!(journalctl_source);
 
-    #[cfg(feature = "libjournald")]
+    #[cfg(all(feature = "libjournald", target_os = "linux"))]
     pin_mut!(journald_source);
 
     let mut k8s_event_source: Option<std::pin::Pin<&mut _>> = k8s_event_source.as_pin_mut();
+    #[cfg(target_os = "linux")]
     let mut journalctl_source: Option<std::pin::Pin<&mut _>> = journalctl_source.as_pin_mut();
 
-    #[cfg(feature = "libjournald")]
+    #[cfg(all(feature = "libjournald", target_os = "linux"))]
     let mut journald_source: Option<std::pin::Pin<&mut _>> = journald_source.as_pin_mut();
 
     let mut sources: futures::stream::SelectAll<&mut (dyn Stream<Item = _> + Unpin)> =
@@ -374,7 +403,7 @@ async fn _main() {
     info!("Enabling filesystem");
     sources.push(&mut fs_source);
 
-    #[cfg(feature = "libjournald")]
+    #[cfg(all(feature = "libjournald", target_os = "linux"))]
     if let Some(s) = journald_source.as_mut() {
         info!("Enabling journald event source");
         sources.push(s)
@@ -382,7 +411,7 @@ async fn _main() {
         info!("Enabling journalctl event source");
         sources.push(s)
     }
-    #[cfg(not(feature = "libjournald"))]
+    #[cfg(all(not(feature = "libjournald"), target_os = "linux"))]
     if let Some(s) = journalctl_source.as_mut() {
         info!("Enabling journalctl event source");
         sources.push(s)
@@ -526,20 +555,6 @@ async fn _main() {
             }
         });
 
-    tokio::spawn(async {
-        Metrics::log_periodically().await;
-    });
-
-    if let Some(port) = config.log.metrics_port {
-        info!("Enabling prometheus endpoint with agent metrics");
-        tokio::spawn(async move {
-            // Should panic when server exits
-            http::metrics_endpoint::serve(&port)
-                .await
-                .expect("metrics server error");
-        });
-    }
-
     // Concurrently run the line streams and listen for the `shutdown` signal
     tokio::select! {
         _ = lines_driver => {}
@@ -631,6 +646,7 @@ fn set_capabilities() -> Result<bool, capctl::Error> {
         cap_state.effective,
         cap_state.inheritable
     );
+
     // needs in image:
     // # setcap "cap_dac_read_search+p" /work/logdna-agent
     cap_state.effective.add(Cap::DAC_READ_SEARCH);

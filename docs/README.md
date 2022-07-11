@@ -223,7 +223,7 @@ for example:
 (?i:my_case_insensitive_regex)
 ```
 
-1. We support [this flavor of globber syntax](https://github.com/CJP10/globber).
+1. We support [this flavor of globber syntax](https://docs.rs/glob/*/glob/).
 
 As listed above, by default the agent will only ingest files with a `.log` extention. Some other common globing patterns to include in the `LOGDNA_INCLUSION_RULES` could be: 
 

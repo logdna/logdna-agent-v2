@@ -19,7 +19,6 @@ bytes = { package = "bytes", version = "1" }
 tokio_util = { package = "tokio-util", version = "0.7", features = ["codec"] }
 
 # libjournald
-mio = { package = "mio" , version = "0.8", optional = true }
 systemd = { package = "systemd", version = "0.10", optional = true }
 
 # tests
@@ -32,5 +31,5 @@ tokio-test = "0.4"
 
 [features]
 default = []
-libjournald = ["systemd", "mio"]
+libjournald = ["systemd"]
 journald_tests = ["libjournald", "serial_test"]

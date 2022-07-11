@@ -114,10 +114,15 @@ fn check_fs_files(samples: &[Sample]) {
 
     let first_fs_file = *fs_files.get(0).unwrap();
     let last_fs_file = *fs_files.iter().last().unwrap();
-    assert_eq!(first_fs_file, last_fs_file);
+    assert!((first_fs_file as i64 - last_fs_file as i64).abs() <= 1);
     assert!(
-        fs_files.iter().any(|v| *v > first_fs_file),
+        fs_files.iter().any(|v| *v >= first_fs_file),
         "at least one fs_files gauge should be above starting value"
+    );
+    let fs_max = fs_files.iter().fold(0f64, |a, x| a + x);
+    assert!(
+        fs_files.iter().any(|v| *v < fs_max),
+        "at least one fs_files gauge should be lower than max"
     );
 }
 
@@ -231,6 +236,7 @@ fn check_ingest_req_duration(samples: &[Sample]) {
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_metrics_endpoint() {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let included_file = dir.join("file1.log");
     let metrics_port = 9881;
@@ -258,9 +264,10 @@ async fn test_metrics_endpoint() {
 
         tokio::fs::remove_file(&included_file).await.unwrap();
         common::wait_for_event("Delete Event", &mut stderr_reader);
+        common::consume_output(stderr_reader.into_inner());
 
         // Give the agent time to register the delete event before terminating
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
         shutdown_ingest();
         recorder.stop().await
     });
