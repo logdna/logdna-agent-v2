@@ -235,8 +235,7 @@ impl Reader {
             .reader
             .timestamp()
             .ok()
-            .map(|timestamp| now.duration_since(timestamp).ok())
-            .flatten()
+            .and_then(|timestamp| now.duration_since(timestamp).ok())
         {
             Some(duration) => {
                 // Reject any records with a timestamp older than 30 seconds

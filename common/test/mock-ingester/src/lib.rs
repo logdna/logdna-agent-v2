@@ -41,7 +41,7 @@ pub type ReqFn = Box<
         + Sync,
 >;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct FileInfo {
     pub tags: Option<String>,
     pub values: Vec<String>,
@@ -158,7 +158,7 @@ impl Service<Request<Body>> for Svc {
             debug!("Body: {:#?}", &ingest_body);
 
             if let Some(fut) = process_fn(&ingest_body) {
-                let _ = fut.await;
+                fut.await;
             };
 
             let mut files = files.lock().await;

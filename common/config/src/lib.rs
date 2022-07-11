@@ -41,6 +41,12 @@ pub enum DbPath {
     Empty,
 }
 
+#[cfg(unix)]
+pub const DEFAULT_DB_PATH: &str = "/var/lib/logdna/";
+
+#[cfg(windows)]
+pub const DEFAULT_DB_PATH: &str = r"C:\ProgramData\logdna\";
+
 impl DbPath {
     pub fn from(db_path: Option<PathBuf>) -> Self {
         match db_path {
@@ -60,7 +66,7 @@ impl DbPath {
                     DbPath::Path(path)
                 }
             }
-            None => DbPath::Path(PathBuf::from("/var/lib/logdna/")),
+            None => DbPath::Path(PathBuf::from(DEFAULT_DB_PATH)),
         }
     }
 }
@@ -424,9 +430,9 @@ fn print_settings(yaml: &str, config_path: &Path) {
 
     let config_path_str = config_path.to_string_lossy();
     let is_default_path =
-        config_path_str == argv::DEFAULT_YAML_FILE || config_path_str == argv::DEFAULT_CONF_FILE;
+        config_path_str == argv::DEFAULT_YAML_FILE || config_path == argv::default_conf_file();
     let does_default_exist =
-        Path::new(argv::DEFAULT_YAML_FILE).exists() || Path::new(argv::DEFAULT_CONF_FILE).exists();
+        Path::new(argv::DEFAULT_YAML_FILE).exists() || argv::default_conf_file().exists();
 
     if is_default_path && does_default_exist {
         print!("from default conf, ");
@@ -475,6 +481,11 @@ mod tests {
     pub static PKG_NAME: &str = "test";
     #[no_mangle]
     pub static PKG_VERSION: &str = "test";
+
+    #[cfg(unix)]
+    static DEFAULT_LOG_DIR: &str = "/var/log/";
+    #[cfg(windows)]
+    static DEFAULT_LOG_DIR: &str = r"C:\ProgramData\logs";
 
     use std::env;
     use std::fs::OpenOptions;
@@ -545,11 +556,12 @@ mod tests {
                 .iter()
                 .map(|p| p.to_str().unwrap())
                 .collect::<Vec<_>>(),
-            vec!["/var/log/"]
+            vec![DEFAULT_LOG_DIR]
         );
         assert_eq!(config.startup, K8sLeaseConf::Off);
     }
 
+    #[cfg(unix)]
     #[test]
     fn test_default_rules() {
         let config = get_default_config();
