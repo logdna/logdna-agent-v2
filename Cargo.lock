@@ -263,12 +263,6 @@ dependencies = [
 
 [[package]]
 name = "build-env"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e068f31938f954b695423ecaf756179597627d0828c0d3e48c0a722a8b23cf9e"
-
-[[package]]
-name = "build-env"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1522ac6ee801a11bf9ef3f80403f4ede6eb41291fac3dde3de09989679305f25"
@@ -1282,7 +1276,7 @@ dependencies = [
  "metrics",
  "partial-io",
  "serial_test",
- "systemd 0.10.0",
+ "systemd",
  "time 0.3.11",
  "tokio",
  "tokio-test",
@@ -1513,22 +1507,11 @@ dependencies = [
 
 [[package]]
 name = "libsystemd-sys"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a40ce9d49a59af3c54dff74749f1ab14684fe485cdae0c92bd6d71ea8544d0c5"
-dependencies = [
- "build-env 0.2.0",
- "libc",
- "pkg-config",
-]
-
-[[package]]
-name = "libsystemd-sys"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed080163caa59cc29b34bce2209b737149a4bac148cd9a8b04e4c12822798119"
 dependencies = [
- "build-env 0.3.1",
+ "build-env",
  "libc",
  "pkg-config",
 ]
@@ -1606,8 +1589,7 @@ dependencies = [
  "serde_yaml",
  "serial_test",
  "state",
- "systemd 0.10.0",
- "systemd 0.7.1",
+ "systemd",
  "tempfile",
  "tikv-jemallocator",
  "time 0.3.11",
@@ -2967,21 +2949,6 @@ dependencies = [
 
 [[package]]
 name = "systemd"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "954ca4554d4e42f566a6b6a159010c70dd328efcbdd0ee8b1d230cb4dba25af7"
-dependencies = [
- "cstr-argument",
- "foreign-types",
- "libc",
- "libsystemd-sys 0.7.1",
- "log",
- "memchr",
- "utf8-cstr",
-]
-
-[[package]]
-name = "systemd"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "afec0101d9ae8ab26aedf0840109df689938ea7e538aa03df4369f1854f11562"
@@ -2989,7 +2956,7 @@ dependencies = [
  "cstr-argument",
  "foreign-types",
  "libc",
- "libsystemd-sys 0.9.3",
+ "libsystemd-sys",
  "log",
  "memchr",
  "utf8-cstr",
