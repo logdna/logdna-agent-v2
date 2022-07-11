@@ -3,7 +3,7 @@ pub fn convert_cpu_usage_to_milli(cpu: &str) -> Option<u32> {
         return None;
     }
 
-    let value: String = cpu.chars().filter(|c| c.is_digit(10)).collect();
+    let value: String = cpu.chars().filter(|c| c.is_ascii_digit()).collect();
     let unit: String = cpu.chars().filter(|c| c.is_alphabetic()).collect();
 
     if value.is_empty() {
@@ -38,7 +38,7 @@ pub fn convert_memory_usage_to_bytes(memory: &str) -> Option<u64> {
         return None;
     }
 
-    let value: String = memory.chars().filter(|c| c.is_digit(10)).collect();
+    let value: String = memory.chars().filter(|c| c.is_ascii_digit()).collect();
     let mut unit: String = memory.chars().filter(|c| c.is_alphabetic()).collect();
 
     unit = unit.to_lowercase();
