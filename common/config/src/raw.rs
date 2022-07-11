@@ -203,9 +203,10 @@ impl Config {
     pub fn parse<P: AsRef<Path>>(path: P) -> Result<Self, Vec<ConfigError>> {
         let path = path.as_ref();
         let is_default_path = path.to_string_lossy() == argv::DEFAULT_YAML_FILE;
+        let default_conf_file = argv::default_conf_file();
         let conf_files = if is_default_path {
             vec![
-                Path::new(argv::DEFAULT_CONF_FILE),
+                default_conf_file.as_ref(),
                 Path::new(argv::DEFAULT_YAML_FILE),
             ]
         } else {
@@ -342,6 +343,8 @@ impl Merge for Config {
 
 impl Default for HttpConfig {
     fn default() -> Self {
+        let mut tmp = std::env::temp_dir();
+        tmp.push("logdna");
         HttpConfig {
             host: Some("logs.logdna.com".to_string()),
             endpoint: Some("/logs/agent".to_string()),
@@ -355,7 +358,7 @@ impl Default for HttpConfig {
                 .build()
                 .ok(),
             body_size: Some(2 * 1024 * 1024),
-            retry_dir: Some(PathBuf::from("/tmp/logdna")),
+            retry_dir: Some(tmp),
             retry_disk_limit: None,
             retry_base_delay_ms: None,
             retry_step_delay_ms: None,
@@ -387,16 +390,29 @@ impl Merge for HttpConfig {
     }
 }
 
+#[cfg(unix)]
+fn default_log_dirs() -> Vec<PathBuf> {
+    vec!["/var/log/".into()]
+}
+
+#[cfg(windows)]
+fn default_log_dirs() -> Vec<PathBuf> {
+    let default_str = std::env::var("ALLUSERSPROFILE").unwrap_or(r"C:\ProgramData".into());
+    let default_os_str: std::ffi::OsString = default_str.into();
+    vec![Path::new(&default_os_str).join("logs")]
+}
+
 impl Default for LogConfig {
     fn default() -> Self {
         LogConfig {
-            dirs: vec!["/var/log/".into()],
+            dirs: default_log_dirs(),
             db_path: None,
             metrics_port: None,
             include: Some(Rules {
                 glob: vec!["*.log".parse().unwrap()],
                 regex: Vec::new(),
             }),
+            #[cfg(unix)]
             exclude: Some(Rules {
                 glob: vec![
                     "/var/log/wtmp".parse().unwrap(),
@@ -414,6 +430,8 @@ impl Default for LogConfig {
                 ],
                 regex: Vec::new(),
             }),
+            #[cfg(windows)]
+            exclude: None,
             line_exclusion_regex: None,
             line_inclusion_regex: None,
             line_redact_regex: None,
@@ -500,15 +518,16 @@ exclude = /path/to/exclude/**",
         )?;
         let config = Config::parse(&file_name).unwrap();
         // Defaults to /var/log
-        assert_eq!(config.log.dirs, vec![PathBuf::from("/var/log")]);
+        assert_eq!(config.log.dirs, default_log_dirs());
         assert_eq!(config.http.ingestion_key, some_string!("123"));
         assert_eq!(
             config.http.params.unwrap().tags,
             Some(Tags::from(vec_strings!["production", "2ndtag"]))
         );
+
         let expected_exclude = LogConfig::default()
             .exclude
-            .unwrap()
+            .unwrap_or_default()
             .glob
             .iter()
             .map(|x| x.to_string())
@@ -543,7 +562,7 @@ exclude = /path/to/exclude/**",
         fs::write(&file_name, "key = 890")?;
         let config = Config::parse(&file_name).unwrap();
         // Defaults to /var/log
-        assert_eq!(config.log.dirs, vec![PathBuf::from("/var/log")]);
+        assert_eq!(config.log.dirs, default_log_dirs());
         assert_eq!(config.http.ingestion_key, some_string!("890"));
         Ok(())
     }
@@ -578,7 +597,7 @@ hostname = jorge's-laptop
         assert_eq!(params.hostname, "jorge's-laptop");
         let expected_exclude = LogConfig::default()
             .exclude
-            .unwrap()
+            .unwrap_or_default()
             .glob
             .iter()
             .map(|x| x.to_string())
@@ -612,7 +631,7 @@ key = abcdef01
         )?;
         let config = Config::parse(&file_name).unwrap();
         // Defaults to /var/log
-        assert_eq!(config.log.dirs, vec![PathBuf::from("/var/log")]);
+        assert_eq!(config.log.dirs, default_log_dirs());
         assert_eq!(config.http.ingestion_key, some_string!("abcdef01"));
         assert_eq!(config.http.params.unwrap().tags, None);
         Ok(())

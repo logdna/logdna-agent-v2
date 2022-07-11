@@ -11,12 +11,12 @@ http = { package = "http", path = "../http" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.8"
-globber = "0.1"
+glob = "0.3"
 lazy_static = "1.0"
 async-compression = "0.3"
 thiserror = "1.0"
 log = "0.4"
-sysinfo = "0.15"
+sysinfo = "0.24"
 structopt = "0.3"
 java-properties = "1"
 humanize-rs = "0.1"

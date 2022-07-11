@@ -6,9 +6,11 @@ edition = "2018"
 
 [dependencies]
 lazy_static = "1.0"
-tikv-jemalloc-ctl = "0.4.1"
 json = "0.12"
 log = "0.4"
-prometheus = { version = "0.12", features = ["process"] }
+prometheus = { version = "0.13", features = ["process"] }
 tokio = { version= "1", features= ["time"] }
 num = "0.4"
+
+[target.'cfg(unix)'.dependencies]
+tikv-jemalloc-ctl = "0.5"

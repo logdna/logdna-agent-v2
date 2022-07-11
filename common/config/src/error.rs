@@ -10,7 +10,7 @@ pub enum ConfigError {
     SerdeProperties(java_properties::PropertiesError),
     PropertyInvalid(String),
     Template(http::types::error::TemplateError),
-    Glob(globber::Error),
+    Glob(glob::PatternError),
     Regex(fs::rule::RuleError),
     NotADirectory(fs::cache::DirPathBufError),
     Lookback(fs::lookback::ParseLookbackError),
@@ -59,8 +59,8 @@ impl From<http::types::error::TemplateError> for ConfigError {
     }
 }
 
-impl From<globber::Error> for ConfigError {
-    fn from(e: globber::Error) -> Self {
+impl From<glob::PatternError> for ConfigError {
+    fn from(e: glob::PatternError) -> Self {
         ConfigError::Glob(e)
     }
 }

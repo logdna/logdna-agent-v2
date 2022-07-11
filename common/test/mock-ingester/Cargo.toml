@@ -15,16 +15,16 @@ hyper = { version = "0.14", features = ["http1", "server", "stream", "tcp", "htt
 bytes = "*"
 futures = "0.3"
 hyper-rustls = { version = "0.23", features = ["http2"] }
-rcgen = "0.8"
+rcgen = "0.9"
 rustls = "0.20"
-rustls-pemfile = "0.2"
+rustls-pemfile = "1"
 tokio = { version = "1", features = ["full"] }
-tokio-util = { version = "0.6", features = ["io"] }
+tokio-util = { version = "0.7", features = ["io"] }
 tokio-stream = { version = "0.1", features = ["net"] }
 tokio-rustls = "0.23"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-env_logger = "0.8"
+env_logger = "0.9"
 log = "0.4"
 url = "2.2.0"
 thiserror = "1"

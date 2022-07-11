@@ -5,6 +5,7 @@ use log::{info, trace, warn};
 use metrics::Metrics;
 use std::{
     mem::drop,
+    os::unix::ffi::OsStrExt,
     path::PathBuf,
     pin::Pin,
     sync::{
@@ -16,7 +17,9 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 
-use systemd::journal::{Journal, JournalFiles, JournalRecord, JournalSeek};
+use systemd::journal::{
+    Journal, JournalRecord, JournalSeek, OpenDirectoryOptions, OpenFilesOptions,
+};
 
 const KEY_MESSAGE: &str = "MESSAGE";
 const KEY_SYSTEMD_UNIT: &str = "_SYSTEMD_UNIT";
@@ -194,11 +197,17 @@ struct Reader {
 impl Reader {
     fn new(path: Path) -> Self {
         let mut reader = match path {
-            Path::Directory(path) => Journal::open_directory(&path, JournalFiles::All, false)
+            Path::Directory(path) => OpenDirectoryOptions::default()
+                .open_directory(path.as_os_str().as_bytes())
                 .expect("Could not open journald reader for directory"),
             Path::Files(paths) => {
-                let paths: Vec<&std::path::Path> = paths.iter().map(PathBuf::as_path).collect();
-                Journal::open_files(&paths).expect("Could not open journald reader for paths")
+                let paths: Vec<&[u8]> = paths
+                    .iter()
+                    .map(|path| path.as_os_str().as_bytes())
+                    .collect();
+                OpenFilesOptions::default()
+                    .open_files(paths)
+                    .expect("Could not open journald reader for paths")
             }
         };
         reader
@@ -226,8 +235,7 @@ impl Reader {
             .reader
             .timestamp()
             .ok()
-            .map(|timestamp| now.duration_since(timestamp).ok())
-            .flatten()
+            .and_then(|timestamp| now.duration_since(timestamp).ok())
         {
             Some(duration) => {
                 // Reject any records with a timestamp older than 30 seconds

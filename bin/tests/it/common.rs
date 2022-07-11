@@ -3,13 +3,11 @@ use core::time;
 use rand::seq::IteratorRandom;
 
 use std::collections::HashMap;
-use std::fs;
 use std::fs::OpenOptions;
 use std::io::{BufRead, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
-use std::sync::mpsc::TryRecvError;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
@@ -32,53 +30,6 @@ static AGENT_COMMANDS: Lazy<Mutex<CargoCommandByFeatureMap>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 pub static LINE: &str = "Nov 30 09:14:47 sample-host-name sampleprocess[1204]: Hello from process";
-
-pub struct FileContext {
-    pub file_path: PathBuf,
-    pub stop_handle: Box<dyn FnOnce() -> i32>,
-}
-
-pub fn start_append_to_file(dir: &Path, delay_ms: u64) -> FileContext {
-    let file_path = dir.join("appended.log");
-    let inner_file_path = file_path.clone();
-    let (tx, rx) = mpsc::channel();
-
-    let thread = thread::spawn(move || {
-        let mut file = OpenOptions::new()
-            .append(true)
-            .create(true)
-            .open(&inner_file_path)?;
-
-        let delay = time::Duration::from_millis(delay_ms);
-
-        let mut lines_written = 0;
-        while let Err(TryRecvError::Empty) = rx.try_recv() {
-            if let Err(e) = writeln!(file, "{}", LINE) {
-                eprintln!("Couldn't write to file: {}", e);
-                return Err(e);
-            }
-            lines_written += 1;
-            if lines_written % 10 == 0 {
-                file.sync_all()?;
-                thread::sleep(delay);
-            }
-        }
-
-        file.flush()?;
-        Ok(lines_written)
-    });
-
-    let stop_handle = move || {
-        tx.send("STOP").unwrap();
-        // Return the total lines
-        thread.join().unwrap().ok().unwrap()
-    };
-
-    FileContext {
-        file_path,
-        stop_handle: Box::new(stop_handle),
-    }
-}
 
 pub fn append_to_file(file_path: &Path, lines: i32, sync_every: i32) -> Result<(), std::io::Error> {
     let mut file = OpenOptions::new()
@@ -158,6 +109,7 @@ impl<'a> AgentSettings<'a> {
             host: Some(server_address),
             use_ssl: false,
             ingester_key: Some("mock_key"),
+            exclusion: Some("/var/log/**"),
             ..Default::default()
         }
     }
@@ -288,23 +240,37 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
 /// Blocks until a certain event referencing a file name is logged by the agent
 pub fn wait_for_file_event(event: &str, file_path: &Path, reader: &mut dyn BufRead) -> String {
     let file_name = &file_path.file_name().unwrap().to_str().unwrap();
-    wait_for_line(reader, event, |line| {
-        line.contains(event) && line.contains(file_name)
-    })
+    wait_for_line(
+        reader,
+        event,
+        |line| line.contains(event) && line.contains(file_name),
+        None,
+    )
 }
 
 /// Blocks until a certain event is logged by the agent
 pub fn wait_for_event(event: &str, reader: &mut dyn BufRead) -> String {
-    wait_for_line(reader, event, |line| line.contains(event))
+    wait_for_line(reader, event, |line| line.contains(event), None)
 }
 
-fn wait_for_line<F>(reader: &mut dyn BufRead, event_info: &str, condition: F) -> String
+fn wait_for_line<F>(
+    reader: &mut dyn BufRead,
+    event_info: &str,
+    condition: F,
+    delay: Option<std::time::Duration>,
+) -> String
 where
     F: Fn(&str) -> bool,
 {
     let mut line = String::new();
     let mut lines_buffer = String::new();
+    let instant = std::time::Instant::now();
+
     for _safeguard in 0..100_000 {
+        assert!(
+            instant.elapsed() < delay.unwrap_or(std::time::Duration::from_secs(20)),
+            "Timed out waiting for condition"
+        );
         reader.read_line(&mut line).unwrap();
         if line.is_empty() {
             continue;
@@ -330,12 +296,6 @@ pub fn assert_agent_running(agent_handle: &mut Child) {
     }
 }
 
-pub fn create_dirs<P: AsRef<Path>>(dirs: &[P]) {
-    for dir in dirs {
-        fs::create_dir(dir).expect("Unable to create dir");
-    }
-}
-
 pub fn open_files_include(id: u32, file: &Path) -> Option<String> {
     let child = Command::new("lsof")
         .args(&["-l", "-p", &id.to_string()])
@@ -348,24 +308,12 @@ pub fn open_files_include(id: u32, file: &Path) -> Option<String> {
     assert!(output.status.success());
 
     let output_str = std::str::from_utf8(&output.stdout).unwrap();
+    debug!("lsof output:\n{:#?}", output_str);
     if output_str.contains(file.to_str().unwrap()) {
         Some(output_str.to_string())
     } else {
         None
     }
-}
-
-pub fn is_file_open(file: &Path) -> bool {
-    let child = Command::new("lsof")
-        .args(&[file.to_str().unwrap()])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .expect("failed to execute child");
-
-    let output = child.wait_with_output().expect("failed to wait on child");
-    // lsof will success when file is found
-    output.status.success()
 }
 
 pub fn get_available_port() -> Option<u16> {
@@ -453,7 +401,11 @@ pub fn consume_output(stderr_handle: std::process::ChildStderr) {
     let stderr_reader = std::io::BufReader::new(stderr_handle);
     std::thread::spawn(move || {
         for line in stderr_reader.lines() {
-            debug!("{:?}", line);
+            let line = line.unwrap();
+            if line.is_empty() {
+                continue;
+            }
+            debug!("{}", line.trim());
         }
     });
 }

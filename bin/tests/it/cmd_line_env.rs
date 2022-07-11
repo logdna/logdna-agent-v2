@@ -18,10 +18,13 @@ use tempfile::tempdir;
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_command_line_arguments_help() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+
     let mut cmd = get_bin_command();
     let output: Output = cmd.env_clear().arg("--help").unwrap();
     assert!(output.status.success());
     let stdout = from_utf8(&output.stdout).unwrap();
+    log::debug!("agent stdout:\n{:?}", stdout);
 
     vec![
         // Check the version is printed in the help
@@ -35,7 +38,7 @@ fn test_command_line_arguments_help() {
         "-k, --key",
         "The ingestion key associated with your LogDNA account",
         "-d, --logdir",
-        "Adds log directories to scan, in addition to the default (/var/log)",
+        "Adds log directories to scan, in addition to the default",
         "-t, --tags",
         "List of tags metadata to attach to lines forwarded from this agent",
         // Verify long only options
@@ -67,13 +70,14 @@ fn test_command_line_arguments_help() {
     ]
     .iter()
     .for_each(|m| {
-        assert!(contains(*m).eval(stdout));
+        assert!(contains(*m).eval(stdout), "Not found: {}", *m);
     });
 }
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_version_is_included() {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let mut cmd = get_bin_command();
     let output = cmd.env_clear().arg("--version").unwrap();
     assert!(output.status.success());
@@ -88,6 +92,7 @@ fn test_version_is_included() {
 #[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_list_config_from_conf() -> io::Result<()> {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let config_dir = tempdir()?;
     let config_file_path = config_dir.path().join("sample.conf");
     let mut file = File::create(&config_file_path)?;
@@ -123,6 +128,7 @@ fn test_list_config_from_conf() -> io::Result<()> {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_legacy_and_new_confs_merge() -> io::Result<()> {
+    let _ = env_logger::Builder::from_default_env().try_init();
     // Setting up an automatic finalizer for the test case that deletes the conf
     // files created in this test from their global directories. If they remain,
     // other integration tests may fail.
@@ -179,6 +185,7 @@ startup: {{}}
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_ibm_legacy_host_env_var() {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let mut cmd = get_bin_command();
     let output: Output = cmd
         .env_clear()
@@ -195,6 +202,7 @@ fn test_ibm_legacy_host_env_var() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_list_config_from_env() -> io::Result<()> {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let mut cmd = get_bin_command();
     let output: Output = cmd
         .env_clear()
@@ -214,6 +222,7 @@ fn test_list_config_from_env() -> io::Result<()> {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_list_config_no_options() -> io::Result<()> {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let mut cmd = get_bin_command();
     let output: Output = cmd.env_clear().arg("-l").unwrap();
     assert!(output.status.success());
@@ -225,9 +234,9 @@ fn test_list_config_no_options() -> io::Result<()> {
 
 #[test]
 #[serial]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
-#[cfg(target_os = "linux")]
+#[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 fn test_list_default_conf() -> io::Result<()> {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let file_path = Path::new("/etc/logdna.conf");
     fs::write(file_path, "key = 1234\ntags = sample_tag_on_conf")?;
 
@@ -249,6 +258,7 @@ fn test_list_default_conf() -> io::Result<()> {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_command_line_arguments_should_set_config() {
+    let _ = env_logger::Builder::from_default_env().try_init();
     test_command(
         |cmd| {
             cmd.args(&["-k", "my_secret"])
@@ -281,6 +291,7 @@ fn test_command_line_arguments_should_set_config() {
                 .args(&["--retry-disk-limit", "9 MB"]);
         },
         |d| {
+            log::debug!("agent output: {:#?}", d);
             assert!(contains("tags: \"a,b\"").eval(d));
             assert!(is_match(r"log:\s+dirs:\s+\- /var/log/\s+\- /d1/\s+\- /d2/")
                 .unwrap()
