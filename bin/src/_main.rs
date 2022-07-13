@@ -502,7 +502,9 @@ pub async fn _main(
     tokio::select! {
         _ = lines_driver => {}
         _ = retry_driver => {}
-        _ = &mut shutdown_rx => {}
+        _ = &mut shutdown_rx => {
+            info!("Received shutdown request")
+        }
         signal_name = get_signal() => {
             info!("Received {} signal, shutting down", signal_name)
         }
