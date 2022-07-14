@@ -95,7 +95,7 @@ TARGET?=$(ARCH)-unknown-linux-gnu
 WINDOWS?=
 
 ifneq ($(WINDOWS),)
-	FEATURES?=
+	FEATURES?=windows_service
 	TARGET=$(ARCH)-pc-windows-msvc
 	BINDGEN_EXTRA_CLANG_ARGS:=
 	RUSTFLAGS:=
@@ -473,6 +473,7 @@ build-rpm: build-release
 .PHONY: publish-s3-binary
 publish-s3-binary:
 	aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent
+	@if ![ "$(WINDOWS)" = "" ]; then aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent-svc s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent-svc; fi
 
 define publish_images
 	$(eval VCS_REF_BUILD_NUMBER_SHA:=$(shell echo "$(VCS_REF)$(BUILD_NUMBER)" | sha256sum | head -c 16))

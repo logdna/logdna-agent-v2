@@ -243,7 +243,7 @@ pipeline {
                                 echo "[default]" > ${PWD}/.aws_creds_win_static_x86_64
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_win_static_x86_64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_win_static_x86_64
-                                ARCH=x86_64 WINDOWS=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_win_static_x86_64
+                                ARCH=x86_64 WINDOWS=1 FEATURES=windows_service make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_win_static_x86_64
                                 rm ${PWD}/.aws_creds_win_static_x86_64
                             '''
                         }
