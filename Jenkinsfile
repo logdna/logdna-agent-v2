@@ -8,6 +8,7 @@ pipeline {
     agent {
         node {
             label "rust-x86_64"
+            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
         }
     }
     options {
