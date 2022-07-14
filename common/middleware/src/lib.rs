@@ -52,3 +52,13 @@ impl Executor {
             .ok()
     }
 }
+
+#[cfg(test)]
+pub mod test {
+    // Provide values for extern symbols PKG_NAME and PKG_VERSION
+    // when building this module on it's own
+    #[no_mangle]
+    pub static PKG_NAME: &str = "test";
+    #[no_mangle]
+    pub static PKG_VERSION: &str = "test";
+}
