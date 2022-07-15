@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+    <Product Id="*" Name="LogDNA Agent" Language="1033" Version="$(env.VERSION)" Manufacturer="LogDNA" UpgradeCode="a96e8dad-9abd-43e8-a467-307145ecc1e8">
+        <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+        <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+		<MediaTemplate EmbedCab="yes" />
+		<UIRef Id="WixUI_Minimal" />
+        <Feature Id="ProductFeature" Title="LogDNA Agent" Level="1">
+            <ComponentGroupRef Id="ProductComponents" />
+        </Feature>
+    </Product>
+    <Fragment>
+        <Directory Id="TARGETDIR" Name="SourceDir">
+            <Directory Id="ProgramFilesFolder">
+                <Directory Id="INSTALLFOLDER" Name="LogDNA" />
+            </Directory>
+        </Directory>
+    </Fragment>
+    <Fragment>
+        <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+            <Component Id="ProductComponent" Guid="56CD2588-B976-4198-B815-FAB7E1E57CD7">
+                <File Id="Agent" Name="logdna-agent.exe" DiskId="1" Source="$(env.AGENT_EXE_PATH)" KeyPath="yes" />
+                <File Id="Cfg" Name="logdna-agent.conf" DiskId="1" Source="$(env.AGENT_CFG_PATH)" />
+                <ServiceInstall Id="ServiceInstaller" Type="ownProcess" Vital="yes" Name="LogDnaAgentService" DisplayName="Mezmo Agent" Description="Mezmo Agent Service" Start="auto" Account="LocalSystem" ErrorControl="normal" Arguments="" Interactive="no" />
+                <ServiceControl Id="StartService" Stop="both" Start="install" Remove="uninstall" Name="LogDnaAgentService" Wait="yes" />
+            </Component>
+        </ComponentGroup>
+    </Fragment>
+</Wix>

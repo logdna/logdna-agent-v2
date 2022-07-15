@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -e
+VERSION="3.6.0-dev"
+BUILD_DIR=./target/x86_64-pc-windows-msvc/debug
+TARGET_DIR=./target
+CERT_NAME=logdna_dev_cert.pfx
+unset AWS_SECRET_ACCESS_KEY
+unset AWS_ACCESS_KEY_ID
+mkdir -p "$TARGET_DIR"
+CERT_PASS="$(aws s3 cp --quiet s3://ecosys-vault/$CERT_NAME.pwd /dev/stdout)"
+aws s3 cp s3://ecosys-vault/$CERT_NAME "$TARGET_DIR"
+#
+# Sign exe
+#
+osslsigncode sign \
+    -pkcs12 "$TARGET_DIR/$CERT_NAME" \
+    -pass "$CERT_PASS" \
+    -n "LogDNA Agent" \
+    -i "https://www.logdna.com" \
+    -in "$BUILD_DIR/logdna-agent-svc.exe" \
+    -out "$TARGET_DIR/logdna-agent-svc.exe"
+#
+# Create msi
+#
+export VERSION
+export AGENT_EXE_PATH="$TARGET_DIR/logdna-agent-svc.exe"
+export AGENT_CFG_PATH="./logdna-agent.conf"
+wixl -v --ext ui ./logdna-agent.wxs -o "$TARGET_DIR/logdna-agent-unsigned.msi"
+#
+# Sign msi
+#
+osslsigncode sign \
+    -add-msi-dse \
+    -pkcs12 "$TARGET_DIR/$CERT_NAME" \
+    -pass "$CERT_PASS" \
+	-n "LogDNA Agent" \
+    -i "https://www.logdna.com" \
+    -t http://timestamp.comodoca.com/authenticode \
+    -in "$TARGET_DIR/logdna-agent-unsigned.msi" \
+    -out "$TARGET_DIR/logdna-agent.msi"
+
+echo
+echo @@@@@@  SUCCESS  @@@@@@
+echo
