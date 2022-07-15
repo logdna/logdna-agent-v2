@@ -19,6 +19,11 @@ build = "build.rs"
 name = "logdna-agent"
 path = "src/main.rs"
 
+[[bin]]
+name = "logdna-agent-svc"
+path = "src/service_main.rs"
+required-features = ['windows_service']
+
 [dependencies]
 #local
 http = { package = "http", path = "../common/http" }
@@ -49,6 +54,10 @@ miniz_oxide = "0.5"
 [target.'cfg(any(unix, macos))'.dependencies]
 capctl = "0.2"
 
+[target.'cfg(any(windows))'.dependencies]
+winservice = { git = "https://github.com/dkhokhlov/winservice.git" }
+flexi_logger = { version = "0.22", features = ["async"] }
+
 # Dependency for linux integration tests
 [target.'cfg(target_os="linux")'.dependencies]
 systemd = { package = "systemd", version = "0.10", optional = true}
@@ -65,6 +74,7 @@ slow_tests = []
 k8s_tests = []
 libjournald = ["journald/libjournald", "systemd" ]
 journald_tests = ["journald/journald_tests", "systemd" ]
+windows_service = []
 
 [dev-dependencies]
 assert_cmd = "2"
