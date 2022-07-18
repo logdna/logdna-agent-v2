@@ -20,6 +20,7 @@ use k8s::create_k8s_client_default_from_env;
 use k8s::middleware::K8sMetadata;
 use kube::Client as Kube_Client;
 use metrics::Metrics;
+use middleware::k8s_line_rules::K8sLineFilter;
 use middleware::line_rules::LineRules;
 use middleware::meta_rules::{MetaRules, MetaRulesConfig};
 use middleware::Executor;
