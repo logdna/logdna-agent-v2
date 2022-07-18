@@ -1573,7 +1573,6 @@ async fn test_line_redact() {
     test_line_rules(None, None, redact, to_write, expected).await;
 }
 
-#[ignore]
 #[tokio::test]
 async fn test_directory_created_after_initialization() {
     let _ = env_logger::Builder::from_default_env().try_init();
