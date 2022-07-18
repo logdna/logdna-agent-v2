@@ -394,12 +394,12 @@ impl Merge for HttpConfig {
 }
 
 #[cfg(unix)]
-fn default_log_dirs() -> Vec<PathBuf> {
+pub fn default_log_dirs() -> Vec<PathBuf> {
     vec!["/var/log/".into()]
 }
 
 #[cfg(windows)]
-fn default_log_dirs() -> Vec<PathBuf> {
+pub fn default_log_dirs() -> Vec<PathBuf> {
     let default_str = std::env::var("ALLUSERSPROFILE").unwrap_or(r"C:\ProgramData".into());
     let default_os_str: std::ffi::OsString = default_str.into();
     vec![Path::new(&default_os_str).join("logs")]

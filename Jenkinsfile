@@ -8,6 +8,7 @@ pipeline {
     agent {
         node {
             label "rust-x86_64"
+            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
         }
     }
     options {
@@ -243,7 +244,7 @@ pipeline {
                                 echo "[default]" > ${PWD}/.aws_creds_win_static_x86_64
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_win_static_x86_64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_win_static_x86_64
-                                ARCH=x86_64 WINDOWS=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_win_static_x86_64
+                                ARCH=x86_64 WINDOWS=1 FEATURES=windows_service make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_win_static_x86_64
                                 rm ${PWD}/.aws_creds_win_static_x86_64
                             '''
                         }
@@ -277,6 +278,7 @@ pipeline {
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static
                                 STATIC=1 make publish-s3-binary
+                                WINDOWS=1 make publish-s3-binary
                                 ARCH=x86_64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
                                 ARCH=aarch64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
                                 rm ${PWD}/.aws_creds_static
