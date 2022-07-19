@@ -70,7 +70,7 @@ pipeline {
                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                          ]]){
                             sh """
-                              make lint
+                              make lint-audit
                             """
                         }
                     }
