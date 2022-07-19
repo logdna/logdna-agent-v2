@@ -1,6 +1,6 @@
 use crate::error::ConfigError;
 use crate::{argv, get_hostname, properties};
-use http::types::params::Params;
+use http::types::params::{Params, ParamsBuilder};
 use humanize_rs::bytes::Bytes;
 use serde::de::{Deserializer, Error, Unexpected, Visitor};
 use serde::{Deserialize, Serialize};
@@ -68,6 +68,19 @@ where
     }
 
     d.deserialize_option(OptionVisitor)
+}
+
+fn params_deser<'de, D>(data: D) -> Result<Option<Params>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let mut params_builder: ParamsBuilder = Deserialize::deserialize(data)?;
+    Ok(params_builder.build().ok().or_else(|| {
+        params_builder
+            .hostname(get_hostname().unwrap_or_default())
+            .build()
+            .ok()
+    }))
 }
 
 fn merge_all_confs(
@@ -250,7 +263,10 @@ pub struct HttpConfig {
     pub gzip_level: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ingestion_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "params_deser"
+    )]
     pub params: Option<Params>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body_size: Option<usize>,
