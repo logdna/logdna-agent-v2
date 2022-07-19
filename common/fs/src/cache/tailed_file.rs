@@ -42,7 +42,7 @@ pub struct LazyLineSerializer {
     labels: Option<KeyValueMap>,
     level: Option<String>,
     meta: Option<Value>,
-    path: String,
+    path: Option<String>,
     line_buffer: Option<Bytes>,
 
     file_offset: (u64, u64, u64),
@@ -102,7 +102,9 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
     where
         S: SerializeStr<String> + std::marker::Send,
     {
-        writer.serialize_str(&self.path).await?;
+        if let Some(path) = self.path.as_ref() {
+            writer.serialize_str(path).await?;
+        };
         Ok(())
     }
     fn has_host(&self) -> bool {
@@ -196,7 +198,7 @@ impl LazyLineSerializer {
     pub fn new(reader: Arc<Mutex<TailedFileInner>>, path: String, offset: (u64, u64, u64)) -> Self {
         Self {
             reader,
-            path,
+            path: Some(path),
             annotations: None,
             app: None,
             env: None,
@@ -221,7 +223,7 @@ impl LineMeta for LazyLineSerializer {
         self.env.as_deref()
     }
     fn get_file(&self) -> Option<&str> {
-        Some(self.path.as_str())
+        self.path.as_deref()
     }
     fn get_host(&self) -> Option<&str> {
         self.host.as_deref()
@@ -238,6 +240,30 @@ impl LineMeta for LazyLineSerializer {
 }
 
 impl LineMetaMut for LazyLineSerializer {
+    fn get_annotations_mut(&mut self) -> &mut Option<KeyValueMap> {
+        &mut self.annotations
+    }
+    fn get_app_mut(&mut self) -> &mut Option<String> {
+        &mut self.app
+    }
+    fn get_env_mut(&mut self) -> &mut Option<String> {
+        &mut self.env
+    }
+    fn get_file_mut(&mut self) -> &mut Option<String> {
+        &mut self.path
+    }
+    fn get_host_mut(&mut self) -> &mut Option<String> {
+        &mut self.host
+    }
+    fn get_labels_mut(&mut self) -> &mut Option<KeyValueMap> {
+        &mut self.labels
+    }
+    fn get_level_mut(&mut self) -> &mut Option<String> {
+        &mut self.level
+    }
+    fn get_meta_mut(&mut self) -> &mut Option<Value> {
+        &mut self.meta
+    }
     fn set_annotations(&mut self, annotations: KeyValueMap) -> Result<(), LineMetaError> {
         self.annotations = Some(annotations);
         Ok(())
@@ -251,7 +277,7 @@ impl LineMetaMut for LazyLineSerializer {
         Ok(())
     }
     fn set_file(&mut self, file: String) -> Result<(), LineMetaError> {
-        self.path = file;
+        self.path = Some(file);
         Ok(())
     }
     fn set_host(&mut self, host: String) -> Result<(), LineMetaError> {

@@ -10,7 +10,7 @@ metrics = { package = "metrics", path = "../metrics" }
 state = { package = "state", path = "../state" }
 
 #http
-logdna-client = { git = "https://github.com/logdna/logdna-rust.git", branch="0.6.x", version = "0.6" }
+logdna-client = { git = "https://github.com/logdna/logdna-rust.git", branch="0.7.x", version = "0.7" }
 
 #io
 tokio = { version = "1", features = ["fs", "io-util", "macros"] }
