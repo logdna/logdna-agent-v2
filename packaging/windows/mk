@@ -15,17 +15,18 @@ aws s3 cp s3://ecosys-vault/$CERT_NAME "$TARGET_DIR"
 osslsigncode sign \
     -pkcs12 "$TARGET_DIR/$CERT_NAME" \
     -pass "$CERT_PASS" \
-    -n "LogDNA Agent" \
-    -i "https://www.logdna.com" \
+    -n "Mezmo Agent" \
+    -i "https://www.mezmo.com" \
     -in "$BUILD_DIR/logdna-agent-svc.exe" \
     -out "$TARGET_DIR/logdna-agent-svc.exe"
 #
 # Create msi
 #
 export VERSION
-export AGENT_EXE_PATH="$TARGET_DIR/logdna-agent-svc.exe"
-export AGENT_CFG_PATH="./logdna-agent.conf"
-wixl -v --ext ui ./logdna-agent.wxs -o "$TARGET_DIR/logdna-agent-unsigned.msi"
+export AGENT_EXE_PATH="$TARGET_DIR/logdna-agent.exe"
+export AGENT_SVC_EXE_PATH="$TARGET_DIR/logdna-agent-svc.exe"
+export AGENT_CFG_PATH="./logdna.conf"
+wixl -v --ext ui ./mezmo-agent.wxs -o "$TARGET_DIR/mezmo-agent-unsigned.msi"
 #
 # Sign msi
 #
@@ -33,11 +34,11 @@ osslsigncode sign \
     -add-msi-dse \
     -pkcs12 "$TARGET_DIR/$CERT_NAME" \
     -pass "$CERT_PASS" \
-	-n "LogDNA Agent" \
-    -i "https://www.logdna.com" \
+	-n "Mezmo Agent" \
+    -i "https://www.mezmo.com" \
     -t http://timestamp.comodoca.com/authenticode \
-    -in "$TARGET_DIR/logdna-agent-unsigned.msi" \
-    -out "$TARGET_DIR/logdna-agent.msi"
+    -in "$TARGET_DIR/mezmo-agent-unsigned.msi" \
+    -out "$TARGET_DIR/mezmo-agent.msi"
 
 echo
 echo @@@@@@  SUCCESS  @@@@@@
