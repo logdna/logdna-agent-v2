@@ -1,5 +1,6 @@
 use crate::env_vars;
 use crate::raw::{Config as RawConfig, Rules};
+use crate::K8sLeaseConf;
 use crate::K8sTrackingConf;
 use fs::lookback::Lookback;
 use http::types::params::{Params, Tags};
@@ -140,11 +141,11 @@ pub struct ArgumentOptions {
     #[structopt(long, env = env_vars::LOG_K8S_EVENTS)]
     log_k8s_events: Option<K8sTrackingConf>,
 
-    /// Determine wheather or not to look for available K8s startup leases before attempting
+    /// Determine whether or not to look for available K8s startup leases before attempting
     /// to start the agent; used to throttle startup on very large K8s clusters.
     /// Defaults to "off".
     #[structopt(long = "startup-lease", env = env_vars::K8S_STARTUP_LEASE)]
-    k8s_startup_lease: Option<String>,
+    k8s_startup_lease: Option<K8sLeaseConf>,
 
     /// The directory in which the agent will store its state database. Note that the agent must
     /// have write access to the directory and be a persistent volume.
@@ -319,7 +320,7 @@ impl ArgumentOptions {
         }
 
         if self.k8s_startup_lease.is_some() {
-            raw.startup.option = self.k8s_startup_lease;
+            raw.startup.option = self.k8s_startup_lease.map(|v| v.to_string());
         }
 
         if self.db_path.is_some() {
@@ -642,7 +643,7 @@ mod test {
             use_k8s_enrichment: Some(K8sTrackingConf::Always),
             log_k8s_events: Some(K8sTrackingConf::Never),
             journald_paths: vec_strings!("/a"),
-            k8s_startup_lease: Some(String::from("teston")),
+            k8s_startup_lease: Some(K8sLeaseConf::Always),
             ingest_timeout: Some(1111111),
             ingest_buffer_size: Some(222222),
             retry_dir: some_string!("/tmp/argv"),
@@ -674,7 +675,7 @@ mod test {
         assert_eq!(config.log.db_path, Some(PathBuf::from("a/b/c")));
         assert_eq!(config.log.metrics_port, Some(9089));
         assert_eq!(config.journald.paths, Some(vec_paths!["/a"]));
-        assert_eq!(config.startup.option, Some(String::from("teston")));
+        assert_eq!(config.startup.option, Some(String::from("always")));
     }
 
     #[test]

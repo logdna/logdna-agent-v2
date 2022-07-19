@@ -4,11 +4,12 @@ extern crate humanize_rs;
 
 use std::convert::{TryFrom, TryInto};
 use std::ffi::OsString;
-use std::fmt;
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::time::Duration;
+use strum_macros::{Display, EnumString};
 use sysinfo::{RefreshKind, System, SystemExt};
 
 use async_compression::Level;
@@ -75,7 +76,7 @@ pub struct Config {
     pub http: HttpConfig,
     pub log: LogConfig,
     pub journald: JournaldConfig,
-    pub startup: K8sStartupLeaseConfig,
+    pub startup: K8sLeaseConf,
 }
 
 #[derive(Debug)]
@@ -92,44 +93,18 @@ pub struct HttpConfig {
     pub retry_step_delay: Duration,
 }
 
-#[derive(Clone, core::fmt::Debug, PartialEq)]
+#[derive(Clone, Display, core::fmt::Debug, PartialEq, EnumString)]
 pub enum K8sTrackingConf {
+    #[strum(serialize = "always")]
     Always,
+
+    #[strum(serialize = "never")]
     Never,
 }
 
 impl Default for K8sTrackingConf {
     fn default() -> Self {
         K8sTrackingConf::Never
-    }
-}
-
-impl fmt::Display for K8sTrackingConf {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                K8sTrackingConf::Always => "always",
-                K8sTrackingConf::Never => "never",
-            }
-        )
-    }
-}
-
-#[derive(thiserror::Error, Debug)]
-#[error("{0}")]
-pub struct ParseK8sTrackingConf(String);
-
-impl std::str::FromStr for K8sTrackingConf {
-    type Err = ParseK8sTrackingConf;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.trim().to_lowercase().as_str() {
-            "always" => Ok(K8sTrackingConf::Always),
-            "never" => Ok(K8sTrackingConf::Never),
-            _ => Err(ParseK8sTrackingConf(format!("failed to parse {}", s))),
-        }
     }
 }
 
@@ -152,9 +127,22 @@ pub struct JournaldConfig {
     pub paths: Vec<PathBuf>,
 }
 
-#[derive(Debug)]
-pub struct K8sStartupLeaseConfig {
-    pub option: String,
+#[derive(Clone, core::fmt::Debug, Display, EnumString, PartialEq)]
+pub enum K8sLeaseConf {
+    #[strum(serialize = "off")]
+    Off,
+
+    #[strum(serialize = "attempt")]
+    Attempt,
+
+    #[strum(serialize = "always")]
+    Always,
+}
+
+impl Default for K8sLeaseConf {
+    fn default() -> Self {
+        K8sLeaseConf::Off
+    }
 }
 
 const LOGDNA_PREFIX: &str = "LOGDNA_";
@@ -351,12 +339,12 @@ impl TryFrom<RawConfig> for Config {
                 .lookback
                 .map(|s| s.parse::<Lookback>())
                 .unwrap_or_else(|| Ok(Lookback::default()))?,
-            use_k8s_enrichment: parse_k8s_tracking_or_warn(
+            use_k8s_enrichment: parse_k8s_enum_config_or_warn(
                 raw.log.use_k8s_enrichment,
                 env_vars::USE_K8S_LOG_ENRICHMENT,
                 K8sTrackingConf::Always,
             ),
-            log_k8s_events: parse_k8s_tracking_or_warn(
+            log_k8s_events: parse_k8s_enum_config_or_warn(
                 raw.log.log_k8s_events,
                 env_vars::LOG_K8S_EVENTS,
                 K8sTrackingConf::Never,
@@ -394,9 +382,11 @@ impl TryFrom<RawConfig> for Config {
             }
         }
 
-        let startup = K8sStartupLeaseConfig {
-            option: raw.startup.option.unwrap_or_default(),
-        };
+        let startup = parse_k8s_enum_config_or_warn(
+            raw.startup.option,
+            env_vars::K8S_STARTUP_LEASE,
+            K8sLeaseConf::Off,
+        );
 
         let journald = JournaldConfig {
             paths: raw.journald.paths.unwrap_or_default().into_iter().collect(),
@@ -458,13 +448,16 @@ fn print_settings(yaml: &str, config_path: &Path) {
     std::process::exit(0);
 }
 
-fn parse_k8s_tracking_or_warn(
+fn parse_k8s_enum_config_or_warn<T: FromStr + std::fmt::Display + std::fmt::Debug>(
     value: Option<String>,
     name: &str,
-    default: K8sTrackingConf,
-) -> K8sTrackingConf {
+    default: T,
+) -> T
+where
+    <T as FromStr>::Err: std::fmt::Display,
+{
     if let Some(s) = value {
-        match s.parse::<K8sTrackingConf>() {
+        match s.parse::<T>() {
             Ok(s) => s,
             Err(e) => {
                 warn!(
@@ -565,6 +558,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![DEFAULT_LOG_DIR]
         );
+        assert_eq!(config.startup, K8sLeaseConf::Off);
     }
 
     #[cfg(unix)]
