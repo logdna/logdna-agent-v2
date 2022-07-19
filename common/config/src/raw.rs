@@ -739,6 +739,51 @@ startup: {}
     }
 
     #[test]
+    fn test_yaml_file_properties_with_no_hostname_or_now_in_params() -> io::Result<()> {
+        let dir = tempdir()?;
+        let file_name = dir.path().join("test.yml");
+        fs::write(
+            &file_name,
+            "
+http:
+  host: logs.logdna.prod
+  endpoint: /path/to/endpoint1
+  use_ssl: false
+  timeout: 12000
+  use_compression: true
+  gzip_level: 1
+  params:
+    tags: tag1,tag2
+  body_size: 2097152
+  retry_disk_limit: 3 MiB
+log:
+  dirs:
+    - /var/log1/
+    - /var/log2/
+journald: {}
+startup: {}
+",
+        )?;
+
+        let config = Config::parse(&file_name).unwrap();
+        assert_eq!(config.http.use_ssl, Some(false));
+        assert_eq!(config.http.use_compression, Some(true));
+        assert_eq!(config.http.host, some_string!("logs.logdna.prod"));
+        assert_eq!(config.http.endpoint, some_string!("/path/to/endpoint1"));
+        assert_eq!(config.http.use_compression, Some(true));
+        assert_eq!(config.http.timeout, Some(12000));
+        assert_eq!(config.http.retry_disk_limit, Some(3_145_728));
+        let params = config.http.params.unwrap();
+        assert_eq!(params.tags, Some(Tags::from("tag1,tag2")));
+        assert_eq!(
+            config.log.dirs,
+            vec![PathBuf::from("/var/log1/"), PathBuf::from("/var/log2/")]
+        );
+        assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
+        Ok(())
+    }
+
+    #[test]
     fn test_all_new() -> io::Result<()> {
         let dir = tempdir()?;
         let file_name = dir.path().join("test.conf");
