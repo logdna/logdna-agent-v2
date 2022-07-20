@@ -15,6 +15,7 @@ osslsigncode sign \
     -pkcs12 "$TARGET_DIR/$CERT_NAME" \
     -pass "$CERT_PASS" \
     -n "Mezmo Agent" \
+    -h sha512 \
     -i "https://www.mezmo.com" \
     -in "$BUILD_DIR/logdna-agent-svc.exe" \
     -out "$BUILD_DIR/signed/logdna-agent-svc.exe"
@@ -22,6 +23,7 @@ osslsigncode sign \
     -pkcs12 "$TARGET_DIR/$CERT_NAME" \
     -pass "$CERT_PASS" \
     -n "Mezmo Agent" \
+    -h sha512 \
     -i "https://www.mezmo.com" \
     -in "$BUILD_DIR/logdna-agent.exe" \
     -out "$BUILD_DIR/signed/logdna-agent.exe"
@@ -41,6 +43,7 @@ osslsigncode sign \
     -pkcs12 "$TARGET_DIR/$CERT_NAME" \
     -pass "$CERT_PASS" \
 	-n "Mezmo Agent" \
+    -h sha512 \
     -i "https://www.mezmo.com" \
     -t http://timestamp.comodoca.com/authenticode \
     -in "$BUILD_DIR/mezmo-agent.msi" \
