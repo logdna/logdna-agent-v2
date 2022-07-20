@@ -129,8 +129,8 @@ pub struct JournaldConfig {
 
 #[derive(Clone, core::fmt::Debug, Display, EnumString, PartialEq)]
 pub enum K8sLeaseConf {
-    #[strum(serialize = "off")]
-    Off,
+    #[strum(serialize = "never")]
+    Never,
 
     #[strum(serialize = "attempt")]
     Attempt,
@@ -141,7 +141,7 @@ pub enum K8sLeaseConf {
 
 impl Default for K8sLeaseConf {
     fn default() -> Self {
-        K8sLeaseConf::Off
+        K8sLeaseConf::Never
     }
 }
 
@@ -385,7 +385,7 @@ impl TryFrom<RawConfig> for Config {
         let startup = parse_k8s_enum_config_or_warn(
             raw.startup.option,
             env_vars::K8S_STARTUP_LEASE,
-            K8sLeaseConf::Off,
+            K8sLeaseConf::Never,
         );
 
         let journald = JournaldConfig {
@@ -558,7 +558,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![DEFAULT_LOG_DIR]
         );
-        assert_eq!(config.startup, K8sLeaseConf::Off);
+        assert_eq!(config.startup, K8sLeaseConf::Never);
     }
 
     #[cfg(unix)]
