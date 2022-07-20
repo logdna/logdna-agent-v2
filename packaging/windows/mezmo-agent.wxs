@@ -14,6 +14,9 @@
             <Directory Id="ProgramFilesFolder">
                 <Directory Id="INSTALLFOLDER" Name="Mezmo" />
             </Directory>
+            <Directory Id="CommonAppDataFolder">
+                <Directory Id="INSTALLFOLDER2" Name="logdna" />
+            </Directory>
         </Directory>
     </Fragment>
     <Fragment>
@@ -21,9 +24,13 @@
             <Component Id="ProductComponent" Guid="56CD2588-B976-4198-B815-FAB7E1E57CD7">
                 <File Id="Agent" Name="logdna-agent-svc.exe" DiskId="1" Source="$(env.AGENT_SVC_EXE_PATH)" KeyPath="yes" />
                 <File Id="AgentCLI" Name="logdna-agentc.exe" DiskId="1" Source="$(env.AGENT_EXE_PATH)" />
-                <File Id="Cfg" Name="logdna.conf" DiskId="1" Source="$(env.AGENT_CFG_PATH)" />
                 <ServiceInstall Id="ServiceInstaller" Type="ownProcess" Vital="yes" Name="MezmoAgentService" DisplayName="Mezmo Agent" Description="Mezmo Agent Service" Start="auto" Account="LocalSystem" ErrorControl="normal" Arguments="" Interactive="no" />
                 <ServiceControl Id="StartService" Stop="both" Start="install" Remove="uninstall" Name="MezmoAgentService" Wait="yes" />
+            </Component>
+        </ComponentGroup>
+        <ComponentGroup Id="ProductComponents2" Directory="INSTALLFOLDER2">
+            <Component Id="ProductComponent2" Guid="56CD2588-B976-4198-B815-FAB7E1E57CD1">
+                <File Id="Cfg" Name="logdna.conf" DiskId="1" Source="$(env.AGENT_CFG_PATH)" />
             </Component>
         </ComponentGroup>
     </Fragment>
