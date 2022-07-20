@@ -1,6 +1,6 @@
 use crate::error::ConfigError;
 use crate::{argv, get_hostname, properties};
-use http::types::params::Params;
+use http::types::params::{Params, ParamsBuilder};
 use humanize_rs::bytes::Bytes;
 use serde::de::{Deserializer, Error, Unexpected, Visitor};
 use serde::{Deserialize, Serialize};
@@ -68,6 +68,19 @@ where
     }
 
     d.deserialize_option(OptionVisitor)
+}
+
+fn params_deser<'de, D>(data: D) -> Result<Option<Params>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let mut params_builder: ParamsBuilder = Deserialize::deserialize(data)?;
+    Ok(params_builder.build().ok().or_else(|| {
+        params_builder
+            .hostname(get_hostname().unwrap_or_default())
+            .build()
+            .ok()
+    }))
 }
 
 fn merge_all_confs(
@@ -250,7 +263,10 @@ pub struct HttpConfig {
     pub gzip_level: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ingestion_key: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "params_deser"
+    )]
     pub params: Option<Params>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body_size: Option<usize>,
@@ -693,6 +709,51 @@ http:
     hostname: abc
     tags: tag1,tag2
     now: 0
+  body_size: 2097152
+  retry_disk_limit: 3 MiB
+log:
+  dirs:
+    - /var/log1/
+    - /var/log2/
+journald: {}
+startup: {}
+",
+        )?;
+
+        let config = Config::parse(&file_name).unwrap();
+        assert_eq!(config.http.use_ssl, Some(false));
+        assert_eq!(config.http.use_compression, Some(true));
+        assert_eq!(config.http.host, some_string!("logs.logdna.prod"));
+        assert_eq!(config.http.endpoint, some_string!("/path/to/endpoint1"));
+        assert_eq!(config.http.use_compression, Some(true));
+        assert_eq!(config.http.timeout, Some(12000));
+        assert_eq!(config.http.retry_disk_limit, Some(3_145_728));
+        let params = config.http.params.unwrap();
+        assert_eq!(params.tags, Some(Tags::from("tag1,tag2")));
+        assert_eq!(
+            config.log.dirs,
+            vec![PathBuf::from("/var/log1/"), PathBuf::from("/var/log2/")]
+        );
+        assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
+        Ok(())
+    }
+
+    #[test]
+    fn test_yaml_file_properties_with_no_hostname_or_now_in_params() -> io::Result<()> {
+        let dir = tempdir()?;
+        let file_name = dir.path().join("test.yml");
+        fs::write(
+            &file_name,
+            "
+http:
+  host: logs.logdna.prod
+  endpoint: /path/to/endpoint1
+  use_ssl: false
+  timeout: 12000
+  use_compression: true
+  gzip_level: 1
+  params:
+    tags: tag1,tag2
   body_size: 2097152
   retry_disk_limit: 3 MiB
 log:
