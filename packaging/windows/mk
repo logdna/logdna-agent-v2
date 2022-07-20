@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -ex
+set -e
 VERSION="3.6.0-dev"
 TARGET_DIR=../../target
 BUILD_DIR=$TARGET_DIR/x86_64-pc-windows-msvc/debug
@@ -32,7 +32,7 @@ export VERSION
 export AGENT_EXE_PATH="$BUILD_DIR/signed/logdna-agent.exe"
 export AGENT_SVC_EXE_PATH="$BUILD_DIR/signed/logdna-agent-svc.exe"
 export AGENT_CFG_PATH="./logdna.conf"
-wixl -v --ext ui ./mezmo-agent.wxs -o "$BUILD_DIR/mezmo-agent.msi"
+wixl -v --ext ui ./mezmo-agent.wxs -a x64 -o "$BUILD_DIR/mezmo-agent.msi"
 #
 # Sign msi
 #
