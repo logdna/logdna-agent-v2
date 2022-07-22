@@ -680,8 +680,8 @@ impl FileSystem {
             if let false = self.ignored_dirs.contains(path) {
                 self.ignored_dirs.insert(path.to_path_buf());
                 info!("ignoring {:?}", path);
-                return Ok(None);
             }
+            return Ok(None);
         }
 
         // If we already know about it warn and return
