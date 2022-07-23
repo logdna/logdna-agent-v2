@@ -190,7 +190,10 @@ impl Config {
             print_settings(&yaml_str, &config_path);
         }
 
-        info!("read the following options from cli, env and config: \n{}", yaml_str);
+        info!(
+            "read the following options from cli, env and config: \n{}",
+            yaml_str
+        );
 
         Config::try_from(raw_config)
     }
