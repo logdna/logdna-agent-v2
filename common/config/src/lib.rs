@@ -17,6 +17,7 @@ use async_compression::Level;
 use fs::lookback::Lookback;
 use fs::rule::{RuleDef, Rules};
 use fs::tail::DirPathBuf;
+use http::types::params::Params;
 use http::types::request::{Encoding, RequestTemplate, Schema};
 
 use crate::argv::ArgumentOptions;
@@ -189,7 +190,10 @@ impl Config {
             print_settings(&yaml_str, &config_path);
         }
 
-        info!("starting with the following options: \n{}", yaml_str);
+        info!(
+            "read the following options from cli, env and config: \n{}",
+            yaml_str
+        );
 
         Config::try_from(raw_config)
     }
@@ -261,11 +265,24 @@ impl TryFrom<RawConfig> for Config {
             ConfigError::MissingFieldOrEnvVar("http.endpoint", env_vars::ENDPOINT),
         )?);
 
-        template_builder.params(
-            raw.http
-                .params
-                .ok_or(ConfigError::MissingField("http.params"))?,
-        );
+        let params = raw
+            .http
+            .params
+            .and_then(|mut builder| {
+                if builder.build().is_err() {
+                    builder.hostname(get_hostname().unwrap_or_default());
+                }
+                builder.build().ok()
+            })
+            .unwrap_or_else(|| {
+                let mut builder = Params::builder();
+                builder.hostname(get_hostname().unwrap_or_default());
+                builder
+                    .build()
+                    .expect("Failed to create default http.params")
+            });
+
+        template_builder.params(params);
 
         let sys = System::new_with_specifics(RefreshKind::new());
         let info = str::replace(

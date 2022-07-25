@@ -1,6 +1,6 @@
 use crate::error::ConfigError;
-use crate::{argv, get_hostname, properties};
-use http::types::params::{Params, ParamsBuilder};
+use crate::{argv, properties};
+use http::types::params::ParamsBuilder;
 use humanize_rs::bytes::Bytes;
 use serde::de::{Deserializer, Error, Unexpected, Visitor};
 use serde::{Deserialize, Serialize};
@@ -70,27 +70,15 @@ where
     d.deserialize_option(OptionVisitor)
 }
 
-fn params_deser<'de, D>(data: D) -> Result<Option<Params>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let mut params_builder: ParamsBuilder = Deserialize::deserialize(data)?;
-    Ok(params_builder.build().ok().or_else(|| {
-        params_builder
-            .hostname(get_hostname().unwrap_or_default())
-            .build()
-            .ok()
-    }))
-}
-
 fn merge_all_confs(
     confs: impl Iterator<Item = Result<Config, ConfigError>>,
 ) -> (Option<Config>, Vec<ConfigError>) {
-    let default_conf = Some(Config::default());
+    let mut default_conf = None;
 
     let mut result_conf: Option<Config> = None;
     let mut result_errs = Vec::new();
     for result in confs {
+        default_conf = Some(default_conf.unwrap_or_default());
         match result {
             Ok(conf) => result_conf.merge(&Some(conf), &default_conf),
             Err(e) => result_errs.push(e),
@@ -187,7 +175,7 @@ impl<T: PartialEq + Merge + Clone + Default> Merge for Option<T> {
     }
 }
 
-impl Merge for Option<Params> {
+impl Merge for Option<ParamsBuilder> {
     fn merge(&mut self, other: &Self, default: &Self) {
         if *other != *default && other.is_some() {
             *self = other.clone();
@@ -263,11 +251,8 @@ pub struct HttpConfig {
     pub gzip_level: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ingestion_key: Option<String>,
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "params_deser"
-    )]
-    pub params: Option<Params>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<ParamsBuilder>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub body_size: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -306,7 +291,9 @@ pub struct LogConfig {
     pub line_redact_regex: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lookback: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub use_k8s_enrichment: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub log_k8s_events: Option<String>,
 }
 
@@ -368,10 +355,7 @@ impl Default for HttpConfig {
             use_compression: Some(true),
             gzip_level: Some(2),
             ingestion_key: None,
-            params: Params::builder()
-                .hostname(get_hostname().unwrap_or_default())
-                .build()
-                .ok(),
+            params: None,
             body_size: Some(2 * 1024 * 1024),
             retry_dir: Some(tmp),
             retry_disk_limit: None,
@@ -482,7 +466,7 @@ impl Merge for LogConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use http::types::params::Tags;
+    use http::types::params::{Params, Tags};
     use std::fs;
     use std::io;
     use tempfile::tempdir;
@@ -531,7 +515,17 @@ exclude = /path/to/exclude/**",
         assert_eq!(config.log.dirs, default_log_dirs());
         assert_eq!(config.http.ingestion_key, some_string!("123"));
         assert_eq!(
-            config.http.params.unwrap().tags,
+            config
+                .http
+                .params
+                .map(|mut params| {
+                    params.hostname("");
+                    params
+                })
+                .unwrap()
+                .build()
+                .unwrap()
+                .tags,
             Some(Tags::from(vec_strings!["production", "2ndtag"]))
         );
 
@@ -599,7 +593,7 @@ hostname = jorge's-laptop
             vec![PathBuf::from("/var/my_log"), PathBuf::from("/var/my_log2")]
         );
         assert_eq!(config.http.ingestion_key, some_string!("1234567890"));
-        let params = config.http.params.unwrap();
+        let params = config.http.params.unwrap().build().unwrap();
         assert_eq!(
             params.tags,
             Some(Tags::from(vec_strings!["production", "stable"]))
@@ -643,7 +637,7 @@ key = abcdef01
         // Defaults to /var/log
         assert_eq!(config.log.dirs, default_log_dirs());
         assert_eq!(config.http.ingestion_key, some_string!("abcdef01"));
-        assert_eq!(config.http.params.unwrap().tags, None);
+        assert_eq!(config.http.params, None);
         Ok(())
     }
 
@@ -672,10 +666,10 @@ key = abcdef01
         let dir = tempdir()?;
         let file_name = dir.path().join("test.yaml");
         fs::write(&file_name, "SOMEPROPERTY::: AZSZ")?;
-        assert!(matches!(
-            Config::parse(&file_name).map_err(|es| es.into_iter().next().unwrap()),
-            Err(ConfigError::Serde(_))
-        ));
+
+        let conf = Config::parse(&file_name).map_err(|es| es.into_iter().next().unwrap());
+
+        assert!(matches!(conf, Err(ConfigError::Serde(_)),));
         Ok(())
     }
 
@@ -728,7 +722,7 @@ startup: {}
         assert_eq!(config.http.use_compression, Some(true));
         assert_eq!(config.http.timeout, Some(12000));
         assert_eq!(config.http.retry_disk_limit, Some(3_145_728));
-        let params = config.http.params.unwrap();
+        let params = config.http.params.unwrap().build().unwrap();
         assert_eq!(params.tags, Some(Tags::from("tag1,tag2")));
         assert_eq!(
             config.log.dirs,
@@ -773,7 +767,10 @@ startup: {}
         assert_eq!(config.http.use_compression, Some(true));
         assert_eq!(config.http.timeout, Some(12000));
         assert_eq!(config.http.retry_disk_limit, Some(3_145_728));
-        let params = config.http.params.unwrap();
+        let mut params = config.http.params.unwrap();
+        // Hostname is unset
+        params.hostname("");
+        let params = params.build().unwrap();
         assert_eq!(params.tags, Some(Tags::from("tag1,tag2")));
         assert_eq!(
             config.log.dirs,
@@ -821,7 +818,17 @@ ingest_buffer_size = 3145728
         assert_eq!(config.http.body_size, Some(3 * 1024 * 1024));
         assert_eq!(config.http.timeout, Some(9999));
 
-        let params = config.http.params.unwrap();
+        println!("{:?}", config.http.params);
+        let params = config
+            .http
+            .params
+            .map(|mut params| {
+                params.hostname("");
+                params
+            })
+            .unwrap()
+            .build()
+            .unwrap();
         assert_eq!(params.ip, some_string!("10.10.10.8"));
         assert_eq!(params.mac, some_string!("00:A0:C9:14:C8:29"));
 
@@ -955,27 +962,62 @@ ingest_buffer_size = 3145728
     #[test]
     fn option_merge_param() {
         // Case 1: Merging None value with Some should not replace the Some value
-        let default = Params::builder().hostname("default").build().ok();
-        let mut target = Params::builder().hostname("target").build().ok();
+        let mut default = Params::builder();
+        default.hostname("default");
+        let default = Some(default);
+
+        let mut target = Params::builder();
+        target.hostname("target");
+        let mut target = Some(target);
         target.merge(&None, &default);
-        assert_eq!(target.unwrap().hostname, "target".to_string());
+        assert_eq!(
+            target
+                .and_then(|mut target| target.build().ok())
+                .unwrap()
+                .hostname,
+            "target".to_string()
+        );
 
         // Case 2: Merging Some value with None should replace the None
-        let other = Params::builder().hostname("other").build().ok();
+        let mut other = Params::builder();
+        other.hostname("other");
+        let other = Some(other);
         target = None;
         target.merge(&other, &default);
-        assert_eq!(target.unwrap().hostname, "other".to_string());
+        assert_eq!(
+            target
+                .and_then(|mut target| target.build().ok())
+                .unwrap()
+                .hostname,
+            "other".to_string()
+        );
 
         // Case 3: Merging a default value with Some value should not override the
         // default value
-        target = Params::builder().hostname("target").build().ok();
+        let mut target = Params::builder();
+        target.hostname("target");
+        let mut target = Some(target);
         target.merge(&default, &default);
-        assert_eq!(target.unwrap().hostname, "target".to_string());
+        assert_eq!(
+            target
+                .and_then(|mut target| target.build().ok())
+                .unwrap()
+                .hostname,
+            "target".to_string()
+        );
 
         // Case 4: Merging two values should have the target replaced by the new value
-        target = Params::builder().hostname("target").build().ok();
+        let mut target = Params::builder();
+        target.hostname("target");
+        let mut target = Some(target);
         target.merge(&other, &default);
-        assert_eq!(target.unwrap().hostname, "other".to_string());
+        assert_eq!(
+            target
+                .and_then(|mut target| target.build().ok())
+                .unwrap()
+                .hostname,
+            "other".to_string()
+        );
     }
 
     #[test]
@@ -1016,6 +1058,9 @@ ingest_buffer_size = 3145728
 
     #[test]
     fn http_config_merge() {
+        let mut left_params = Params::builder();
+        left_params.hostname("left.local".to_string());
+
         let mut left_conf = HttpConfig {
             host: Some("left.logdna.test".to_string()),
             endpoint: Some("/left/endpoint".to_string()),
@@ -1024,10 +1069,7 @@ ingest_buffer_size = 3145728
             use_compression: Some(false),
             gzip_level: Some(0),
             ingestion_key: Some("KEY".to_string()),
-            params: Params::builder()
-                .hostname("left.local".to_string())
-                .build()
-                .ok(),
+            params: Some(left_params),
             body_size: Some(1337),
             retry_dir: Some(PathBuf::from("/tmp/logdna/left")),
             retry_disk_limit: Some(12345),
@@ -1035,6 +1077,8 @@ ingest_buffer_size = 3145728
             retry_step_delay_ms: Some(10_000),
         };
 
+        let mut right_params = Params::builder();
+        right_params.hostname("right.local".to_string());
         let right_conf = HttpConfig {
             host: Some("right.logdna.test".to_string()),
             endpoint: Some("/right/endpoint".to_string()),
@@ -1043,10 +1087,7 @@ ingest_buffer_size = 3145728
             use_compression: Some(true),
             gzip_level: Some(1),
             ingestion_key: Some("VAL".to_string()),
-            params: Params::builder()
-                .hostname("right.local".to_string())
-                .build()
-                .ok(),
+            params: Some(right_params),
             body_size: Some(7331),
             retry_dir: Some(PathBuf::from("/tmp/logdna/right")),
             retry_disk_limit: Some(98765),
@@ -1064,7 +1105,10 @@ ingest_buffer_size = 3145728
         assert_eq!(left_conf.gzip_level, Some(1));
         assert_eq!(left_conf.ingestion_key, Some("VAL".to_string()));
         assert_eq!(
-            left_conf.params.map(|p| p.hostname),
+            left_conf
+                .params
+                .and_then(|mut params| params.build().ok())
+                .map(|p| p.hostname),
             Some("right.local".to_string())
         );
         assert_eq!(left_conf.body_size, Some(7331));
