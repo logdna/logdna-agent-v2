@@ -10,7 +10,7 @@ use state::{FileId, Span, SpanVec};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::hash_map::Entry as HashMapEntry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::ffi::OsString;
 use std::ops::Deref;
@@ -225,6 +225,7 @@ pub struct FileSystem {
 
     resume_events_recv: async_channel::Receiver<(u64, EventTimestamp)>,
     resume_events_send: async_channel::Sender<(u64, EventTimestamp)>,
+    ignored_dirs: HashSet<PathBuf>,
 }
 
 #[cfg(unix)]
@@ -269,6 +270,7 @@ impl FileSystem {
         let entries = SlotMap::new();
 
         let mut initial_dir_rules = Rules::new();
+        let ignored_dirs = HashSet::new();
 
         for path in initial_dirs.iter() {
             add_initial_dir_rules(&mut initial_dir_rules, path);
@@ -288,6 +290,7 @@ impl FileSystem {
             initial_events: Vec::new(),
             resume_events_recv,
             resume_events_send,
+            ignored_dirs,
         };
 
         let entries = fs.entries.clone();
@@ -673,7 +676,11 @@ impl FileSystem {
         debug!("inserting {:?}", path);
 
         if !self.passes(path, _entries) {
-            info!("ignoring {:?}", path);
+            // Do not continuously log ignored files
+            if let false = self.ignored_dirs.contains(path) {
+                self.ignored_dirs.insert(path.to_path_buf());
+                info!("ignoring {:?}", path);
+            }
             return Ok(None);
         }
 
@@ -715,7 +722,7 @@ impl FileSystem {
                 };
 
                 // We use non-recursive watches and scan children manually
-                // to have the same behaviour across all platforms
+                // to have the same behavior across all platforms
                 let new_key = self.register_as_child(new_entry, _entries)?;
                 trace!("registered watcher for directory {:#?}", path);
                 events.push(Event::New(new_key));
