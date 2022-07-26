@@ -17,6 +17,7 @@ osslsigncode sign \
     -n "Mezmo Agent" \
     -h sha2 \
     -i "https://www.mezmo.com" \
+    -t http://timestamp.comodoca.com/authenticode \
     -in "$BUILD_DIR/logdna-agent-svc.exe" \
     -out "$BUILD_DIR/signed/logdna-agent-svc.exe"
 osslsigncode sign \
@@ -25,6 +26,7 @@ osslsigncode sign \
     -n "Mezmo Agent" \
     -h sha2 \
     -i "https://www.mezmo.com" \
+    -t http://timestamp.comodoca.com/authenticode \
     -in "$BUILD_DIR/logdna-agent.exe" \
     -out "$BUILD_DIR/signed/logdna-agent.exe"
 #
