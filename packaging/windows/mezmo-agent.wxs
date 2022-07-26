@@ -4,14 +4,26 @@
     <?define Win64 = "yes" ?>
     <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
     <Product Id="*" Name="Mezmo Agent $(var.bitness)" Language="1033" Version="$(env.VERSION)" Manufacturer="Mezmo" UpgradeCode="a96e8dad-9abd-43e8-a467-307145ecc1e8">
-        <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" Platform="$(var.Win64)" />
+        <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
         <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
-    <MediaTemplate EmbedCab="yes" />
-    <UIRef Id="WixUI_Minimal" />
+        <MediaTemplate EmbedCab="yes" />
+        <UIRef Id="WixUI_Minimal" />
         <Feature Id="ProductFeature" Title="Mezmo Agent" Level="1">
             <ComponentGroupRef Id="ProductComponents" />
             <ComponentGroupRef Id="ProductComponents2" />
         </Feature>
+
+        <InstallExecuteSequence>
+            <Custom Action="ServiceRecovery" After="InstallServices">NOT REMOVE</Custom>
+        </InstallExecuteSequence>
+        <Property Id="cmd" Value="cmd.exe" />
+        <CustomAction Id="ServiceRecovery"
+                      ExeCommand="/c start /MIN sc failure MezmoAgentService reset= 60 actions= restart/15000/restart/15000/restart/15000"
+                      Execute="deferred"
+                      Property="cmd"
+                      Impersonate="no"
+                      Return="check" />
+
     </Product>
     <Fragment>
         <Directory Id="TARGETDIR" Name="SourceDir">
@@ -28,7 +40,9 @@
             <Component Id="ProductComponent" Win64="$(var.Win64)" Guid="56CD2588-B976-4198-B815-FAB7E1E57CD7">
                 <File Id="AgentSvc" Name="logdna-agent-svc.exe" DiskId="1" Source="$(env.AGENT_SVC_EXE_PATH)" KeyPath="yes" />
                 <File Id="AgentCLI" Name="logdna-agent.exe" DiskId="1" Source="$(env.AGENT_EXE_PATH)" />
-                <ServiceInstall Id="ServiceInstaller" Type="ownProcess" Vital="yes" Name="MezmoAgentService" DisplayName="Mezmo Agent" Description="Mezmo Agent Service" Start="auto" Account="LocalSystem" ErrorControl="normal" Arguments="" Interactive="no" />
+                <ServiceInstall Id="ServiceInstaller" Type="ownProcess" Vital="yes" Name="MezmoAgentService"
+                                DisplayName="Mezmo Agent" Description="Mezmo Agent Service"
+                                Start="auto" Account="LocalSystem" ErrorControl="normal" Arguments="" Interactive="no" />
                 <ServiceControl Id="StartService" Stop="both" Start="install" Remove="uninstall" Name="MezmoAgentService" Wait="yes" />
             </Component>
         </ComponentGroup>
@@ -38,4 +52,6 @@
             </Component>
         </ComponentGroup>
     </Fragment>
+
+
 </Wix>
