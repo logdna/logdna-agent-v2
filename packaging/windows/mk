@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -eu
 VERSION="3.6.0-dev"
 TARGET_DIR=../../target
 BUILD_DIR=$TARGET_DIR/x86_64-pc-windows-msvc/debug
@@ -15,7 +15,7 @@ osslsigncode sign \
     -pkcs12 "$TARGET_DIR/$CERT_NAME" \
     -pass "$CERT_PASS" \
     -n "Mezmo Agent" \
-    -h sha512 \
+    -h sha2 \
     -i "https://www.mezmo.com" \
     -in "$BUILD_DIR/logdna-agent-svc.exe" \
     -out "$BUILD_DIR/signed/logdna-agent-svc.exe"
@@ -23,7 +23,7 @@ osslsigncode sign \
     -pkcs12 "$TARGET_DIR/$CERT_NAME" \
     -pass "$CERT_PASS" \
     -n "Mezmo Agent" \
-    -h sha512 \
+    -h sha2 \
     -i "https://www.mezmo.com" \
     -in "$BUILD_DIR/logdna-agent.exe" \
     -out "$BUILD_DIR/signed/logdna-agent.exe"
@@ -43,7 +43,7 @@ osslsigncode sign \
     -pkcs12 "$TARGET_DIR/$CERT_NAME" \
     -pass "$CERT_PASS" \
 	-n "Mezmo Agent" \
-    -h sha512 \
+    -h sha2 \
     -i "https://www.mezmo.com" \
     -t http://timestamp.comodoca.com/authenticode \
     -in "$BUILD_DIR/mezmo-agent.msi" \
