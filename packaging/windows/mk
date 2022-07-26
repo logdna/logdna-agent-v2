@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
 set -eu
-VERSION="3.6.0-dev"
-TARGET_DIR=../../target
-BUILD_DIR=$TARGET_DIR/x86_64-pc-windows-msvc/debug
-CERT_NAME=logdna_dev_cert.pfx
+VERSION=${VERSION:-"3.6.0-dev"}
+TARGET_DIR=${TARGET_DIR:-../../target}
+BUILD_DIR="${BUILD_DIR:-$TARGET_DIR/x86_64-pc-windows-msvc/debug}"
+CERT_NAME=${CERT_NAME:-logdna_dev_cert.pfx}
+#
 mkdir -p "$TARGET_DIR"
-CERT_PASS="$(aws s3 cp --quiet s3://ecosys-vault/$CERT_NAME.pwd /dev/stdout)"
-aws s3 cp s3://ecosys-vault/$CERT_NAME "$TARGET_DIR"
+aws s3 cp "s3://ecosys-vault/$CERT_NAME" "$TARGET_DIR"
+aws s3 cp "s3://ecosys-vault/$CERT_NAME.pwd" "$TARGET_DIR"
 #
 # Sign exe files
 #
-mkdir -p $BUILD_DIR/signed
+mkdir -p "$BUILD_DIR/signed"
 osslsigncode sign \
     -pkcs12 "$TARGET_DIR/$CERT_NAME" \
-    -pass "$CERT_PASS" \
+    -readpass "$TARGET_DIR/$CERT_NAME.pwd" \
     -n "Mezmo Agent" \
     -h sha2 \
     -i "https://www.mezmo.com" \
@@ -22,7 +23,7 @@ osslsigncode sign \
     -out "$BUILD_DIR/signed/logdna-agent-svc.exe"
 osslsigncode sign \
     -pkcs12 "$TARGET_DIR/$CERT_NAME" \
-    -pass "$CERT_PASS" \
+    -readpass "$TARGET_DIR/$CERT_NAME.pwd" \
     -n "Mezmo Agent" \
     -h sha2 \
     -i "https://www.mezmo.com" \
@@ -43,14 +44,14 @@ wixl -v --ext ui ./mezmo-agent.wxs -a x64 -o "$BUILD_DIR/mezmo-agent.msi"
 osslsigncode sign \
     -add-msi-dse \
     -pkcs12 "$TARGET_DIR/$CERT_NAME" \
-    -pass "$CERT_PASS" \
+    -readpass "$TARGET_DIR/$CERT_NAME.pwd" \
 	-n "Mezmo Agent" \
     -h sha2 \
     -i "https://www.mezmo.com" \
     -t http://timestamp.comodoca.com/authenticode \
     -in "$BUILD_DIR/mezmo-agent.msi" \
     -out "$BUILD_DIR/signed/mezmo-agent.msi"
-
+rm "$TARGET_DIR/$CERT_NAME" "$TARGET_DIR/$CERT_NAME.pwd"
 echo
 echo @@@@@@  SUCCESS  @@@@@@
 echo
