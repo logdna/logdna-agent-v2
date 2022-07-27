@@ -3,7 +3,7 @@
     <?define bitness = "(64 bit)" ?>
     <?define Win64 = "yes" ?>
     <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
-    <Product Id="*" Name="Mezmo Agent $(var.bitness)" Language="1033" Version="$(env.VERSION)" Manufacturer="Mezmo" UpgradeCode="a96e8dad-9abd-43e8-a467-307145ecc1e8">
+    <Product Id="*" Name="Mezmo Agent $(var.bitness)" Language="1033" Version="$(env.AGENT_VERSION)" Manufacturer="Mezmo" UpgradeCode="a96e8dad-9abd-43e8-a467-307145ecc1e8">
         <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
         <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
         <MediaTemplate EmbedCab="yes" />
@@ -31,7 +31,7 @@
                 <Directory Id="INSTALLFOLDER" Name="Mezmo" />
             </Directory>
             <Directory Id="CommonAppDataFolder">
-                <Directory Id="INSTALLFOLDER2" Name="logdna" />
+                <Directory Id="DATAFOLDER" Name="logdna" />
             </Directory>
         </Directory>
     </Fragment>
@@ -46,7 +46,7 @@
                 <ServiceControl Id="StartService" Stop="both" Start="install" Remove="uninstall" Name="MezmoAgentService" Wait="yes" />
             </Component>
         </ComponentGroup>
-        <ComponentGroup Id="ProductComponents2" Directory="INSTALLFOLDER2">
+        <ComponentGroup Id="ProductComponents2" Directory="DATAFOLDER">
             <Component Id="ProductComponent2" Guid="56CD2588-B976-4198-B815-FAB7E1E57CD1">
                 <File Id="CfgFile" Name="logdna.conf" DiskId="1" Source="$(env.AGENT_CFG_PATH)" />
             </Component>

@@ -1,57 +1,14 @@
 #!/usr/bin/env bash
 set -eu
-VERSION=${VERSION:-"3.6.0-dev"}
-TARGET_DIR=${TARGET_DIR:-../../target}
-BUILD_DIR="${BUILD_DIR:-$TARGET_DIR/x86_64-pc-windows-msvc/debug}"
-CERT_NAME=${CERT_NAME:-logdna_dev_cert.pfx}
+VER=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" ../../bin/Cargo.toml)
+export BUILD_VERSION="$VER"
+export BUILD_DIR="${BUILD_DIR:-../../target/x86_64-pc-windows-msvc/debug}"
+export CERT_NAME="${CERT_NAME:-logdna_dev_cert.pfx}"
 #
-mkdir -p "$TARGET_DIR"
-aws s3 cp "s3://ecosys-vault/$CERT_NAME" "$TARGET_DIR"
-aws s3 cp "s3://ecosys-vault/$CERT_NAME.pwd" "$TARGET_DIR"
-#
-# Sign exe files
-#
-mkdir -p "$BUILD_DIR/signed"
-osslsigncode sign \
-    -pkcs12 "$TARGET_DIR/$CERT_NAME" \
-    -readpass "$TARGET_DIR/$CERT_NAME.pwd" \
-    -n "Mezmo Agent" \
-    -h sha2 \
-    -i "https://www.mezmo.com" \
-    -t http://timestamp.comodoca.com/authenticode \
-    -in "$BUILD_DIR/logdna-agent-svc.exe" \
-    -out "$BUILD_DIR/signed/logdna-agent-svc.exe"
-osslsigncode sign \
-    -pkcs12 "$TARGET_DIR/$CERT_NAME" \
-    -readpass "$TARGET_DIR/$CERT_NAME.pwd" \
-    -n "Mezmo Agent" \
-    -h sha2 \
-    -i "https://www.mezmo.com" \
-    -t http://timestamp.comodoca.com/authenticode \
-    -in "$BUILD_DIR/logdna-agent.exe" \
-    -out "$BUILD_DIR/signed/logdna-agent.exe"
-#
-# Create msi
-#
-export VERSION
-export AGENT_EXE_PATH="$BUILD_DIR/signed/logdna-agent.exe"
-export AGENT_SVC_EXE_PATH="$BUILD_DIR/signed/logdna-agent-svc.exe"
-export AGENT_CFG_PATH="./logdna.conf"
-wixl -v --ext ui ./mezmo-agent.wxs -a x64 -o "$BUILD_DIR/mezmo-agent.msi"
-#
-# Sign msi
-#
-osslsigncode sign \
-    -add-msi-dse \
-    -pkcs12 "$TARGET_DIR/$CERT_NAME" \
-    -readpass "$TARGET_DIR/$CERT_NAME.pwd" \
-	-n "Mezmo Agent" \
-    -h sha2 \
-    -i "https://www.mezmo.com" \
-    -t http://timestamp.comodoca.com/authenticode \
-    -in "$BUILD_DIR/mezmo-agent.msi" \
-    -out "$BUILD_DIR/signed/mezmo-agent.msi"
-rm "$TARGET_DIR/$CERT_NAME" "$TARGET_DIR/$CERT_NAME.pwd"
+aws s3 cp "s3://ecosys-vault/$CERT_NAME" "$BUILD_DIR"
+aws s3 cp "s3://ecosys-vault/$CERT_NAME.pwd" "$BUILD_DIR"
+./mk_msi
+rm "$BUILD_DIR/$CERT_NAME" "$BUILD_DIR/$CERT_NAME.pwd"
 echo
 echo @@@@@@  SUCCESS  @@@@@@
 echo
