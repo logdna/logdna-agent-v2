@@ -5,7 +5,7 @@
     <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
     <Product Id="*" Name="Mezmo Agent $(var.bitness)" Language="1033" Version="$(env.AGENT_VERSION)" Manufacturer="Mezmo" UpgradeCode="a96e8dad-9abd-43e8-a467-307145ecc1e8">
         <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
-        <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+        <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." AllowSameVersionUpgrades="yes" />
         <MediaTemplate EmbedCab="yes" />
         <UIRef Id="WixUI_Minimal" />
         <Feature Id="ProductFeature" Title="Mezmo Agent" Level="1">

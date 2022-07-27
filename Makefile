@@ -174,11 +174,11 @@ build-test:
 
 .PHONY:build
 build: ## Build the agent
-	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG)"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG)"
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
-	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && llvm-strip ./target/$(TARGET)/release/logdna-agent${BIN_SUFFIX}"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && llvm-strip ./target/$(TARGET)/release/logdna-agent${BIN_SUFFIX}"
 
 .PHONY:check
 check: ## Run unit tests
