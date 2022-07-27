@@ -4,11 +4,14 @@ VER=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" ../../bin/Cargo.toml)
 export BUILD_VERSION="$VER"
 export BUILD_DIR="${BUILD_DIR:-../../target/x86_64-pc-windows-msvc/debug}"
 export CERT_NAME="${CERT_NAME:-logdna_dev_cert.pfx}"
+function finish {
+  rm -f "$BUILD_DIR/$CERT_NAME" "$BUILD_DIR/$CERT_NAME.pwd"
+}
+trap finish EXIT
 #
 aws s3 cp "s3://ecosys-vault/$CERT_NAME" "$BUILD_DIR"
 aws s3 cp "s3://ecosys-vault/$CERT_NAME.pwd" "$BUILD_DIR"
 ./mk_msi
-rm "$BUILD_DIR/$CERT_NAME" "$BUILD_DIR/$CERT_NAME.pwd"
 echo
 echo @@@@@@  SUCCESS  @@@@@@
 echo
