@@ -21,6 +21,10 @@ BENCH_IMAGE_BASE ?= bullseye
 BENCH_IMAGE_TAG ?= rust-$(BENCH_IMAGE_BASE)-1-stable
 BENCH_IMAGE ?= $(RUST_IMAGE_REPO):$(BENCH_IMAGE_TAG)-$(ARCH)
 
+TOOLS_IMAGE_BASE ?= bullseye
+TOOLS_IMAGE_TAG ?= rust-$(TOOLS_IMAGE_BASE)-1-stable
+TOOLS_IMAGE ?= $(RUST_IMAGE_REPO):$(TOOLS_IMAGE_TAG)-$(ARCH)
+
 HADOLINT_IMAGE_REPO ?= hadolint/hadolint
 HADOLINT_IMAGE_TAG ?= v2.1.0-debian
 HADOLINT_IMAGE ?= $(HADOLINT_IMAGE_REPO):$(HADOLINT_IMAGE_TAG)
@@ -48,6 +52,7 @@ RPM_COMMAND := CACHE_TARGET="false" $(DOCKER_DISPATCH) alanfranz/fpm-within-dock
 BENCH_COMMAND = CACHE_TARGET="false" $(DOCKER_DISPATCH) $(BENCH_IMAGE)
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
+TOOLS_COMMAND := $(DOCKER_DISPATCH) $(TOOLS_IMAGE)
 
 # max($(nproc)/4, 1)
 TEST_THREADS ?= $(shell threads=$$(echo $$(nproc)/4 | bc); echo $$(( threads > 1 ? threads: 1)))
@@ -493,7 +498,7 @@ msi-$(1):  ## create signed exe(s) and msi in $(BUILD_DIR)/signed
 	$(eval CERT_NAME := "logdna_dev_cert.pfx")
 	aws s3 cp "s3://ecosys-vault/$(CERT_NAME)" "$(BUILD_DIR)" && \
 	aws s3 cp "s3://ecosys-vault/$(CERT_NAME).pwd" "$(BUILD_DIR)" && \
-	$(BENCH_COMMAND) "--env BUILD_DIR=/build/$(BUILD_DIR) --env CERT_NAME=$(CERT_NAME) --env BUILD_VERSION=$(BUILD_VERSION)" "cd /build/packaging/windows && ./mk_msi" && \
+	$(TOOLS_COMMAND) "--env BUILD_DIR=/build/$(BUILD_DIR) --env CERT_NAME=$(CERT_NAME) --env BUILD_VERSION=$(BUILD_VERSION)" "cd /build/packaging/windows && ./mk_msi" && \
 	rm "$(BUILD_DIR)/$(CERT_NAME)" "$(BUILD_DIR)/$(CERT_NAME).pwd";
 endef
 BUILD_TYPES=debug release
