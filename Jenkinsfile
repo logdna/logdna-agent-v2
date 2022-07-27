@@ -283,6 +283,8 @@ pipeline {
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static
                                 STATIC=1 make publish-s3-binary
                                 WINDOWS=1 make publish-s3-binary
+                                WINDOWS=1 make msi-release
+                                WINDOWS=1 make publish-s3-binary-signed
                                 ARCH=x86_64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
                                 ARCH=aarch64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
                                 rm ${WORKSPACE}/.aws_creds_static

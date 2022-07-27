@@ -466,6 +466,7 @@ build-rpm: build-release
 				"/build/target/${TARGET}/release/logdna-agent=/usr/bin/logdna-agent" \
 				"packaging/linux/logdna-agent.service=/lib/systemd/system/logdna-agent.service"'
 
+
 .PHONY: publish-s3-binary
 publish-s3-binary:
 	if [ "$(WINDOWS)" != "" ]; then \
@@ -474,6 +475,29 @@ publish-s3-binary:
 	else \
 	    aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent; \
 	fi;
+
+.PHONY: publish-s3-binary-signed
+publish-s3-binary-signed:
+	if [ "$(WINDOWS)" != "" ]; then \
+	    aws s3 cp --acl public-read target/$(TARGET)/release/signed/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/signed/logdna-agent-svc.exe; \
+	    aws s3 cp --acl public-read target/$(TARGET)/release/signed/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/signed/logdna-agent.exe; \
+	    aws s3 cp --acl public-read target/$(TARGET)/release/signed/mezmo-agent.msi s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/signed/mezmo-agent.msi; \
+	else \
+	    echo Nothing to publish; \
+	fi;
+
+define MSI_RULE
+.PHONY: msi-$(1)
+msi-$(1):  ## create signed exe(s) and msi in $(BUILD_DIR)/signed
+	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	$(eval CERT_NAME := "logdna_dev_cert.pfx")
+	aws s3 cp "s3://ecosys-vault/$(CERT_NAME)" "$(BUILD_DIR)" && \
+	aws s3 cp "s3://ecosys-vault/$(CERT_NAME).pwd" "$(BUILD_DIR)" && \
+	$(BENCH_COMMAND) "--env BUILD_DIR=/build/$(BUILD_DIR) --env CERT_NAME=$(CERT_NAME) --env BUILD_VERSION=$(BUILD_VERSION)" "cd /build/packaging/windows && ./mk_msi" && \
+	rm "$(BUILD_DIR)/$(CERT_NAME)" "$(BUILD_DIR)/$(CERT_NAME).pwd";
+endef
+BUILD_TYPES=debug release
+$(foreach _type, $(BUILD_TYPES), $(eval $(call MSI_RULE,$(_type))))
 
 define publish_images
 	$(eval VCS_REF_BUILD_NUMBER_SHA:=$(shell echo "$(VCS_REF)$(BUILD_NUMBER)" | sha256sum | head -c 16))
