@@ -235,36 +235,29 @@ impl ArgumentOptions {
             raw.http.gzip_level = self.gzip_level;
         }
 
-        let mut params = match raw.http.params {
-            Some(v) => v,
-            None => Params {
-                hostname: "".to_string(),
-                mac: None,
-                ip: None,
-                now: 0,
-                tags: None,
-            },
-        };
-
+        let mut params = raw.http.params.take().unwrap_or_else(Params::builder);
         if let Some(v) = self.os_hostname {
-            params.hostname = v;
+            params.hostname(v);
         }
-
-        if self.ip.is_some() {
-            params.ip = self.ip;
+        if let Some(ip) = self.ip {
+            params.ip(ip);
         }
-
-        if self.mac.is_some() {
-            params.mac = self.mac;
+        if let Some(mac) = self.mac {
+            params.mac(mac);
         }
 
         if !self.tags.is_empty() {
-            let tags = params.tags.get_or_insert(Tags::new());
+            // Params should always be valid here
+            let mut tags = params
+                .build()
+                .ok()
+                .and_then(|mut p| p.tags.take())
+                .unwrap_or_else(Tags::new);
             with_csv(self.tags).iter().for_each(|v| {
                 tags.add(v);
             });
+            params.tags(tags);
         }
-
         raw.http.params = Some(params);
 
         if self.ingest_timeout.is_some() {
@@ -504,7 +497,9 @@ mod test {
     use super::*;
 
     use crate::raw::{Config as RawConfig, K8sStartupLeaseConfig, Rules};
+
     use humanize_rs::bytes::Unit;
+
     use std::env::set_var;
 
     #[cfg(unix)]
@@ -558,8 +553,9 @@ mod test {
     #[test]
     fn merge_should_combine_existing_tags() {
         let mut config = RawConfig::default();
-        let mut params = config.http.params.unwrap();
-        params.tags = Some(Tags::from(vec!["a".to_owned()]));
+        let mut params = Params::builder();
+        params.hostname("");
+        params.tags(Tags::from(vec!["a".to_owned()]));
         config.http.params = Some(params);
         let options = ArgumentOptions {
             tags: vec!["b".to_owned()],
@@ -568,7 +564,16 @@ mod test {
         let config = options.merge(config);
 
         assert_eq!(
-            config.http.params.as_ref().unwrap().tags.as_ref().unwrap(),
+            config
+                .http
+                .params
+                .unwrap()
+                .build()
+                .as_ref()
+                .unwrap()
+                .tags
+                .as_ref()
+                .unwrap(),
             &Tags::from(vec_strings!["a", "b"])
         );
     }
@@ -579,10 +584,20 @@ mod test {
             tags: vec!["b".to_owned()],
             ..Default::default()
         };
-        let config = options.merge(RawConfig::default());
+        let mut config = options.merge(RawConfig::default());
 
+        config.http.params.as_mut().unwrap().hostname("");
         assert_eq!(
-            config.http.params.as_ref().unwrap().tags.as_ref().unwrap(),
+            config
+                .http
+                .params
+                .unwrap()
+                .build()
+                .as_ref()
+                .unwrap()
+                .tags
+                .as_ref()
+                .unwrap(),
             &Tags::from(vec_strings!["b"])
         );
     }
@@ -590,14 +605,24 @@ mod test {
     #[test]
     fn merge_should_leave_tags_when_empty() {
         let mut config = RawConfig::default();
-        let mut params = config.http.params.unwrap();
-        params.tags = Some(Tags::from(vec!["a".to_owned()]));
+        let mut params = Params::builder();
+        params.hostname("");
+        params.tags(Tags::from(vec!["a".to_owned()]));
         config.http.params = Some(params);
         let options = ArgumentOptions::default();
         let config = options.merge(config);
 
         assert_eq!(
-            config.http.params.as_ref().unwrap().tags.as_ref().unwrap(),
+            config
+                .http
+                .params
+                .unwrap()
+                .build()
+                .as_ref()
+                .unwrap()
+                .tags
+                .as_ref()
+                .unwrap(),
             &Tags::from(vec_strings!["a"])
         );
     }
@@ -605,8 +630,9 @@ mod test {
     #[test]
     fn merge_should_separate_tags_by_comma() {
         let mut config = RawConfig::default();
-        let mut params = config.http.params.unwrap();
-        params.tags = Some(Tags::from(vec!["a".to_owned()]));
+        let mut params = Params::builder();
+        params.hostname("");
+        params.tags(Tags::from(vec!["a".to_owned()]));
         config.http.params = Some(params);
         let options = ArgumentOptions {
             tags: vec!["b,c".to_owned()],
@@ -615,7 +641,16 @@ mod test {
         let config = options.merge(config);
 
         assert_eq!(
-            config.http.params.as_ref().unwrap().tags.as_ref().unwrap(),
+            config
+                .http
+                .params
+                .unwrap()
+                .build()
+                .as_ref()
+                .unwrap()
+                .tags
+                .as_ref()
+                .unwrap(),
             &Tags::from(vec_strings!["a", "b", "c"])
         );
     }
@@ -684,7 +719,7 @@ mod test {
         assert_eq!(config.http.body_size, Some(222222));
         assert_eq!(config.http.retry_dir, Some(PathBuf::from("/tmp/argv")));
         assert_eq!(config.http.retry_disk_limit, Some(123456));
-        let params = config.http.params.unwrap();
+        let params = config.http.params.unwrap().build().unwrap();
         assert_eq!(params.hostname, "my_host");
         assert_eq!(params.tags, Some(Tags::from(vec_strings!("a", "b"))));
         assert_eq!(params.ip, some_string!("1.2.3.4"));
