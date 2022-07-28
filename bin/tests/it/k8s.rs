@@ -930,7 +930,7 @@ async fn test_k8s_enrichment() {
             "always",
             "warn",
             "never",
-            "never"
+            "never",
         )
         .await;
 
@@ -1065,7 +1065,7 @@ async fn test_k8s_events_logged() {
             "always",
             "warn",
             "never",
-            "never"
+            "never",
         )
         .await;
 
@@ -1313,7 +1313,7 @@ async fn test_k8s_startup_leases_never_start() {
             "always",
             "info",
             "never",
-            "never"
+            "never",
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;

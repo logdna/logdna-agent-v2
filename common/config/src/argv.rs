@@ -148,7 +148,6 @@ pub struct ArgumentOptions {
     #[structopt(long, env = env_vars::LOG_METRIC_SERVER_STATS)]
     log_metric_server_stats: Option<K8sTrackingConf>,
 
-    /// Determine wheather or not to look for available K8s startup leases before attempting
     /// Determine whether or not to look for available K8s startup leases before attempting
     /// to start the agent; used to throttle startup on very large K8s clusters.
     /// Defaults to "off".
