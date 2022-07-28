@@ -35,7 +35,6 @@ DOCKER_BUILDKIT=1 docker build -t "socat:local" $curpath/socat
 
 echo "Loading into kind"
 
-<<<<<<< HEAD
 if [ -z "$BUILD_TAG" ]
 then
   cluster_name=agent-dev-cluster
@@ -43,8 +42,6 @@ else
   cluster_name=$(echo $BUILD_TAG | tr '[:upper:]' '[:lower:]' | tail -c 32 | sed 's/^-*//g')
 fi
 
-=======
->>>>>>> master
 kind load docker-image "logdna-agent-v2:local" --name $cluster_name
 kind load docker-image "socat:local" --name $cluster_name
 
