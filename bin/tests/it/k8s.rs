@@ -1401,14 +1401,14 @@ async fn test_metric_stats_aggregator_enabled() {
             agent_name,
             agent_namespace,
             &mock_ingester_socket_addr_str,
-            "always",
-            "always",
+            "never",
+            "never",
             "info",
-            "off",
+            "never",
             "always",
         )
         .await;
-        tokio::time::sleep(tokio::time::Duration::from_millis(45000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(60000)).await;
 
         let map = received.lock().await;
 
@@ -1489,9 +1489,10 @@ async fn test_metric_stats_aggregator_disabled() {
             "always",
             "always",
             "info",
-            "off",
+            "never",
             "never",
         )
+
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(45000)).await;
 

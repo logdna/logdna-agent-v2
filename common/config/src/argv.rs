@@ -144,13 +144,13 @@ pub struct ArgumentOptions {
     /// Determines whether the agent should produce metrics-servers usage logs.
     /// When set this agent will poll the metrics-server on the cluster to get usage statistics
     /// combine them with other pod/node statistics for enhancements to the web application.
-    /// Defaults to "off".
+    /// Defaults to "never".
     #[structopt(long, env = env_vars::LOG_METRIC_SERVER_STATS)]
     log_metric_server_stats: Option<K8sTrackingConf>,
 
     /// Determine whether or not to look for available K8s startup leases before attempting
     /// to start the agent; used to throttle startup on very large K8s clusters.
-    /// Defaults to "off".
+    /// Defaults to "never".
     #[structopt(long = "startup-lease", env = env_vars::K8S_STARTUP_LEASE)]
     k8s_startup_lease: Option<K8sLeaseConf>,
 
