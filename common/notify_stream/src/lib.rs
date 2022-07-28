@@ -141,7 +141,7 @@ impl Watcher {
         stream::unfold(rx, |rx| async move {
             loop {
                 let received = rx.recv().await.expect("channel can not be closed");
-                log::info!("received raw notify event: {:?}", received);
+                log::trace!("received raw notify event: {:?}", received);
                 if let Some(mapped_event) = match received {
                     DebouncedEvent::NoticeRemove(p) => Some(Event::Remove(p)),
                     DebouncedEvent::Create(p) => Some(Event::Create(p)),
