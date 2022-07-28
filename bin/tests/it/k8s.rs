@@ -1492,7 +1492,6 @@ async fn test_metric_stats_aggregator_disabled() {
             "never",
             "never",
         )
-
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(45000)).await;
 
