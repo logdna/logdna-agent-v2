@@ -48,7 +48,7 @@
         </ComponentGroup>
         <ComponentGroup Id="ProductComponents2" Directory="DATAFOLDER">
             <Component Id="ProductComponent2" Guid="56CD2588-B976-4198-B815-FAB7E1E57CD1">
-                <File Id="CfgFile" Name="logdna.conf" DiskId="1" Source="$(env.AGENT_CFG_PATH)" />
+                <File Id="CfgFile" Name="logdna.conf" DiskId="1" Source="$(env.AGENT_CFG_PATH)" KeyPath="yes" />
             </Component>
         </ComponentGroup>
     </Fragment>

@@ -481,15 +481,21 @@ publish-s3-binary:
 	    aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent; \
 	fi;
 
-.PHONY: publish-s3-binary-signed
-publish-s3-binary-signed:
+
+define PUBLISH_SIGNED_RULE
+.PHONY: publish-s3-binary-signed-$(1)
+publish-s3-binary-signed-$(1):
 	if [ "$(WINDOWS)" != "" ]; then \
-	    aws s3 cp --acl public-read target/$(TARGET)/release/signed/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/signed/logdna-agent-svc.exe; \
-	    aws s3 cp --acl public-read target/$(TARGET)/release/signed/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/signed/logdna-agent.exe; \
-	    aws s3 cp --acl public-read target/$(TARGET)/release/signed/mezmo-agent.msi s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/signed/mezmo-agent.msi; \
+	    aws s3 cp --acl public-read target/$(TARGET)/$(1)/signed/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/signed/logdna-agent-svc.exe; \
+	    aws s3 cp --acl public-read target/$(TARGET)/$(1)/signed/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/signed/logdna-agent.exe; \
+	    aws s3 cp --acl public-read target/$(TARGET)/$(1)/signed/mezmo-agent.msi s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/signed/mezmo-agent.msi; \
 	else \
 	    echo Nothing to publish; \
 	fi;
+endef
+BUILD_TYPES=debug release
+$(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_SIGNED_RULE,$(_type))))
+
 
 define MSI_RULE
 .PHONY: msi-$(1)
@@ -503,6 +509,7 @@ msi-$(1):  ## create signed exe(s) and msi in $(BUILD_DIR)/signed
 endef
 BUILD_TYPES=debug release
 $(foreach _type, $(BUILD_TYPES), $(eval $(call MSI_RULE,$(_type))))
+
 
 define publish_images
 	$(eval VCS_REF_BUILD_NUMBER_SHA:=$(shell echo "$(VCS_REF)$(BUILD_NUMBER)" | sha256sum | head -c 16))
