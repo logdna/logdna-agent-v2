@@ -1,7 +1,7 @@
+use crate::argv;
 use crate::env_vars;
 use crate::error::ConfigError;
 use crate::raw::{Config, Rules};
-use crate::{argv, get_hostname};
 use http::types::params::{Params, Tags};
 use humanize_rs::bytes::Bytes;
 use java_properties::PropertiesIter;
@@ -149,19 +149,35 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
         })?);
     }
 
-    let mut params = Params::builder()
-        .hostname(get_hostname().unwrap_or_default())
-        .build()
-        .unwrap();
-    params.tags = map.get(&TAGS).map(|s| Tags::from(argv::split_by_comma(s)));
+    if let Some(tags) = map.get(&TAGS).map(|s| Tags::from(argv::split_by_comma(s))) {
+        result
+            .http
+            .params
+            .get_or_insert_with(Params::builder)
+            .tags(tags);
+    };
 
     if let Some(value) = map.get_string(&OS_HOSTNAME) {
-        params.hostname = value;
+        result
+            .http
+            .params
+            .get_or_insert_with(Params::builder)
+            .hostname(value);
     }
-    params.ip = map.get_string(&IP);
-    params.mac = map.get_string(&MAC);
-
-    result.http.params = Some(params);
+    if let Some(ip) = map.get_string(&IP) {
+        result
+            .http
+            .params
+            .get_or_insert_with(Params::builder)
+            .ip(ip);
+    }
+    if let Some(mac) = map.get_string(&MAC) {
+        result
+            .http
+            .params
+            .get_or_insert_with(Params::builder)
+            .mac(mac);
+    }
 
     if let Some(value) = map.get(&INGEST_TIMEOUT) {
         result.http.timeout = Some(value.parse().map_err(|e| {

@@ -8,6 +8,7 @@ pipeline {
     agent {
         node {
             label "rust-x86_64"
+            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
         }
     }
     options {
@@ -128,10 +129,10 @@ pipeline {
                                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                             ]]) {
                             sh """
-                                echo "[default]" > ${PWD}/.aws_creds_k8s-test
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_k8s-test
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_k8s-test
-                                make k8s-test AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_k8s-test
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_k8s-test
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_k8s-test
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_k8s-test
+                                make k8s-test AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_k8s-test
                             """
                         }
                     }
@@ -140,7 +141,7 @@ pipeline {
             post {
                 always {
                     sh "make clean"
-                    sh "rm -f ${PWD}/.aws_creds_k8s-test"
+                    sh "rm -f ${WORKSPACE}/.aws_creds_k8s-test"
                 }
             }
         }
@@ -160,16 +161,16 @@ pipeline {
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                         ]]){
                             sh """
-                                echo "[default]" > ${PWD}/.aws_creds_x86_64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_x86_64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_x86_64
-                                ARCH=x86_64 make build-image AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_x86_64
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_x86_64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_x86_64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_x86_64
+                                ARCH=x86_64 make build-image AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_x86_64
                             """
                         }
                     }
                     post {
                         always {
-                            sh "rm ${PWD}/.aws_creds_x86_64"
+                            sh "rm ${WORKSPACE}/.aws_creds_x86_64"
                         }
                     }
                 }
@@ -182,16 +183,16 @@ pipeline {
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                         ]]){
                             sh """
-                                echo "[default]" > ${PWD}/.aws_creds_aarch64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_aarch64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_aarch64
-                                ARCH=aarch64 make build-image AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_aarch64
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_aarch64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_aarch64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_aarch64
+                                ARCH=aarch64 make build-image AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_aarch64
                             """
                         }
                     }
                     post {
                         always {
-                            sh "rm ${PWD}/.aws_creds_aarch64"
+                            sh "rm ${WORKSPACE}/.aws_creds_aarch64"
                         }
                     }
                 }
@@ -204,11 +205,11 @@ pipeline {
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                         ]]) {
                             sh '''
-                                echo "[default]" > ${PWD}/.aws_creds_static_x86_64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static_x86_64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static_x86_64
-                                ARCH=x86_64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static_x86_64
-                                rm ${PWD}/.aws_creds_static_x86_64
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_static_x86_64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_static_x86_64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static_x86_64
+                                ARCH=x86_64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static_x86_64
+                                rm ${WORKSPACE}/.aws_creds_static_x86_64
                             '''
                         }
                     }
@@ -222,11 +223,11 @@ pipeline {
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                         ]]) {
                             sh '''
-                                echo "[default]" > ${PWD}/.aws_creds_static_aarch64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static_aarch64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static_aarch64
-                                ARCH=aarch64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static_aarch64
-                                rm ${PWD}/.aws_creds_static_aarch64
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_static_aarch64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_static_aarch64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static_aarch64
+                                ARCH=aarch64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static_aarch64
+                                rm ${WORKSPACE}/.aws_creds_static_aarch64
                             '''
                         }
                     }
@@ -240,11 +241,11 @@ pipeline {
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                         ]]) {
                             sh '''
-                                echo "[default]" > ${PWD}/.aws_creds_win_static_x86_64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_win_static_x86_64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_win_static_x86_64
-                                ARCH=x86_64 WINDOWS=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_win_static_x86_64
-                                rm ${PWD}/.aws_creds_win_static_x86_64
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_win_static_x86_64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_win_static_x86_64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_win_static_x86_64
+                                ARCH=x86_64 WINDOWS=1 FEATURES=windows_service make build-release AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_win_static_x86_64
+                                rm ${WORKSPACE}/.aws_creds_win_static_x86_64
                             '''
                         }
                     }
@@ -273,13 +274,14 @@ pipeline {
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                         ]]) {
                             sh '''
-                                echo "[default]" > ${PWD}/.aws_creds_static
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${PWD}/.aws_creds_static
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${PWD}/.aws_creds_static
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_static
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_static
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static
                                 STATIC=1 make publish-s3-binary
-                                ARCH=x86_64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
-                                ARCH=aarch64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${PWD}/.aws_creds_static
-                                rm ${PWD}/.aws_creds_static
+                                WINDOWS=1 make publish-s3-binary
+                                ARCH=x86_64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
+                                ARCH=aarch64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
+                                rm ${WORKSPACE}/.aws_creds_static
                             '''
                         }
                     }

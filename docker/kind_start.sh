@@ -2,6 +2,7 @@
 
 curpath=$(dirname "$0")
 create_cluster=${1:-true}
+cluster_name=${2:-agent-dev-cluster}
 
 KIND_IMAGE=kindest/node:v1.23.4@sha256:0e34f0d0fd448aa2f2819cfd74e99fe5793a6e4938b328f657c8e3f81ee0dfb9
 

@@ -1,6 +1,7 @@
 REPO := logdna-agent-v2
 
 SHELLFLAGS := -ic
+.DEFAULT_GOAL := test
 
 # The target architecture the agent is to be compiled for
 export ARCH ?= x86_64
@@ -94,7 +95,7 @@ TARGET?=$(ARCH)-unknown-linux-gnu
 WINDOWS?=
 
 ifneq ($(WINDOWS),)
-	FEATURES?=
+	FEATURES?=windows_service
 	TARGET=$(ARCH)-pc-windows-msvc
 	BINDGEN_EXTRA_CLANG_ARGS:=
 	RUSTFLAGS:=
@@ -246,7 +247,6 @@ lint: lint-docker lint-shell lint-format lint-clippy lint-audit ## Runs all the 
 bump-major-dev: ## Create a new minor beta release and push to github
 	$(eval TARGET_BRANCH := $(shell expr $(MINOR_VERSION) + 1).0)
 	$(eval NEW_VERSION := $(TARGET_BRANCH).0-dev)
-	@if [ ! "$(REMOTE_BRANCH)" = "master" ]; then echo "Can't create the minor beta release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"master\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
@@ -259,7 +259,6 @@ bump-major-dev: ## Create a new minor beta release and push to github
 release-major: ## Create a new major beta release and push to github
 	$(eval TARGET_BRANCH := $(MAJOR_VERSION).0)
 	$(eval NEW_VERSION := $(TARGET_BRANCH).0-beta.1)
-	@if [ ! "$(REMOTE_BRANCH)" = "master" ]; then echo "Can't create the major beta release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"master\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
@@ -275,7 +274,6 @@ release-major: ## Create a new major beta release and push to github
 bump-minor-dev: ## Create a new minor beta release and push to github
 	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(shell expr $(MINOR_VERSION) + 1))
 	$(eval NEW_VERSION := $(TARGET_BRANCH).0-dev)
-	@if [ ! "$(REMOTE_BRANCH)" = "master" ]; then echo "Can't create the minor beta release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"master\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
@@ -288,7 +286,6 @@ bump-minor-dev: ## Create a new minor beta release and push to github
 release-minor: ## Create a new minor beta release and push to github
 	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(MINOR_VERSION))
 	$(eval NEW_VERSION := $(TARGET_BRANCH).0-beta.1)
-	@if [ ! "$(REMOTE_BRANCH)" = "master" ]; then echo "Can't create the minor beta release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"master\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
@@ -471,7 +468,12 @@ build-rpm: build-release
 
 .PHONY: publish-s3-binary
 publish-s3-binary:
-	aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent
+	if [ "$(WINDOWS)" != "" ]; then \
+	    aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent-svc.exe; \
+	    aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent.exe; \
+	else \
+	    aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent; \
+	fi;
 
 define publish_images
 	$(eval VCS_REF_BUILD_NUMBER_SHA:=$(shell echo "$(VCS_REF)$(BUILD_NUMBER)" | sha256sum | head -c 16))

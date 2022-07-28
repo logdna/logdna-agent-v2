@@ -73,3 +73,13 @@ pub fn create_k8s_client_default_from_env(
     let config = Config::from_cluster_env()?;
     Ok(create_k8s_client(user_agent, config)?)
 }
+
+#[cfg(test)]
+pub mod test {
+    // Provide values for extern symbols PKG_NAME and PKG_VERSION
+    // when building this module on it's own
+    #[no_mangle]
+    pub static PKG_NAME: &str = "test";
+    #[no_mangle]
+    pub static PKG_VERSION: &str = "test";
+}

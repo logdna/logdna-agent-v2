@@ -929,8 +929,8 @@ async fn test_k8s_enrichment() {
             "never",
             "always",
             "warn",
-            "off",
             "never",
+            "never"
         )
         .await;
 
@@ -1064,8 +1064,8 @@ async fn test_k8s_events_logged() {
             "always",
             "always",
             "warn",
-            "off",
             "never",
+            "never"
         )
         .await;
 
@@ -1261,7 +1261,7 @@ async fn test_k8s_startup_leases_always_start() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
-async fn test_k8s_startup_leases_off_start() {
+async fn test_k8s_startup_leases_never_start() {
     let _ = env_logger::Builder::from_default_env().try_init();
 
     let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();
@@ -1312,8 +1312,8 @@ async fn test_k8s_startup_leases_off_start() {
             "always",
             "always",
             "info",
-            "off",
             "never",
+            "never"
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
