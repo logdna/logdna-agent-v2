@@ -26,9 +26,7 @@ osslsigncode sign \
 # Create msi
 #
 export AGENT_VERSION=${BUILD_VERSION}
-export AGENT_EXE_PATH="$BUILD_DIR/signed/logdna-agent.exe"
-export AGENT_SVC_EXE_PATH="$BUILD_DIR/signed/logdna-agent-svc.exe"
-export AGENT_CFG_PATH="./logdna.conf"
+export AGENT_EXE_DIR="$BUILD_DIR/signed"
 wixl -v --ext ui ./mezmo-agent.wxs -a x64 -o "$BUILD_DIR/mezmo-agent.msi"
 #
 # Sign msi
