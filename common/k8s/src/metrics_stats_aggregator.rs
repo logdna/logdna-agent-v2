@@ -24,6 +24,8 @@ use crate::kube_stats::{
     pod_stats::PodStats,
 };
 
+pub static LOG_FILE_NAME: &str = "logdna-reporter";
+
 pub struct MetricsStatsAggregator {
     pub client: Client,
 }
@@ -48,7 +50,7 @@ impl MetricsStatsAggregator {
                         .map(|line| {
                             LineBuilder::new()
                                 .line(line)
-                                .file("logdna-reporter".to_string())
+                                .file(LOG_FILE_NAME.to_string())
                         }),
                     ),
                     Err(e) => {
