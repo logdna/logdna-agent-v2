@@ -94,6 +94,7 @@ subjects:
     namespace: logdna-agent
 ---
 apiVersion: apps/v1
+kind: ReplicaSet
 metadata:
   name: logdna-agent
   namespace: logdna-agent
@@ -102,10 +103,6 @@ metadata:
     app.kubernetes.io/instance: logdna-agent
     app.kubernetes.io/version: 3.6.0-dev
 spec:
-  updateStrategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxUnavailable: 100%
   selector:
     matchLabels:
       app: logdna-agent
