@@ -25,6 +25,7 @@ use crate::kube_stats::{
 };
 
 pub static LOG_FILE_NAME: &str = "logdna-reporter";
+pub static GENERATE_REPORT_INTERVAL_MS: u64 = 30000;
 
 pub struct MetricsStatsAggregator {
     pub client: Client,
@@ -37,7 +38,7 @@ impl MetricsStatsAggregator {
 
     pub fn start_metrics_call_task(self) -> impl Stream<Item = LineBuilder> {
         stream::unfold(self.client, |client| async {
-            sleep(Duration::from_millis(30000)).await;
+            sleep(Duration::from_millis(GENERATE_REPORT_INTERVAL_MS)).await;
             Some((
                 match self::process_reporter_info(client.clone()).await {
                     Ok((pods_strings, node_strings, cluster_stats_string)) => Some(
