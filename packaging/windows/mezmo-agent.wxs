@@ -16,21 +16,20 @@
         <UIRef Id="WixUI_Minimal" />
         <Feature Id="ProductFeature" Title="Mezmo Agent" Level="1">
             <ComponentGroupRef Id="ProductComponents" />
-            <ComponentGroupRef Id="ProductComponents2" />
         </Feature>
 
         <InstallExecuteSequence>
             <RemoveExistingProducts Before="InstallInitialize" />
-            <Custom Action="ServiceRecovery" After="InstallServices">NOT REMOVE</Custom>
+            <Custom Action="PostInstall" After="InstallServices" Before="StartServices">NOT REMOVE</Custom>
         </InstallExecuteSequence>
         <Property Id="powershell" Value="powershell.exe" />
-        <CustomAction Id="ServiceRecovery"
-                      ExeCommand="-ExecutionPolicy Bypass -WindowStyle hidden -File &quot;[#PostInstallScript1]&quot;"
+        <Property Id="KEY" Secure="yes" Value="None"/>
+        <CustomAction Id="PostInstall"
+                      ExeCommand="-ExecutionPolicy Bypass -File &quot;[#PostInstallScript]&quot; -INGESTION_KEY &quot;[KEY]&quot; -DATAFOLDER &quot;[DATAFOLDER]&quot;"
                       Execute="deferred"
                       Property="powershell"
                       Impersonate="no"
                       Return="check" />
-
     </Product>
     <Fragment>
         <Directory Id="TARGETDIR" Name="SourceDir">
@@ -47,16 +46,12 @@
             <Component Id="ProductComponent" Win64="$(var.Win64)" Guid="56CD2588-B976-4198-B815-FAB7E1E57CD7">
                 <File Id="AgentSvc" Name="logdna-agent-svc.exe" DiskId="1" Source="$(env.AGENT_EXE_DIR)/logdna-agent-svc.exe" KeyPath="yes" />
                 <File Id="AgentCLI" Name="logdna-agent.exe" DiskId="1" Source="$(env.AGENT_EXE_DIR)/logdna-agent.exe" />
-                <File Id="PostInstallScript1" Name="post_install.ps1" DiskId="1" Source="./post_install.ps1" />
+                <File Id="PostInstallScript" Name="post_install.ps1" DiskId="1" Source="./post_install.ps1" />
+                <File Id="CfgFile" Name="logdna.conf.sample" DiskId="1" Source="./logdna.conf.sample" />
                 <ServiceInstall Id="ServiceInstaller" Type="ownProcess" Vital="yes" Name="MezmoAgentService"
                                 DisplayName="Mezmo Agent" Description="Mezmo Agent Service"
                                 Start="auto" Account="LocalSystem" ErrorControl="normal" Arguments="" Interactive="no" />
                 <ServiceControl Id="StartService" Stop="both" Start="install" Remove="uninstall" Name="MezmoAgentService" Wait="yes" />
-            </Component>
-        </ComponentGroup>
-        <ComponentGroup Id="ProductComponents2" Directory="DATAFOLDER">
-            <Component Id="ProductComponent2" Guid="56CD2588-B976-4198-B815-FAB7E1E57CD1">
-                <File Id="CfgFile" Name="logdna.conf" DiskId="1" Source="./logdna.conf" KeyPath="yes" />
             </Component>
         </ComponentGroup>
     </Fragment>
