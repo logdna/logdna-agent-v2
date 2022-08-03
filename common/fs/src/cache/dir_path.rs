@@ -12,7 +12,7 @@ pub enum DirPathBufError {
 
 // Strongly typed wrapper around PathBuf, cannot be constructed unless
 // the directory it's referring to exists
-#[derive(std::fmt::Debug, Clone)]
+#[derive(std::fmt::Debug, Clone, PartialEq)]
 pub struct DirPathBuf {
     inner: PathBuf,
 }
@@ -30,10 +30,9 @@ impl std::convert::TryFrom<PathBuf> for DirPathBuf {
         //TODO: We want to allow paths that are not yet present: LOG-10041
         // For now, prevent validation on Windows
         #[cfg(unix)]
-        if std::fs::canonicalize(&path)?.is_dir() {
-            Ok(DirPathBuf { inner: path })
-        } else {
-            Err(DirPathBufError::NotADirPath(path))
+        match find_valid_path(path.clone()) {
+            Some(p) => Ok(p),
+            None => Err(DirPathBufError::NotADirPath(path)),
         }
 
         #[cfg(windows)]
@@ -72,5 +71,39 @@ impl std::convert::AsRef<Path> for DirPathBuf {
 impl From<DirPathBuf> for PathBuf {
     fn from(d: DirPathBuf) -> PathBuf {
         d.inner
+    }
+}
+
+fn find_valid_path(path: PathBuf) -> Option<DirPathBuf> {
+    if path.is_dir() {
+        return Some(DirPathBuf { inner: path });
+    }
+
+    warn!("{} is not a directory; moving to parent directory", path.display());
+    find_valid_path(level_up(&path))
+}
+
+fn level_up(path: &Path) -> PathBuf {
+    let mut parent_path = PathBuf::new();
+    if let Some(p) = path.parent() {
+        parent_path.push(p);
+    }
+    parent_path
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_level_up() {
+        let mut init_pathbuf = PathBuf::new();
+        init_pathbuf.push("/test-directory/sub-directory");
+
+        let mut expe_pathbuf = PathBuf::new();
+        expe_pathbuf.push("/test-directory");
+
+        let new_pathbuf = level_up(&init_pathbuf);
+        assert_eq!(expe_pathbuf, new_pathbuf);
     }
 }
