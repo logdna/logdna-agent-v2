@@ -79,5 +79,5 @@
 
   * Unattended installation example:
     ```
-    mezmo_agent.msi /qn /u KEY="<YOUR INGESTIOn KEY>"
+    mezmo_agent.msi /qn KEY=abcdefg1234567890
     ```
