@@ -30,9 +30,10 @@ impl std::convert::TryFrom<PathBuf> for DirPathBuf {
         //TODO: We want to allow paths that are not yet present: LOG-10041
         // For now, prevent validation on Windows
         #[cfg(unix)]
-        match find_valid_path(path.clone()) {
-            Some(p) => Ok(p),
-            None => Err(DirPathBufError::NotADirPath(path)),
+        //TODO: Need to fix error handling here
+        match find_valid_path(Some(path.clone())) {
+            Ok(p) => Ok(p),
+            _ => Err(DirPathBufError::NotADirPath(path)),
         }
 
         #[cfg(windows)]
@@ -74,21 +75,28 @@ impl From<DirPathBuf> for PathBuf {
     }
 }
 
-fn find_valid_path(path: PathBuf) -> Option<DirPathBuf> {
-    if path.is_dir() {
-        return Some(DirPathBuf { inner: path });
+fn find_valid_path(path: Option<PathBuf>) -> Result<DirPathBuf, DirPathBufError> {
+    match path {
+        Some(p) => {
+            if p.is_dir() {
+                return Ok(DirPathBuf { inner: p });
+            }
+            warn!("{:?} is not a directory; moving to parent directory", p);
+            find_valid_path(level_up(&p))
+        }
+        None => Err(DirPathBufError::NotADirPath(path.unwrap())),
     }
-
-    warn!("{} is not a directory; moving to parent directory", path.display());
-    find_valid_path(level_up(&path))
 }
 
-fn level_up(path: &Path) -> PathBuf {
+fn level_up(path: &Path) -> Option<PathBuf> {
     let mut parent_path = PathBuf::new();
-    if let Some(p) = path.parent() {
-        parent_path.push(p);
+    match path.parent() {
+        Some(p) => {
+            parent_path.push(p);
+            Some(parent_path)
+        }
+        None => None,
     }
-    parent_path
 }
 
 #[cfg(test)]
@@ -97,13 +105,13 @@ mod tests {
 
     #[test]
     fn test_level_up() {
-        let mut init_pathbuf = PathBuf::new();
-        init_pathbuf.push("/test-directory/sub-directory");
-
         let mut expe_pathbuf = PathBuf::new();
         expe_pathbuf.push("/test-directory");
 
-        let new_pathbuf = level_up(&init_pathbuf);
-        assert_eq!(expe_pathbuf, new_pathbuf);
+        let new_pathbuf = level_up(Path::new("/test-directory/sub-directory"));
+        assert_eq!(expe_pathbuf, new_pathbuf.unwrap());
+
+        let root_path = level_up(Path::new(""));
+        assert_eq!(None, root_path);
     }
 }
