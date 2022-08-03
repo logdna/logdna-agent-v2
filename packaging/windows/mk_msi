@@ -4,6 +4,7 @@ set -eu
 # Sign exe files
 #
 mkdir -p "$BUILD_DIR/signed"
+echo signing exe files
 osslsigncode sign \
     -pkcs12 "$BUILD_DIR/$CERT_NAME" \
     -readpass "$BUILD_DIR/$CERT_NAME.pwd" \

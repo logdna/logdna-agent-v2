@@ -9,6 +9,7 @@ function finish {
 }
 trap finish EXIT
 #
+echo fetching key
 aws s3 cp "s3://ecosys-vault/$CERT_NAME" "$BUILD_DIR"
 aws s3 cp "s3://ecosys-vault/$CERT_NAME.pwd" "$BUILD_DIR"
 ./mk_msi
