@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eu
 VER=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" ../../bin/Cargo.toml)
-export BUILD_VERSION="$VER"
+export BUILD_VERSION="${BUILD_VERSION:-"$VER"}"
 export BUILD_DIR="${BUILD_DIR:-../../target/x86_64-pc-windows-msvc/debug}"
 export CERT_NAME="${CERT_NAME:-logdna_dev_cert.pfx}"
 function finish {
