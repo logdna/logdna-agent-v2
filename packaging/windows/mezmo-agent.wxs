@@ -3,7 +3,7 @@
     <?define bitness = "(64 bit)" ?>
     <?define Win64 = "yes" ?>
     <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
-    <Product Id="*" Name="Mezmo Agent $(var.bitness)"
+    <Product Id="*" Name="Mezmo Agent v$(env.AGENT_VERSION) $(var.bitness)"
                     Language="1033"
                     Version="$(env.AGENT_VERSION)"
                     Manufacturer="Mezmo"

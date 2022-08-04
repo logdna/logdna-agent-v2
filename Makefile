@@ -67,6 +67,7 @@ BUILD_TIMESTAMP := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUILD_VERSION := $(shell sed -nE "s/^version = \"(.+)\"\$$/\1/p" bin/Cargo.toml)
 BUILD_TAG ?= $(VCS_REF)
 IMAGE_TAG := $(BUILD_TAG)-$(ARCH)
+BUILD_NUMBER := 0
 
 MAJOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f1)
 MINOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f2)
@@ -499,12 +500,12 @@ $(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_SIGNED_RULE,$(_type))))
 
 define MSI_RULE
 .PHONY: msi-$(1)
-msi-$(1):  ## create signed exe(s) and msi in $(BUILD_DIR)/signed
+msi-$(1): ## create signed exe(s) and msi in $(BUILD_DIR)/signed
 	$(eval BUILD_DIR := target/$(TARGET)/$(1))
 	$(eval CERT_NAME := "logdna_dev_cert.pfx")
 	aws s3 cp "s3://ecosys-vault/$(CERT_NAME)" "$(BUILD_DIR)" && \
 	aws s3 cp "s3://ecosys-vault/$(CERT_NAME).pwd" "$(BUILD_DIR)" && \
-	$(TOOLS_COMMAND) "--env BUILD_DIR=/build/$(BUILD_DIR) --env CERT_NAME=$(CERT_NAME) --env BUILD_VERSION=$(BUILD_VERSION)" "cd /build/packaging/windows && ./mk_msi" && \
+	$(TOOLS_COMMAND) "--env BUILD_DIR=/build/$(BUILD_DIR) --env CERT_NAME=$(CERT_NAME) --env BUILD_VERSION=$(BUILD_VERSION)+$(BUILD_NUMBER))" "cd /build/packaging/windows && ./mk_msi" && \
 	rm "$(BUILD_DIR)/$(CERT_NAME)" "$(BUILD_DIR)/$(CERT_NAME).pwd";
 endef
 BUILD_TYPES=debug release
