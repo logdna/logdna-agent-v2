@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
     <?define bitness = "(64 bit)" ?>
     <?define Win64 = "yes" ?>
     <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
@@ -30,6 +30,8 @@
                       Property="powershell"
                       Impersonate="no"
                       Return="check" />
+        <Icon Id="icon.ico" SourceFile="ui/bitmaps/Mezmo.ico"/>
+        <Property Id="ARPPRODUCTICON" Value="icon.ico" />
     </Product>
     <Fragment>
         <Directory Id="TARGETDIR" Name="SourceDir">
@@ -55,6 +57,4 @@
             </Component>
         </ComponentGroup>
     </Fragment>
-
-
 </Wix>

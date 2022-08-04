@@ -17,16 +17,12 @@
     mezmo_agent.msi KEY="<YOUR INGESTIOn KEY>"
     ```
 
-  * The key can be specified in config file:
+  * The key can also be specified in config file:
     ```
     c:\ProgramData\logdna\logdna.conf
 
     http:
-      gzip_level: 2
-      body_size: 2097152
       ingestion_key: <YOUR_INGESTION_KEY>
-    log:
-      ...
     ```
 
   * Other Installation options:
