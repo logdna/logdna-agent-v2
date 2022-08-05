@@ -505,7 +505,7 @@ msi-$(1): ## create signed exe(s) and msi in $(BUILD_DIR)/signed
 	$(eval CERT_NAME := "logdna_dev_cert.pfx")
 	aws s3 cp "s3://ecosys-vault/$(CERT_NAME)" "$(BUILD_DIR)" && \
 	aws s3 cp "s3://ecosys-vault/$(CERT_NAME).pwd" "$(BUILD_DIR)" && \
-	$(TOOLS_COMMAND) "--env BUILD_DIR=/build/$(BUILD_DIR) --env CERT_NAME=$(CERT_NAME) --env BUILD_VERSION=$(BUILD_VERSION)+$(BUILD_NUMBER))" "cd /build/packaging/windows && ./mk_msi" && \
+	$(TOOLS_COMMAND) "--env BUILD_DIR=/build/$(BUILD_DIR) --env CERT_NAME=$(CERT_NAME) --env BUILD_VERSION=$(BUILD_VERSION)+$(BUILD_NUMBER))" "cd /build/packaging/windows/msi && ./mk_msi" && \
 	rm "$(BUILD_DIR)/$(CERT_NAME)" "$(BUILD_DIR)/$(CERT_NAME).pwd";
 endef
 BUILD_TYPES=debug release
