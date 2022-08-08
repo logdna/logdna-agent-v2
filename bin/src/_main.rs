@@ -13,6 +13,7 @@ use journald::libjournald::source::create_source;
 #[cfg(target_os = "linux")]
 use journald::journalctl::create_journalctl_source;
 
+use k8s::errors::K8sError;
 use k8s::event_source::K8sEventStream;
 use k8s::lease::{get_available_lease, K8S_STARTUP_LEASE_LABEL, K8S_STARTUP_LEASE_RETRY_ATTEMPTS};
 
@@ -27,7 +28,6 @@ use middleware::Executor;
 use pin_utils::pin_mut;
 use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
-use std::env;
 use std::sync::Arc;
 use tokio::signal::*;
 use tokio::sync::Mutex;
@@ -214,6 +214,7 @@ pub async fn _main(
 
             k8s_event_stream
         }
+        Err(K8sError::K8sNotInClusterError()) => None,
         Err(e) => {
             warn!("Unable to initialize kubernetes client: {}", e);
             None
@@ -510,10 +511,6 @@ pub async fn _main(
             info!("Received {} signal, shutting down", signal_name)
         }
     }
-}
-
-fn is_in_cluster() -> bool {
-    env::var("KUBERNETES_SERVICE_HOST").is_ok()
 }
 
 async fn check_startup_lease_status(
