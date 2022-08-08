@@ -27,6 +27,7 @@ use middleware::Executor;
 use pin_utils::pin_mut;
 use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
+use std::env;
 use std::sync::Arc;
 use tokio::signal::*;
 use tokio::sync::Mutex;
@@ -137,86 +138,94 @@ pub async fn _main(
     let mut executor = Executor::new();
 
     let mut k8s_claimed_lease: Option<String> = None;
-    let k8s_event_stream = match create_k8s_client_default_from_env(user_agent) {
-        Ok(k8s_client) => {
-            info!("K8s Config Startup Option: {:?}", &config.startup);
-            check_startup_lease_status(
-                Some(&config.startup),
-                &mut k8s_claimed_lease,
-                k8s_client.clone(),
-            )
-            .await;
-            if config.log.use_k8s_enrichment == K8sTrackingConf::Always
-                && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
-            {
-                let node_name = std::env::var("NODE_NAME").ok();
-                match K8sMetadata::new(k8s_client.clone(), node_name.as_deref()).await {
-                    Ok((driver, v)) => {
-                        tokio::spawn(driver);
-                        executor.register(v);
-                        info!("Registered k8s metadata middleware");
-                    }
-                    Err(e) => {
-                        let message = format!(
-                            "The agent could not access k8s api after several attempts: {}",
-                            e
-                        );
-                        error!("{}", message);
-                        panic!("{}", message);
-                    }
-                };
-            }
+    let k8s_event_stream = match is_in_cluster() {
+        false => None,
+        true => match create_k8s_client_default_from_env(user_agent) {
+            Ok(k8s_client) => {
+                info!("K8s Config Startup Option: {:?}", &config.startup);
+                check_startup_lease_status(
+                    Some(&config.startup),
+                    &mut k8s_claimed_lease,
+                    k8s_client.clone(),
+                )
+                .await;
+                if config.log.use_k8s_enrichment == K8sTrackingConf::Always
+                    && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
+                {
+                    let node_name = std::env::var("NODE_NAME").ok();
+                    match K8sMetadata::new(k8s_client.clone(), node_name.as_deref()).await {
+                        Ok((driver, v)) => {
+                            tokio::spawn(driver);
+                            executor.register(v);
+                            info!("Registered k8s metadata middleware");
+                        }
+                        Err(e) => {
+                            let message = format!(
+                                "The agent could not access k8s api after several attempts: {}",
+                                e
+                            );
+                            error!("{}", message);
+                            panic!("{}", message);
+                        }
+                    };
+                }
 
-            let k8s_event_stream = match config.log.log_k8s_events {
-                K8sTrackingConf::Never => None,
-                K8sTrackingConf::Always => {
-                    let pod_name = std::env::var("POD_NAME").ok();
-                    let namespace = std::env::var("NAMESPACE").ok();
-                    let pod_label = std::env::var("POD_APP_LABEL").ok();
-                    match (pod_name, namespace, pod_label) {
-                        (Some(pod_name), Some(namespace), Some(pod_label)) => Some(
-                            K8sEventStream::new(k8s_client.clone(), pod_name, namespace, pod_label),
-                        ),
-                        (pn, n, pl) => {
-                            if pn.is_none() {
-                                warn!("Kubernetes event logging is configured, but POD_NAME env is not set")
+                let k8s_event_stream = match config.log.log_k8s_events {
+                    K8sTrackingConf::Never => None,
+                    K8sTrackingConf::Always => {
+                        let pod_name = std::env::var("POD_NAME").ok();
+                        let namespace = std::env::var("NAMESPACE").ok();
+                        let pod_label = std::env::var("POD_APP_LABEL").ok();
+                        match (pod_name, namespace, pod_label) {
+                            (Some(pod_name), Some(namespace), Some(pod_label)) => {
+                                Some(K8sEventStream::new(
+                                    k8s_client.clone(),
+                                    pod_name,
+                                    namespace,
+                                    pod_label,
+                                ))
                             }
-                            if n.is_none() {
-                                warn!(
-                                    "Kubernetes event logging is configured, but NAMESPACE env is not set"
-                                )
+                            (pn, n, pl) => {
+                                if pn.is_none() {
+                                    warn!("Kubernetes event logging is configured, but POD_NAME env is not set")
+                                }
+                                if n.is_none() {
+                                    warn!(
+                                        "Kubernetes event logging is configured, but NAMESPACE env is not set"
+                                    )
+                                }
+                                if pl.is_none() {
+                                    warn!("Kubernetes event logging is configured, but POD_APP_LABEL env is not set")
+                                }
+                                warn!("Kubernetes event logging disabled");
+                                None
                             }
-                            if pl.is_none() {
-                                warn!("Kubernetes event logging is configured, but POD_APP_LABEL env is not set")
-                            }
-                            warn!("Kubernetes event logging disabled");
-                            None
                         }
                     }
-                }
-            };
+                };
 
-            match k8s_claimed_lease.as_ref() {
-                Some(lease) => {
-                    info!("Releasing lease: {:?}", lease);
-                    let k8s_lease_api = k8s::lease::get_k8s_lease_api(
-                        &std::env::var("NAMESPACE").unwrap(),
-                        k8s_client.clone(),
-                    )
-                    .await;
-                    k8s::lease::release_lease(lease, &k8s_lease_api).await;
+                match k8s_claimed_lease.as_ref() {
+                    Some(lease) => {
+                        info!("Releasing lease: {:?}", lease);
+                        let k8s_lease_api = k8s::lease::get_k8s_lease_api(
+                            &std::env::var("NAMESPACE").unwrap(),
+                            k8s_client.clone(),
+                        )
+                        .await;
+                        k8s::lease::release_lease(lease, &k8s_lease_api).await;
+                    }
+                    None => {
+                        info!("No K8s lease claimed during startup.");
+                    }
                 }
-                None => {
-                    info!("No K8s lease claimed during startup.");
-                }
+
+                k8s_event_stream
             }
-
-            k8s_event_stream
-        }
-        Err(e) => {
-            warn!("Unable to initialize kubernetes client: {}", e);
-            None
-        }
+            Err(e) => {
+                warn!("Unable to initialize kubernetes client: {}", e);
+                None
+            }
+        },
     };
 
     match LineRules::new(
@@ -509,6 +518,10 @@ pub async fn _main(
             info!("Received {} signal, shutting down", signal_name)
         }
     }
+}
+
+fn is_in_cluster() -> bool {
+    env::var("KUBERNETES_SERVICE_HOST").is_ok()
 }
 
 async fn check_startup_lease_status(
