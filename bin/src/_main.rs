@@ -217,7 +217,7 @@ pub async fn _main(
         Err(K8sError::K8sNotInClusterError()) => {
             debug!("Not in a k8s cluster, not initializing kube client");
             None
-        },
+        }
         Err(e) => {
             warn!("Unable to initialize kubernetes client: {}", e);
             None
