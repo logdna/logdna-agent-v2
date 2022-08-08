@@ -67,7 +67,7 @@ BUILD_TIMESTAMP := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUILD_VERSION := $(shell sed -nE "s/^version = \"(.+)\"\$$/\1/p" bin/Cargo.toml)
 BUILD_TAG ?= $(VCS_REF)
 IMAGE_TAG := $(BUILD_TAG)-$(ARCH)
-BUILD_NUMBER := 0
+BUILD_NUMBER ?= 0
 
 MAJOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f1)
 MINOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f2)
