@@ -22,7 +22,7 @@ crossbeam = "0.8"
 regex = "1"
 lazy_static = "1"
 log = "0.4"
-tokio = { package = "tokio", version = "1", features = ["macros", "process", "rt-multi-thread", "time"] }
+tokio = { package = "tokio", version = "1", features = ["macros", "process", "signal", "rt-multi-thread", "time"] }
 futures = "0.3"
 thiserror = "1.0"
 kube = { version = "0.73.0", default-features = false, features = ["rustls-tls", "client", "runtime", "gzip"] }
