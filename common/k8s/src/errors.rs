@@ -10,6 +10,8 @@ pub enum K8sError {
     K8sError(#[from] kube::Error),
     #[error(transparent)]
     K8sInClusterError(#[from] kube::config::InClusterError),
+    #[error("Agent not running in a cluster")]
+    K8sNotInClusterError(),
 }
 
 #[derive(Debug, Error)]
