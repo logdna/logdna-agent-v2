@@ -21,6 +21,10 @@ BENCH_IMAGE_BASE ?= bullseye
 BENCH_IMAGE_TAG ?= rust-$(BENCH_IMAGE_BASE)-1-stable
 BENCH_IMAGE ?= $(RUST_IMAGE_REPO):$(BENCH_IMAGE_TAG)-$(ARCH)
 
+TOOLS_IMAGE_BASE ?= bullseye
+TOOLS_IMAGE_TAG ?= rust-$(TOOLS_IMAGE_BASE)-1-stable
+TOOLS_IMAGE ?= $(RUST_IMAGE_REPO):$(TOOLS_IMAGE_TAG)-$(ARCH)
+
 HADOLINT_IMAGE_REPO ?= hadolint/hadolint
 HADOLINT_IMAGE_TAG ?= v2.1.0-debian
 HADOLINT_IMAGE ?= $(HADOLINT_IMAGE_REPO):$(HADOLINT_IMAGE_TAG)
@@ -48,6 +52,7 @@ RPM_COMMAND := CACHE_TARGET="false" $(DOCKER_DISPATCH) alanfranz/fpm-within-dock
 BENCH_COMMAND = CACHE_TARGET="false" $(DOCKER_DISPATCH) $(BENCH_IMAGE)
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
 SHELLCHECK_COMMAND := $(DOCKER_DISPATCH) $(SHELLCHECK_IMAGE)
+TOOLS_COMMAND := $(DOCKER_DISPATCH) $(TOOLS_IMAGE)
 
 # max($(nproc)/4, 1)
 TEST_THREADS ?= $(shell threads=$$(echo $$(nproc)/4 | bc); echo $$(( threads > 1 ? threads: 1)))
@@ -62,6 +67,7 @@ BUILD_TIMESTAMP := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 BUILD_VERSION := $(shell sed -nE "s/^version = \"(.+)\"\$$/\1/p" bin/Cargo.toml)
 BUILD_TAG ?= $(VCS_REF)
 IMAGE_TAG := $(BUILD_TAG)-$(ARCH)
+BUILD_NUMBER ?= 0
 
 MAJOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f1)
 MINOR_VERSION := $(shell echo $(BUILD_VERSION) | cut -s -d. -f2)
@@ -169,11 +175,11 @@ build-test:
 
 .PHONY:build
 build: ## Build the agent
-	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG)"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TARGET_DOCKER_ARG)"
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
-	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build --no-default-features $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && llvm-strip ./target/$(TARGET)/release/logdna-agent${BIN_SUFFIX}"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && llvm-strip ./target/$(TARGET)/release/logdna-agent${BIN_SUFFIX}"
 
 .PHONY:check
 check: ## Run unit tests
@@ -466,6 +472,7 @@ build-rpm: build-release
 				"/build/target/${TARGET}/release/logdna-agent=/usr/bin/logdna-agent" \
 				"packaging/linux/logdna-agent.service=/lib/systemd/system/logdna-agent.service"'
 
+
 .PHONY: publish-s3-binary
 publish-s3-binary:
 	if [ "$(WINDOWS)" != "" ]; then \
@@ -474,6 +481,36 @@ publish-s3-binary:
 	else \
 	    aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent; \
 	fi;
+
+
+define PUBLISH_SIGNED_RULE
+.PHONY: publish-s3-binary-signed-$(1)
+publish-s3-binary-signed-$(1):
+	if [ "$(WINDOWS)" != "" ]; then \
+	    aws s3 cp --acl public-read target/$(TARGET)/$(1)/signed/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/signed/logdna-agent-svc.exe; \
+	    aws s3 cp --acl public-read target/$(TARGET)/$(1)/signed/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/signed/logdna-agent.exe; \
+	    aws s3 cp --acl public-read target/$(TARGET)/$(1)/signed/mezmo-agent.msi s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/signed/mezmo-agent.msi; \
+	else \
+	    echo Nothing to publish; \
+	fi;
+endef
+BUILD_TYPES=debug release
+$(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_SIGNED_RULE,$(_type))))
+
+
+define MSI_RULE
+.PHONY: msi-$(1)
+msi-$(1): ## create signed exe(s) and msi in $(BUILD_DIR)/signed
+	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	$(eval CERT_NAME := "logdna_dev_cert.pfx")
+	aws s3 cp "s3://ecosys-vault/$(CERT_NAME)" "$(BUILD_DIR)" && \
+	aws s3 cp "s3://ecosys-vault/$(CERT_NAME).pwd" "$(BUILD_DIR)" && \
+	$(TOOLS_COMMAND) "--env BUILD_DIR=/build/$(BUILD_DIR) --env CERT_NAME=$(CERT_NAME) --env BUILD_VERSION=$(BUILD_VERSION)+$(BUILD_NUMBER))" "cd /build/packaging/windows/msi && ./mk_msi" && \
+	rm "$(BUILD_DIR)/$(CERT_NAME)" "$(BUILD_DIR)/$(CERT_NAME).pwd";
+endef
+BUILD_TYPES=debug release
+$(foreach _type, $(BUILD_TYPES), $(eval $(call MSI_RULE,$(_type))))
+
 
 define publish_images
 	$(eval VCS_REF_BUILD_NUMBER_SHA:=$(shell echo "$(VCS_REF)$(BUILD_NUMBER)" | sha256sum | head -c 16))
