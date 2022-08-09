@@ -141,9 +141,16 @@ pub struct ArgumentOptions {
     #[structopt(long, env = env_vars::LOG_K8S_EVENTS)]
     log_k8s_events: Option<K8sTrackingConf>,
 
+    /// Determines whether the agent should produce metrics-servers usage logs.
+    /// When set this agent will poll the metrics-server on the cluster to get usage statistics
+    /// combine them with other pod/node statistics for enhancements to the web application.
+    /// Defaults to "never".
+    #[structopt(long, env = env_vars::LOG_METRIC_SERVER_STATS)]
+    log_metric_server_stats: Option<K8sTrackingConf>,
+
     /// Determine whether or not to look for available K8s startup leases before attempting
     /// to start the agent; used to throttle startup on very large K8s clusters.
-    /// Defaults to "off".
+    /// Defaults to "never".
     #[structopt(long = "startup-lease", env = env_vars::K8S_STARTUP_LEASE)]
     k8s_startup_lease: Option<K8sLeaseConf>,
 
@@ -310,6 +317,10 @@ impl ArgumentOptions {
 
         if self.log_k8s_events.is_some() {
             raw.log.log_k8s_events = self.log_k8s_events.map(|v| v.to_string());
+        }
+
+        if self.log_metric_server_stats.is_some() {
+            raw.log.log_metric_server_stats = self.log_metric_server_stats.map(|v| v.to_string());
         }
 
         if self.k8s_startup_lease.is_some() {
@@ -657,6 +668,7 @@ mod test {
         assert_eq!(config.log.db_path, None);
         assert_eq!(config.log.metrics_port, None);
         assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
+        assert_eq!(config.log.log_metric_server_stats, None);
     }
 
     #[test]
@@ -677,6 +689,7 @@ mod test {
             lookback: Some(Lookback::Start),
             use_k8s_enrichment: Some(K8sTrackingConf::Always),
             log_k8s_events: Some(K8sTrackingConf::Never),
+            log_metric_server_stats: Some(K8sTrackingConf::Always),
             journald_paths: vec_strings!("/a"),
             k8s_startup_lease: Some(K8sLeaseConf::Always),
             ingest_timeout: Some(1111111),
@@ -707,6 +720,7 @@ mod test {
         assert_eq!(config.log.lookback, some_string!("start"));
         assert_eq!(config.log.use_k8s_enrichment, some_string!("always"));
         assert_eq!(config.log.log_k8s_events, some_string!("never"));
+        assert_eq!(config.log.log_metric_server_stats, some_string!("always"));
         assert_eq!(config.log.db_path, Some(PathBuf::from("a/b/c")));
         assert_eq!(config.log.metrics_port, Some(9089));
         assert_eq!(config.journald.paths, Some(vec_paths!["/a"]));
