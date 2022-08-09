@@ -3,6 +3,9 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+use std::env;
+
+use errors::K8sError;
 use hyper::{client::HttpConnector, Body};
 use hyper_timeout::TimeoutConnector;
 use kube::client::ConfigExt;
@@ -70,8 +73,16 @@ fn create_k8s_client(
 pub fn create_k8s_client_default_from_env(
     user_agent: hyper::http::header::HeaderValue,
 ) -> Result<Client, errors::K8sError> {
+    if !is_in_cluster() {
+        return Err(K8sError::K8sNotInClusterError());
+    }
+
     let config = Config::from_cluster_env()?;
     Ok(create_k8s_client(user_agent, config)?)
+}
+
+fn is_in_cluster() -> bool {
+    env::var("KUBERNETES_SERVICE_HOST").is_ok()
 }
 
 #[cfg(test)]

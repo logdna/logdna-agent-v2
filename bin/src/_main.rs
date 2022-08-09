@@ -14,6 +14,7 @@ use journald::libjournald::source::create_source;
 #[cfg(target_os = "linux")]
 use journald::journalctl::create_journalctl_source;
 
+use k8s::errors::K8sError;
 use k8s::event_source::K8sEventStream;
 use k8s::lease::{get_available_lease, K8S_STARTUP_LEASE_LABEL, K8S_STARTUP_LEASE_RETRY_ATTEMPTS};
 
@@ -186,8 +187,8 @@ pub async fn _main(
                             }
                             if n.is_none() {
                                 warn!(
-                                    "Kubernetes event logging is configured, but NAMESPACE env is not set"
-                                )
+                                        "Kubernetes event logging is configured, but NAMESPACE env is not set"
+                                    )
                             }
                             if pl.is_none() {
                                 warn!("Kubernetes event logging is configured, but POD_APP_LABEL env is not set")
@@ -239,6 +240,10 @@ pub async fn _main(
             }
 
             (k8s_event_stream, metric_stats_source)
+        }
+        Err(K8sError::K8sNotInClusterError()) => {
+            debug!("Not in a k8s cluster, not initializing kube client");
+            None
         }
         Err(e) => {
             warn!("Unable to initialize kubernetes client: {}", e);
