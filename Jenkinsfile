@@ -25,6 +25,7 @@ pipeline {
     environment {
         RUST_IMAGE_REPO = 'us.gcr.io/logdna-k8s/rust'
         RUST_IMAGE_TAG = 'bullseye-1-stable'
+        TOOLS_IMAGE_TAG = 'bullseye-1-stable'
         SCCACHE_BUCKET = 'logdna-sccache-us-west-2'
         SCCACHE_REGION = 'us-west-2'
         CARGO_INCREMENTAL = 'false'
