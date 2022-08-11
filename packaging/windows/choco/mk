@@ -1,0 +1,4 @@
+mkdir -p out
+chmod 777 out
+docker run -it -v $PWD:/build -w /build chocolatey/choco choco pack -v --out /build/out mezmo-agent.nuspec
+

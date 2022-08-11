@@ -7,24 +7,3 @@
 # NOTE: For upgrades - like the uninstall script, this script always runs from
 #  the currently installed version, not from the new upgraded package version.
 
-
-IF(Get-Service -Name 'logdna-agent'){
-    Stop-Service -Name 'logdna-agent'
-}
-
-$registryPath = "HKLM:\SYSTEM\CurrentControlSet\Services\logdna-agent"
-
-IF(Test-Path $registryPath)
-{
-    Remove-Item -Path $registryPath -Force -Recurse
-}
-
-
-
-if(!(Test-Path -Path $env:Programfiles\Mezmo\logdna-agent.exe)){
-  Remove-Item -Path  $env:Programfiles\Mezmo\logdna-agent.exe -Force
-}
-
-if(!(Test-Path -Path $env:Programfiles\Mezmo\logdna-agent-svc.exe)){
-  Remove-Item -Path $env:Programfiles\Mezmo\logdna-agent-svc.exe -Force
-}
