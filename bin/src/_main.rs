@@ -371,6 +371,9 @@ pub async fn _main(
 
                             let result = feature_meta.leader.try_claim_feature_leader().await;
 
+                            info!("TRIED CLAIMING LEADER!!!!!!!{}", result);
+
+
                             if result {
                                 break;
                             }

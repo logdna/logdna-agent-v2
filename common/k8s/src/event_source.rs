@@ -1,8 +1,10 @@
 use core::cmp::{Ord, Ordering};
+use core::time;
 use std::convert::TryInto;
 use std::convert::{Into, TryFrom};
 use std::num::NonZeroI64;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::thread::sleep;
 
 use backoff::ExponentialBackoff;
 use crossbeam::atomic::AtomicCell;
@@ -30,7 +32,6 @@ use metrics::Metrics;
 use crate::errors::{K8sError, K8sEventStreamError};
 
 use crate::feature_leader::FeatureLeader;
-use crate::lease;
 use crate::restarting_stream::{RequiresRestart, RestartingStream};
 
 use regex::Regex;
@@ -248,10 +249,10 @@ impl K8sEventStream {
     ) -> Self {
         Self {
             client,
+            leader,
             pod_name,
             namespace,
             pod_label,
-            leader
         }
     }
 
@@ -261,7 +262,7 @@ impl K8sEventStream {
         pod_label: impl Into<String>,
         client: Arc<Client>,
         delete_time: Arc<AtomicCell<Option<NonZeroI64>>>,
-        leader: Arc<FeatureLeader>
+        leader: Arc<FeatureLeader>,
     ) -> impl Stream<Item = Result<StreamElem<T>, K8sEventStreamError>> {
         let pod_name = pod_name.into();
         let namespace = namespace.into();
@@ -286,29 +287,34 @@ impl K8sEventStream {
                     Break,
                 }
 
-                info!("HEY!!!!!!!!!!!!!!!!!!");
-                let is_leader = leader.try_claim_feature_leader().await;
+                let leader_pod = leader
+                    .get_feature_leader_lease()
+                    .await
+                    .unwrap()
+                    .spec
+                    .unwrap()
+                    .holder_identity
+                    .unwrap();
 
-                if is_leader {
+                if leader_pod == pod_name {
                     info!("begin logging k8s events");
+
+                    tokio::spawn(async move {
+                        loop {
+                            sleep(time::Duration::from_secs(15));
+                            let result = leader.renew_feature_leader().await;
+
+                            info!("TRIED RENEWING LEADER!!!!!!!{}", result);
+                        }
+                    });
+
                     Ok(None)
                 } else {
-
-                    let pod = leader
-                        .clone()
-                        .get_feature_leader_lease()
-                        .await
-                        .unwrap()
-                        .spec
-                        .unwrap()
-                        .holder_identity
-                        .unwrap();
-
-                    info!("watching pod {}", pod);
+                    info!("watching pod {}", "oldest_pod_name".to_string());
                     let params = ListParams::default()
                         .timeout(30)
                         .labels(&format!("app.kubernetes.io/name={}", &pod_label)) // filter instances by label
-                        .fields(&format!("metadata.name={}", pod)); // filter instances by label
+                        .fields(&format!("metadata.name={}", "oldest_pod_name".to_string())); // filter instances by label
                     let stream = watcher(pods.clone(), params)
                         .skip_while(|e| {
                             let matched = matches!(e, Ok(watcher::Event::<Pod>::Restarted(_)));
@@ -423,7 +429,7 @@ impl K8sEventStream {
         pod_label: impl Into<String>,
         client: Arc<Client>,
         latest_event_time: Arc<AtomicCell<Option<NonZeroI64>>>,
-        feature: Arc<FeatureLeader>
+        leader: Arc<FeatureLeader>,
     ) -> impl Stream<Item = Result<LineBuilder, K8sEventStreamError>> {
         let pod_name = pod_name.into();
         let namespace = namespace.into();
@@ -437,7 +443,7 @@ impl K8sEventStream {
             pod_label,
             client.clone(),
             previous_event_logger_delete_time.clone(),
-            feature.clone()
+            leader.clone(),
         );
 
         let event_stream = K8sEventStream::active_stream(
@@ -455,7 +461,7 @@ impl K8sEventStream {
         })
     }
 
-    pub async fn event_stream(self) -> impl Stream<Item = LineBuilder>  {
+    pub async fn event_stream(self) -> impl Stream<Item = LineBuilder> {
         let client = std::sync::Arc::new(self.client.clone());
 
         let latest_event_time: Arc<AtomicCell<Option<NonZeroI64>>> =
@@ -473,7 +479,7 @@ impl K8sEventStream {
                 pod_label.clone(),
                 _client.clone(),
                 _latest_event_time.clone(),
-                self.leader.clone()
+                self.leader.clone(),
             )
         };
 
