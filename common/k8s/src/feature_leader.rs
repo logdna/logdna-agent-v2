@@ -17,6 +17,7 @@ pub struct FeatureLeader {
     pub feature: String,
     pub pod_name: String,
     pub lease_api: Api<Lease>,
+    pub tries: i32,
 }
 
 impl FeatureLeader {
@@ -31,6 +32,7 @@ impl FeatureLeader {
             feature,
             pod_name,
             lease_api,
+            tries: 0,
         }
     }
 
