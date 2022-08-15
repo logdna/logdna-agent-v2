@@ -121,6 +121,7 @@ pub struct LogConfig {
     pub lookback: Lookback,
     pub use_k8s_enrichment: K8sTrackingConf,
     pub log_k8s_events: K8sTrackingConf,
+    pub log_metric_server_stats: K8sTrackingConf,
 }
 
 #[derive(Debug)]
@@ -367,6 +368,11 @@ impl TryFrom<RawConfig> for Config {
                 env_vars::LOG_K8S_EVENTS,
                 K8sTrackingConf::Never,
             ),
+            log_metric_server_stats: parse_k8s_enum_config_or_warn(
+                raw.log.log_metric_server_stats,
+                env_vars::LOG_METRIC_SERVER_STATS,
+                K8sTrackingConf::Never,
+            ),
         };
 
         if log.use_k8s_enrichment == K8sTrackingConf::Never
@@ -566,6 +572,7 @@ mod tests {
         let config = get_default_config();
         assert_eq!(config.log.use_k8s_enrichment, K8sTrackingConf::Always);
         assert_eq!(config.log.log_k8s_events, K8sTrackingConf::Never);
+        assert_eq!(config.log.log_metric_server_stats, K8sTrackingConf::Never);
         assert_eq!(config.log.lookback, Lookback::None);
         assert_eq!(
             config

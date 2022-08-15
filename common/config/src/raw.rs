@@ -295,6 +295,7 @@ pub struct LogConfig {
     pub use_k8s_enrichment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub log_k8s_events: Option<String>,
+    pub log_metric_server_stats: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
@@ -437,6 +438,7 @@ impl Default for LogConfig {
             lookback: None,
             use_k8s_enrichment: None,
             log_k8s_events: None,
+            log_metric_server_stats: None,
         }
     }
 }
@@ -460,6 +462,10 @@ impl Merge for LogConfig {
             .merge(&other.use_k8s_enrichment, &default.use_k8s_enrichment);
         self.log_k8s_events
             .merge(&other.log_k8s_events, &default.log_k8s_events);
+        self.log_metric_server_stats.merge(
+            &other.log_metric_server_stats,
+            &default.log_metric_server_stats,
+        );
     }
 }
 
@@ -799,6 +805,7 @@ db_path = /var/lib/my-dir
 metrics_port = 8901
 use_k8s_log_enrichment = never
 log_k8s_events = always
+log_metric_server_stats = always
 journald_paths = /first-j, /second-j/a
 inclusion_rules = /a/glob/include/**/*
 inclusion_regex_rules = /a/regex/include/.*
@@ -837,6 +844,7 @@ ingest_buffer_size = 3145728
         assert_eq!(config.log.metrics_port, Some(8901));
         assert_eq!(config.log.use_k8s_enrichment, some_string!("never"));
         assert_eq!(config.log.log_k8s_events, some_string!("always"));
+        assert_eq!(config.log.log_metric_server_stats, some_string!("always"));
         assert_eq!(
             config.journald.paths,
             Some(vec![
