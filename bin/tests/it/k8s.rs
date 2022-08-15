@@ -603,7 +603,8 @@ fn get_agent_ds_yaml(
                                 {
                                     "name": "LOGDNA_K8S_METADATA_LINE_EXCLUSION",
                                     "value": "label.app.kubernetes.io/name:filter-pod"
-				},
+                                },
+                                {
                                     "name": "LOGDNA_LOG_METRIC_SERVER_STATS",
                                     "value": log_reporter_metrics,
                                 },
