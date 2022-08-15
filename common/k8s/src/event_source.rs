@@ -1,42 +1,29 @@
-use core::cmp::{Ord, Ordering};
-use core::time;
-use std::convert::TryInto;
-use std::convert::{Into, TryFrom};
-use std::num::NonZeroI64;
-use std::sync::Arc;
-use std::thread::sleep;
-
+use crate::errors::K8sEventStreamError;
+use crate::feature_leader::FeatureLeader;
+use crate::restarting_stream::{RequiresRestart, RestartingStream};
 use backoff::ExponentialBackoff;
-use crossbeam::atomic::AtomicCell;
-
 use chrono::Duration;
-
+use core::time;
+use crossbeam::atomic::AtomicCell;
 use futures::{stream::try_unfold, Stream, StreamExt, TryStreamExt};
-
+use http::types::body::LineBuilder;
 use k8s_openapi::api::core::v1::{Event, ObjectReference, Pod};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::api::ListParams;
 use kube::{
     runtime::{watcher, WatchStreamExt},
-    Api, Client, Config,
+    Api, Client,
 };
-
-use pin_utils::pin_mut;
-
-use serde::Serialize;
-
-use http::types::body::LineBuilder;
-
 use metrics::Metrics;
-
-use crate::errors::{K8sError, K8sEventStreamError};
-
-use crate::feature_leader::FeatureLeader;
-use crate::restarting_stream::{RequiresRestart, RestartingStream};
-
+use pin_utils::pin_mut;
 use regex::Regex;
+use serde::Serialize;
+use std::convert::TryInto;
+use std::convert::{Into, TryFrom};
+use std::num::NonZeroI64;
+use std::sync::Arc;
+use tokio::time::sleep;
 
-const CONTAINER_NAME: &str = "logdna-agent";
 pub static K8S_EVENTS_LEASE_NAME: &str = "logdna-agent-k8-events-lease";
 
 lazy_static! {
@@ -298,16 +285,7 @@ impl K8sEventStream {
 
                 if leader_pod == pod_name {
                     info!("begin logging k8s events");
-
-                    tokio::spawn(async move {
-                        loop {
-                            sleep(time::Duration::from_secs(15));
-                            let result = leader.renew_feature_leader().await;
-
-                            info!("TRIED RENEWING LEADER!!!!!!!{}", result);
-                        }
-                    });
-
+                    start_renewal_task(leader.clone());
                     Ok(None)
                 } else {
                     info!("watching pod {}", "oldest_pod_name".to_string());
@@ -493,4 +471,18 @@ impl K8sEventStream {
 
         restarting_stream.await.filter_map(|e| async { e.ok() })
     }
+}
+
+fn start_renewal_task(leader: Arc<FeatureLeader>) {
+    tokio::spawn(async move {
+        loop {
+            sleep(time::Duration::from_secs(15)).await;
+            let result = leader.renew_feature_leader().await;
+
+            // lost leader
+            if !result {
+                break;
+            }
+        }
+    });
 }

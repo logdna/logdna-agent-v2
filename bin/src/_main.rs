@@ -202,9 +202,9 @@ pub async fn _main(
 
                         Some(K8sEventStream::new(
                             k8s_client.clone(),
-                            pod_name.unwrap(),
-                            namespace.unwrap(),
-                            pod_label.unwrap(),
+                            pod_name.unwrap_or_default(),
+                            namespace.unwrap_or_default(),
+                            pod_label.unwrap_or_default(),
                             Arc::new(feature_leader.clone()),
                         ))
                     }
@@ -370,9 +370,6 @@ pub async fn _main(
                             .await;
 
                             let result = feature_meta.leader.try_claim_feature_leader().await;
-
-                            info!("TRIED CLAIMING LEADER!!!!!!!{}", result);
-
 
                             if result {
                                 break;
@@ -632,6 +629,7 @@ async fn set_up_leader(
         pod_name.clone().unwrap_or_default(),
         lease_api,
     );
+
     let is_currently_leader = leader.try_claim_feature_leader().await;
     let leader_lease = leader.get_feature_leader_lease().await;
     let mut interval = DEFAULT_CHECK_FOR_LEADER_S;
