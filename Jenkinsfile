@@ -25,6 +25,7 @@ pipeline {
     environment {
         RUST_IMAGE_REPO = 'us.gcr.io/logdna-k8s/rust'
         RUST_IMAGE_TAG = 'bullseye-1-stable'
+        TOOLS_IMAGE_TAG = 'bullseye-1-stable'
         SCCACHE_BUCKET = 'logdna-sccache-us-west-2'
         SCCACHE_REGION = 'us-west-2'
         CARGO_INCREMENTAL = 'false'
@@ -33,6 +34,7 @@ pipeline {
     parameters {
         booleanParam(name: 'PUBLISH_GCR_IMAGE', description: 'Publish docker image to Google Container Registry (GCR)', defaultValue: false)
         booleanParam(name: 'PUBLISH_ICR_IMAGE', description: 'Publish docker image to IBM Container Registry (ICR) and Dockerhub', defaultValue: false)
+        booleanParam(name: 'PUBLISH_BINARIES', description: 'Publish executable binaries to S3 bucket s3://logdna-agent-build-bin', defaultValue: false)
         string(name: 'RUST_IMAGE_SUFFIX', description: 'Build image tag suffix', defaultValue: "")
     }
     stages {
@@ -264,7 +266,10 @@ pipeline {
                 }
                 stage('Publish static binary') {
                     when {
-                        branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
+                        anyOf {
+                            branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
+                            environment name: 'PUBLISH_BINARIES', value: 'true'
+                        }
                     }
                     steps {
                         withCredentials([[
@@ -279,6 +284,8 @@ pipeline {
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static
                                 STATIC=1 make publish-s3-binary
                                 WINDOWS=1 make publish-s3-binary
+                                WINDOWS=1 make msi-release
+                                WINDOWS=1 make publish-s3-binary-signed-release
                                 ARCH=x86_64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
                                 ARCH=aarch64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
                                 rm ${WORKSPACE}/.aws_creds_static

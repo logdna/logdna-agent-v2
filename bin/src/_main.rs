@@ -6,6 +6,7 @@ use futures::StreamExt;
 use http::batch::TimedRequestBatcherStreamExt;
 use http::client::{Client, ClientError, SendStatus};
 use http::retry::{retry, RetryItem};
+use k8s::metrics_stats_aggregator::MetricsStatsAggregator;
 
 #[cfg(all(feature = "libjournald", target_os = "linux"))]
 use journald::libjournald::source::create_source;
@@ -13,6 +14,7 @@ use journald::libjournald::source::create_source;
 #[cfg(target_os = "linux")]
 use journald::journalctl::create_journalctl_source;
 
+use k8s::errors::K8sError;
 use k8s::event_source::K8sEventStream;
 use k8s::lease::{get_available_lease, K8S_STARTUP_LEASE_LABEL, K8S_STARTUP_LEASE_RETRY_ATTEMPTS};
 
@@ -138,7 +140,9 @@ pub async fn _main(
     let mut executor = Executor::new();
 
     let mut k8s_claimed_lease: Option<String> = None;
-    let k8s_event_stream = match create_k8s_client_default_from_env(user_agent) {
+    let (k8s_event_stream, metric_stats_source) = match create_k8s_client_default_from_env(
+        user_agent.clone(),
+    ) {
         Ok(k8s_client) => {
             info!("K8s Config Startup Option: {:?}", &config.startup);
             check_startup_lease_status(
@@ -184,13 +188,37 @@ pub async fn _main(
                             }
                             if n.is_none() {
                                 warn!(
-                                    "Kubernetes event logging is configured, but NAMESPACE env is not set"
-                                )
+                                        "Kubernetes event logging is configured, but NAMESPACE env is not set"
+                                    )
                             }
                             if pl.is_none() {
                                 warn!("Kubernetes event logging is configured, but POD_APP_LABEL env is not set")
                             }
                             warn!("Kubernetes event logging disabled");
+                            None
+                        }
+                    }
+                }
+            };
+
+            // TODO Leader Election
+            let metric_stats_source = match config.log.log_metric_server_stats {
+                K8sTrackingConf::Never => None,
+                K8sTrackingConf::Always => {
+                    match create_k8s_client_default_from_env(user_agent.clone()) {
+                        Ok(client) => {
+                            let metric_stats_aggregator = MetricsStatsAggregator::new(client);
+                            Some(
+                                metric_stats_aggregator
+                                    .start_metrics_call_task()
+                                    .map(StrictOrLazyLineBuilder::Strict),
+                            )
+                        }
+                        Err(e) => {
+                            warn!(
+                                "Unable to initialize kubernetes client for the reporter: {}",
+                                e
+                            );
                             None
                         }
                     }
@@ -212,11 +240,15 @@ pub async fn _main(
                 }
             }
 
-            k8s_event_stream
+            (k8s_event_stream, metric_stats_source)
+        }
+        Err(K8sError::K8sNotInClusterError()) => {
+            debug!("Not in a k8s cluster, not initializing kube client");
+            (None, None)
         }
         Err(e) => {
             warn!("Unable to initialize kubernetes client: {}", e);
-            None
+            (None, None)
         }
     };
 
@@ -350,12 +382,16 @@ pub async fn _main(
     #[cfg(all(feature = "libjournald", target_os = "linux"))]
     pin_mut!(journald_source);
 
+    pin_mut!(metric_stats_source);
+
     let mut k8s_event_source: Option<std::pin::Pin<&mut _>> = k8s_event_source.as_pin_mut();
     #[cfg(target_os = "linux")]
     let mut journalctl_source: Option<std::pin::Pin<&mut _>> = journalctl_source.as_pin_mut();
 
     #[cfg(all(feature = "libjournald", target_os = "linux"))]
     let mut journald_source: Option<std::pin::Pin<&mut _>> = journald_source.as_pin_mut();
+
+    let mut metric_server_source: Option<std::pin::Pin<&mut _>> = metric_stats_source.as_pin_mut();
 
     let mut sources: futures::stream::SelectAll<&mut (dyn Stream<Item = _> + Unpin)> =
         futures::stream::SelectAll::new();
@@ -379,6 +415,11 @@ pub async fn _main(
 
     if let Some(k) = k8s_event_source.as_mut() {
         info!("Enabling k8s_event_source");
+        sources.push(k)
+    };
+
+    if let Some(k) = metric_server_source.as_mut() {
+        info!("Enabling metrics_server_watcher");
         sources.push(k)
     };
 

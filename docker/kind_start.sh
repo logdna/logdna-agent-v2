@@ -13,6 +13,13 @@ KIND_IMAGE=kindest/node:v1.23.4@sha256:0e34f0d0fd448aa2f2819cfd74e99fe5793a6e493
 
 >&2 kind --version || exit 1
 
+if [ -z "$BUILD_TAG" ]
+then
+  cluster_name=agent-dev-cluster
+else
+  cluster_name=$(echo $BUILD_TAG | tr '[:upper:]' '[:lower:]' | tail -c 32 | sed 's/^-*//g')
+fi
+
 export KIND_EXPERIMENTAL_DOCKER_NETWORK=$cluster_name
 if [ "$create_cluster" = "true" ]
 then

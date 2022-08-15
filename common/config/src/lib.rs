@@ -123,6 +123,7 @@ pub struct LogConfig {
     pub log_k8s_events: K8sTrackingConf,
     pub k8s_metadata_include: Vec<String>,
     pub k8s_metadata_exclude: Vec<String>,
+    pub log_metric_server_stats: K8sTrackingConf,
 }
 
 #[derive(Debug)]
@@ -370,6 +371,11 @@ impl TryFrom<RawConfig> for Config {
             ),
             k8s_metadata_include: raw.log.k8s_metadata_include.unwrap_or_default(),
             k8s_metadata_exclude: raw.log.k8s_metadata_exclude.unwrap_or_default(),
+            log_metric_server_stats: parse_k8s_enum_config_or_warn(
+                raw.log.log_metric_server_stats,
+                env_vars::LOG_METRIC_SERVER_STATS,
+                K8sTrackingConf::Never,
+            ),
         };
 
         if log.use_k8s_enrichment == K8sTrackingConf::Never
@@ -569,6 +575,7 @@ mod tests {
         let config = get_default_config();
         assert_eq!(config.log.use_k8s_enrichment, K8sTrackingConf::Always);
         assert_eq!(config.log.log_k8s_events, K8sTrackingConf::Never);
+        assert_eq!(config.log.log_metric_server_stats, K8sTrackingConf::Never);
         assert_eq!(config.log.lookback, Lookback::None);
         assert_eq!(
             config

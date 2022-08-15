@@ -199,6 +199,7 @@ options are available:
 |`LOGDNA_K8S_STARTUP_LEASE`|Determines whether or not to use K8 leases on startup|`never`|
 |`LOGDNA_USE_K8S_LOG_ENRICHMENT`|Determines whether the agent should query the K8s API to enrich log lines from other pods.|`always`|
 |`LOGDNA_LOG_K8S_EVENTS`|Determines whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
+|`LOGDNA_LOG_REPORTER_METRICS`|Determines whether or not metrics usage statistics is enabled.|`never`|
 |`LOGDNA_DB_PATH`|The directory in which the agent will store its state database. Note that the agent must have write access to the directory and be a persistent volume.|`/var/lib/logdna`|
 |`LOGDNA_METRICS_PORT`|The port number to expose a Prometheus endpoint target with the [agent internal metrics](INTERNAL_METRICS.md).||
 |`LOGDNA_INGEST_TIMEOUT`|The timeout of the API calls to the ingest API in milliseconds|`10000`|
@@ -296,6 +297,18 @@ To control whether the LogDNA agent collects Kubernetes events, configure the `L
 __Note:__ The default option is `never`.
 
 > :warning: Due to a ["won't fix" bug in the Kubernetes API](https://github.com/kubernetes/kubernetes/issues/41743), the LogDNA agent collects events from the entire cluster, including multiple nodes. To prevent duplicate logs when running multiple pods, the LogDNA agent pods defer responsibilty of capturing events to the oldest pod in the cluster. If that pod is down, the next oldest LogDNA agent pod will take over responsibility and continue from where the previous pod left off.
+
+### Configuring Metrics Reporter Statistics
+
+With this enabled the agent will pull from the kubernetes metrics-server, this allows the agent to report on CPU/Memory usage statistics for pods and nodes in the cluster. These statistics will be viewable on the web application for individual log lines showing usage for the pod and node associated with that log line. 
+
+Reach out to Mezmo to get this feature enabled on the web application in addition to this configuration. 
+
+To control whether the LogDNA agent reports usage statistics use the `LOGDNA_LOG_REPORTER_METRICS` environment variable with one of these two values:
+
+* `always` - Always report usage
+* `never` - Never report usage
+__Note:__ The default option is `never`.
 
 ### Configuring regex for redaction and exclusion or inclusion
 

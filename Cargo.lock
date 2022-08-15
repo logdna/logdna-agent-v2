@@ -377,7 +377,7 @@ dependencies = [
  "ansi_term",
  "atty",
  "bitflags",
- "strsim",
+ "strsim 0.8.0",
  "textwrap",
  "unicode-width",
  "vec_map",
@@ -533,6 +533,76 @@ checksum = "b6bd9c8e659a473bce955ae5c35b116af38af11a7acb0b480e01f3ed348aeb40"
 dependencies = [
  "cfg-if 1.0.0",
  "memchr",
+]
+
+[[package]]
+name = "darling"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a01d95850c592940db9b8194bc39f4bc0e89dee5c4265e4b1807c34a9aba453c"
+dependencies = [
+ "darling_core 0.13.4",
+ "darling_macro 0.13.4",
+]
+
+[[package]]
+name = "darling"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4529658bdda7fd6769b8614be250cdcfc3aeb0ee72fe66f9e41e5e5eb73eac02"
+dependencies = [
+ "darling_core 0.14.1",
+ "darling_macro 0.14.1",
+]
+
+[[package]]
+name = "darling_core"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "859d65a907b6852c9361e3185c862aae7fafd2887876799fa55f5f99dc40d610"
+dependencies = [
+ "fnv",
+ "ident_case",
+ "proc-macro2",
+ "quote",
+ "strsim 0.10.0",
+ "syn",
+]
+
+[[package]]
+name = "darling_core"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "649c91bc01e8b1eac09fb91e8dbc7d517684ca6be8ebc75bb9cafc894f9fdb6f"
+dependencies = [
+ "fnv",
+ "ident_case",
+ "proc-macro2",
+ "quote",
+ "strsim 0.10.0",
+ "syn",
+]
+
+[[package]]
+name = "darling_macro"
+version = "0.13.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9c972679f83bdf9c42bd905396b6c3588a843a17f0f16dfcfa3e2c5d57441835"
+dependencies = [
+ "darling_core 0.13.4",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "darling_macro"
+version = "0.14.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddfc69c5bfcbd2fc09a0f38451d2daf0e372e367986a83906d1b0dbc88134fb5"
+dependencies = [
+ "darling_core 0.14.1",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -1162,6 +1232,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ident_case"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9e0384b61958566e926dc50660321d12159025e767c18e043daf26b70104c39"
+
+[[package]]
 name = "idna"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1343,6 +1419,7 @@ dependencies = [
 name = "k8s"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "backoff",
  "chrono",
  "crossbeam",
@@ -1355,6 +1432,7 @@ dependencies = [
  "hyper-timeout",
  "k8s-openapi",
  "kube",
+ "kube-derive",
  "lazy_static",
  "log",
  "metrics",
@@ -1364,7 +1442,9 @@ dependencies = [
  "pin-utils",
  "regex",
  "serde",
+ "serde-value-flatten",
  "serde_json",
+ "serde_with",
  "thiserror",
  "tokio",
  "tower",
@@ -1381,7 +1461,7 @@ dependencies = [
  "bytes",
  "chrono",
  "serde",
- "serde-value",
+ "serde-value 0.7.0",
  "serde_json",
 ]
 
@@ -1430,7 +1510,7 @@ dependencies = [
  "pem",
  "pin-project",
  "rustls",
- "rustls-pemfile",
+ "rustls-pemfile 1.0.0",
  "secrecy",
  "serde",
  "serde_json",
@@ -1458,6 +1538,19 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "kube-derive"
+version = "0.73.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfb405f0d39181acbfdc7c79e3fc095330c9b6465ab50aeb662d762e53b662f1"
+dependencies = [
+ "darling 0.14.1",
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "syn",
 ]
 
 [[package]]
@@ -1585,6 +1678,7 @@ dependencies = [
  "k8s",
  "k8s-openapi",
  "kube",
+ "kube-runtime",
  "log",
  "logdna-metrics-recorder",
  "logdna-mock-ingester",
@@ -1603,7 +1697,7 @@ dependencies = [
  "rcgen",
  "regex",
  "rustls",
- "rustls-pemfile",
+ "rustls-pemfile 0.2.1",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -1673,7 +1767,7 @@ dependencies = [
  "log",
  "rcgen",
  "rustls",
- "rustls-pemfile",
+ "rustls-pemfile 1.0.0",
  "serde",
  "serde_json",
  "thiserror",
@@ -2016,6 +2110,15 @@ name = "openssl-probe"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
+
+[[package]]
+name = "ordered-float"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3305af35278dd29f46fcdd139e0b1fbfae2153f0e5928b39b035542dd31e37b7"
+dependencies = [
+ "num-traits",
+]
 
 [[package]]
 name = "ordered-float"
@@ -2608,9 +2711,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0167bac7a9f490495f3c33013e7722b53cb087ecbe082fb0c6387c96f634ea50"
 dependencies = [
  "openssl-probe",
- "rustls-pemfile",
+ "rustls-pemfile 1.0.0",
  "schannel",
  "security-framework",
+]
+
+[[package]]
+name = "rustls-pemfile"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5eebeaeb360c87bfb72e84abdb3447159c0eaececf1bef2aecd65a8be949d1c9"
+dependencies = [
+ "base64",
 ]
 
 [[package]]
@@ -2741,12 +2853,32 @@ dependencies = [
 
 [[package]]
 name = "serde-value"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a65a7291a8a568adcae4c10a677ebcedbc6c9cec91c054dee2ce40b0e3290eb"
+dependencies = [
+ "ordered-float 1.1.1",
+ "serde",
+]
+
+[[package]]
+name = "serde-value"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3a1a3341211875ef120e117ea7fd5228530ae7e7036a779fdc9117be6b3282c"
 dependencies = [
- "ordered-float",
+ "ordered-float 2.10.0",
  "serde",
+]
+
+[[package]]
+name = "serde-value-flatten"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ca9f4b921303593e52a901ec78266bb1352645d675a42e062d7704061144f6f0"
+dependencies = [
+ "serde",
+ "serde-value 0.6.0",
 ]
 
 [[package]]
@@ -2782,6 +2914,28 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "serde_with"
+version = "1.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "678b5a069e50bf00ecd22d0cd8ddf7c236f68581b03db652061ed5eb13a312ff"
+dependencies = [
+ "serde",
+ "serde_with_macros",
+]
+
+[[package]]
+name = "serde_with_macros"
+version = "1.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e182d6ec6f05393cc0e5ed1bf81ad6db3a8feedf8ee515ecdd369809bcce8082"
+dependencies = [
+ "darling 0.13.4",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -2911,6 +3065,12 @@ name = "strsim"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ea5119cdb4c55b55d432abb513a0429384878c15dde60cc77b1c99de1a95a6a"
+
+[[package]]
+name = "strsim"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73473c0e59e6d5812c5dfe2a064a6444949f089e20eec9a2e5506596494e4623"
 
 [[package]]
 name = "structopt"
