@@ -288,11 +288,11 @@ impl K8sEventStream {
                     start_renewal_task(leader.clone());
                     Ok(None)
                 } else {
-                    info!("watching pod {}", "oldest_pod_name".to_string());
+                    info!("watching pod {}", leader_pod.to_string());
                     let params = ListParams::default()
                         .timeout(30)
                         .labels(&format!("app.kubernetes.io/name={}", &pod_label)) // filter instances by label
-                        .fields(&format!("metadata.name={}", "oldest_pod_name".to_string())); // filter instances by label
+                        .fields(&format!("metadata.name={}", leader_pod.to_string())); // filter instances by label
                     let stream = watcher(pods.clone(), params)
                         .skip_while(|e| {
                             let matched = matches!(e, Ok(watcher::Event::<Pod>::Restarted(_)));

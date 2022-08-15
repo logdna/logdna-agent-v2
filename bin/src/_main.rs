@@ -365,7 +365,7 @@ pub async fn _main(
                         loop {
                             sleep(Duration::from_secs(
                                 (feature_meta.interval as u64)
-                                    + (rand::thread_rng().gen_range(0..=4) * 10),
+                                    + (rand::thread_rng().gen_range(0..=5) * 10),
                             ))
                             .await;
 
@@ -398,7 +398,7 @@ pub async fn _main(
                             loop {
                                 sleep(Duration::from_secs(
                                     (feature_meta.interval as u64)
-                                        + (rand::thread_rng().gen_range(0..=4) * 10),
+                                        + (rand::thread_rng().gen_range(0..=5) * 10),
                                 ))
                                 .await;
 
