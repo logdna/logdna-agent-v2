@@ -148,7 +148,6 @@ pub async fn _main(
 
     let mut k8s_claimed_lease: Option<String> = None;
     let mut metrics_stream_feature_meta: Option<FeatureLeaderMeta> = None;
-    let mut k8s_event_stream_feature_meta: Option<FeatureLeaderMeta> = None;
 
     let (k8s_event_stream, metric_stats_stream) =
         match create_k8s_client_default_from_env(user_agent.clone()) {
@@ -189,7 +188,7 @@ pub async fn _main(
                 let k8s_event_stream = match config.log.log_k8s_events {
                     K8sTrackingConf::Never => None,
                     K8sTrackingConf::Always => {
-                        let created_k8s_event_stream_feature_meta = set_up_leader(
+                        let k8s_event_stream_feature_meta = set_up_leader(
                             &namespace,
                             &k8s_client,
                             &pod_name,
@@ -197,15 +196,12 @@ pub async fn _main(
                         )
                         .await;
 
-                        let feature_leader = created_k8s_event_stream_feature_meta.leader.clone();
-                        k8s_event_stream_feature_meta = Some(created_k8s_event_stream_feature_meta);
-
                         Some(K8sEventStream::new(
                             k8s_client.clone(),
                             pod_name.unwrap_or_default(),
                             namespace.unwrap_or_default(),
                             pod_label.unwrap_or_default(),
-                            Arc::new(feature_leader.clone()),
+                            Arc::new(k8s_event_stream_feature_meta),
                         ))
                     }
                 };
@@ -357,33 +353,7 @@ pub async fn _main(
 
     let k8s_event_source: Option<_> = if let Some(fut) = k8s_event_stream.map(|e| e.event_stream())
     {
-        Some(
-            // There is only a receiver if we aren't the leader.
-            stream::unfold(k8s_event_stream_feature_meta, |feature_meta| async move {
-                if let Some(feature_meta) = feature_meta {
-                    if !feature_meta.is_currently_leader {
-                        loop {
-                            sleep(Duration::from_secs(
-                                (feature_meta.interval as u64)
-                                    + (rand::thread_rng().gen_range(0..=5) * 10),
-                            ))
-                            .await;
-
-                            let result = feature_meta.leader.try_claim_feature_leader().await;
-
-                            if result {
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                None
-            })
-            .chain(fut.await)
-            .filter_map(|x| async { Some(x) })
-            .map(StrictOrLazyLineBuilder::Strict),
-        )
+        Some(fut.await.map(StrictOrLazyLineBuilder::Strict))
     } else {
         None
     };
@@ -394,7 +364,7 @@ pub async fn _main(
                 // There is only a receiver if we aren't the leader.
                 stream::unfold(metrics_stream_feature_meta, |feature_meta| async move {
                     if let Some(feature_meta) = feature_meta {
-                        if !feature_meta.is_currently_leader {
+                        if !feature_meta.is_starting_leader {
                             loop {
                                 sleep(Duration::from_secs(
                                     (feature_meta.interval as u64)
@@ -404,7 +374,7 @@ pub async fn _main(
 
                                 let result = feature_meta.leader.try_claim_feature_leader().await;
 
-                                if result {
+                                if result.is_success {
                                     break;
                                 }
                             }
@@ -630,7 +600,7 @@ async fn set_up_leader(
         lease_api,
     );
 
-    let is_currently_leader = leader.try_claim_feature_leader().await;
+    let result = leader.try_claim_feature_leader().await;
     let leader_lease = leader.get_feature_leader_lease().await;
     let mut interval = DEFAULT_CHECK_FOR_LEADER_S;
     if let Ok(lease) = leader_lease {
@@ -642,7 +612,8 @@ async fn set_up_leader(
     FeatureLeaderMeta {
         interval,
         leader: leader.clone(),
-        is_currently_leader,
+        is_starting_leader: result.is_success,
+        lease: result.lease,
     }
 }
 

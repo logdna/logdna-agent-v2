@@ -8,7 +8,13 @@ use crate::lease::{self, get_lease};
 pub struct FeatureLeaderMeta {
     pub interval: i32,
     pub leader: FeatureLeader,
-    pub is_currently_leader: bool,
+    pub lease: Option<Lease>,
+    pub is_starting_leader: bool
+}
+
+pub struct ClaimLeaseResults {
+    pub is_success: bool,
+    pub lease: Option<Lease>,
 }
 
 #[derive(Clone)]
@@ -86,7 +92,7 @@ impl FeatureLeader {
         }
     }
 
-    pub async fn try_claim_feature_leader(&self) -> bool {
+    pub async fn try_claim_feature_leader(&self) -> ClaimLeaseResults {
         let lease = get_lease(&self.feature, &self.lease_api).await;
         if let Ok(lease) = lease {
             if let Some(spec) = lease.spec.as_ref() {
@@ -100,10 +106,16 @@ impl FeatureLeader {
                                 "Acquired feature lease for {} on pod {}",
                                 self.feature, self.pod_name
                             );
-                            return true;
+                            return ClaimLeaseResults {
+                                is_success: true,
+                                lease: Some(lease),
+                            };
                         }
                         Err(_) => {
-                            return false;
+                            return ClaimLeaseResults {
+                                is_success: false,
+                                lease: Some(lease),
+                            };
                         }
                     }
                 }
@@ -114,7 +126,10 @@ impl FeatureLeader {
             info!("There is no reporter lease in this namespace")
         }
 
-        false
+        return ClaimLeaseResults {
+            is_success: false,
+            lease: None,
+        };
     }
 
     pub async fn get_feature_leader_lease(&self) -> Result<Lease, Error> {

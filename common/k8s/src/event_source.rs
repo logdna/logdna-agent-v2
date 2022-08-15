@@ -1,10 +1,11 @@
 use crate::errors::K8sEventStreamError;
-use crate::feature_leader::FeatureLeader;
+use crate::feature_leader::{FeatureLeader, FeatureLeaderMeta};
 use crate::restarting_stream::{RequiresRestart, RestartingStream};
 use backoff::ExponentialBackoff;
 use chrono::Duration;
 use core::time;
 use crossbeam::atomic::AtomicCell;
+use futures::future;
 use futures::{stream::try_unfold, Stream, StreamExt, TryStreamExt};
 use http::types::body::LineBuilder;
 use k8s_openapi::api::core::v1::{Event, ObjectReference, Pod};
@@ -215,7 +216,7 @@ impl TryFrom<EventLog> for LineBuilder {
 
 pub struct K8sEventStream {
     pub client: Client,
-    leader: Arc<FeatureLeader>,
+    leader_meta: Arc<FeatureLeaderMeta>,
     pod_name: String,
     namespace: String,
     pod_label: String,
@@ -232,11 +233,11 @@ impl K8sEventStream {
         pod_name: String,
         namespace: String,
         pod_label: String,
-        leader: Arc<FeatureLeader>,
+        leader_meta: Arc<FeatureLeaderMeta>,
     ) -> Self {
         Self {
             client,
-            leader,
+            leader_meta,
             pod_name,
             namespace,
             pod_label,
@@ -249,7 +250,7 @@ impl K8sEventStream {
         pod_label: impl Into<String>,
         client: Arc<Client>,
         delete_time: Arc<AtomicCell<Option<NonZeroI64>>>,
-        leader: Arc<FeatureLeader>,
+        leader_meta: Arc<FeatureLeaderMeta>,
     ) -> impl Stream<Item = Result<StreamElem<T>, K8sEventStreamError>> {
         let pod_name = pod_name.into();
         let namespace = namespace.into();
@@ -260,7 +261,7 @@ impl K8sEventStream {
             let namespace = namespace.clone();
             let pod_label = pod_label.clone();
             let client = client.clone();
-            let leader = leader.clone();
+            let leader_meta = leader_meta.clone();
 
             let delete_time = delete_time.clone();
             let pods: Api<Pod> = Api::namespaced(client.as_ref().clone(), &namespace);
@@ -274,7 +275,8 @@ impl K8sEventStream {
                     Break,
                 }
 
-                let leader_pod = leader
+                let leader_pod = leader_meta
+                    .leader
                     .get_feature_leader_lease()
                     .await
                     .unwrap()
@@ -285,7 +287,7 @@ impl K8sEventStream {
 
                 if leader_pod == pod_name {
                     info!("begin logging k8s events");
-                    start_renewal_task(leader.clone());
+                    start_renewal_task(leader_meta.leader.clone());
                     Ok(None)
                 } else {
                     info!("watching pod {}", leader_pod.to_string());
@@ -301,6 +303,13 @@ impl K8sEventStream {
                         .map({
                             move |e| match e {
                                 Ok(watcher::Event::Deleted(e)) => {
+                                    // CAN I FORCE HERE _ JUST IGNORE
+
+                                    futures::executor::block_on(check_for_leader(
+                                        leader_meta.clone(),
+                                        leader_pod.clone()
+                                    ));
+
                                     info!("previous k8s event logger deleted");
                                     delete_time.store(
                                         e.metadata
@@ -407,7 +416,7 @@ impl K8sEventStream {
         pod_label: impl Into<String>,
         client: Arc<Client>,
         latest_event_time: Arc<AtomicCell<Option<NonZeroI64>>>,
-        leader: Arc<FeatureLeader>,
+        leader_meta: Arc<FeatureLeaderMeta>,
     ) -> impl Stream<Item = Result<LineBuilder, K8sEventStreamError>> {
         let pod_name = pod_name.into();
         let namespace = namespace.into();
@@ -421,7 +430,7 @@ impl K8sEventStream {
             pod_label,
             client.clone(),
             previous_event_logger_delete_time.clone(),
-            leader.clone(),
+            leader_meta.clone(),
         );
 
         let event_stream = K8sEventStream::active_stream(
@@ -457,7 +466,7 @@ impl K8sEventStream {
                 pod_label.clone(),
                 _client.clone(),
                 _latest_event_time.clone(),
-                self.leader.clone(),
+                self.leader_meta.clone(),
             )
         };
 
@@ -473,7 +482,7 @@ impl K8sEventStream {
     }
 }
 
-fn start_renewal_task(leader: Arc<FeatureLeader>) {
+fn start_renewal_task(leader: FeatureLeader) {
     tokio::spawn(async move {
         loop {
             sleep(time::Duration::from_secs(15)).await;
@@ -485,4 +494,19 @@ fn start_renewal_task(leader: Arc<FeatureLeader>) {
             }
         }
     });
+}
+
+async fn check_for_leader(leader_meta: Arc<FeatureLeaderMeta>, old_leader: String) {
+    loop {
+        sleep(time::Duration::from_secs(20)).await;
+        let result = leader_meta.leader.try_claim_feature_leader().await;
+        if result.is_success {
+            start_renewal_task(leader_meta.leader.clone());
+            break;
+        } else if !result.is_success
+            && result.lease.unwrap().spec.unwrap().holder_identity.unwrap() != old_leader
+        {
+            break;
+        }
+    }
 }
