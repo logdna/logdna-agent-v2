@@ -374,7 +374,7 @@ pub async fn _main(
 
                                 let result = feature_meta.leader.try_claim_feature_leader().await;
 
-                                if result.is_success {
+                                if result {
                                     break;
                                 }
                             }
@@ -600,7 +600,7 @@ async fn set_up_leader(
         lease_api,
     );
 
-    let result = leader.try_claim_feature_leader().await;
+    let is_starting_leader = leader.try_claim_feature_leader().await;
     let leader_lease = leader.get_feature_leader_lease().await;
     let mut interval = DEFAULT_CHECK_FOR_LEADER_S;
     if let Ok(lease) = leader_lease {
@@ -612,8 +612,7 @@ async fn set_up_leader(
     FeatureLeaderMeta {
         interval,
         leader: leader.clone(),
-        is_starting_leader: result.is_success,
-        lease: result.lease,
+        is_starting_leader,
     }
 }
 

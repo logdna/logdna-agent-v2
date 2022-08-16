@@ -5,7 +5,6 @@ use backoff::ExponentialBackoff;
 use chrono::Duration;
 use core::time;
 use crossbeam::atomic::AtomicCell;
-use futures::future;
 use futures::{stream::try_unfold, Stream, StreamExt, TryStreamExt};
 use http::types::body::LineBuilder;
 use k8s_openapi::api::core::v1::{Event, ObjectReference, Pod};
@@ -17,6 +16,7 @@ use kube::{
 };
 use metrics::Metrics;
 use pin_utils::pin_mut;
+use rand::Rng;
 use regex::Regex;
 use serde::Serialize;
 use std::convert::TryInto;
@@ -275,15 +275,7 @@ impl K8sEventStream {
                     Break,
                 }
 
-                let leader_pod = leader_meta
-                    .leader
-                    .get_feature_leader_lease()
-                    .await
-                    .unwrap()
-                    .spec
-                    .unwrap()
-                    .holder_identity
-                    .unwrap();
+                let leader_pod = get_leader_pod_name(&leader_meta).await;
 
                 if leader_pod == pod_name {
                     info!("begin logging k8s events");
@@ -303,11 +295,9 @@ impl K8sEventStream {
                         .map({
                             move |e| match e {
                                 Ok(watcher::Event::Deleted(e)) => {
-                                    // CAN I FORCE HERE _ JUST IGNORE
-
                                     futures::executor::block_on(check_for_leader(
                                         leader_meta.clone(),
-                                        leader_pod.clone()
+                                        leader_pod.clone(),
                                     ));
 
                                     info!("previous k8s event logger deleted");
@@ -482,6 +472,20 @@ impl K8sEventStream {
     }
 }
 
+async fn get_leader_pod_name(leader_meta: &Arc<FeatureLeaderMeta>) -> String {
+    let lease = leader_meta.leader.get_feature_leader_lease().await;
+
+    if let Ok(lease) = lease {
+        if let Some(spec) = lease.spec {
+            if let Some(holder) = spec.holder_identity {
+                return holder;
+            }
+        }
+    }
+
+    String::new()
+}
+
 fn start_renewal_task(leader: FeatureLeader) {
     tokio::spawn(async move {
         loop {
@@ -498,15 +502,23 @@ fn start_renewal_task(leader: FeatureLeader) {
 
 async fn check_for_leader(leader_meta: Arc<FeatureLeaderMeta>, old_leader: String) {
     loop {
-        sleep(time::Duration::from_secs(20)).await;
+        sleep(time::Duration::from_millis(
+            20000 + (rand::thread_rng().gen_range(100..=500)),
+        ))
+        .await;
+
         let result = leader_meta.leader.try_claim_feature_leader().await;
-        if result.is_success {
+
+        if result {
             start_renewal_task(leader_meta.leader.clone());
             break;
-        } else if !result.is_success
-            && result.lease.unwrap().spec.unwrap().holder_identity.unwrap() != old_leader
-        {
-            break;
+        } else {
+            let current_lease_name = get_leader_pod_name(&leader_meta).await;
+
+            // another pod grabbed the lease
+            if old_leader != current_lease_name {
+                break;
+            }
         }
     }
 }

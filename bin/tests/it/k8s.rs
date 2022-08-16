@@ -1652,14 +1652,14 @@ async fn test_feature_leader_grabbing_lease() {
         );
 
         let is_claim_success = feature_leader.try_claim_feature_leader().await;
-        assert!(is_claim_success.is_success);
+        assert!(is_claim_success);
         let is_renewed = feature_leader.renew_feature_leader().await;
         assert!(is_renewed);
         let mut taken_over = feature_leader.try_claim_feature_leader().await;
-        assert!(!taken_over.is_success);
+        assert!(!taken_over);
         tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
         taken_over = feature_leader.try_claim_feature_leader().await;
-        assert!(taken_over.is_success);
+        assert!(taken_over);
 
         shutdown_handle();
     });

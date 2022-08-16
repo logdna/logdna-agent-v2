@@ -1464,6 +1464,7 @@ dependencies = [
  "parking_lot",
  "pin-project-lite",
  "pin-utils",
+ "rand",
  "regex",
  "serde",
  "serde-value-flatten",
