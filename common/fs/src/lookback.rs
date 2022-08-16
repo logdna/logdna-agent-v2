@@ -1,7 +1,7 @@
 use std::fmt;
 use thiserror::Error;
 
-#[derive(Clone, std::fmt::Debug, PartialEq)]
+#[derive(Clone, std::fmt::Debug, Eq, PartialEq)]
 pub enum Lookback {
     Start,
     SmallFiles,

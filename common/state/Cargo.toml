@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 derivative = "2.2"
 futures = "0.3"
-rocksdb = "0.17"
+rocksdb = "0.19"
 async-channel = "1.6"
 thiserror = "1.0"
 log = "0.4"
