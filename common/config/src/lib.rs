@@ -36,7 +36,7 @@ extern "Rust" {
     static PKG_VERSION: &'static str;
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum DbPath {
     Path(PathBuf),
     Empty,
@@ -94,7 +94,7 @@ pub struct HttpConfig {
     pub retry_step_delay: Duration,
 }
 
-#[derive(Clone, Display, core::fmt::Debug, PartialEq, EnumString)]
+#[derive(Clone, Display, core::fmt::Debug, Eq, PartialEq, EnumString)]
 pub enum K8sTrackingConf {
     #[strum(serialize = "always")]
     Always,
@@ -128,7 +128,7 @@ pub struct JournaldConfig {
     pub paths: Vec<PathBuf>,
 }
 
-#[derive(Clone, core::fmt::Debug, Display, EnumString, PartialEq)]
+#[derive(Clone, core::fmt::Debug, Display, EnumString, Eq, PartialEq)]
 pub enum K8sLeaseConf {
     #[strum(serialize = "never")]
     Never,
