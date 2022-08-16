@@ -296,34 +296,41 @@ impl FileOffsetState {
         })?;
         self.db
             .iterator_cf(cf_handle, IteratorMode::Start)
-            .map(|(k, v)| {
-                let (k_bytes, _) = k.split_at(std::mem::size_of::<u64>());
-                let key = FileId(u64::from_be_bytes(k_bytes.try_into().unwrap_or([0; 8])));
-                let mut offsets = SpanVec::with_capacity(std::cmp::max(1, (v.len() - 1) / 2));
+            .map(|kv_res| {
+                kv_res
+                    .map_err(FileOffsetStateError::from)
+                    .and_then(|(k, v)| {
+                        let (k_bytes, _) = k.split_at(std::mem::size_of::<u64>());
+                        let key = FileId(u64::from_be_bytes(k_bytes.try_into().unwrap_or([0; 8])));
+                        let mut offsets =
+                            SpanVec::with_capacity(std::cmp::max(1, (v.len() - 1) / 2));
 
-                if v.len() == std::mem::size_of::<u64>() {
-                    let (v_bytes_min, _) = v.split_at(std::mem::size_of::<u64>());
-                    offsets.insert(
-                        Span::new(
-                            0,
-                            u64::from_be_bytes(v_bytes_min.try_into().unwrap_or([0; 8])),
-                        )
-                        .unwrap(),
-                    )
-                } else {
-                    let (_v_bytes_min, mut v_bytes_rem) = v.split_at(std::mem::size_of::<u64>());
-                    while v_bytes_rem.len() > std::mem::size_of::<u64>() {
-                        let (v_bytes_start, _v_bytes_rem) =
-                            v_bytes_rem.split_at(std::mem::size_of::<u64>());
-                        let (v_bytes_end, _) = _v_bytes_rem.split_at(std::mem::size_of::<u64>());
-                        v_bytes_rem = _v_bytes_rem;
-                        offsets.insert(Span::new(
-                            u64::from_be_bytes(v_bytes_start.try_into().unwrap_or([0; 8])),
-                            u64::from_be_bytes(v_bytes_end.try_into().unwrap_or([0; 8])),
-                        )?);
-                    }
-                }
-                Ok(FileOffsets { key, offsets })
+                        if v.len() == std::mem::size_of::<u64>() {
+                            let (v_bytes_min, _) = v.split_at(std::mem::size_of::<u64>());
+                            offsets.insert(
+                                Span::new(
+                                    0,
+                                    u64::from_be_bytes(v_bytes_min.try_into().unwrap_or([0; 8])),
+                                )
+                                .unwrap(),
+                            )
+                        } else {
+                            let (_v_bytes_min, mut v_bytes_rem) =
+                                v.split_at(std::mem::size_of::<u64>());
+                            while v_bytes_rem.len() > std::mem::size_of::<u64>() {
+                                let (v_bytes_start, _v_bytes_rem) =
+                                    v_bytes_rem.split_at(std::mem::size_of::<u64>());
+                                let (v_bytes_end, _) =
+                                    _v_bytes_rem.split_at(std::mem::size_of::<u64>());
+                                v_bytes_rem = _v_bytes_rem;
+                                offsets.insert(Span::new(
+                                    u64::from_be_bytes(v_bytes_start.try_into().unwrap_or([0; 8])),
+                                    u64::from_be_bytes(v_bytes_end.try_into().unwrap_or([0; 8])),
+                                )?);
+                            }
+                        }
+                        Ok(FileOffsets { key, offsets })
+                    })
             })
             .collect::<Result<Vec<_>, FileOffsetStateError>>()
     }

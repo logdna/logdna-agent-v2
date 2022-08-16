@@ -175,7 +175,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
     }
     fn field_count(&self) -> usize {
         match self {
-            StrictOrLazyLines::Strict(line) => (&*line).field_count(),
+            StrictOrLazyLines::Strict(line) => line.field_count(),
             StrictOrLazyLines::Lazy(line) => line.field_count(),
         }
     }
