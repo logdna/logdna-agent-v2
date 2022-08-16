@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop';
 
-$packageName= 'Mezmo Agent'
+$packageName= 'mezmo-agent'
 $toolsDir   = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
 $fileLocation = Join-Path $toolsDir 'mezmo-agent.msi'
 

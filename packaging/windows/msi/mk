@@ -3,6 +3,7 @@ set -eu
 VER=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" ../../../bin/Cargo.toml)
 export BUILD_VERSION="${BUILD_VERSION:-"$VER+0"}"
 export BUILD_DIR="${BUILD_DIR:-../../../target/x86_64-pc-windows-msvc/debug}"
+export SRC_DIR="${SRC_DIR:-../../..}"
 export CERT_NAME="${CERT_NAME:-logdna_dev_cert.pfx}"
 function finish {
   rm -f "$BUILD_DIR/$CERT_NAME" "$BUILD_DIR/$CERT_NAME.pwd"
