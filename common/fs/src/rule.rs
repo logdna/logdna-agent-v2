@@ -46,7 +46,7 @@ impl Rule for RuleDef {
 }
 
 /// Used for representing matches on Rules
-#[derive(PartialEq)]
+#[derive(Eq, PartialEq)]
 pub enum Status {
     /// Failed due to not being included
     NotIncluded,

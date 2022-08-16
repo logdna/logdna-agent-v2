@@ -37,7 +37,7 @@ pub struct JournaldExportDecoder {
     state: AnyPartialState,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum FieldValue {
     Bytes(Vec<u8>),
     Utf8(String),

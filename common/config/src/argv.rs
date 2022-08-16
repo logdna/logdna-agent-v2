@@ -35,7 +35,7 @@ pub fn default_conf_file() -> PathBuf {
 }
 
 /// Contains the command and env var options.
-#[derive(StructOpt, Debug, Default, PartialEq)]
+#[derive(StructOpt, Debug, Default, Eq, PartialEq)]
 // Using PKG_VERSION as a workaround while we centralize version management of packages
 #[structopt(name = "LogDNA Agent", about = "A resource-efficient log collection agent that forwards logs to LogDNA.", version = unsafe { PKG_VERSION })]
 pub struct ArgumentOptions {
