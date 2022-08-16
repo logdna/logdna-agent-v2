@@ -461,7 +461,7 @@ async fn test_retry_metrics_emitted() {
 
     // The pending count should start and end at 0 since the agent starts normal and
     // then recovers. This metric is a gauge and is allowed to move up and down.
-    let pending_first = retry_pending.get(0).unwrap();
+    let pending_first = retry_pending.first().unwrap();
     let pending_last = retry_pending.iter().last().unwrap();
     assert!(pending_first.1 < f64::EPSILON);
     assert!(pending_last.1 < f64::EPSILON);
@@ -473,8 +473,8 @@ async fn test_retry_metrics_emitted() {
     // The retry success/failure counts first metric data point should only occur after
     // the first recorded metric and continue since they are counters and counters only
     // emit on the first increment.
-    let success_first = retry_success.get(0).unwrap();
-    let failure_first = retry_failure.get(0).unwrap();
+    let success_first = retry_success.first().unwrap();
+    let failure_first = retry_failure.first().unwrap();
     assert!(min_timestamp_ms < success_first.0);
     assert!(min_timestamp_ms < failure_first.0);
 
@@ -504,9 +504,9 @@ async fn test_retry_metrics_emitted() {
     // metrics may have been running and scaped before the actual test case starts. We also track
     // the starting count values to reset the series of data to ignore any values held prior to
     // scraping.
-    let (attempts_start_ts, attempt_count_basis) = retries.get(0).unwrap();
-    let (success_start_ts, success_count_basis) = retry_success.get(0).unwrap();
-    let (failure_start_ts, failure_count_basis) = retry_failure.get(0).unwrap();
+    let (attempts_start_ts, attempt_count_basis) = retries.first().unwrap();
+    let (success_start_ts, success_count_basis) = retry_success.first().unwrap();
+    let (failure_start_ts, failure_count_basis) = retry_failure.first().unwrap();
     let compare_window_start = std::cmp::max(
         std::cmp::max(*attempts_start_ts, *success_start_ts),
         *failure_start_ts,

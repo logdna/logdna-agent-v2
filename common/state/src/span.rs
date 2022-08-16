@@ -135,7 +135,7 @@ impl TryFrom<&(u64, u64)> for Span {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct SpanVec {
     spans: SmallVec<[Span; 4]>,

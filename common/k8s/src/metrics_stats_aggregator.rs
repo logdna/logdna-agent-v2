@@ -482,23 +482,17 @@ async fn call_metric_api(
     let (ar, _caps) = discovery::pinned_kind(&client, &gvk).await?;
     let api = Api::<DynamicObject>::all_with(client, &ar);
 
-    let items = api.list(&ListParams::default()).await;
-
-    items
+    api.list(&ListParams::default()).await
 }
 
 async fn get_all_nodes(client: Client) -> Result<ObjectList<Node>, kube::Error> {
     let api: Api<Node> = Api::all(client);
-    let nodes = api.list(&ListParams::default()).await;
-
-    nodes
+    api.list(&ListParams::default()).await
 }
 
 async fn get_all_pods(client: Client) -> Result<ObjectList<Pod>, kube::Error> {
     let api: Api<Pod> = Api::all(client);
-    let pods = api.list(&ListParams::default()).await;
-
-    pods
+    api.list(&ListParams::default()).await
 }
 
 #[cfg(test)]

@@ -22,7 +22,6 @@ use k8s::create_k8s_client_default_from_env;
 use k8s::middleware::K8sMetadata;
 use kube::Client as Kube_Client;
 use metrics::Metrics;
-use middleware::k8s_line_rules::K8sLineFilter;
 use middleware::line_rules::LineRules;
 use middleware::meta_rules::{MetaRules, MetaRulesConfig};
 use middleware::Executor;
@@ -251,19 +250,6 @@ pub async fn _main(
             (None, None)
         }
     };
-
-    if config.log.use_k8s_enrichment == K8sTrackingConf::Always {
-        match K8sLineFilter::new(
-            &config.log.k8s_metadata_exclude,
-            &config.log.k8s_metadata_include,
-        ) {
-            Ok(v) => executor.register(v),
-            Err(e) => {
-                error!("k8s line rule is invalid {}", e);
-                std::process::exit(1);
-            }
-        }
-    }
 
     match LineRules::new(
         &config.log.line_exclusion_regex,
@@ -621,11 +607,11 @@ async fn get_signal() -> &'static str {
     let mut quit_signal = unix::signal(unix::SignalKind::quit()).unwrap();
     let mut term_signal = unix::signal(unix::SignalKind::terminate()).unwrap();
 
-    return tokio::select! {
+    tokio::select! {
         _ = interrupt_signal.recv() => { "SIGINT" }
         _ = quit_signal.recv() => { "SIGQUIT"  }
         _ = term_signal.recv() => { "SIGTERM" }
-    };
+    }
 }
 
 #[cfg(windows)]
