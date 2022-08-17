@@ -22,6 +22,6 @@
     <releaseNotes>Mezmo Agent for Windows</releaseNotes>
   </metadata>
   <files>
-    <file src="tools\**" target="tools" />
+    <file src="out/tools/**" target="tools" />
   </files>
 </package>
