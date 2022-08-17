@@ -231,18 +231,19 @@ impl FileOffsetState {
         let cf_handle = self.db.cf_handle(OFFSET_NAME).ok_or_else(|| {
             FileOffsetStateError::DbError("Failed to get ColumnFamily handle".into())
         })?;
-        Ok(self
-            .db
+        self.db
             .iterator_cf(cf_handle, IteratorMode::Start)
-            .map(|(k, v)| {
-                let (k_bytes, _) = k.split_at(std::mem::size_of::<u64>());
-                let (v_bytes, _) = v.split_at(std::mem::size_of::<u64>());
-                FileOffset {
-                    key: FileId(u64::from_be_bytes(k_bytes.try_into().unwrap_or([0; 8]))),
-                    offset: u64::from_be_bytes(v_bytes.try_into().unwrap_or([0; 8])),
-                }
+            .map(|kv_res| {
+                kv_res.map_err(FileOffsetStateError::from).map(|(k, v)| {
+                    let (k_bytes, _) = k.split_at(std::mem::size_of::<u64>());
+                    let (v_bytes, _) = v.split_at(std::mem::size_of::<u64>());
+                    FileOffset {
+                        key: FileId(u64::from_be_bytes(k_bytes.try_into().unwrap_or([0; 8]))),
+                        offset: u64::from_be_bytes(v_bytes.try_into().unwrap_or([0; 8])),
+                    }
+                })
             })
-            .collect::<Vec<_>>())
+            .collect::<Result<Vec<_>, _>>()
     }
 
     pub fn write_handle(&self) -> FileOffsetWriteHandle {
