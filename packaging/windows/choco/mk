@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eu
 export SRC_DIR="${SRC_DIR:-../../..}"
-VER=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" $SRC_DIR/bin/Cargo.toml)
+VER=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" "$SRC_DIR/bin/Cargo.toml")
 export BUILD_VERSION="${BUILD_VERSION:-"$VER"}"
 export BUILD_DIR="${BUILD_DIR:-$SRC_DIR/target/x86_64-pc-windows-msvc/debug}"
 export MSI_URL="${MSI_URL:-https://logdna-agent-build-bin.s3.amazonaws.com/$VER/x86_64-pc-windows-msvc/signed/mezmo-agent.msi}"
