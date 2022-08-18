@@ -317,10 +317,16 @@ impl TryFrom<RawConfig> for Config {
                 .http
                 .body_size
                 .ok_or(ConfigError::MissingField("http.body_size"))?,
-            retry_dir: raw
-                .http
-                .retry_dir
-                .unwrap_or_else(|| PathBuf::from("/tmp/logdna")),
+            retry_dir: raw.http.retry_dir.unwrap_or_else(|| {
+                if cfg!(windows) {
+                    let temp = std::env::var("temp");
+                    if let Ok(temp) = temp {
+                        let dir = format!("{}/{}", temp, "logdna");
+                        return PathBuf::from(dir);
+                    }
+                }
+                PathBuf::from("/tmp/logdna")
+            }),
             retry_disk_limit: raw.http.retry_disk_limit,
             retry_base_delay: Duration::from_millis(
                 raw.http.retry_base_delay_ms.unwrap_or(15_000) as u64
