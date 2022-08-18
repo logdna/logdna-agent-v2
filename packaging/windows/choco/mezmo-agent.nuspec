@@ -4,7 +4,7 @@
   <metadata>
     <id>mezmo-agent</id>
     <title>Mezmo Agent for Windows</title>
-    <version>3.6.0-beta-1</version>
+    <version>${BUILD_VERSION}</version>
     <authors>smusali,leeliu,</authors>
     <owners>leeliu</owners>
     <summary>Mezmo Agent for Windows</summary>
@@ -16,12 +16,12 @@
     <bugTrackerUrl>https://github.com/logdna/logdna-agent-v2/issues</bugTrackerUrl>
     <tags>mezmo-agent logdna-agent tail logging devops logdna</tags>
     <copyright>Copyright 2022 Mezmo,Inc.</copyright>
-    <licenseUrl>https://github.com/logdna-agent-v2/logdna-agent/blob/master/LICENSE</licenseUrl>
+    <licenseUrl>https://raw.githubusercontent.com/logdna/logdna-agent-v2/master/LICENSE.md</licenseUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <iconUrl>https://github.com/logdna/artwork/raw/master/ld-logo-square-480.png</iconUrl>
+    <iconUrl>https://github.com/logdna/artwork/raw/master/mezmo-m-darkbg-square-254.png</iconUrl>
     <releaseNotes>Mezmo Agent for Windows</releaseNotes>
   </metadata>
   <files>
-    <file src="out/tools/**" target="tools" />
+    <file src="tools/**" target="tools" />
   </files>
 </package>

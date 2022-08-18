@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
 set -eu
-export SRC_DIR="${SRC_DIR:-../../..}"
-VER=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" $SRC_DIR/bin/Cargo.toml)
-export BUILD_VERSION="${BUILD_VERSION:-"$VER"}"
-export BUILD_DIR="${BUILD_DIR:-$SRC_DIR/target/x86_64-pc-windows-msvc/debug}"
-#
 docker run -it -v $PWD:/build -w /build --env CHOCO_API_KEY="$CHOCO_API_KEY" chocolatey/choco bash -c "choco apikey -k $CHOCO_API_KEY -s https://push.chocolatey.org;choco push -v /build/out/*.nupkg -s https://push.chocolatey.org"
 echo
 echo @@@@@@  SUCCESS  @@@@@@

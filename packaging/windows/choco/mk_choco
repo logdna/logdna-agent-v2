@@ -5,12 +5,7 @@ mkdir -p out/tools
 chmod 777 out
 chmod 777 out/tools
 export MSI_SHA256=$(curl -sL $MSI_URL | sha256sum -b | awk "{print \$1}")
-for FILE in tools/*; do 
-  envsubst '${MSI_URL},${MSI_SHA256}' < $FILE > out/$FILE
+for FILE in tools/* mezmo-agent.nuspec; do
+  envsubst '$MSI_URL,$MSI_SHA256,$BUILD_VERSION' < $FILE > out/$FILE
 done
-docker run -it -v $PWD:/build -w /build chocolatey/choco choco pack -v --out /build/out mezmo-agent.nuspec
-
-
-
-
-
+docker run -it -v $PWD:/build -w /build/out chocolatey/choco choco pack -v mezmo-agent.nuspec
