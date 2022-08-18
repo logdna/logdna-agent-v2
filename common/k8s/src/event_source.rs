@@ -294,7 +294,7 @@ impl K8sEventStream {
                         .map({
                             move |e| match e {
                                 Ok(watcher::Event::Deleted(e)) => {
-                                    info!("POD DOWN{:?}", e.name());
+                                    info!("Agent Down {}", e.name());
 
                                     futures::executor::block_on(check_for_leader(
                                         leader_meta.clone(),
@@ -519,7 +519,10 @@ fn start_renewal_task(leader: FeatureLeader) {
 
 async fn check_for_leader(leader_meta: Arc<FeatureLeaderMeta>, deleted_pod: String) {
     loop {
-        sleep(time::Duration::from_millis(20000)).await;
+        sleep(time::Duration::from_millis(
+            20000 + (rand::thread_rng().gen_range(1000..=10000)),
+        ))
+        .await;
 
         let leader_pod = get_leader_pod_name(&leader_meta).await;
 
