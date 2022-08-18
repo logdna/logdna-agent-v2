@@ -24,14 +24,11 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ---
 apiVersion: coordination.k8s.io/v1
-kind: LeaseList
-items:
-  - apiVersion: coordination.k8s.io/v1
-    kind: Lease
-    metadata:
-      name: logdna-agent-reporter-lease
-      namespace: logdna-agent
-      labels:
-        process: logdna-agent-reporter
-    spec:
-      leaseDurationSeconds: 300
+kind: Lease
+metadata:
+  name: logdna-agent-k8-events-lease
+  namespace: logdna-agent
+  labels:
+    process: logdna-agent-k8s-event
+spec:
+  leaseDurationSeconds: 45

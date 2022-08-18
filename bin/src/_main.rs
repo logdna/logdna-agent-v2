@@ -42,9 +42,6 @@ use tokio::time::Duration;
 use crate::dep_audit;
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
 
-pub static REPORTER_LEASE_NAME: &str = "logdna-agent-reporter-lease";
-pub static DEFAULT_CHECK_FOR_LEADER_S: i32 = 300;
-
 /// Debounce filesystem event
 static FS_EVENT_DELAY: Duration = Duration::from_millis(10);
 
@@ -60,6 +57,9 @@ static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 pub static PKG_NAME: &str = env!("CARGO_PKG_NAME");
 #[no_mangle]
 pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+pub const REPORTER_LEASE_NAME: &str = "logdna-agent-reporter-lease";
+pub const DEFAULT_CHECK_FOR_LEADER_S: i32 = 300;
 
 pub async fn _main(
     shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
