@@ -319,8 +319,7 @@ impl TryFrom<RawConfig> for Config {
                 .ok_or(ConfigError::MissingField("http.body_size"))?,
             retry_dir: raw.http.retry_dir.unwrap_or_else(|| {
                 if cfg!(windows) {
-                    let temp = std::env::var("temp");
-                    if let Ok(temp) = temp {
+                    if let Ok(temp) = std::env::var("temp") {
                         let dir = format!("{}/{}", temp, "logdna");
                         return PathBuf::from(dir);
                     }
