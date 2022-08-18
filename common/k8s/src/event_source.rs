@@ -2,7 +2,7 @@ use crate::errors::K8sEventStreamError;
 use crate::feature_leader::{FeatureLeader, FeatureLeaderMeta};
 use crate::restarting_stream::{RequiresRestart, RestartingStream};
 use backoff::ExponentialBackoff;
-use chrono::Duration;
+use chrono::{Duration, Utc};
 use core::time;
 use crossbeam::atomic::AtomicCell;
 use futures::{stream::try_unfold, Stream, StreamExt, TryStreamExt};
@@ -10,6 +10,7 @@ use http::types::body::LineBuilder;
 use k8s_openapi::api::core::v1::{Event, ObjectReference, Pod};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::api::ListParams;
+use kube::ResourceExt;
 use kube::{
     runtime::{watcher, WatchStreamExt},
     Api, Client,
@@ -360,19 +361,29 @@ impl K8sEventStream {
             .filter({
                 move |event| {
                     let latest_event_time = latest_event_time.clone();
+
                     let earliest = previous_event_logger_delete_time.clone();
+
                     let ret = latest_event_time
                         .load()
                         .or_else(|| earliest.load())
                         .and_then(|earliest| {
                             let earliest =
                                 chrono::NaiveDateTime::from_timestamp(earliest.into(), 0);
+
                             event.as_ref().ok().and_then(|e| {
-                                e.last_timestamp
+                                if e.creation_timestamp().is_none()
+                                    && latest_event_time.load().is_none()
+                                {
+                                    return Some(false);
+                                }
+
+                                e.creation_timestamp()
                                     .as_ref()
                                     .map(|l| earliest < l.0.naive_utc())
                             })
                         });
+
                     async move { ret.unwrap_or(true) }
                 }
             })
@@ -380,7 +391,7 @@ impl K8sEventStream {
                 match event.map(|e| {
                     let latest_event_time = latest_event_time_w.clone();
                     let this_event_time = e
-                        .last_timestamp
+                        .creation_timestamp()
                         .as_ref()
                         .and_then(|t| NonZeroI64::new(t.0.timestamp() - 2));
 
@@ -388,14 +399,21 @@ impl K8sEventStream {
                         Metrics::k8s().increment_lines();
                         l
                     });
-                    if ret.is_ok() {
-                        latest_event_time.store(this_event_time)
+
+                    if ret.is_ok() && this_event_time.is_some() {
+                        latest_event_time.store(this_event_time);
                     };
                     ret
                 }) {
                     Ok(Ok(l)) => Ok(StreamElem::Event(l)),
-                    Ok(Err(e)) => Err(e),
-                    Err(e) => Err(e),
+                    Ok(Err(e)) => {
+                        latest_event_time_w.store(NonZeroI64::new(Utc::now().timestamp()));
+                        Err(e)
+                    }
+                    Err(e) => {
+                        latest_event_time_w.store(NonZeroI64::new(Utc::now().timestamp()));
+                        Err(e)
+                    }
                 }
             })
     }
