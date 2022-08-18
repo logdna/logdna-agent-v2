@@ -90,7 +90,7 @@ impl TryFrom<&Path> for FsEntry {
 
     fn try_from(path: &Path) -> Result<Self, std::io::Error> {
         let meta = fs::symlink_metadata(path)?;
-        return if meta.file_type().is_symlink() {
+        if meta.file_type().is_symlink() {
             Ok(FsEntry::Symlink {
                 path: path.to_path_buf(),
                 target: match fs::read_link(path) {
@@ -120,7 +120,7 @@ impl TryFrom<&Path> for FsEntry {
                 "Got valid path that's neither file, dir nor symlink: {:#?}",
                 path
             );
-        };
+        }
     }
 }
 

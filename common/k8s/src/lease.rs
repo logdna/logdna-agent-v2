@@ -170,8 +170,7 @@ async fn get_lease_list(
     lease_client: &Api<Lease>,
 ) -> Result<ObjectList<Lease>, kube::Error> {
     let lp = ListParams::default().labels(lease_label);
-    let lease_info = lease_client.list(&lp).await;
-    lease_info
+    lease_client.list(&lp).await
 }
 
 fn create_lease_metadata(lease_name: String, namespace: String) -> ObjectMeta {

@@ -666,11 +666,11 @@ async fn get_signal() -> &'static str {
     let mut quit_signal = unix::signal(unix::SignalKind::quit()).unwrap();
     let mut term_signal = unix::signal(unix::SignalKind::terminate()).unwrap();
 
-    return tokio::select! {
+    tokio::select! {
         _ = interrupt_signal.recv() => { "SIGINT" }
         _ = quit_signal.recv() => { "SIGQUIT"  }
         _ = term_signal.recv() => { "SIGTERM" }
-    };
+    }
 }
 
 #[cfg(windows)]

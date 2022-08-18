@@ -112,7 +112,7 @@ fn check_fs_files(samples: &[Sample]) {
 
     assert!(!fs_files.is_empty(), "no fs_files metrics were captured");
 
-    let first_fs_file = *fs_files.get(0).unwrap();
+    let first_fs_file = *fs_files.first().unwrap();
     let last_fs_file = *fs_files.iter().last().unwrap();
     assert!((first_fs_file as i64 - last_fs_file as i64).abs() <= 1);
     assert!(
