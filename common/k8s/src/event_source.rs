@@ -283,11 +283,9 @@ impl K8sEventStream {
                     start_renewal_task(leader_meta.leader.clone());
                     Ok(None)
                 } else {
-                    info!("watching pod {}", leader_pod.to_string());
                     let params = ListParams::default()
                         .timeout(30)
-                        .labels(&format!("app.kubernetes.io/name={}", &pod_label)) // filter instances by label
-                        .fields(&format!("metadata.name={}", leader_pod.to_string())); // filter instances by label
+                        .labels(&format!("app.kubernetes.io/name={}", &pod_label));
                     let stream = watcher(pods.clone(), params)
                         .skip_while(|e| {
                             let matched = matches!(e, Ok(watcher::Event::<Pod>::Restarted(_)));
@@ -296,12 +294,13 @@ impl K8sEventStream {
                         .map({
                             move |e| match e {
                                 Ok(watcher::Event::Deleted(e)) => {
+                                    info!("POD DOWN{:?}", e.name());
+
                                     futures::executor::block_on(check_for_leader(
                                         leader_meta.clone(),
-                                        leader_pod.clone(),
+                                        e.name(),
                                     ));
 
-                                    info!("previous k8s event logger deleted");
                                     delete_time.store(
                                         e.metadata
                                             .deletion_timestamp
@@ -518,12 +517,15 @@ fn start_renewal_task(leader: FeatureLeader) {
     });
 }
 
-async fn check_for_leader(leader_meta: Arc<FeatureLeaderMeta>, old_leader: String) {
+async fn check_for_leader(leader_meta: Arc<FeatureLeaderMeta>, deleted_pod: String) {
     loop {
-        sleep(time::Duration::from_millis(
-            20000 + (rand::thread_rng().gen_range(100..=500)),
-        ))
-        .await;
+        sleep(time::Duration::from_millis(20000)).await;
+
+        let leader_pod = get_leader_pod_name(&leader_meta).await;
+
+        if deleted_pod != leader_pod {
+            break;
+        }
 
         let result = leader_meta.leader.try_claim_feature_leader().await;
 
@@ -534,7 +536,7 @@ async fn check_for_leader(leader_meta: Arc<FeatureLeaderMeta>, old_leader: Strin
             let current_lease_name = get_leader_pod_name(&leader_meta).await;
 
             // another pod grabbed the lease
-            if old_leader != current_lease_name {
+            if leader_pod != current_lease_name {
                 break;
             }
         }

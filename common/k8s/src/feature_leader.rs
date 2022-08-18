@@ -102,7 +102,8 @@ impl FeatureLeader {
                             );
                             return true;
                         }
-                        Err(_) => {
+                        Err(e) => {
+                            info!("Failed to get lease{}", e);
                             return false;
                         }
                     }
