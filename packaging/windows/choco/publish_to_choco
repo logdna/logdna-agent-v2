@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -eu
+# shellcheck disable=SC1091
 source ./mk_env
 docker run -i -v $BUILD_DIR/choco:/build -w /build --env CHOCO_API_KEY="$CHOCO_API_KEY" chocolatey/choco bash << 'EOF'
 set -eu

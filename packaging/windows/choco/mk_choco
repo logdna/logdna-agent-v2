@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 set -eu
 #
-mkdir -p $BUILD_DIR/choco/tools
-chmod 777 $BUILD_DIR/choco
-chmod 777 $BUILD_DIR/choco/tools
-export MSI_SHA256=$(curl -sL $MSI_URL | sha256sum -b | awk "{print \$1}")
+mkdir -p "$BUILD_DIR/choco/tools"
+chmod 777 "$BUILD_DIR/choco"
+chmod 777 "$BUILD_DIR/choco/tools"
+MSI_SHA256=$(curl -sL "$MSI_URL" | sha256sum -b | awk "{print \$1}")
+export MSI_SHA256
 for FILE in tools/* mezmo-agent.nuspec; do
-  envsubst '$MSI_URL,$MSI_SHA256,$BUILD_VERSION' < $FILE > $BUILD_DIR/choco/$FILE
+  # shellcheck disable=SC2016
+  envsubst '$MSI_URL,$MSI_SHA256,$BUILD_VERSION' < "$FILE" > "$BUILD_DIR/choco/$FILE"
 done
-docker run -it -v $BUILD_DIR/choco:/build -w /build chocolatey/choco choco pack -v mezmo-agent.nuspec
+docker run -it -v "$BUILD_DIR/choco":/build -w /build chocolatey/choco choco pack -v mezmo-agent.nuspec
+echo
+echo package stored in \'"$BUILD_DIR/choco"\'
+echo

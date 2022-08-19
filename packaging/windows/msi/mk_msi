@@ -37,7 +37,7 @@ osslsigncode sign \
     -add-msi-dse \
     -pkcs12 "$BUILD_DIR/$CERT_NAME" \
     -readpass "$BUILD_DIR/$CERT_NAME.pwd" \
-	-n "Mezmo Agent" \
+    -n "Mezmo Agent" \
     -h sha2 \
     -i "https://www.mezmo.com" \
     -t http://timestamp.comodoca.com/authenticode \
