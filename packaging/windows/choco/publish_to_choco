@@ -4,10 +4,8 @@ set -eu
 source ./mk_env
 docker run -i -v $BUILD_DIR/choco:/build -w /build --env CHOCO_API_KEY="$CHOCO_API_KEY" chocolatey/choco bash << 'EOF'
 set -eu
-export PKG_VER=$(grep -oPm1 "(?<=<version>)[^<]+" mezmo-agent.nuspec)
-export PKG_NAME=$(grep -oPm1 "(?<=<id>)[^<]+" mezmo-agent.nuspec)
 choco apikey -k $CHOCO_API_KEY -s https://push.chocolatey.org
-choco push $PKG_NAME.$PKG_VER.nupkg -s https://push.chocolatey.org
+choco push $BUILD_DIR/choco/$(cat $BUILD_DIR/choco/mezmo-agent.nupkg.name) -s https://push.chocolatey.org
 EOF
 echo
 echo @@@@@@  SUCCESS  @@@@@@

@@ -529,6 +529,15 @@ endef
 BUILD_TYPES=debug release
 $(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_CHOCO_RULE,$(_type))))
 
+define PUBLISH_S3_CHOCO_RULE
+.PHONY: publish-s3-choco-$(1)
+publish-s3-choco-$(1): ## upload choco package to S3
+	$(eval PKG_NAME := $(shell cat "target/$(TARGET)/$(1)/choco/mezmo-agent.nupkg.name"))
+	aws s3 cp --acl public-read "target/$(TARGET)/$(1)/choco/$(PKG_NAME)"  s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/$(PKG_NAME)
+endef
+BUILD_TYPES=debug release
+$(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_S3_CHOCO_RULE,$(_type))))
+
 define publish_images
 	$(eval VCS_REF_BUILD_NUMBER_SHA:=$(shell echo "$(VCS_REF)$(BUILD_NUMBER)" | sha256sum | head -c 16))
 	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(VCS_REF_BUILD_NUMBER_SHA) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))

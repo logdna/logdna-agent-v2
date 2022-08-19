@@ -285,7 +285,9 @@ pipeline {
                                 STATIC=1 make publish-s3-binary
                                 WINDOWS=1 make publish-s3-binary
                                 WINDOWS=1 make msi-release
+                                WINDOWS=1 make choco-release
                                 WINDOWS=1 make publish-s3-binary-signed-release
+                                WINDOWS=1 make publish-s3-choco-release
                                 ARCH=x86_64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
                                 ARCH=aarch64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
                                 rm ${WORKSPACE}/.aws_creds_static

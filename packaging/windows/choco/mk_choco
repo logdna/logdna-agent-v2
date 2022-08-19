@@ -8,9 +8,12 @@ MSI_SHA256=$(curl -sL "$MSI_URL" | sha256sum -b | awk "{print \$1}")
 export MSI_SHA256
 for FILE in tools/* mezmo-agent.nuspec; do
   # shellcheck disable=SC2016
-  envsubst '$MSI_URL,$MSI_SHA256,$BUILD_VERSION' < "$FILE" > "$BUILD_DIR/choco/$FILE"
+  envsubst '$MSI_URL,$MSI_SHA256,$BUILD_VERSION_FULL' < "$FILE" > "$BUILD_DIR/choco/$FILE"
 done
 docker run -it -v "$BUILD_DIR/choco":/build -w /build chocolatey/choco choco pack -v mezmo-agent.nuspec
+PKG_VER=$(grep -oPm1 "(?<=<version>)[^<]+" "$BUILD_DIR/choco/mezmo-agent.nuspec")
+PKG_NAME=$(grep -oPm1 "(?<=<id>)[^<]+" "$BUILD_DIR/choco/mezmo-agent.nuspec")
+echo "$PKG_NAME.$PKG_VER.nupkg" > "$BUILD_DIR/choco/mezmo-agent.nupkg.name"
 echo
 echo package stored in \'"$BUILD_DIR/choco"\'
 echo
