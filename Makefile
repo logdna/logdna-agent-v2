@@ -511,6 +511,14 @@ endef
 BUILD_TYPES=debug release
 $(foreach _type, $(BUILD_TYPES), $(eval $(call MSI_RULE,$(_type))))
 
+define CHOCO_RULE
+.PHONY: choco-$(1)
+choco-$(1): ## create choco package using msi in $(BUILD_DIR)/signed
+	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	pushd packaging/windows/choco;./mk
+endef
+BUILD_TYPES=debug release
+$(foreach _type, $(BUILD_TYPES), $(eval $(call CHOCO_RULE,$(_type))))
 
 define publish_images
 	$(eval VCS_REF_BUILD_NUMBER_SHA:=$(shell echo "$(VCS_REF)$(BUILD_NUMBER)" | sha256sum | head -c 16))
