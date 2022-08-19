@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
-SRC_DIR=$(readlink -f "${SRC_DIR:-../../..}")
-export SRC_DIR
+src_dir=$(readlink -f ../../..)
+export BUILD_DIR="${BUILD_DIR:-$src_dir/target/x86_64-pc-windows-msvc/debug}"
 export BUILD_NUMBER="${BUILD_NUMBER:-0}"
-AGENT_VERSION=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" "$SRC_DIR/bin/Cargo.toml")
-export BUILD_VERSION="${BUILD_VERSION:-${AGENT_VERSION}}"
+agent_version=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" "$src_dir/bin/Cargo.toml")
+export BUILD_VERSION="${BUILD_VERSION:-${agent_version}}"
 BUILD_VERSION_DASH=$(echo "$BUILD_VERSION" | sed -r 's/([^\.]+\.[^\.]+\.[^\.]+)\./\1-/')
-export BUILD_VERSION_FULL="$BUILD_VERSION_DASH-build${BUILD_NUMBER}"
-export BUILD_DIR="${BUILD_DIR:-$SRC_DIR/target/x86_64-pc-windows-msvc/debug}"
+export BUILD_VERSION_FULL="${BUILD_VERSION_DASH}-build${BUILD_NUMBER}"
 export MSI_URL="${MSI_URL:-https://logdna-agent-build-bin.s3.amazonaws.com/$BUILD_VERSION/x86_64-pc-windows-msvc/signed/mezmo-agent.msi}"
