@@ -1,0 +1,7 @@
+export SRC_DIR=$(readlink -f "${SRC_DIR:-../../..}")
+VER=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" "$SRC_DIR/bin/Cargo.toml")
+VER_DASH=$(echo $VER | sed -r 's/([^\.]+\.[^\.]+\.[^\.]+)\./\1-/')
+export BUILD_NUMBER="${BUILD_NUMBER:-0}"
+export BUILD_VERSION="${BUILD_VERSION:-"${VER_DASH}-build${BUILD_NUMBER}"}"
+export BUILD_DIR="${BUILD_DIR:-$SRC_DIR/target/x86_64-pc-windows-msvc/debug}"
+export MSI_URL="${MSI_URL:-https://logdna-agent-build-bin.s3.amazonaws.com/$VER/x86_64-pc-windows-msvc/signed/mezmo-agent.msi}"

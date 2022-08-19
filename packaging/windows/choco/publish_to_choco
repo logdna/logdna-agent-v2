@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -eu
-docker run -i -v $PWD:/build -w /build --env CHOCO_API_KEY="$CHOCO_API_KEY" chocolatey/choco bash << 'EOF'
+source ./mk_env
+docker run -i -v $BUILD_DIR/choco:/build -w /build --env CHOCO_API_KEY="$CHOCO_API_KEY" chocolatey/choco bash << 'EOF'
 set -eu
-export PKG_VER=$(grep -oPm1 "(?<=<version>)[^<]+" out/mezmo-agent.nuspec)
-export PKG_NAME=$(grep -oPm1 "(?<=<id>)[^<]+" out/mezmo-agent.nuspec)
+export PKG_VER=$(grep -oPm1 "(?<=<version>)[^<]+" mezmo-agent.nuspec)
+export PKG_NAME=$(grep -oPm1 "(?<=<id>)[^<]+" mezmo-agent.nuspec)
 choco apikey -k $CHOCO_API_KEY -s https://push.chocolatey.org
-choco push /build/out/$PKG_NAME.$PKG_VER.nupkg -s https://push.chocolatey.org
+choco push $PKG_NAME.$PKG_VER.nupkg -s https://push.chocolatey.org
 EOF
 echo
 echo @@@@@@  SUCCESS  @@@@@@
