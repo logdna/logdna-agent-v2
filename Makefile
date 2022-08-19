@@ -501,7 +501,7 @@ $(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_SIGNED_RULE,$(_type))))
 define MSI_RULE
 .PHONY: msi-$(1)
 msi-$(1): ## create signed exe(s) and msi in $(BUILD_DIR)/signed
-	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	$(eval BUILD_DIR := $(CURDIR)/target/$(TARGET)/$(1))
 	$(eval CERT_NAME := "logdna_dev_cert.pfx")
 	aws s3 cp "s3://ecosys-vault/$(CERT_NAME)" "$(BUILD_DIR)" && \
 	aws s3 cp "s3://ecosys-vault/$(CERT_NAME).pwd" "$(BUILD_DIR)" && \
@@ -514,11 +514,20 @@ $(foreach _type, $(BUILD_TYPES), $(eval $(call MSI_RULE,$(_type))))
 define CHOCO_RULE
 .PHONY: choco-$(1)
 choco-$(1): ## create choco package using msi in $(BUILD_DIR)/signed
-	$(eval BUILD_DIR := target/$(TARGET)/$(1))
-	pushd packaging/windows/choco;./mk
+	$(eval BUILD_DIR := $(CURDIR)/target/$(TARGET)/$(1))
+	bash -c "export BUILD_DIR=$(BUILD_DIR) && pushd packaging/windows/choco && ./mk"
 endef
 BUILD_TYPES=debug release
 $(foreach _type, $(BUILD_TYPES), $(eval $(call CHOCO_RULE,$(_type))))
+
+define PUBLISH_CHOCO_RULE
+.PHONY: publish-choco-$(1)
+publish-choco-$(1): ## publish choco package built & located in $(BUILD_DIR)/choco, requires env CHOCO_API_KEY defined
+	$(eval BUILD_DIR := $(CURDIR)/target/$(TARGET)/$(1))
+	bash -c "export BUILD_DIR=$(BUILD_DIR) && pushd packaging/windows/choco && ./publish_to_choco"
+endef
+BUILD_TYPES=debug release
+$(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_CHOCO_RULE,$(_type))))
 
 define publish_images
 	$(eval VCS_REF_BUILD_NUMBER_SHA:=$(shell echo "$(VCS_REF)$(BUILD_NUMBER)" | sha256sum | head -c 16))
