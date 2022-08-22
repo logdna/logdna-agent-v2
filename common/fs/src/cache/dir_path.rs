@@ -79,24 +79,16 @@ impl From<DirPathBuf> for PathBuf {
 // Recursive directory back off
 fn find_valid_path(
     path: Option<PathBuf>,
-    postfix_path: Option<PathBuf>,
+    postfix: Option<PathBuf>,
 ) -> Result<DirPathBuf, DirPathBufError> {
     match path {
         Some(p) => {
-            if p.is_dir() && postfix_path == None {
-                Ok(DirPathBuf {
-                    inner: p,
-                    postfix: None,
-                })
-            } else if p.is_dir() && postfix_path.is_some() {
-                Ok(DirPathBuf {
-                    inner: p,
-                    postfix: postfix_path,
-                })
+            if p.is_dir() {
+                Ok(DirPathBuf { inner: p, postfix })
             } else {
                 warn!("{:?} is not a directory; moving to parent directory", p);
                 let mut postfix_pathbuf = PathBuf::new();
-                if let Some(path) = postfix_path {
+                if let Some(path) = postfix {
                     postfix_pathbuf.push(path);
                 }
                 let parent = level_up(&p).unwrap();
