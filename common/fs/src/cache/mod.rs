@@ -296,6 +296,7 @@ impl FileSystem {
         let entries = fs.entries.clone();
         let mut entries = entries.borrow_mut();
 
+        // Initial dirs
         let mut initial_dir_events = Vec::new();
         for dir in initial_dirs
             .into_iter()
@@ -348,6 +349,7 @@ impl FileSystem {
         fs
     }
 
+    // Stream events
     pub fn stream_events(
         fs: Arc<Mutex<FileSystem>>,
     ) -> Result<impl Stream<Item = (Result<Event, Error>, EventTimestamp)>, std::io::Error> {
@@ -373,6 +375,7 @@ impl FileSystem {
         Ok(initial_events.chain(events))
     }
 
+    // Rules logic
     /// Handles inotify events and may produce Event(s) that are returned upstream through sender
     fn process(&mut self, watch_event: WatchEvent) -> FsResult<Vec<Event>> {
         let _entries = self.entries.clone();
