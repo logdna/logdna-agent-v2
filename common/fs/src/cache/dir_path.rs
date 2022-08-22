@@ -12,7 +12,7 @@ pub enum DirPathBufError {
 
 // Strongly typed wrapper around PathBuf, cannot be constructed unless
 // the directory it's referring to exists
-#[derive(std::fmt::Debug, Clone, PartialEq)]
+#[derive(Eq, std::fmt::Debug, Clone, PartialEq)]
 pub struct DirPathBuf {
     pub inner: PathBuf,
     pub postfix: Option<PathBuf>,
@@ -46,7 +46,7 @@ impl std::convert::TryFrom<&Path> for DirPathBuf {
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
         #[cfg(unix)]
         if path.is_dir() {
-            Ok(DirPathBuf { 
+            Ok(DirPathBuf {
                 inner: path.into(),
                 postfix: None,
             })
@@ -77,27 +77,30 @@ impl From<DirPathBuf> for PathBuf {
 }
 
 // Recursive directory back off
-fn find_valid_path(path: Option<PathBuf>, postfix: Option<PathBuf>) -> Result<DirPathBuf, DirPathBufError> {
+fn find_valid_path(
+    path: Option<PathBuf>,
+    postfix_path: Option<PathBuf>,
+) -> Result<DirPathBuf, DirPathBufError> {
     match path {
         Some(p) => {
-            if p.is_dir() && postfix == None {
-                return Ok(DirPathBuf { 
+            if p.is_dir() && postfix_path == None {
+                Ok(DirPathBuf {
                     inner: p,
                     postfix: None,
-                });
-            } else if p.is_dir() && postfix.is_some() {
-                return Ok(DirPathBuf {
+                })
+            } else if p.is_dir() && postfix_path.is_some() {
+                Ok(DirPathBuf {
                     inner: p,
-                    postfix,
-                });
+                    postfix: postfix_path,
+                })
             } else {
                 warn!("{:?} is not a directory; moving to parent directory", p);
                 let mut postfix_pathbuf = PathBuf::new();
-                if postfix.is_some() {
-                    postfix_pathbuf.push(postfix.unwrap());
+                if let Some(path) = postfix_path {
+                    postfix_pathbuf.push(path);
                 }
                 let parent = level_up(&p).unwrap();
-                let tmp_dir = parent.clone();
+                let tmp_dir = parent;
                 let postfix_path = p.strip_prefix(tmp_dir).ok();
                 postfix_pathbuf.push(postfix_path.unwrap());
                 find_valid_path(level_up(&p), Some(postfix_pathbuf))
