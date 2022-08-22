@@ -14,7 +14,8 @@ pub enum DirPathBufError {
 // the directory it's referring to exists
 #[derive(std::fmt::Debug, Clone, PartialEq)]
 pub struct DirPathBuf {
-    inner: PathBuf,
+    pub inner: PathBuf,
+    pub postfix: Option<PathBuf>,
 }
 
 impl Deref for DirPathBuf {
@@ -27,11 +28,8 @@ impl Deref for DirPathBuf {
 impl std::convert::TryFrom<PathBuf> for DirPathBuf {
     type Error = DirPathBufError;
     fn try_from(path: PathBuf) -> Result<Self, Self::Error> {
-        //TODO: We want to allow paths that are not yet present: LOG-10041
-        // For now, prevent validation on Windows
         #[cfg(unix)]
-        //TODO: Need to fix error handling here
-        match find_valid_path(Some(path.clone())) {
+        match find_valid_path(Some(path.clone()), None) {
             Ok(p) => Ok(p),
             _ => Err(DirPathBufError::NotADirPath(path)),
         }
@@ -48,7 +46,10 @@ impl std::convert::TryFrom<&Path> for DirPathBuf {
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
         #[cfg(unix)]
         if path.is_dir() {
-            Ok(DirPathBuf { inner: path.into() })
+            Ok(DirPathBuf { 
+                inner: path.into(),
+                postfix: None,
+            })
         } else {
             path.to_str().map_or_else(
                 || Err("path is not a directory and cannot be formatted".into()),
@@ -75,14 +76,32 @@ impl From<DirPathBuf> for PathBuf {
     }
 }
 
-fn find_valid_path(path: Option<PathBuf>) -> Result<DirPathBuf, DirPathBufError> {
+// Recursive directory back off
+fn find_valid_path(path: Option<PathBuf>, postfix: Option<PathBuf>) -> Result<DirPathBuf, DirPathBufError> {
     match path {
         Some(p) => {
-            if p.is_dir() {
-                return Ok(DirPathBuf { inner: p });
+            if p.is_dir() && postfix == None {
+                return Ok(DirPathBuf { 
+                    inner: p,
+                    postfix: None,
+                });
+            } else if p.is_dir() && postfix.is_some() {
+                return Ok(DirPathBuf {
+                    inner: p,
+                    postfix,
+                });
+            } else {
+                warn!("{:?} is not a directory; moving to parent directory", p);
+                let mut postfix_pathbuf = PathBuf::new();
+                if postfix.is_some() {
+                    postfix_pathbuf.push(postfix.unwrap());
+                }
+                let parent = level_up(&p).unwrap();
+                let tmp_dir = parent.clone();
+                let postfix_path = p.strip_prefix(tmp_dir).ok();
+                postfix_pathbuf.push(postfix_path.unwrap());
+                find_valid_path(level_up(&p), Some(postfix_pathbuf))
             }
-            warn!("{:?} is not a directory; moving to parent directory", p);
-            find_valid_path(level_up(&p))
         }
         None => Err(DirPathBufError::NotADirPath(path.unwrap())),
     }
