@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-src_dir=$(readlink -f ../../..)
-export BUILD_DIR="${BUILD_DIR:-$src_dir/target/x86_64-pc-windows-msvc/debug}"
+export SRC_DIR="${SRC_DIR:-$(readlink -f ../../..)}"
+export BUILD_DIR="${BUILD_DIR:-target/x86_64-pc-windows-msvc/debug}"
 export BUILD_NUMBER="${BUILD_NUMBER:-0}"
-agent_version=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" "$src_dir/bin/Cargo.toml")
+agent_version=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" "$SRC_DIR/bin/Cargo.toml")
 export BUILD_VERSION="${BUILD_VERSION:-${agent_version}}"
 BUILD_VERSION_DASH=$(echo "$BUILD_VERSION" | sed -r 's/([^\.]+\.[^\.]+\.[^\.]+)\./\1-/')
 export BUILD_VERSION_FULL="${BUILD_VERSION_DASH}-build${BUILD_NUMBER}"
