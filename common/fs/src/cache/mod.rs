@@ -217,6 +217,7 @@ pub struct FileSystem {
     master_rules: Rules,
     initial_dirs: Vec<DirPathBuf>,
     initial_dir_rules: Rules,
+    missing_dirs: Vec<PathBuf>,
 
     initial_events: Vec<Event>,
 
@@ -262,10 +263,13 @@ impl FileSystem {
     ) -> Self {
         let (resume_events_send, resume_events_recv) = async_channel::unbounded();
         initial_dirs.iter().for_each(|path| {
-            if !path.is_dir() {
+            if !path.inner.is_dir() {
                 panic!("initial dirs must be dirs")
             }
         });
+
+        let mut missing_dirs = Vec::new();
+
         let watcher = Watcher::new(delay);
         let entries = SlotMap::new();
 
@@ -284,6 +288,7 @@ impl FileSystem {
             master_rules: rules,
             initial_dirs: initial_dirs.clone(),
             initial_dir_rules,
+            missing_dirs,
             lookback_config,
             initial_offsets,
             watcher,
@@ -340,6 +345,7 @@ impl FileSystem {
                 }
             }
         }
+
         for event in initial_dir_events {
             match event {
                 Event::New(entry_key) => fs.initial_events.push(Event::Initialize(entry_key)),
