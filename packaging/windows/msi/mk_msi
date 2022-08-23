@@ -28,6 +28,7 @@ osslsigncode sign \
 #
 export AGENT_VERSION=${BUILD_VERSION}
 export AGENT_EXE_DIR="$BUILD_DIR/signed"
+export AGENT_SRC_DIR="$SRC_DIR"
 wixl -v --ext ui ./mezmo-agent.wxs -a x64 -o "$BUILD_DIR/mezmo-agent.msi"
 #
 # Sign msi
@@ -36,7 +37,7 @@ osslsigncode sign \
     -add-msi-dse \
     -pkcs12 "$BUILD_DIR/$CERT_NAME" \
     -readpass "$BUILD_DIR/$CERT_NAME.pwd" \
-	-n "Mezmo Agent" \
+    -n "Mezmo Agent" \
     -h sha2 \
     -i "https://www.mezmo.com" \
     -t http://timestamp.comodoca.com/authenticode \

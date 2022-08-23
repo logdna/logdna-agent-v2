@@ -505,12 +505,40 @@ msi-$(1): ## create signed exe(s) and msi in $(BUILD_DIR)/signed
 	$(eval CERT_NAME := "logdna_dev_cert.pfx")
 	aws s3 cp "s3://ecosys-vault/$(CERT_NAME)" "$(BUILD_DIR)" && \
 	aws s3 cp "s3://ecosys-vault/$(CERT_NAME).pwd" "$(BUILD_DIR)" && \
-	$(TOOLS_COMMAND) "--env BUILD_DIR=/build/$(BUILD_DIR) --env CERT_NAME=$(CERT_NAME) --env BUILD_VERSION=$(BUILD_VERSION)+$(BUILD_NUMBER))" "cd /build/packaging/windows/msi && ./mk_msi" && \
+	$(TOOLS_COMMAND) "--env BUILD_DIR=/build/$(BUILD_DIR) --env SRC_DIR=/build --env CERT_NAME=$(CERT_NAME) --env BUILD_VERSION=$(BUILD_VERSION)+$(BUILD_NUMBER))" "cd /build/packaging/windows/msi && ./mk_msi" && \
 	rm "$(BUILD_DIR)/$(CERT_NAME)" "$(BUILD_DIR)/$(CERT_NAME).pwd";
 endef
 BUILD_TYPES=debug release
 $(foreach _type, $(BUILD_TYPES), $(eval $(call MSI_RULE,$(_type))))
 
+define CHOCO_RULE
+.PHONY: choco-$(1)
+choco-$(1): ## create choco package using msi from logdna-agent-build-bin S3 baucket
+	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	$(eval SRC_DIR := $(CURDIR))
+	bash -c "export BUILD_DIR=$(BUILD_DIR) && export SRC_DIR=$(SRC_DIR) && pushd $(SRC_DIR)/packaging/windows/choco && ./mk"
+endef
+BUILD_TYPES=debug release
+$(foreach _type, $(BUILD_TYPES), $(eval $(call CHOCO_RULE,$(_type))))
+
+define PUBLISH_CHOCO_RULE
+.PHONY: publish-choco-$(1)
+publish-choco-$(1): ## publish choco package built & located in $(BUILD_DIR)/choco, requires env CHOCO_API_KEY defined
+	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	$(eval SRC_DIR := $(CURDIR))
+	bash -c "export BUILD_DIR=$(BUILD_DIR) && export SRC_DIR=$(SRC_DIR) && pushd packaging/windows/choco && ./publish_to_choco"
+endef
+BUILD_TYPES=debug release
+$(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_CHOCO_RULE,$(_type))))
+
+define PUBLISH_S3_CHOCO_RULE
+.PHONY: publish-s3-choco-$(1)
+publish-s3-choco-$(1): ## upload choco package to S3
+	$(eval PKG_NAME_FILE := "target/$(TARGET)/$(1)/choco/mezmo-agent.nupkg.name")
+	aws s3 cp --acl public-read "target/$(TARGET)/$(1)/choco/$$(shell cat $(PKG_NAME_FILE))" s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/$$(shell cat $(PKG_NAME_FILE));
+endef
+BUILD_TYPES=debug release
+$(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_S3_CHOCO_RULE,$(_type))))
 
 define publish_images
 	$(eval VCS_REF_BUILD_NUMBER_SHA:=$(shell echo "$(VCS_REF)$(BUILD_NUMBER)" | sha256sum | head -c 16))
