@@ -14,12 +14,13 @@ if (-not(Test-Path -Path "$DATAFOLDER\logdna.conf" -PathType Leaf)) {
   # replace key
   # save config to ProgramData folder
   New-Item -Force -Type Directory -Path "$DATAFOLDER"
-  (Get-Content -Path "$INSTALLFOLDER\logdna.conf.sample") -Replace "<YOUR_INGESTION_KEY>", "$INGESTION_KEY" | Set-Content -Path "$DATAFOLDER\logdna.conf"
+  (Get-Content -Path "$INSTALLFOLDER\logdna.conf.templ") -Replace "<YOUR_INGESTION_KEY>", "$INGESTION_KEY" | Set-Content -Path "$DATAFOLDER\logdna.conf"
 } else {
   # read config
   # replace key
   # save config back
   (Get-Content -Path "$DATAFOLDER\logdna.conf") -Replace "<YOUR_INGESTION_KEY>", "$INGESTION_KEY" | Set-Content -Path "$DATAFOLDER\logdna.conf"
 }
+Remove-Item  "$INSTALLFOLDER\logdna.conf.templ" -Force -Confirm:$false
 
 Write-Host
