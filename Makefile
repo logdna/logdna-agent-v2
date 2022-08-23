@@ -526,7 +526,7 @@ define PUBLISH_CHOCO_RULE
 publish-choco-$(1): ## publish choco package built & located in $(BUILD_DIR)/choco, requires env CHOCO_API_KEY defined
 	$(eval BUILD_DIR := target/$(TARGET)/$(1))
 	$(eval SRC_DIR := $(CURDIR))
-	bash -c "export BUILD_DIR=$(BUILD_DIR) && pushd packaging/windows/choco && ./publish_to_choco"
+	bash -c "export BUILD_DIR=$(BUILD_DIR) && export SRC_DIR=$(SRC_DIR) && pushd packaging/windows/choco && ./publish_to_choco"
 endef
 BUILD_TYPES=debug release
 $(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_CHOCO_RULE,$(_type))))
