@@ -30,6 +30,7 @@ pipeline {
         SCCACHE_REGION = 'us-west-2'
         CARGO_INCREMENTAL = 'false'
         DOCKER_BUILDKIT = '1'
+        CHOCOLATELY_API_TOKEN = credentials('chocolately-api-token')
     }
     parameters {
         booleanParam(name: 'PUBLISH_GCR_IMAGE', description: 'Publish docker image to Google Container Registry (GCR)', defaultValue: false)
