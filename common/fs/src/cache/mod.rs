@@ -210,6 +210,7 @@ fn get_resume_events(
 
 pub struct FileSystem {
     watcher: Watcher,
+    //missing_dir_watcher: Watcher,
     pub entries: Rc<RefCell<EntryMap>>,
     symlinks: Symlinks,
     watch_descriptors: WatchDescriptors,
@@ -217,8 +218,7 @@ pub struct FileSystem {
     master_rules: Rules,
     initial_dirs: Vec<DirPathBuf>,
     initial_dir_rules: Rules,
-    missing_dirs: Vec<PathBuf>,
-
+    //missing_dirs: Vec<PathBuf>,
     initial_events: Vec<Event>,
 
     lookback_config: Lookback,
@@ -268,17 +268,31 @@ impl FileSystem {
             }
         });
 
-        let mut missing_dirs = Vec::new();
+        let mut missing_dirs: Vec<PathBuf> = Vec::new();
 
         let watcher = Watcher::new(delay);
+        let mut missing_dir_watcher = Watcher::new(delay);
         let entries = SlotMap::new();
 
         let mut initial_dir_rules = Rules::new();
         let ignored_dirs = HashSet::new();
 
+        // Adds initial directories and constructs missing directory
+        // vector and adds prefix path to the missing directory watcher
         for path in initial_dirs.iter() {
             add_initial_dir_rules(&mut initial_dir_rules, path);
+            if let Some(md) = &path.postfix {
+                let mut full_missing_path = PathBuf::new();
+                full_missing_path.push(format!("{:?}/{:?}", &path.inner, md));
+                missing_dirs.push(full_missing_path);
+                match missing_dir_watcher.watch(&path.inner, RecursiveMode::Recursive) {
+                    Ok(()) => info!("Added missing directory {:?} to watcher", &path.inner),
+                    Err(e) => warn!("Could not add missing directory to watcher: {:?}", e),
+                }
+            }
         }
+
+        info!("*** MISSING PATH: {:?}", missing_dirs);
 
         let mut fs = Self {
             entries: Rc::new(RefCell::new(entries)),
@@ -288,10 +302,11 @@ impl FileSystem {
             master_rules: rules,
             initial_dirs: initial_dirs.clone(),
             initial_dir_rules,
-            missing_dirs,
+            //missing_dirs,
             lookback_config,
             initial_offsets,
             watcher,
+            //missing_dir_watcher,
             initial_events: Vec::new(),
             resume_events_recv,
             resume_events_send,
@@ -369,6 +384,7 @@ impl FileSystem {
 
         let initial_events = get_initial_events(&fs);
         let resume_events_recv = get_resume_events(&fs);
+        // Add new filter_map notify stream here...
         let events = futures::stream::select(resume_events_recv, events_stream)
             .map(|event_result| async { event_result })
             .buffered(EVENT_STREAM_BUFFER_COUNT)
