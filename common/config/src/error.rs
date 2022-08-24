@@ -1,7 +1,9 @@
 use std::fmt::{Display, Formatter};
 use std::{fmt, io};
 
-#[derive(Debug)]
+use thiserror::Error;
+
+#[derive(Debug, Error)]
 pub enum ConfigError {
     MissingField(&'static str),
     MissingFieldOrEnvVar(&'static str, &'static str),

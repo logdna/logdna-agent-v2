@@ -13,4 +13,7 @@ tokio = { version= "1", features= ["time"] }
 num = "0.4"
 
 [target.'cfg(unix)'.dependencies]
-tikv-jemalloc-ctl = "0.5"
+tikv-jemalloc-ctl = { version = "0.5", optional = true }
+
+[features]
+jemalloc = ["tikv-jemalloc-ctl"]

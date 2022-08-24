@@ -8,11 +8,11 @@ use prometheus::{
     IntCounterVec, IntGauge,
 };
 use std::time::{Duration, Instant};
-#[cfg(unix)]
+#[cfg(all(unix, feature = "jemalloc"))]
 use tikv_jemalloc_ctl::stats::{
     active, active_mib, allocated, allocated_mib, resident, resident_mib,
 };
-#[cfg(unix)]
+#[cfg(all(unix, feature = "jemalloc"))]
 use tikv_jemalloc_ctl::{epoch, epoch_mib};
 use tokio::time::sleep;
 
@@ -98,7 +98,7 @@ mod labels {
 
 pub struct Metrics {
     fs: Fs,
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "jemalloc"))]
     memory: Memory,
     http: Http,
     k8s: K8s,
@@ -110,7 +110,7 @@ impl Metrics {
     fn new() -> Self {
         Self {
             fs: Fs::new(),
-            #[cfg(unix)]
+            #[cfg(all(unix, feature = "jemalloc"))]
             memory: Memory::new(),
             http: Http::new(),
             k8s: K8s::new(),
@@ -130,7 +130,7 @@ impl Metrics {
         &METRICS.fs
     }
 
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "jemalloc"))]
     pub fn memory() -> &'static Memory {
         &METRICS.memory
     }
@@ -175,7 +175,7 @@ impl Metrics {
             // We still rely on jemalloc stats for this periodic printing the memory metrics
             // as it supports more platforms
             "memory" => {
-                #[cfg(unix)]
+                #[cfg(all(unix, feature="jemalloc"))]
                 {
                     let memory = Metrics::memory();
                     object!{
@@ -184,7 +184,7 @@ impl Metrics {
                         "resident" => memory.read_resident(),
                     }
                 }
-                #[cfg(not(unix))]
+                #[cfg(any(not(unix), not(feature="jemalloc")))]
                 object!{}
             },
             "ingest" => object!{
@@ -258,7 +258,7 @@ impl Fs {
     }
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "jemalloc"))]
 pub struct Memory {
     epoch_mib: epoch_mib,
     active_mib: active_mib,
@@ -266,7 +266,7 @@ pub struct Memory {
     resident_mib: resident_mib,
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "jemalloc"))]
 impl Memory {
     pub fn new() -> Self {
         Self {
@@ -293,7 +293,7 @@ impl Memory {
     }
 }
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "jemalloc"))]
 impl Default for Memory {
     fn default() -> Self {
         Self::new()

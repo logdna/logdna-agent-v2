@@ -100,6 +100,8 @@ ARCH_TRIPLE?=$(ARCH)-linux-gnu
 TARGET?=$(ARCH)-unknown-linux-gnu
 WINDOWS?=
 
+NO_DEFAULT_FEATURES?=
+
 ifneq ($(WINDOWS),)
 	FEATURES?=windows_service
 	TARGET=$(ARCH)-pc-windows-msvc
@@ -139,7 +141,12 @@ RUST_LOG?=info
 
 space := $(subst ,, )
 comma := ,
+
 FEATURES_ARG=$(if $(FEATURES),--features $(subst $(space),$(comma),$(FEATURES)))
+
+ifneq ($(NO_DEFAULT_FEATURES),)
+	FEATURES_ARG:=--no-default-features $(FEATURES_ARG)
+endif
 
 join-with = $(subst $(space),$1,$(strip $2))
 
@@ -209,7 +216,7 @@ test-journald: ## Run journald unit tests
 
 .PHONY:bench
 bench:
-	$(BENCH_COMMAND) "--privileged --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "PERF=\$$(find /usr/bin -type f -wholename /usr/bin/perf\* | head -n1) cargo run --release --manifest-path bench/Cargo.toml --bin=throughput /dict.txt -o /tmp/out $(PROFILE) --file-history 3 --line-count 100000000 --file-size 20000000 && ([ -z '$(PROFILE)' ] || mv /tmp/flamegraph.svg . )"
+	$(BENCH_COMMAND) "--privileged --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "PERF=\$$(find /usr/bin -type f -wholename /usr/bin/perf\* | head -n1) cargo run --release --manifest-path bench/Cargo.toml $(FEATURES_ARG) --bin=throughput /dict.txt -o /tmp/out $(PROFILE) --file-history 3 --line-count 100000000 --file-size 20000000 --stderr-log-file-path=bench_stderr.log && ([ -z '$(PROFILE)' ] || mv /tmp/flamegraph.svg . )"
 
 .PHONY:clean
 clean: ## Clean all artifacts from the build process
