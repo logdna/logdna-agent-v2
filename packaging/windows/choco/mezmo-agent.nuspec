@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Do not remove this test for UTF-8: if “Ω” doesn’t appear as greek uppercase omega letter enclosed in quotation marks, you should use an editor that supports UTF-8, not this one. -->
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>mezmo-agent</id>
+    <title>Mezmo Agent for Windows</title>
+    <version>${BUILD_VERSION_FULL}</version>
+    <authors>smusali,leeliu,</authors>
+    <owners>leeliu</owners>
+    <summary>Mezmo Agent for Windows</summary>
+    <description>Mezmo Agent streams from log files to your Mezmo account.</description>
+    <projectUrl>https://mezmo.com/</projectUrl>
+    <projectSourceUrl>https://github.com/logdna/logdna-agent-v2</projectSourceUrl>
+    <packageSourceUrl>https://github.com/logdna/logdna-agent-v2</packageSourceUrl>
+    <docsUrl>https://github.com/logdna/logdna-agent-v2</docsUrl>
+    <bugTrackerUrl>https://github.com/logdna/logdna-agent-v2/issues</bugTrackerUrl>
+    <tags>mezmo-agent logdna-agent tail logging devops logdna</tags>
+    <copyright>Copyright 2022 Mezmo,Inc.</copyright>
+    <licenseUrl>https://raw.githubusercontent.com/logdna/logdna-agent-v2/master/LICENSE.md</licenseUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <iconUrl>https://github.com/logdna/artwork/raw/master/mezmo-m-darkbg-square-254.png</iconUrl>
+    <releaseNotes>Mezmo Agent for Windows</releaseNotes>
+  </metadata>
+  <files>
+    <file src="tools/**" target="tools" />
+  </files>
+</package>
