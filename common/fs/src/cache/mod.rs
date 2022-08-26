@@ -16,10 +16,11 @@ use std::ffi::OsString;
 use std::ops::Deref;
 use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
+use std::string::FromUtf8Error;
 use std::sync::Arc;
 use std::{fmt, fs, io};
 
-use futures::{Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt};
 use slotmap::{DefaultKey, SlotMap};
 use smallvec::SmallVec;
 use thiserror::Error;
@@ -208,6 +209,52 @@ fn get_resume_events(
         .filter_map(|e| async { e })
 }
 
+/*
+fn get_missing_dir_events (
+    fs: &Arc<Mutex<FileSystem>>,
+) -> impl Stream<Item = (WatchEvent, EventTimestamp)> {
+    
+    let missing_dirs = &fs
+        .try_lock()
+        .expect("could not lock filesystem cache")
+        .missing_dirs;
+    let missing_dir_watcher = &fs
+        .try_lock()
+        .expect("could not lock filesystem cache")
+        .missing_dir_watcher;
+    let missing_dir_event_stream = &fs
+        .try_lock()
+        .expect("could not lock filesystem cache")
+        .missing_dir_watcher
+        .receive();
+
+    let missing_dir_stream = futures::stream::unfold(
+        (missing_dirs, missing_dir_watcher, missing_dir_event_stream),
+        |(missing, watcher, stream)| 
+        async move {
+           let event = stream.next().await;
+            let new_event = match event {
+                Some((notify_stream::Event::Create(path), OffsetDateTime)) => {
+                    for dir in missing_dirs.iter() {
+                        if dir == &path {
+                            futures::stream::iter(Event::New((path)));
+                        } else if dir.starts_with(path) {
+                            watcher.watch(path, RecursiveMode::Recursive);
+                        } else {
+                            None
+                        }
+                    }
+                }
+                _ => None
+            }; 
+            Some(new_event);
+        }
+    );
+
+    missing_dir_event_stream
+}
+*/
+
 pub struct FileSystem {
     watcher: Watcher,
     missing_dir_watcher: Watcher,
@@ -290,6 +337,7 @@ impl FileSystem {
                     path.postfix.clone().unwrap()
                 ));
                 missing_dirs.push(full_missing_path);
+                missing_dir_watcher.watch(&path.inner, RecursiveMode::Recursive);
             }
         }
 
@@ -382,35 +430,6 @@ impl FileSystem {
                 .watcher;
             watcher.receive()
         };
-
-        let missing_dirs = &fs
-            .try_lock()
-            .expect("could not lock filesystem cache")
-            .missing_dirs;
-        let missing_dir_watcher = &fs
-            .try_lock()
-            .expect("could not lock filesystem cache")
-            .missing_dir_watcher;
-        let missing_dir_event_stream = &fs
-            .try_lock()
-            .expect("could not lock filesystem cache")
-            .missing_dir_watcher
-            .receive();
-        let missing_dir_event_stream = futures::stream::unfold::<(
-            &Watcher,
-            &Vec<PathBuf>,
-            &Stream<Item = (Event, OffsetDateTime)>, Fn
-        )>(
-            (missing_dir_watcher, missing_dirs, missing_dir_event_stream),
-            move |(watcher, missing, stream)| async move {
-                loop {
-                    //let event = stream.next();
-                    /*
-                        Need stream logic here
-                    */
-                }
-              },
-        );
 
         let initial_events = get_initial_events(&fs);
         let resume_events_recv = get_resume_events(&fs);

@@ -88,13 +88,15 @@ fn find_valid_path(
             } else {
                 warn!("{:?} is not a directory; moving to parent directory", p);
                 let mut postfix_pathbuf = PathBuf::new();
+                let mut pop_pathbuf = PathBuf::new();
                 if let Some(path) = postfix {
-                    postfix_pathbuf.push(path);
+                    pop_pathbuf.push(path);
                 }
                 let parent = level_up(&p).unwrap();
                 let tmp_dir = parent;
                 let postfix_path = p.strip_prefix(tmp_dir).ok();
                 postfix_pathbuf.push(postfix_path.unwrap());
+                postfix_pathbuf.push(pop_pathbuf);
                 find_valid_path(level_up(&p), Some(postfix_pathbuf))
             }
         }
