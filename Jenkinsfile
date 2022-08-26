@@ -272,6 +272,10 @@ pipeline {
                             environment name: 'PUBLISH_BINARIES', value: 'true'
                         }
                     }
+                    environment {
+                        CS_CERT_PASSWD_DEBUG = "credentials('agent-cs-cert-debug')"
+                        CS_CERT_PASSWD_RELEASE = "credentials('agent-cs-cert-release')"
+                    }
                     steps {
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',

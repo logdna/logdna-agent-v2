@@ -1,13 +1,2 @@
 #!/usr/bin/env bash
-# source root
-export SRC_DIR="${SRC_DIR:-$(readlink -f ../../..)}"
-# relative to source root
-export BUILD_DIR="${BUILD_DIR:-target/x86_64-pc-windows-msvc/debug}"
-# comes from Jenkins
-export BUILD_NUMBER="${BUILD_NUMBER:-0}"
-agent_version=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" "$SRC_DIR/bin/Cargo.toml")
-export BUILD_VERSION="${BUILD_VERSION:-${agent_version}}"
-BUILD_VERSION_DASH=$(echo "$BUILD_VERSION" | sed -r 's/([^\.]+\.[^\.]+\.[^\.]+)\./\1-/')
-# cannot use "+" - relaced by "-build"
-export BUILD_VERSION_FULL="${BUILD_VERSION_DASH}-build${BUILD_NUMBER}"
-export MSI_URL="${MSI_URL:-https://logdna-agent-build-bin.s3.amazonaws.com/$BUILD_VERSION/x86_64-pc-windows-msvc/signed/mezmo-agent.msi}"
+source ../msi/mk_env

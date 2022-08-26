@@ -1,20 +1,15 @@
 #!/usr/bin/env bash
 set -eu
-export SRC_DIR="${SRC_DIR:-../../..}"
-export BUILD_DIR="${BUILD_DIR:-$SRC_DIR/target/x86_64-pc-windows-msvc/debug}"
-VER=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" "$SRC_DIR/bin/Cargo.toml")
-export BUILD_NUMBER="${BUILD_NUMBER:-0}"
-export BUILD_VERSION="${BUILD_VERSION:-"$VER+$BUILD_NUMBER"}"
-export CERT_NAME="${CERT_NAME:-logdna_dev_cert.pfx}"
 function finish {
-  rm -f "$BUILD_DIR/$CERT_NAME" "$BUILD_DIR/$CERT_NAME.pwd"
+  rm -f "$SRC_ROOT/$BUILD_DIR/$CERT_FILE_NAME" "$SRC_ROOT/$BUILD_DIR/$CERT_FILE_NAME.pwd"
 }
 trap finish EXIT
 #
-echo build version $BUILD_VERSION
-echo fetching key
-aws s3 cp "s3://ecosys-vault/$CERT_NAME" "$BUILD_DIR"
-aws s3 cp "s3://ecosys-vault/$CERT_NAME.pwd" "$BUILD_DIR"
+source ./mk_env
+echo build version $BUILD_VERSION_FULL
+echo fetching cert
+aws s3 cp "s3://ecosys-vault/$CERT_FILE_NAME" "$SRC_ROOT/$BUILD_DIR"
+aws s3 cp "s3://ecosys-vault/$CERT_FILE_NAME.pwd" "$SRC_ROOT/$BUILD_DIR"
 ./mk_msi
 echo
 echo @@@@@@  SUCCESS  @@@@@@
