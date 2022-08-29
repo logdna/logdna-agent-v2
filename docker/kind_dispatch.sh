@@ -6,7 +6,15 @@ curpath=$(realpath $(dirname "$0"))
 
 image="logdna-agent-kind:building"
 
-kind_network=$($curpath/kind_start.sh $3)
+if [ -z "$BUILD_TAG" ]
+then
+  cluster_name=agent-dev-cluster
+else
+  cluster_name=$(echo $BUILD_TAG | tr '[:upper:]' '[:lower:]' | tail -c 32 | sed 's/^-*//g')
+
+fi
+
+kind_network=$($curpath/kind_start.sh $3 $cluster_name)
 
 # shellcheck source=/dev/null
 . "$curpath/lib.sh"
@@ -42,13 +50,6 @@ DOCKER_BUILDKIT=1 docker build $curpath/.. \
   --build-arg SCCACHE_REGION=$SCCACHE_REGION
 
 echo "Loading into kind"
-
-if [ -z "$BUILD_TAG" ]
-then
-  cluster_name=agent-dev-cluster
-else
-  cluster_name=$(echo $BUILD_TAG | tr '[:upper:]' '[:lower:]' | tail -c 32)
-fi
 
 kind load docker-image $image --name $cluster_name
 kind load docker-image "socat:local" --name $cluster_name
