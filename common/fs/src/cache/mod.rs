@@ -290,10 +290,9 @@ impl FileSystem {
                     path.postfix.clone().unwrap()
                 ));
                 missing_dirs.push(full_missing_path);
-                match missing_dir_watcher.watch(&path.inner, RecursiveMode::Recursive) {
-                    Ok(()) => (),
-                    Err(e) => warn!("Could not add inital value to missing_dir_watch: {:?}", e),
-                }
+                missing_dir_watcher
+                    .watch(&path.inner, RecursiveMode::Recursive)
+                    .expect("Could not add inital value to missing_dir_watch");
             }
         }
 
@@ -420,10 +419,9 @@ impl FileSystem {
                                 (mfs, missing, watcher, stream),
                             ));
                         } else if missing.iter().any(|m| m.starts_with(&path)) {
-                            match watcher.watch(path, RecursiveMode::Recursive) {
-                                Ok(()) => (),
-                                Err(e) => warn!("Could not add to missing_dir_watcher: {:?}", e),
-                            }
+                            watcher
+                                .watch(path, RecursiveMode::Recursive)
+                                .expect("Could not add inital value to missing_dir_watch");
                         }
                     }
                 }
