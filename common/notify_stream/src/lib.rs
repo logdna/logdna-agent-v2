@@ -136,9 +136,9 @@ impl Watcher {
     }
 
     /// Starts receiving the watcher events
-    pub fn receive(&self) -> impl Stream<Item = (Event, OffsetDateTime)> {
+    pub fn receive(&self) -> impl Stream<Item = (Event, OffsetDateTime)> + Unpin {
         let rx = Rc::clone(&self.rx);
-        stream::unfold(rx, |rx| async move {
+        Box::pin(stream::unfold(rx, |rx| async move {
             loop {
                 let received = rx.recv().await.expect("channel can not be closed");
                 log::trace!("received raw notify event: {:?}", received);
@@ -160,7 +160,7 @@ impl Watcher {
                     return Some(((mapped_event, OffsetDateTime::now_utc()), rx));
                 }
             }
-        })
+        }))
     }
 }
 
