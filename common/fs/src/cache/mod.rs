@@ -20,7 +20,7 @@ use std::string::FromUtf8Error;
 use std::sync::Arc;
 use std::{fmt, fs, io};
 
-use futures::{FutureExt, Stream, StreamExt};
+use futures::{FutureExt, Stream, StreamExt, pin_mut};
 use slotmap::{DefaultKey, SlotMap};
 use smallvec::SmallVec;
 use thiserror::Error;
@@ -209,52 +209,6 @@ fn get_resume_events(
         .filter_map(|e| async { e })
 }
 
-/*
-fn get_missing_dir_events (
-    fs: &Arc<Mutex<FileSystem>>,
-) -> impl Stream<Item = (WatchEvent, EventTimestamp)> {
-    
-    let missing_dirs = &fs
-        .try_lock()
-        .expect("could not lock filesystem cache")
-        .missing_dirs;
-    let missing_dir_watcher = &fs
-        .try_lock()
-        .expect("could not lock filesystem cache")
-        .missing_dir_watcher;
-    let missing_dir_event_stream = &fs
-        .try_lock()
-        .expect("could not lock filesystem cache")
-        .missing_dir_watcher
-        .receive();
-
-    let missing_dir_stream = futures::stream::unfold(
-        (missing_dirs, missing_dir_watcher, missing_dir_event_stream),
-        |(missing, watcher, stream)| 
-        async move {
-           let event = stream.next().await;
-            let new_event = match event {
-                Some((notify_stream::Event::Create(path), OffsetDateTime)) => {
-                    for dir in missing_dirs.iter() {
-                        if dir == &path {
-                            futures::stream::iter(Event::New((path)));
-                        } else if dir.starts_with(path) {
-                            watcher.watch(path, RecursiveMode::Recursive);
-                        } else {
-                            None
-                        }
-                    }
-                }
-                _ => None
-            }; 
-            Some(new_event);
-        }
-    );
-
-    missing_dir_event_stream
-}
-*/
-
 pub struct FileSystem {
     watcher: Watcher,
     missing_dir_watcher: Watcher,
@@ -430,6 +384,42 @@ impl FileSystem {
                 .watcher;
             watcher.receive()
         };
+
+        let mfs = fs.clone(); // clone fs for missing files
+        let missing_dirs = &mfs
+            .try_lock()
+            .expect("could not lock filesystem cache")
+            .missing_dirs;
+        let missing_dir_watcher = &mfs
+            .try_lock()
+            .expect("could not lock filesystem cache")
+            .missing_dir_watcher;
+        let missing_dir_event_stream = &mfs
+            .try_lock()
+            .expect("could not lock filesystem cache")
+            .missing_dir_watcher
+            .receive();
+
+        let missing_dir_event = futures::stream::unfold((missing_dirs, missing_dir_watcher, missing_dir_event_stream),
+            |(missing, watcher, stream)| async move {
+                loop {
+                    let event = stream.next().await;
+                    match event {
+                        Some((notify_stream::Event::Create(path), _)) => {
+                            if missing_dirs.contains(&path) {
+                                let event_time = OffsetDateTime::now_utc();
+                                Some((Event::Initialize(), event_time));
+                            } else if missing_dirs.iter().any(|m| m.starts_with(&path)) {
+                                watcher.watch(path, RecursiveMode::Recursive);
+                            } else {
+                                return None;
+                            }
+                        }
+                        _ => (),
+                    }
+                    return Some((event, (missing, watcher, stream)));
+                }
+            });
 
         let initial_events = get_initial_events(&fs);
         let resume_events_recv = get_resume_events(&fs);
