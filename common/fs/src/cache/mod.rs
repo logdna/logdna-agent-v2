@@ -20,7 +20,7 @@ use std::string::FromUtf8Error;
 use std::sync::Arc;
 use std::{fmt, fs, io};
 
-use futures::{FutureExt, Stream, StreamExt, pin_mut};
+use futures::{Stream, StreamExt};
 use slotmap::{DefaultKey, SlotMap};
 use smallvec::SmallVec;
 use thiserror::Error;
@@ -211,7 +211,7 @@ fn get_resume_events(
 
 pub struct FileSystem {
     watcher: Watcher,
-    missing_dir_watcher: Watcher,
+    missing_dir_watcher: Option<Watcher>,
     pub entries: Rc<RefCell<EntryMap>>,
     symlinks: Symlinks,
     watch_descriptors: WatchDescriptors,
@@ -309,7 +309,7 @@ impl FileSystem {
             lookback_config,
             initial_offsets,
             watcher,
-            missing_dir_watcher,
+            missing_dir_watcher: Some(missing_dir_watcher),
             initial_events: Vec::new(),
             resume_events_recv,
             resume_events_send,
@@ -386,40 +386,54 @@ impl FileSystem {
         };
 
         let mfs = fs.clone(); // clone fs for missing files
-        let missing_dirs = &mfs
+        let missing_dirs = mfs
             .try_lock()
             .expect("could not lock filesystem cache")
-            .missing_dirs;
-        let missing_dir_watcher = &mfs
-            .try_lock()
-            .expect("could not lock filesystem cache")
-            .missing_dir_watcher;
-        let missing_dir_event_stream = &mfs
+            .missing_dirs
+            .clone();
+        let missing_dir_watcher = mfs
             .try_lock()
             .expect("could not lock filesystem cache")
             .missing_dir_watcher
-            .receive();
+            .take()
+            .unwrap();
 
-        let missing_dir_event = futures::stream::unfold((missing_dirs, missing_dir_watcher, missing_dir_event_stream),
-            |(missing, watcher, stream)| async move {
+        let missing_dir_event_stream = missing_dir_watcher.receive();
+
+        let missing_dir_events = futures::stream::unfold(
+            (
+                mfs,
+                missing_dirs,
+                missing_dir_watcher,
+                Box::pin(missing_dir_event_stream),
+            ),
+            move |(mfs, missing, mut watcher, mut stream)| async move {
                 loop {
-                    let event = stream.next().await;
+                    let (event, _) = stream.next().await?;
                     match event {
-                        Some((notify_stream::Event::Create(path), _)) => {
-                            if missing_dirs.contains(&path) {
-                                let event_time = OffsetDateTime::now_utc();
-                                Some((Event::Initialize(), event_time));
-                            } else if missing_dirs.iter().any(|m| m.starts_with(&path)) {
+                        notify_stream::Event::Create(ref path) => {
+                            if missing.contains(&path) {
+                                // Got a complete match, insert it
+                                return Some((
+                                    as_event_stream(mfs.clone(), event, OffsetDateTime::now_utc()),
+                                    (mfs, missing, watcher, stream),
+                                ));
+                            } else if missing.iter().any(|m| m.starts_with(&path)) {
+                                // Got a prefix match, watch the path
+                                // TODO: Do we need recursive here? Or can we get away with
+                                // directly watching it?
+                                // It probably gets weird if we symlink a directory into a
+                                // hierarchy either way...
                                 watcher.watch(path, RecursiveMode::Recursive);
-                            } else {
-                                return None;
                             }
+                            // else no match in missing dirs, so we don't care, // loop
                         }
                         _ => (),
                     }
-                    return Some((event, (missing, watcher, stream)));
                 }
-            });
+            },
+        )
+        .flatten();
 
         let initial_events = get_initial_events(&fs);
         let resume_events_recv = get_resume_events(&fs);
@@ -433,7 +447,10 @@ impl FileSystem {
             })
             .flatten();
 
-        Ok(initial_events.chain(events))
+        Ok(futures::stream::select(
+            initial_events.chain(events),
+            missing_dir_events,
+        ))
     }
 
     // Rules logic
