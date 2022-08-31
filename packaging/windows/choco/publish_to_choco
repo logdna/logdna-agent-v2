@@ -2,7 +2,7 @@
 set -eu
 # shellcheck disable=SC1091
 source ./mk_env
-docker run -i -v $SRC_ROOT:/build -w /build --env BUILD_DIR="$BUILD_DIR" --env CHOCO_API_KEY="$CHOCO_API_KEY" chocolatey/choco bash << 'EOF'
+docker run -i --rm -v $SRC_ROOT:/build -w /build --env BUILD_DIR="$BUILD_DIR" --env CHOCO_API_KEY="$CHOCO_API_KEY" chocolatey/choco bash << 'EOF'
 set -eu
 choco apikey -k $CHOCO_API_KEY -s https://push.chocolatey.org
 choco push /build/$BUILD_DIR/choco/$(cat /build/$BUILD_DIR/choco/mezmo-agent.nupkg.name) -s https://push.chocolatey.org
