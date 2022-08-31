@@ -507,13 +507,17 @@ msi-$(1): ## create signed exe(s) and msi in $(BUILD_DIR)/signed
 	$(eval CERT_FILE_NAME := "mezmo_cert_$(1).pfx")
 	bash -c " \
 	set -eu; \
+	trap \"rm -f '$(BUILD_DIR)/$(CERT_FILE_NAME)' '$(BUILD_DIR)/$(CERT_FILE_NAME).pwd'\" EXIT; \
 	aws s3 cp s3://ecosys-vault/$(CERT_FILE_NAME) '$(BUILD_DIR)'; \
-	aws s3 cp s3://ecosys-vault/$(CERT_FILE_NAME).pwd '$(BUILD_DIR)'; \
+	if [ $(1) == 'release' ]; then \
+	  printenv -0 CSC_PASS > '$(BUILD_DIR)/$(CERT_FILE_NAME).pwd'; \
+	else \
+	  aws s3 cp s3://ecosys-vault/$(CERT_FILE_NAME).pwd '$(BUILD_DIR)'; \
+	fi; \
 	$(TOOLS_COMMAND) '--env BUILD_DIR=$(BUILD_DIR) --env SRC_ROOT=/build \
 	                  --env CERT_FILE_NAME=$(CERT_FILE_NAME) --env BUILD_VERSION=$(BUILD_VERSION) \
 	                  --env BUILD_NUMBER=$(BUILD_NUMBER) --env TARGET=$(TARGET)' \
 	                  'cd /build/packaging/windows/msi && . ./mk_env && ./mk_msi'; \
-	rm '$(BUILD_DIR)/$(CERT_FILE_NAME)' '$(BUILD_DIR)/$(CERT_FILE_NAME).pwd'; \
 	"
 endef
 BUILD_TYPES=debug release

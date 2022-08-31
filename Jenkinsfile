@@ -273,8 +273,7 @@ pipeline {
                         }
                     }
                     environment {
-                        CS_CERT_PASSWD_DEBUG = "credentials('agent-cs-cert-debug')"
-                        CS_CERT_PASSWD_RELEASE = "credentials('agent-cs-cert-release')"
+                        CSC_PASS = credentials('chocolatey-api-token')
                     }
                     steps {
                         withCredentials([[
