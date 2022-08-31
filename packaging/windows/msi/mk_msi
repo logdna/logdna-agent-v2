@@ -5,7 +5,6 @@ set -eu
 #
 mkdir -p "$SRC_ROOT/$BUILD_DIR/signed"
 CERT_FILE="$SRC_ROOT/$BUILD_DIR/$CERT_FILE_NAME"
-#CERT_FILE=mezmo_cert.pfx
 echo signing exe files
 osslsigncode sign \
     -pkcs12 "$CERT_FILE" \
@@ -47,5 +46,5 @@ osslsigncode sign \
     -in "$SRC_ROOT/$BUILD_DIR/mezmo-agent.msi" \
     -out "$SRC_ROOT/$BUILD_DIR/signed/mezmo-agent.msi"
 echo
-echo package stored to \'$SRC_ROOT/$BUILD_DIR/signed/mezmo-agent.msi\'
+echo package stored to \'$BUILD_DIR/signed/mezmo-agent.msi\'
 echo
