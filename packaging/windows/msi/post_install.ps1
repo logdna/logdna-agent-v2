@@ -22,5 +22,8 @@ if (-not(Test-Path -Path "$DATAFOLDER\logdna.conf" -PathType Leaf)) {
   (Get-Content -Path "$DATAFOLDER\logdna.conf") -Replace "<YOUR_INGESTION_KEY>", "$INGESTION_KEY" | Set-Content -Path "$DATAFOLDER\logdna.conf"
 }
 Remove-Item  "$INSTALLFOLDER\logdna.conf.templ" -Force -Confirm:$false
+# prefetch Mezmo CA cert
+try { $null=iwr https://www.mezmo.com -UseBasicParsing } catch {}
+Start-Sleep 1
 
 Write-Host

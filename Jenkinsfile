@@ -272,6 +272,9 @@ pipeline {
                             environment name: 'PUBLISH_BINARIES', value: 'true'
                         }
                     }
+                    environment {
+                        CSC_PASS = credentials('chocolatey-api-token')
+                    }
                     steps {
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
