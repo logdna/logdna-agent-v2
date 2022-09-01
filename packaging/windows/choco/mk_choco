@@ -4,7 +4,7 @@ set -eu -o pipefail
 mkdir -p "$SRC_ROOT/$BUILD_DIR/choco/tools"
 chmod 777 "$SRC_ROOT/$BUILD_DIR/choco"
 chmod 777 "$SRC_ROOT/$BUILD_DIR/choco/tools"
-echo fetching $MSI_URL ...
+echo fetching "$MSI_URL" ...
 MSI_SHA256=$(curl -fsL "$MSI_URL" | sha256sum -b | awk "{print \$1}")
 export MSI_SHA256
 echo copying files ...
@@ -17,5 +17,5 @@ PKG_VER=$(grep -oPm1 "(?<=<version>)[^<]+" "$SRC_ROOT/$BUILD_DIR/choco/mezmo-age
 PKG_NAME=$(grep -oPm1 "(?<=<id>)[^<]+" "$SRC_ROOT/$BUILD_DIR/choco/mezmo-agent.nuspec")
 echo "$PKG_NAME.$PKG_VER.nupkg" > "$SRC_ROOT/$BUILD_DIR/choco/mezmo-agent.nupkg.name"
 echo
-echo package stored in \'$SRC_ROOT/$BUILD_DIR/choco/$PKG_NAME.$PKG_VER.nupkg\'
+echo package stored in "$SRC_ROOT/$BUILD_DIR/choco/$PKG_NAME.$PKG_VER.nupkg"
 echo

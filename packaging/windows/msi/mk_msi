@@ -46,5 +46,5 @@ osslsigncode sign \
     -in "$SRC_ROOT/$BUILD_DIR/mezmo-agent.msi" \
     -out "$SRC_ROOT/$BUILD_DIR/signed/mezmo-agent.msi"
 echo
-echo package stored to \'$BUILD_DIR/signed/mezmo-agent.msi\'
+echo package stored to "$BUILD_DIR/signed/mezmo-agent.msi"
 echo

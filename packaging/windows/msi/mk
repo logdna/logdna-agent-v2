@@ -4,9 +4,9 @@ function finish {
   rm -f "$SRC_ROOT/$BUILD_DIR/$CERT_FILE_NAME" "$SRC_ROOT/$BUILD_DIR/$CERT_FILE_NAME.pwd"
 }
 trap finish EXIT
-#
+# shellcheck disable=SC1091
 source ./mk_env
-echo build version $BUILD_VERSION_FULL
+echo build version "$BUILD_VERSION_FULL"
 echo fetching cert
 aws s3 cp "s3://ecosys-vault/$CERT_FILE_NAME" "$SRC_ROOT/$BUILD_DIR"
 aws s3 cp "s3://ecosys-vault/$CERT_FILE_NAME.pwd" "$SRC_ROOT/$BUILD_DIR"
