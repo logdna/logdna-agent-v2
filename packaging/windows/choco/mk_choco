@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-set -eu
+set -eu -o pipefail
 #
-mkdir -p "$SRC_DIR/$BUILD_DIR/choco/tools"
-chmod 777 "$SRC_DIR/$BUILD_DIR/choco"
-chmod 777 "$SRC_DIR/$BUILD_DIR/choco/tools"
-echo fetching $MSI_URL ...
-MSI_SHA256=$(curl -sL "$MSI_URL" | sha256sum -b | awk "{print \$1}")
+mkdir -p "$SRC_ROOT/$BUILD_DIR/choco/tools"
+chmod 777 "$SRC_ROOT/$BUILD_DIR/choco"
+chmod 777 "$SRC_ROOT/$BUILD_DIR/choco/tools"
+echo fetching "$MSI_URL" ...
+MSI_SHA256=$(curl -fsL "$MSI_URL" | sha256sum -b | awk "{print \$1}")
 export MSI_SHA256
 echo copying files ...
 for FILE in tools/* mezmo-agent.nuspec; do
   # shellcheck disable=SC2016
-  envsubst '$MSI_URL,$MSI_SHA256,$BUILD_VERSION_FULL' < "$FILE" > "$SRC_DIR/$BUILD_DIR/choco/$FILE"
+  envsubst '$MSI_URL,$MSI_SHA256,$BUILD_VERSION_FULL' < "$FILE" > "$SRC_ROOT/$BUILD_DIR/choco/$FILE"
 done
-docker run -i -v "$SRC_DIR":/build --env BUILD_DIR="/build/$BUILD_DIR" --env SRC_DIR=/build -w "/build/$BUILD_DIR/choco" chocolatey/choco choco pack -v mezmo-agent.nuspec
-PKG_VER=$(grep -oPm1 "(?<=<version>)[^<]+" "$SRC_DIR/$BUILD_DIR/choco/mezmo-agent.nuspec")
-PKG_NAME=$(grep -oPm1 "(?<=<id>)[^<]+" "$SRC_DIR/$BUILD_DIR/choco/mezmo-agent.nuspec")
-echo "$PKG_NAME.$PKG_VER.nupkg" > "$SRC_DIR/$BUILD_DIR/choco/mezmo-agent.nupkg.name"
+docker run -i --rm -v "$SRC_ROOT":/build --env BUILD_DIR="/build/$BUILD_DIR" --env SRC_ROOT=/build -w "/build/$BUILD_DIR/choco" chocolatey/choco choco pack -v mezmo-agent.nuspec
+PKG_VER=$(grep -oPm1 "(?<=<version>)[^<]+" "$SRC_ROOT/$BUILD_DIR/choco/mezmo-agent.nuspec")
+PKG_NAME=$(grep -oPm1 "(?<=<id>)[^<]+" "$SRC_ROOT/$BUILD_DIR/choco/mezmo-agent.nuspec")
+echo "$PKG_NAME.$PKG_VER.nupkg" > "$SRC_ROOT/$BUILD_DIR/choco/mezmo-agent.nupkg.name"
 echo
-echo package stored in \'"$SRC_DIR/$BUILD_DIR/choco"\'
+echo package stored in "$SRC_ROOT/$BUILD_DIR/choco/$PKG_NAME.$PKG_VER.nupkg"
 echo
