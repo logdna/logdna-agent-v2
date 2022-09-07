@@ -3,42 +3,48 @@ set -eu
 #
 # Sign exe files
 #
-mkdir -p "$BUILD_DIR/signed"
+mkdir -p "$SRC_ROOT/$BUILD_DIR/signed"
+CERT_FILE="$SRC_ROOT/$BUILD_DIR/$CERT_FILE_NAME"
 echo signing exe files
 osslsigncode sign \
-    -pkcs12 "$BUILD_DIR/$CERT_NAME" \
-    -readpass "$BUILD_DIR/$CERT_NAME.pwd" \
+    -pkcs12 "$CERT_FILE" \
+    -readpass "$CERT_FILE.pwd" \
     -n "Mezmo Agent" \
     -h sha2 \
     -i "https://www.mezmo.com" \
     -t http://timestamp.comodoca.com/authenticode \
-    -in "$BUILD_DIR/logdna-agent-svc.exe" \
-    -out "$BUILD_DIR/signed/logdna-agent-svc.exe"
+    -in "$SRC_ROOT/$BUILD_DIR/logdna-agent-svc.exe" \
+    -out "$SRC_ROOT/$BUILD_DIR/signed/logdna-agent-svc.exe"
 osslsigncode sign \
-    -pkcs12 "$BUILD_DIR/$CERT_NAME" \
-    -readpass "$BUILD_DIR/$CERT_NAME.pwd" \
+    -pkcs12 "$CERT_FILE" \
+    -readpass "$CERT_FILE.pwd" \
     -n "Mezmo Agent" \
     -h sha2 \
     -i "https://www.mezmo.com" \
     -t http://timestamp.comodoca.com/authenticode \
-    -in "$BUILD_DIR/logdna-agent.exe" \
-    -out "$BUILD_DIR/signed/logdna-agent.exe"
+    -in "$SRC_ROOT/$BUILD_DIR/logdna-agent.exe" \
+    -out "$SRC_ROOT/$BUILD_DIR/signed/logdna-agent.exe"
 #
 # Create msi
 #
-export AGENT_VERSION=${BUILD_VERSION}
-export AGENT_EXE_DIR="$BUILD_DIR/signed"
-wixl -v --ext ui ./mezmo-agent.wxs -a x64 -o "$BUILD_DIR/mezmo-agent.msi"
+export AGENT_VERSION=${BUILD_VERSION_FULL}
+export AGENT_EXE_DIR="$SRC_ROOT/$BUILD_DIR/signed"
+export AGENT_SRC_ROOT="$SRC_ROOT"
+wixl -v --ext ui ./mezmo-agent.wxs -a x64 -o "$SRC_ROOT/$BUILD_DIR/mezmo-agent.msi"
 #
 # Sign msi
 #
+echo signing msi file
 osslsigncode sign \
     -add-msi-dse \
-    -pkcs12 "$BUILD_DIR/$CERT_NAME" \
-    -readpass "$BUILD_DIR/$CERT_NAME.pwd" \
-	-n "Mezmo Agent" \
+    -pkcs12 "$CERT_FILE" \
+    -readpass "$CERT_FILE.pwd" \
+    -n "Mezmo Agent" \
     -h sha2 \
     -i "https://www.mezmo.com" \
     -t http://timestamp.comodoca.com/authenticode \
-    -in "$BUILD_DIR/mezmo-agent.msi" \
-    -out "$BUILD_DIR/signed/mezmo-agent.msi"
+    -in "$SRC_ROOT/$BUILD_DIR/mezmo-agent.msi" \
+    -out "$SRC_ROOT/$BUILD_DIR/signed/mezmo-agent.msi"
+echo
+echo package stored to "$BUILD_DIR/signed/mezmo-agent.msi"
+echo

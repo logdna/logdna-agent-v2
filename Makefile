@@ -234,7 +234,7 @@ lint-clippy: ## Checks for code errors
 
 .PHONY:lint-audit
 lint-audit: ## Audits packages for issues
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo audit --ignore RUSTSEC-2020-0159 --ignore RUSTSEC-2020-0071"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2022-0040"
 
 .PHONY:lint-docker
 lint-docker: ## Lint the Dockerfile for issues
@@ -472,7 +472,6 @@ build-rpm: build-release
 				"/build/target/${TARGET}/release/logdna-agent=/usr/bin/logdna-agent" \
 				"packaging/linux/logdna-agent.service=/lib/systemd/system/logdna-agent.service"'
 
-
 .PHONY: publish-s3-binary
 publish-s3-binary:
 	if [ "$(WINDOWS)" != "" ]; then \
@@ -482,14 +481,17 @@ publish-s3-binary:
 	    aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent; \
 	fi;
 
-
 define PUBLISH_SIGNED_RULE
 .PHONY: publish-s3-binary-signed-$(1)
 publish-s3-binary-signed-$(1):
 	if [ "$(WINDOWS)" != "" ]; then \
-	    aws s3 cp --acl public-read target/$(TARGET)/$(1)/signed/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/signed/logdna-agent-svc.exe; \
-	    aws s3 cp --acl public-read target/$(TARGET)/$(1)/signed/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/signed/logdna-agent.exe; \
-	    aws s3 cp --acl public-read target/$(TARGET)/$(1)/signed/mezmo-agent.msi s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/signed/mezmo-agent.msi; \
+	    $(eval BUILD_DIR := target/$(TARGET)/$(1)) \
+	    $(eval SRC_ROOT := $(CURDIR)) \
+	    bash -c " \
+	    set -eu; \
+	    export BUILD_DIR="$(BUILD_DIR)" SRC_ROOT="$(SRC_ROOT)" TARGET=$(TARGET) BUILD_VERSION=$(BUILD_VERSION) BUILD_NUMBER=$(BUILD_NUMBER); \
+	    cd packaging/windows/msi && ./publish_to_s3; \
+	    " \
 	else \
 	    echo Nothing to publish; \
 	fi;
@@ -497,20 +499,66 @@ endef
 BUILD_TYPES=debug release
 $(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_SIGNED_RULE,$(_type))))
 
-
 define MSI_RULE
 .PHONY: msi-$(1)
 msi-$(1): ## create signed exe(s) and msi in $(BUILD_DIR)/signed
 	$(eval BUILD_DIR := target/$(TARGET)/$(1))
-	$(eval CERT_NAME := "logdna_dev_cert.pfx")
-	aws s3 cp "s3://ecosys-vault/$(CERT_NAME)" "$(BUILD_DIR)" && \
-	aws s3 cp "s3://ecosys-vault/$(CERT_NAME).pwd" "$(BUILD_DIR)" && \
-	$(TOOLS_COMMAND) "--env BUILD_DIR=/build/$(BUILD_DIR) --env CERT_NAME=$(CERT_NAME) --env BUILD_VERSION=$(BUILD_VERSION)+$(BUILD_NUMBER))" "cd /build/packaging/windows/msi && ./mk_msi" && \
-	rm "$(BUILD_DIR)/$(CERT_NAME)" "$(BUILD_DIR)/$(CERT_NAME).pwd";
+	$(eval SRC_ROOT := $(CURDIR))
+	$(eval CERT_FILE_NAME := "mezmo_cert_$(1).pfx")
+	bash -c " \
+	set -eu; \
+	trap \"rm -f '$(BUILD_DIR)/$(CERT_FILE_NAME)' '$(BUILD_DIR)/$(CERT_FILE_NAME).pwd'\" EXIT; \
+	aws s3 cp s3://ecosys-vault/$(CERT_FILE_NAME) '$(BUILD_DIR)'; \
+	if [ $(1) == 'release' ]; then \
+	  printenv -0 CSC_PASS > '$(BUILD_DIR)/$(CERT_FILE_NAME).pwd'; \
+	else \
+	  aws s3 cp s3://ecosys-vault/$(CERT_FILE_NAME).pwd '$(BUILD_DIR)'; \
+	fi; \
+	$(TOOLS_COMMAND) '--env BUILD_DIR=$(BUILD_DIR) --env SRC_ROOT=/build \
+	                  --env CERT_FILE_NAME=$(CERT_FILE_NAME) --env BUILD_VERSION=$(BUILD_VERSION) \
+	                  --env BUILD_NUMBER=$(BUILD_NUMBER) --env TARGET=$(TARGET)' \
+	                  'cd /build/packaging/windows/msi && . ./mk_env && ./mk_msi'; \
+	"
 endef
 BUILD_TYPES=debug release
 $(foreach _type, $(BUILD_TYPES), $(eval $(call MSI_RULE,$(_type))))
 
+define CHOCO_RULE
+.PHONY: choco-$(1)
+choco-$(1): ## create choco package using msi from logdna-agent-build-bin S3 baucket
+	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	$(eval SRC_ROOT := $(CURDIR))
+	bash -c " \
+	set -eu; \
+	export BUILD_DIR="$(BUILD_DIR)" SRC_ROOT="$(SRC_ROOT)" TARGET=$(TARGET) BUILD_VERSION=$(BUILD_VERSION) BUILD_NUMBER=$(BUILD_NUMBER); \
+	cd $(SRC_ROOT)/packaging/windows/choco && source ./mk_env && ./mk_choco \
+	"
+endef
+BUILD_TYPES=debug release
+$(foreach _type, $(BUILD_TYPES), $(eval $(call CHOCO_RULE,$(_type))))
+
+define PUBLISH_CHOCO_RULE
+.PHONY: publish-choco-$(1)
+publish-choco-$(1): ## publish choco package built & located in $(BUILD_DIR)/choco, requires env CHOCO_API_KEY defined
+	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	$(eval SRC_ROOT := $(CURDIR))
+	bash -c " \
+	set -eu; \
+	export BUILD_DIR="$(BUILD_DIR)" SRC_ROOT="$(SRC_ROOT)" TARGET=$(TARGET) BUILD_VERSION=$(BUILD_VERSION) BUILD_NUMBER=$(BUILD_NUMBER); \
+	cd packaging/windows/choco && ./publish_to_choco \
+	"
+endef
+BUILD_TYPES=debug release
+$(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_CHOCO_RULE,$(_type))))
+
+define PUBLISH_S3_CHOCO_RULE
+.PHONY: publish-s3-choco-$(1)
+publish-s3-choco-$(1): ## upload choco package to S3
+	$(eval PKG_NAME_FILE := "target/$(TARGET)/$(1)/choco/mezmo-agent.nupkg.name")
+	aws s3 cp --acl public-read "target/$(TARGET)/$(1)/choco/$$(shell cat $(PKG_NAME_FILE))" s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/$$(shell cat $(PKG_NAME_FILE));
+endef
+BUILD_TYPES=debug release
+$(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_S3_CHOCO_RULE,$(_type))))
 
 define publish_images
 	$(eval VCS_REF_BUILD_NUMBER_SHA:=$(shell echo "$(VCS_REF)$(BUILD_NUMBER)" | sha256sum | head -c 16))

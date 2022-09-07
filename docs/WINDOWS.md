@@ -11,7 +11,14 @@
   C:\ProgramData\logs                  - log files directory monitored by Agent [LOGDNA_LOG_DIRS]
   ```
 
-- Installation options
+### MSI
+
+- Package location
+
+  https://logdna-agent-build-bin.s3.amazonaws.com/3.6.0/x86_64-pc-windows-msvc/signed/mezmo-agent.msi
+
+- Installation parameters
+
   * Ingestion Key can be specfiied in MSI command line:
     ```
     mezmo_agent.msi KEY="<YOUR INGESTIOn KEY>"
@@ -25,7 +32,7 @@
       ingestion_key: <YOUR_INGESTION_KEY>
     ```
 
-  * Other Installation options:
+  * Other Installation parameters:
     ```
     Display Options
       /quiet
@@ -73,7 +80,20 @@
       [KEY=<YOUR_INGESTION_KEY>]
     ```
 
-  * Unattended installation example:
+- Unattended installation example:
     ```
     mezmo_agent.msi /qn KEY=abcdefg1234567890
     ```
+
+### Chocolatey
+- Package location
+
+https://community.chocolatey.org/packages/mezmo-agent/
+
+- Installation
+
+Run:
+
+```
+choco install mezmo-agent
+```

@@ -35,6 +35,7 @@ pipeline {
         booleanParam(name: 'PUBLISH_GCR_IMAGE', description: 'Publish docker image to Google Container Registry (GCR)', defaultValue: false)
         booleanParam(name: 'PUBLISH_ICR_IMAGE', description: 'Publish docker image to IBM Container Registry (ICR) and Dockerhub', defaultValue: false)
         booleanParam(name: 'PUBLISH_BINARIES', description: 'Publish executable binaries to S3 bucket s3://logdna-agent-build-bin', defaultValue: false)
+        booleanParam(name: 'PUBLISH_INSTALLERS', description: 'Publish Choco installer', defaultValue: false)
         string(name: 'RUST_IMAGE_SUFFIX', description: 'Build image tag suffix', defaultValue: "")
     }
     stages {
@@ -271,6 +272,9 @@ pipeline {
                             environment name: 'PUBLISH_BINARIES', value: 'true'
                         }
                     }
+                    environment {
+                        CSC_PASS = credentials('chocolatey-api-token')
+                    }
                     steps {
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
@@ -286,11 +290,24 @@ pipeline {
                                 WINDOWS=1 make publish-s3-binary
                                 WINDOWS=1 make msi-release
                                 WINDOWS=1 make publish-s3-binary-signed-release
+                                WINDOWS=1 make choco-release
+                                WINDOWS=1 make publish-s3-choco-release
                                 ARCH=x86_64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
                                 ARCH=aarch64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
                                 rm ${WORKSPACE}/.aws_creds_static
                             '''
                         }
+                    }
+                }
+                stage('Publish Installers') {
+                    environment {
+                        CHOCO_API_KEY = credentials('chocolatey-api-token')
+                    }
+                    when {
+                        environment name: 'PUBLISH_INSTALLERS', value: 'true'
+                    }
+                    steps {
+                        sh 'WINDOWS=1 make publish-choco-release'
                     }
                 }
                 stage('Publish GCR images') {
