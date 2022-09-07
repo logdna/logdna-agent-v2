@@ -154,7 +154,6 @@ impl From<Event> for EventLog {
             level: type_,
         }
     }
-
 }
 
 #[derive(Serialize, Debug)]

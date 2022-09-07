@@ -150,9 +150,7 @@ pub async fn replace_lease(
     }
 
     new_lease.spec = Some(create_lease_spec(new_holder, duration));
-    let replaced_lease = lease_client.replace(&lease_name, &pp, &new_lease).await;
-
-    replaced_lease
+    lease_client.replace(&lease_name, &pp, &new_lease).await
 }
 
 pub async fn get_k8s_lease_api(namespace: &str, client: Client) -> Api<Lease> {
@@ -161,8 +159,7 @@ pub async fn get_k8s_lease_api(namespace: &str, client: Client) -> Api<Lease> {
 }
 
 pub async fn get_lease(name: &str, lease_client: &Api<Lease>) -> Result<Lease, kube::Error> {
-    let lease_info = lease_client.get(name).await;
-    lease_info
+    lease_client.get(name).await
 }
 
 async fn get_lease_list(
