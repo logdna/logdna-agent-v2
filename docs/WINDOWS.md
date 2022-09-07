@@ -95,5 +95,5 @@ https://community.chocolatey.org/packages/mezmo-agent/
 Run:
 
 ```
-choco install mezmo-agent --pre
+choco install mezmo-agent
 ```
