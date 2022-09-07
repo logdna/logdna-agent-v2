@@ -4,7 +4,7 @@
   <metadata>
     <id>mezmo-agent</id>
     <title>Mezmo Agent for Windows</title>
-    <version>${BUILD_VERSION_FULL}</version>
+    <version>${BUILD_VERSION_CHOCO}</version>
     <authors>smusali,leeliu,</authors>
     <owners>leeliu</owners>
     <summary>Mezmo Agent for Windows</summary>
