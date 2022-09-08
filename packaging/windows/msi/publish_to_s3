@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -eu -o pipefail
+# shellcheck disable=SC1091
+source ./mk_env
+MSI_S3_URL=s3://logdna-agent-build-bin/$BUILD_VERSION/$TARGET/signed/mezmo-agent.$BUILD_VERSION_FULL.msi
+MSI_LAST_S3_URL=s3://logdna-agent-build-bin/$BUILD_VERSION/$TARGET/signed/mezmo-agent.msi
+echo uploading to "$MSI_S3_URL"
+aws s3 cp --acl public-read "$SRC_ROOT/$BUILD_DIR/signed/mezmo-agent.msi" "$MSI_S3_URL"
+aws s3 cp --acl public-read "$SRC_ROOT/$BUILD_DIR/signed/mezmo-agent.msi" "$MSI_LAST_S3_URL"
+echo
+echo @@@@@@  SUCCESS  @@@@@@
+echo
