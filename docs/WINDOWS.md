@@ -15,7 +15,7 @@
 
 - Package location
 
-  https://logdna-agent-build-bin.s3.amazonaws.com/3.6.0-beta.1/x86_64-pc-windows-msvc/signed/mezmo-agent.msi
+  https://logdna-agent-build-bin.s3.amazonaws.com/3.6.0/x86_64-pc-windows-msvc/signed/mezmo-agent.msi
 
 - Installation parameters
 
@@ -95,5 +95,5 @@ https://community.chocolatey.org/packages/mezmo-agent/
 Run:
 
 ```
-choco install mezmo-agent --pre
+choco install mezmo-agent
 ```

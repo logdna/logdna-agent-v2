@@ -87,6 +87,11 @@ Follow the instructions for [deploying the agent on Red Hat OpenShift](OPENSHIFT
 
 Refer to the documentation for [deploying the agent on Linux](LINUX.md).
 
+### Installing on Windows
+
+Refer to the documentation for [installing the agent on Windows](WINDOWS.md).
+
+
 ### Running as Non-Root
 
 By default the agent will run as root. Below are environment-specific instructions for running the agent as a non-root user.

@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# source root
-export SRC_DIR="${SRC_DIR:-$(readlink -f ../../..)}"
-# relative to source root
-export BUILD_DIR="${BUILD_DIR:-target/x86_64-pc-windows-msvc/debug}"
-# comes from Jenkins
-export BUILD_NUMBER="${BUILD_NUMBER:-0}"
-agent_version=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" "$SRC_DIR/bin/Cargo.toml")
-export BUILD_VERSION="${BUILD_VERSION:-${agent_version}}"
-BUILD_VERSION_DASH=$(echo "$BUILD_VERSION" | sed -r 's/([^\.]+\.[^\.]+\.[^\.]+)\./\1-/')
-# cannot use "+" - relaced by "-build"
-export BUILD_VERSION_FULL="${BUILD_VERSION_DASH}-build${BUILD_NUMBER}"
-export MSI_URL="${MSI_URL:-https://logdna-agent-build-bin.s3.amazonaws.com/$BUILD_VERSION/x86_64-pc-windows-msvc/signed/mezmo-agent.msi}"
+# shellcheck disable=SC1091
+source ../msi/mk_env
+# for Choco "release" package we need to use 4 part version in order to include build number
+triple_only="[0-9]+\.[0-9]+\.[0-9]+"
+if [[ "$BUILD_VERSION" =~ ^$triple_only$ ]]; then
+# release
+export BUILD_VERSION_CHOCO="$BUILD_VERSION.$BUILD_NUMBER"
+else
+# pre-release
+export BUILD_VERSION_CHOCO="$BUILD_VERSION_FULL"
+fi
