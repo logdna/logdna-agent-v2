@@ -4,8 +4,6 @@ use serde::{Deserialize, Serialize};
 
 use super::helpers::{convert_cpu_usage_to_milli, convert_memory_usage_to_bytes};
 
-const CPU_MULTIPLIER: u64 = 1000;
-
 #[derive(Serialize, Deserialize)]
 pub struct NodeStats {
     pub resource: String,
@@ -21,10 +19,10 @@ pub struct NodeStats {
     pub containers_waiting: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
-    pub cpu_allocatable: Option<u64>,
+    pub cpu_allocatable: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
-    pub cpu_capacity: Option<u64>,
+    pub cpu_capacity: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
     pub cpu_usage: Option<u32>,
@@ -137,8 +135,8 @@ impl NodeStatsBuilder<'_> {
         let mut ready_message = String::new();
         let mut ready_status = String::new();
 
-        let mut cpu_allocatable: Option<u64> = None;
-        let mut cpu_capacity: Option<u64> = None;
+        let mut cpu_allocatable: Option<u32> = None;
+        let mut cpu_capacity: Option<u32> = None;
         let mut memory_allocatable: Option<u64> = None;
         let mut memory_capacity: Option<u64> = None;
         let mut pods_allocatable: Option<u64> = None;
@@ -200,13 +198,9 @@ impl NodeStatsBuilder<'_> {
                     let memory_quantity = allocatable.get("memory");
                     let pods_quantity = allocatable.get("pods");
 
-                    cpu_allocatable = cpu_quantity.and_then(|cpu_quantity| {
-                        cpu_quantity
-                            .0
-                            .parse::<u64>()
-                            .map(|q| q * CPU_MULTIPLIER)
-                            .ok()
-                    });
+                    cpu_allocatable = cpu_quantity
+                        .map(|cpu| convert_cpu_usage_to_milli(cpu.0.as_str()))
+                        .unwrap_or(None);
 
                     memory_allocatable = memory_quantity
                         .map(|memory| convert_memory_usage_to_bytes(memory.0.as_str()))
@@ -222,13 +216,9 @@ impl NodeStatsBuilder<'_> {
                     let memory_quantity = capacity.get("memory");
                     let pods_quantity = capacity.get("pods");
 
-                    cpu_capacity = cpu_quantity.and_then(|cpu_quantity| {
-                        cpu_quantity
-                            .0
-                            .parse::<u64>()
-                            .map(|q| q * CPU_MULTIPLIER)
-                            .ok()
-                    });
+                    cpu_capacity = cpu_quantity
+                        .map(|cpu| convert_cpu_usage_to_milli(cpu.0.as_str()))
+                        .unwrap_or(None);
 
                     memory_capacity = memory_quantity
                         .map(|memory| convert_memory_usage_to_bytes(memory.0.as_str()))
