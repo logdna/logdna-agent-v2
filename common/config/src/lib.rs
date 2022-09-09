@@ -380,8 +380,6 @@ impl TryFrom<RawConfig> for Config {
             ),
         };
 
-        info!("*** LINE INCLUSION: {:?}", log.dirs);
-
         if log.use_k8s_enrichment == K8sTrackingConf::Never
             && log.log_k8s_events == K8sTrackingConf::Always
         {

@@ -110,7 +110,6 @@ impl Watcher {
 
     /// Adds a new directory or file to watch
     pub fn watch<P: AsRef<Path>>(&mut self, path: P, mode: RecursiveMode) -> Result<(), Error> {
-        println!("*** NOW WATCHING: {:?}", path.as_ref());
         log::trace!("watching {:?}", path.as_ref());
         self.watcher.watch(path, mode.into()).map_err(|e| e.into())
     }
