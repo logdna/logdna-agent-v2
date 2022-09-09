@@ -235,7 +235,7 @@ pipeline {
                         }
                     }
                 }
-                stage('Build windows release binary x86_64') {
+                stage('Build Windows release binary x86_64') {
                     steps {
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
@@ -265,7 +265,7 @@ pipeline {
                         sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
                     }
                 }
-                stage('Publish static binary') {
+                stage('Publish binaries to S3') {
                     when {
                         anyOf {
                             branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
@@ -289,6 +289,7 @@ pipeline {
                                 STATIC=1 make publish-s3-binary
                                 WINDOWS=1 make publish-s3-binary
                                 WINDOWS=1 make msi-release
+                                WINDOWS=1 make test-msi-release
                                 WINDOWS=1 make publish-s3-binary-signed-release
                                 WINDOWS=1 make choco-release
                                 WINDOWS=1 make publish-s3-choco-release
