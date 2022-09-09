@@ -284,40 +284,27 @@ impl FileSystem {
                 add_initial_dir_rules(&mut initial_dir_rules, path);
             } else {
                 let mut full_missing_path = PathBuf::new();
-                full_missing_path.push(format!(
-                    "{}/{}",
-                    &path.inner.display(),
-                    path.postfix.clone().unwrap().display()
-                ));
+                let mut format_postfix =
+                    String::from(path.postfix.as_ref().unwrap().to_str().unwrap());
+                if format_postfix.ends_with('/') {
+                    format_postfix.pop();
+                }
+                full_missing_path.push(format!("{}/{}", &path.inner.display(), format_postfix));
                 let full_missing_dirpathbuff = DirPathBuf {
                     inner: full_missing_path.clone(),
                     postfix: None,
                 };
 
-                // TODO: Need to add rules here
+                // Add missing directory to Rules
                 add_initial_dir_rules(&mut initial_dir_rules, &full_missing_dirpathbuff);
-                        
+
+                info!("Adding {:?} to missing directory watcher", path.inner);
                 missing_dirs.push(full_missing_path);
                 missing_dir_watcher
                     .watch(&path.inner, RecursiveMode::NonRecursive)
                     .expect("Could not add path to missing directory watcher");
             }
         }
-
-
-        for dirs in initial_dirs.iter() {
-            info!("*** INITIAL DIRS: {:?}", dirs);
-        }
-
-        //info!("*** MISSING PATH: {:?}", missing_dirs);
-        for dirs in missing_dirs.iter() {
-            info!("*** MISSING DIRS: {:?}", dirs);
-            if initial_dir_rules.included(dirs) == Status::Ok {
-                info!("*** {:?} INCLUDED IN RULES!!!", dirs);
-            }
-        }
-
-        //info!("*** RULES: {:?}", initial_dir_rules);
 
         let mut fs = Self {
             entries: Rc::new(RefCell::new(entries)),
@@ -407,7 +394,6 @@ impl FileSystem {
             watcher.receive()
         };
 
-        info!("*** STEAM LAND...");
         let mfs = fs.clone(); // clone fs for missing files
         let missing_dirs = mfs
             .try_lock()
@@ -419,7 +405,7 @@ impl FileSystem {
             .expect("could not lock filesystem cache")
             .missing_dir_watcher
             .take()
-            .unwrap_or_else(|| Watcher::new(Duration::new(1, 0)));
+            .unwrap_or_else(|| Watcher::new(Duration::new(0, 10000000)));
 
         let missing_dir_event_stream = missing_dir_watcher.receive();
 
@@ -431,24 +417,38 @@ impl FileSystem {
                 Box::pin(missing_dir_event_stream),
             ),
             move |(mfs, missing, mut watcher, mut stream)| async move {
-                info!("*** [STREAM] MISSING DIRS: {:?}", missing);
                 loop {
                     let (event, _) = stream.next().await?;
+                    debug!("missing directory watcher event: {:?}", event);
                     if let notify_stream::Event::Create(ref path) = event {
-                        info!("*** [STREAM] EVENT: {:?}", path);
-                        info!("*** MISSING: {:?}", missing);
                         if missing.contains(path) {
-                            info!("*** FULL MATCH: {:?}", event);
                             // Got a complete directory match, inserting it
+                            info!("missing directory {:?} was found!", path);
                             return Some((
                                 as_event_stream(mfs.clone(), event, OffsetDateTime::now_utc()),
                                 (mfs, missing, watcher, stream),
                             ));
-                        } else if missing.iter().any(|m| m.starts_with(&path)) {
-                            info!("*** PARTIAL MATCH");
-                            watcher
-                                .watch(path, RecursiveMode::Recursive)
-                                .expect("Could not add inital value to missing_dir_watch");
+                        }
+                        if missing.iter().any(|m| m.starts_with(&path)) {
+                            info!("found sub-path of missing directory {:?}", path);
+                            for dir in missing.iter() {
+                                // Check if full path was created along with sub-path
+                                if dir.exists() {
+                                    info!("full path exists {:?}", dir);
+                                    let create_event = WatchEvent::Create(dir.clone());
+                                    return Some((
+                                        as_event_stream(
+                                            mfs.clone(),
+                                            create_event,
+                                            OffsetDateTime::now_utc(),
+                                        ),
+                                        (mfs, missing, watcher, stream),
+                                    ));
+                                }
+                                watcher
+                                    .watch(path, RecursiveMode::NonRecursive)
+                                    .expect("Could not add inital value to missing_dir_watch");
+                            }
                         }
                     }
                 }
@@ -479,7 +479,6 @@ impl FileSystem {
         let mut _entries = _entries.borrow_mut();
 
         debug!("handling notify event {:#?}", watch_event);
-        info!("handling notify event {:#?}", watch_event);
 
         // TODO: Remove OsString names
         let result = match watch_event {
@@ -584,7 +583,6 @@ impl FileSystem {
         _entries: &EntryMap,
     ) -> FsResult<bool> {
         debug!("checking if {:#?} is reachable", target);
-        info!("checking if {:#?} is reachable", target);
 
         let mut target: Cow<Path> = Cow::from(target);
         if let Ok(entry_key) = self.get_first_entry(&target) {
@@ -603,7 +601,6 @@ impl FileSystem {
             && (self.is_initial_dir_target(&target) || self.is_symlink_target(&target, _entries))
         {
             trace!("short circuit {:?} is reachable", target);
-            info!("short circuit {:?} is reachable", target);
             return Ok(true);
         }
 
@@ -949,7 +946,6 @@ impl FileSystem {
                 .watch(&path, RecursiveMode::NonRecursive)
                 .map_err(|e| Error::Watch(Some(path.to_path_buf()), e))?;
         }
-        info!("*** REG watching {:?}", path);
         self.watch_descriptors
             .entry(path.to_path_buf())
             .or_insert_with(Vec::new)
@@ -1285,22 +1281,17 @@ impl FileSystem {
     pub(crate) fn is_initial_dir_target(&self, path: &Path) -> bool {
         // Must be within the initial dir
         if self.initial_dir_rules.passes(path) != Status::Ok {
-            info!("*** I DO NOT PASS DIR RULES: {:?}", path);
-            info!("*** I MAKE THESE RULES: {:?}", self.initial_dir_rules);
             return false;
         }
         debug!("{:#?} passes initial dir rules", path);
-        info!("{:#?} passes initial dir rules", path);
 
         // The file should validate the file rules or be a directory
         if self.master_rules.passes(path) != Status::Ok {
             if let Ok(metadata) = std::fs::metadata(path) {
                 let is_dir = metadata.is_dir();
                 debug!("{:#?} passes master rules too, is_dir? {:#?}", path, is_dir);
-                info!("{:#?} passes master rules too, is_dir? {:#?}", path, is_dir);
                 return is_dir;
             }
-            info!("*** I DO NOT PASS MASTER RULES: {:?}", path);
             return false;
         }
         true
@@ -1308,7 +1299,6 @@ impl FileSystem {
 
     /// Helper method for checking if a path passes exclusion/inclusion rules
     fn passes(&self, path: &Path, _entries: &EntryMap) -> bool {
-        info!("*** CHECK PASS: {:?}", path);
         self.is_initial_dir_target(path)
             || self
                 .is_reachable(&mut vec![], path, _entries)
