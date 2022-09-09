@@ -8,7 +8,7 @@ use crate::lease::{self, get_lease};
 pub struct FeatureLeaderMeta {
     pub interval: i32,
     pub leader: FeatureLeader,
-    pub is_currently_leader: bool,
+    pub is_starting_leader: bool,
 }
 
 #[derive(Clone)]
@@ -17,6 +17,7 @@ pub struct FeatureLeader {
     pub feature: String,
     pub pod_name: String,
     pub lease_api: Api<Lease>,
+    pub tries: i32,
 }
 
 impl FeatureLeader {
@@ -31,6 +32,7 @@ impl FeatureLeader {
             feature,
             pod_name,
             lease_api,
+            tries: 0,
         }
     }
 
@@ -100,7 +102,8 @@ impl FeatureLeader {
                             );
                             return true;
                         }
-                        Err(_) => {
+                        Err(e) => {
+                            info!("Failed to get lease{}", e);
                             return false;
                         }
                     }
@@ -112,7 +115,7 @@ impl FeatureLeader {
             info!("There is no reporter lease in this namespace")
         }
 
-        false
+        return false;
     }
 
     pub async fn get_feature_leader_lease(&self) -> Result<Lease, Error> {
