@@ -17,9 +17,10 @@ use hyper::http::header;
 
 pub mod errors;
 pub mod event_source;
+pub mod feature_leader;
 pub mod kube_stats;
 pub mod lease;
-pub mod metrics_stats_aggregator;
+pub mod metrics_stats_stream;
 pub mod middleware;
 pub mod restarting_stream;
 

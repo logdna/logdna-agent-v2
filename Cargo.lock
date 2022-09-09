@@ -1704,7 +1704,7 @@ dependencies = [
 
 [[package]]
 name = "logdna-agent"
-version = "3.6.0-beta.1"
+version = "3.7.0-dev"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -1713,6 +1713,7 @@ dependencies = [
  "auditable-build",
  "bytes",
  "capctl",
+ "chrono",
  "config",
  "env_logger",
  "escargot",
