@@ -115,7 +115,7 @@ impl FeatureLeader {
             info!("There is no reporter lease in this namespace")
         }
 
-        return false;
+        false
     }
 
     pub async fn get_feature_leader_lease(&self) -> Result<Lease, Error> {

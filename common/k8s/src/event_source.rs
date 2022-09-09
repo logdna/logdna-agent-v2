@@ -440,7 +440,7 @@ impl K8sEventStream {
             pod_label,
             client.clone(),
             previous_event_logger_delete_time.clone(),
-            leader_meta.clone(),
+            leader_meta,
         );
 
         let event_stream = K8sEventStream::active_stream(
