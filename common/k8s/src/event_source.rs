@@ -107,6 +107,9 @@ impl From<Event> for EventLog {
             }
         });
 
+        let default = "Normal".to_string();
+        let log_level = type_.clone().unwrap_or(default);
+
         let line = EventLogLine {
             message: match (
                 reason.as_ref(),
@@ -121,7 +124,7 @@ impl From<Event> for EventLog {
                 (Some(r), None, None, true, Some(m)) => Some(format!("{}  {}", r, m)),
                 _ => None,
             },
-            level: "Normal".to_string(),
+            level: log_level,
             kube: EventLogLineInner {
                 type_: "event".to_string(),
                 action,

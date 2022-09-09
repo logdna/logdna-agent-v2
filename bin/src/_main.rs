@@ -1,12 +1,14 @@
-use futures::Stream;
-
 use config::{self, Config, DbPath, K8sLeaseConf, K8sTrackingConf};
 use fs::tail;
+use futures::stream;
+use futures::Stream;
 use futures::StreamExt;
 use http::batch::TimedRequestBatcherStreamExt;
 use http::client::{Client, ClientError, SendStatus};
 use http::retry::{retry, RetryItem};
-use k8s::metrics_stats_aggregator::MetricsStatsAggregator;
+use k8s::feature_leader::FeatureLeader;
+use k8s::feature_leader::FeatureLeaderMeta;
+use k8s::metrics_stats_stream::MetricsStatsStream;
 
 #[cfg(all(feature = "libjournald", target_os = "linux"))]
 use journald::libjournald::source::create_source;
@@ -28,11 +30,13 @@ use middleware::meta_rules::{MetaRules, MetaRulesConfig};
 use middleware::Executor;
 
 use pin_utils::pin_mut;
+use rand::Rng;
 use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::signal::*;
 use tokio::sync::Mutex;
+use tokio::time::sleep;
 use tokio::time::Duration;
 
 #[cfg(feature = "dep_audit")]
@@ -54,6 +58,9 @@ static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 pub static PKG_NAME: &str = env!("CARGO_PKG_NAME");
 #[no_mangle]
 pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
+
+pub const REPORTER_LEASE_NAME: &str = "logdna-agent-reporter-lease";
+pub const DEFAULT_CHECK_FOR_LEADER_S: i32 = 300;
 
 pub async fn _main(
     shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
@@ -140,7 +147,9 @@ pub async fn _main(
     let mut executor = Executor::new();
 
     let mut k8s_claimed_lease: Option<String> = None;
-    let (k8s_event_stream, metric_stats_source) = match create_k8s_client_default_from_env(
+    let mut metrics_stream_feature_meta: Option<FeatureLeaderMeta> = None;
+
+    let (k8s_event_stream, metric_stats_stream) = match create_k8s_client_default_from_env(
         user_agent.clone(),
     ) {
         Ok(k8s_client) => {
@@ -151,6 +160,7 @@ pub async fn _main(
                 k8s_client.clone(),
             )
             .await;
+
             if config.log.use_k8s_enrichment == K8sTrackingConf::Always
                 && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
             {
@@ -201,27 +211,43 @@ pub async fn _main(
                 }
             };
 
-            // TODO Leader Election
-            let metric_stats_source = match config.log.log_metric_server_stats {
+            let pod_name = std::env::var("POD_NAME").ok();
+            let namespace = std::env::var("NAMESPACE").ok();
+
+            let metric_stats_stream = match config.log.log_metric_server_stats {
                 K8sTrackingConf::Never => None,
                 K8sTrackingConf::Always => {
-                    match create_k8s_client_default_from_env(user_agent.clone()) {
-                        Ok(client) => {
-                            let metric_stats_aggregator = MetricsStatsAggregator::new(client);
-                            Some(
-                                metric_stats_aggregator
-                                    .start_metrics_call_task()
-                                    .map(StrictOrLazyLineBuilder::Strict),
-                            )
-                        }
-                        Err(e) => {
-                            warn!(
-                                "Unable to initialize kubernetes client for the reporter: {}",
-                                e
-                            );
-                            None
-                        }
+                    let lease_api = k8s::lease::get_k8s_lease_api(
+                        &namespace.clone().unwrap_or_default(),
+                        k8s_client.clone(),
+                    )
+                    .await;
+
+                    let leader = FeatureLeader::new(
+                        namespace.clone().unwrap_or_default(),
+                        REPORTER_LEASE_NAME.to_string(),
+                        pod_name.clone().unwrap_or_default(),
+                        lease_api,
+                    );
+
+                    let is_currently_leader = leader.try_claim_feature_leader().await;
+
+                    let leader_lease = leader.get_feature_leader_lease().await;
+                    let mut interval = DEFAULT_CHECK_FOR_LEADER_S;
+                    if let Ok(lease) = leader_lease {
+                        interval = lease
+                            .spec
+                            .map(|s| s.lease_duration_seconds.unwrap_or(0i32))
+                            .unwrap_or(0i32)
                     }
+
+                    metrics_stream_feature_meta = Some(FeatureLeaderMeta {
+                        interval,
+                        leader: leader.clone(),
+                        is_currently_leader,
+                    });
+
+                    Some(MetricsStatsStream::new(k8s_client.clone(), leader))
                 }
             };
 
@@ -238,9 +264,9 @@ pub async fn _main(
                 None => {
                     info!("No K8s lease claimed during startup.");
                 }
-            }
+            };
 
-            (k8s_event_stream, metric_stats_source)
+            (k8s_event_stream, metric_stats_stream)
         }
         Err(K8sError::K8sNotInClusterError()) => {
             debug!("Not in a k8s cluster, not initializing kube client");
@@ -372,6 +398,39 @@ pub async fn _main(
     } else {
         None
     };
+
+    let metric_stats_source: Option<_> =
+        if let Some(fut) = metric_stats_stream.map(|e| e.start_metrics_call_task()) {
+            Some(
+                // There is only a receiver if we aren't the leader.
+                stream::unfold(metrics_stream_feature_meta, |feature_meta| async move {
+                    if let Some(feature_meta) = feature_meta {
+                        if !feature_meta.is_currently_leader {
+                            loop {
+                                sleep(Duration::from_secs(
+                                    (feature_meta.interval as u64)
+                                        + (rand::thread_rng().gen_range(0..=4) * 10),
+                                ))
+                                .await;
+
+                                let result = feature_meta.leader.try_claim_feature_leader().await;
+
+                                if result {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    None
+                })
+                .chain(fut.await)
+                .filter_map(|x| async { Some(x) })
+                .map(StrictOrLazyLineBuilder::Strict),
+            )
+        } else {
+            None
+        };
 
     pin_mut!(fs_source);
     pin_mut!(k8s_event_source);

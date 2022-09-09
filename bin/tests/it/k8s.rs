@@ -1,5 +1,6 @@
 use std::net::{SocketAddr, ToSocketAddrs};
 
+use k8s::feature_leader::FeatureLeader;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
@@ -877,6 +878,87 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
         .unwrap();
 }
 
+async fn create_agent_feature_lease(client: Client, namespace: &str) {
+    let r = serde_json::from_value(serde_json::json!({
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "Role",
+        "metadata": {
+            "namespace": namespace,
+            "name": "logdna-agent-reporter-lease"
+        },
+        "rules": [
+            {
+                "apiGroups": [
+                    "coordination.k8s.io"
+                ],
+                "resources": [
+                    "leases"
+                ],
+                "verbs": [
+                    "get",
+                    "list",
+                    "create",
+                    "update",
+                    "patch"
+                ]
+            }
+        ]
+    }))
+    .unwrap();
+    let role_client: Api<Role> = Api::namespaced(client.clone(), namespace);
+    role_client
+        .create(&PostParams::default(), &r)
+        .await
+        .unwrap();
+
+    let rb = serde_json::from_value(serde_json::json!({
+        "apiVersion": "rbac.authorization.k8s.io/v1",
+        "kind": "RoleBinding",
+        "metadata": {
+            "name": "logdna-agent-reporter-lease",
+            "namespace": namespace
+        },
+        "roleRef": {
+            "apiGroup": "rbac.authorization.k8s.io",
+            "kind": "Role",
+            "name": "logdna-agent-reporter-lease"
+        },
+        "subjects": [
+            {
+                "kind": "ServiceAccount",
+                "name": namespace,
+                "namespace": namespace
+            }
+        ]
+    }))
+    .unwrap();
+    let rolebinding_client: Api<RoleBinding> = Api::namespaced(client.clone(), namespace);
+    rolebinding_client
+        .create(&PostParams::default(), &rb)
+        .await
+        .unwrap();
+
+    let l_zero = serde_json::from_value(serde_json::json!({
+        "apiVersion": "coordination.k8s.io/v1",
+        "kind": "Lease",
+        "metadata": {
+            "name": "logdna-agent-reporter-lease",
+            "labels": {
+                "process": "logdna-agent-reporter"
+            },
+        },
+        "spec": {
+            "leaseDurationSeconds": 5i32
+        }
+    }))
+    .unwrap();
+    let lease_client: Api<Lease> = Api::namespaced(client.clone(), namespace);
+    lease_client
+        .create(&PostParams::default(), &l_zero)
+        .await
+        .unwrap();
+}
+
 #[tokio::test]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_k8s_connection() {
@@ -1379,7 +1461,6 @@ async fn test_metric_stats_aggregator_enabled() {
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
     let client = Client::try_default().await.unwrap();
-
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
     let (server_result, _) = tokio::join!(server, async {
@@ -1400,6 +1481,8 @@ async fn test_metric_stats_aggregator_enabled() {
         .unwrap();
         nss.create(&PostParams::default(), &ns).await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        create_agent_feature_lease(client.clone(), agent_namespace).await;
 
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         let mock_ingester_socket_addr_str = create_mock_ingester_service(
@@ -1424,7 +1507,7 @@ async fn test_metric_stats_aggregator_enabled() {
             "always",
         )
         .await;
-        tokio::time::sleep(tokio::time::Duration::from_millis(60000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(45000)).await;
 
         let map = received.lock().await;
 
@@ -1486,6 +1569,8 @@ async fn test_metric_stats_aggregator_disabled() {
         nss.create(&PostParams::default(), &ns).await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
+        create_agent_feature_lease(client.clone(), agent_namespace).await;
+
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         let mock_ingester_socket_addr_str = create_mock_ingester_service(
             client.clone(),
@@ -1533,6 +1618,65 @@ async fn test_metric_stats_aggregator_disabled() {
         assert!(!found_cluster_log);
         assert!(!found_node_log);
         assert!(!found_pod_log);
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "k8s_tests"), ignore)]
+async fn test_feature_leader_grabbing_lease() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+
+    let (server, _received, shutdown_handle, _ingester_addr) = common::start_http_ingester();
+    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
+    let client = Client::try_default().await.unwrap();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
+    let (server_result, _) = tokio::join!(server, async {
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
+        let agent_name = "feature-leader";
+        let agent_namespace = "feature-leader";
+
+        // Create Agent
+        let nss: Api<Namespace> = Api::all(client.clone());
+        let ns = serde_json::from_value(serde_json::json!({
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {
+                "name": agent_namespace
+            }
+        }))
+        .unwrap();
+        nss.create(&PostParams::default(), &ns).await.unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        create_agent_feature_lease(client.clone(), agent_namespace).await;
+
+        let lease_name = "logdna-agent-reporter-lease".to_string();
+        let lease_api = k8s::lease::get_k8s_lease_api(agent_namespace, client.clone()).await;
+
+        let feature_leader = FeatureLeader::new(
+            agent_namespace.to_string(),
+            lease_name.clone(),
+            agent_name.to_string(),
+            lease_api,
+        );
+
+        let is_claim_success = feature_leader.try_claim_feature_leader().await;
+        assert!(is_claim_success);
+        let is_renewed = feature_leader.renew_feature_leader().await;
+        assert!(is_renewed);
+        let mut taken_over = feature_leader.try_claim_feature_leader().await;
+        assert!(!taken_over);
+        tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
+        taken_over = feature_leader.try_claim_feature_leader().await;
+        assert!(taken_over);
+
         shutdown_handle();
     });
 
