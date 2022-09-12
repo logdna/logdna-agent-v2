@@ -50,6 +50,7 @@ pin-utils = "0.1"
 regex = "1"
 auditable = { version = "0.1", optional = true }
 miniz_oxide = "0.5"
+rand = "0.8.5"
 
 [target.'cfg(any(unix, macos))'.dependencies]
 capctl = "0.2"
@@ -106,6 +107,7 @@ prometheus-parse = { git = "https://github.com/ccakes/prometheus-parse-rs", rev 
 float-cmp = "0.9.0"
 once_cell = "1.10"
 serial_test = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
 
 [target.'cfg(target_os="linux")'.dev-dependencies]
 pnet = "0.28"

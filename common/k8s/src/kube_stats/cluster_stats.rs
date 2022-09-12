@@ -12,10 +12,10 @@ pub struct ClusterStats {
     pub containers_waiting: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
-    pub cpu_allocatable: Option<u64>,
+    pub cpu_allocatable: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
-    pub cpu_capacity: Option<u64>,
+    pub cpu_capacity: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(with = "::serde_with::rust::unwrap_or_skip")]
     pub cpu_usage: Option<u32>,

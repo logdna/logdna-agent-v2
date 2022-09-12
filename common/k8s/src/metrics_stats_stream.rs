@@ -15,32 +15,45 @@ use std::collections::HashMap;
 use std::time::Duration;
 use tokio::time::sleep;
 
-use crate::kube_stats::{
-    cluster_stats::ClusterStats,
-    container_stats::ContainerStats,
-    controller_stats::ControllerStats,
-    extended_pod_stats::ExtendedPodStats,
-    node_stats::{NodeContainerStats, NodePodStats, NodeStats},
-    pod_stats::PodStats,
+use crate::{
+    feature_leader::FeatureLeader,
+    kube_stats::{
+        cluster_stats::ClusterStats,
+        container_stats::ContainerStats,
+        controller_stats::ControllerStats,
+        extended_pod_stats::ExtendedPodStats,
+        node_stats::{NodeContainerStats, NodePodStats, NodeStats},
+        pod_stats::PodStats,
+    },
 };
 
 pub static LOG_FILE_NAME: &str = "logdna-reporter";
 pub static GENERATE_REPORT_INTERVAL_MS: u64 = 30000;
 
-pub struct MetricsStatsAggregator {
+pub struct MetricsStatsStream {
     pub client: Client,
+    pub leader: FeatureLeader,
 }
 
-impl MetricsStatsAggregator {
-    pub fn new(client: Client) -> Self {
-        Self { client }
+impl MetricsStatsStream {
+    pub fn new(client: Client, leader: FeatureLeader) -> Self {
+        Self { client, leader }
     }
 
-    pub fn start_metrics_call_task(self) -> impl Stream<Item = LineBuilder> {
-        stream::unfold(self.client, |client| async {
+    pub async fn start_metrics_call_task(self) -> impl Stream<Item = LineBuilder> {
+        info!("Starting metics reporting task.");
+        stream::unfold((self.client, self.leader), |params| async {
             sleep(Duration::from_millis(GENERATE_REPORT_INTERVAL_MS)).await;
+            let is_renewed = params.1.renew_feature_leader().await;
+
+            // Somehow we lost being leader (this should never happen)
+            if !is_renewed {
+                debug!("lost leader");
+                return None;
+            }
+
             Some((
-                match self::process_reporter_info(client.clone()).await {
+                match self::process_reporter_info(params.0.clone()).await {
                     Ok((pods_strings, node_strings, cluster_stats_string)) => Some(
                         stream::iter(
                             pods_strings
@@ -59,7 +72,7 @@ impl MetricsStatsAggregator {
                         None
                     }
                 },
-                client,
+                params,
             ))
         })
         .filter_map(|x| async { x })
@@ -70,6 +83,7 @@ impl MetricsStatsAggregator {
 async fn process_reporter_info(
     client: Client,
 ) -> anyhow::Result<(Vec<String>, Vec<String>, String)> {
+    info!("Generating metrics report...");
     let pods = self::get_all_pods(client.clone()).await?;
     let nodes = self::get_all_nodes(client.clone()).await?;
     let pod_metrics = self::call_metric_api("PodMetrics", client.clone()).await?;
@@ -510,7 +524,7 @@ mod tests {
             extended_pod_stats::ExtendedPodStats,
             node_stats::{NodeContainerStats, NodePodStats, NodeStats},
         },
-        metrics_stats_aggregator::{process_nodes, process_pods},
+        metrics_stats_stream::{process_nodes, process_pods},
     };
 
     use super::build_cluster_stats;
