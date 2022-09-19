@@ -946,6 +946,7 @@ impl FileSystem {
                 .watch(&path, RecursiveMode::NonRecursive)
                 .map_err(|e| Error::Watch(Some(path.to_path_buf()), e))?;
         }
+        info!("watching {:?}", path);
         self.watch_descriptors
             .entry(path.to_path_buf())
             .or_insert_with(Vec::new)
