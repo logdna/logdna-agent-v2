@@ -608,7 +608,11 @@ async fn set_up_leader(
         interval = lease
             .spec
             .map(|s| s.lease_duration_seconds.unwrap_or(0i32))
-            .unwrap_or(0i32)
+            .unwrap_or(0i32);
+
+        if interval == 0 {
+            interval = DEFAULT_CHECK_FOR_LEADER_S;
+        }
     }
     FeatureLeaderMeta {
         interval,
