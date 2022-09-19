@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -eu -o pipefail
 #
+rm -rf "$SRC_ROOT/$BUILD_DIR/choco"
 mkdir -p "$SRC_ROOT/$BUILD_DIR/choco/tools"
 chmod 777 "$SRC_ROOT/$BUILD_DIR/choco"
 chmod 777 "$SRC_ROOT/$BUILD_DIR/choco/tools"
