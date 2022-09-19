@@ -509,7 +509,7 @@ msi-$(1): ## create signed exe(s) and msi in $(BUILD_DIR)/signed
 	set -eu; \
 	trap \"rm -f '$(BUILD_DIR)/$(CERT_FILE_NAME)' '$(BUILD_DIR)/$(CERT_FILE_NAME).pwd'\" EXIT; \
 	aws s3 cp s3://ecosys-vault/$(CERT_FILE_NAME) '$(BUILD_DIR)'; \
-	if [ $(1) == 'release' ]; then \
+	if [ "$(1)" == "release" ]; then \
 	  printenv -0 CSC_PASS > '$(BUILD_DIR)/$(CERT_FILE_NAME).pwd'; \
 	else \
 	  aws s3 cp s3://ecosys-vault/$(CERT_FILE_NAME).pwd '$(BUILD_DIR)'; \
@@ -522,6 +522,22 @@ msi-$(1): ## create signed exe(s) and msi in $(BUILD_DIR)/signed
 endef
 BUILD_TYPES=debug release
 $(foreach _type, $(BUILD_TYPES), $(eval $(call MSI_RULE,$(_type))))
+
+define TEST_MSI_RULE
+.PHONY: test-msi-$(1)
+test-msi-$(1): ## test msi created in $(BUILD_DIR)/signed
+	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	$(eval SRC_ROOT := $(CURDIR))
+	bash -c " \
+	set -eu; \
+	$(TOOLS_COMMAND) '--env BUILD_DIR=$(BUILD_DIR) --env SRC_ROOT=/build \
+	                  --env CERT_FILE_NAME=$(CERT_FILE_NAME) --env BUILD_VERSION=$(BUILD_VERSION) \
+	                  --env BUILD_NUMBER=$(BUILD_NUMBER) --env TARGET=$(TARGET)' \
+	                  'cd /build/packaging/windows/msi && . ./mk_env && ./mk_test'; \
+	"
+endef
+BUILD_TYPES=debug release
+$(foreach _type, $(BUILD_TYPES), $(eval $(call TEST_MSI_RULE,$(_type))))
 
 define CHOCO_RULE
 .PHONY: choco-$(1)
