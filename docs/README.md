@@ -177,7 +177,7 @@ configuration YAML file. The default configuration yaml file is located at `/etc
 
 Some variables do not have a corresponding Yaml path because they are only applicable to k8s deployments and therefor would use environment variables.
 
-For backward compatibility agent v1 configuration file format is still supported. For example - upgrade to Agent v2 on Windows can re-use v1 config file from previous installation as-is.
+For backward compatibility agent v1 configuration file format is still supported. For example - upgrade to Agent v2 on Windows can re-use v1 config file from previous installation as-is.  *The format of these v1 configuration parameter names are the same as the environment variables without `LOGDNA_` and in lower case.*
 
 | Environment Variable Name | Yaml Path Name | Description | Default |
 | ---|---|---|---|
