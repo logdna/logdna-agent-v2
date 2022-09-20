@@ -109,10 +109,10 @@ impl FeatureLeader {
                     }
                 }
             } else {
-                info!("Reporter lease is not properly configured")
+                info!("{} lease is not properly configured", self.feature)
             }
         } else {
-            info!("There is no reporter lease in this namespace")
+            info!("There is no {} lease in this namespace", self.feature)
         }
 
         false
