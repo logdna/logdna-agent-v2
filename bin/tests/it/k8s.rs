@@ -1511,7 +1511,7 @@ async fn test_metric_stats_aggregator_enabled() {
             "always",
         )
         .await;
-        tokio::time::sleep(tokio::time::Duration::from_millis(45000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(60000)).await;
 
         let map = received.lock().await;
 
