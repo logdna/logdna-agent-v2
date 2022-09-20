@@ -175,10 +175,14 @@ $ ARCH=aarch64 scripts/mk.image
 The agent accepts configuration from three different sources: environment variables, command line arguments and/or a
 configuration YAML file. The default configuration yaml file is located at `/etc/logdna/config.yaml`. Unless noted, when an option says *List of*, this would mean a comma separated list for Environment variable and a YAML array list for YAML.
 
+Some variables do not have a corresponding Yaml path because they are only applicable to k8s deployments and therefor would use environment variables.
+
+For backward compatibility agent v1 configuration file format is still supported. For example - upgrade to Agent v2 on Windows can re-use v1 config file from previous installation as-is.
+
 | Environment Variable Name | Yaml Path Name | Description | Default |
 | ---|---|---|---|
 |`LOGDNA_INGESTION_KEY`<br>**Deprecated**: `LOGDNA_AGENT_KEY`|`http.ingestion_key`|**Required**: The ingestion key associated with your LogDNA account||
-|`LOGDNA_CONFIG_FILE`<br>**Deprecated**: `DEFAULT_CONF_FILE`|n/a|Path to the configuration yaml|`/etc/logdna/config.yaml`|
+|`LOGDNA_CONFIG_FILE`<br>**Deprecated**: `DEFAULT_CONF_FILE`||Path to the configuration yaml|`/etc/logdna/config.yaml`|
 |`LOGDNA_HOST`<br>**Deprecated**: `LDLOGHOST`|`http.host`|The host to forward logs to|`logs.logdna.com`|
 |`LOGDNA_ENDPOINT`<br>**Deprecated**: `LDLOGPATH`|`http.endpoint`|The endpoint to forward logs to|`/logs/agent`|
 |`LOGDNA_USE_SSL`<br>**Deprecated**: `LDLOGSSL`|`http.use_ssl`|Whether to use a SSL for sending logs|`true`|
@@ -198,24 +202,24 @@ configuration YAML file. The default configuration yaml file is located at `/etc
 |`LOGDNA_REDACT_REGEX`|`log.line_redact_regex`|List of regex patterns used to mask matching sensitive information (such as PII) before sending it in the log line.||
 |`LOGDNA_JOURNALD_PATHS`|`journald.paths[]`|List of paths (directories or files) of journald paths to monitor||
 |`LOGDNA_LOOKBACK`|`log.lookback`|The lookback strategy on startup|`none`|
-|`LOGDNA_K8S_STARTUP_LEASE`|`startup.option`|Determines whether or not to use K8 leases on startup|`never`|
-|`LOGDNA_USE_K8S_LOG_ENRICHMENT`|`log.use_k8s_enrichment`|Determines whether the agent should query the K8s API to enrich log lines from other pods.|`always`|
-|`LOGDNA_LOG_K8S_EVENTS`|`log.log_k8s_events`|Determines whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
-|`LOGDNA_LOG_REPORTER_METRICS`|n/a|Determines whether or not metrics usage statistics is enabled.|`never`|
+|`LOGDNA_K8S_STARTUP_LEASE`||Determines whether or not to use K8 leases on startup|`never`|
+|`LOGDNA_USE_K8S_LOG_ENRICHMENT`||Determines whether the agent should query the K8s API to enrich log lines from other pods.|`always`|
+|`LOGDNA_LOG_K8S_EVENTS`||Determines whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
+|`LOGDNA_LOG_REPORTER_METRICS`||Determines whether or not metrics usage statistics is enabled.|`never`|
 |`LOGDNA_DB_PATH`|`log.db_path`|The directory in which the agent will store its state database. Note that the agent must have write access to the directory and be a persistent volume.|`/var/lib/logdna`|
 |`LOGDNA_METRICS_PORT`|`log.metrics_port`|The port number to expose a Prometheus endpoint target with the [agent internal metrics](INTERNAL_METRICS.md).||
 |`LOGDNA_INGEST_TIMEOUT`|`http.timeout`|The timeout of the API calls to the ingest API in milliseconds|`10000`|
 |`LOGDNA_INGEST_BUFFER_SIZE`|`http.body_size`|The size, in bytes, of the ingest data buffer used to batch log data with.|`2097152`|
 |`LOGDNA_RETRY_DIR`|`http.retry_dir`|The directory used by the agent to store data temporarily while retrying calls to the ingestion API.|`/tmp/logdna`|
 |`LOGDNA_RETRY_DISK_LIMIT`|`http.retry_disk_limit`|The maximum amount of disk space the agent will use to store retry data. The value can be the total number of bytes or a human representation of space using suffixes "KB", "MB", "GB" or "TB", e.g. `10 MB` If left unset, the agent will not limit disk usage. If set to `0`, no retry data will be stored on disk.||
-|`LOGDNA_META_APP`|n/a|Overrides/omits `APP` field in log line metadata. [Examples](META.md)||
-|`LOGDNA_META_HOST`|n/a|Overrides/omits `HOST` field in log line metadata.||
-|`LOGDNA_META_ENV`|n/a|Overrides/omits `ENV` field in log line metadata.||
-|`LOGDNA_META_FILE`|n/a|Overrides/omits `FILE` field in log line metadata.||
-|`LOGDNA_META_K8S_FILE`|n/a|Overrides/omits `FILE` field in k8s log line metadata. Follows `LOGDNA_META_FILE`.||
-|`LOGDNA_META_JSON`|n/a|Overrides/omits `META` filed in log line metadata.||
-|`LOGDNA_META_ANNOTATIONS`|n/a|Overrides specific kay-value-pairs inside `ANNOTATIONS` field in log line metadata.||
-|`LOGDNA_META_LABELS`|n/a|Overrides specific kay-value-pairs inside `LABELS` field in log line metadata.||
+|`LOGDNA_META_APP`||Overrides/omits `APP` field in log line metadata. [Examples](META.md)||
+|`LOGDNA_META_HOST`||Overrides/omits `HOST` field in log line metadata.||
+|`LOGDNA_META_ENV`||Overrides/omits `ENV` field in log line metadata.||
+|`LOGDNA_META_FILE`||Overrides/omits `FILE` field in log line metadata.||
+|`LOGDNA_META_K8S_FILE`||Overrides/omits `FILE` field in k8s log line metadata. Follows `LOGDNA_META_FILE`.||
+|`LOGDNA_META_JSON`||Overrides/omits `META` filed in log line metadata.||
+|`LOGDNA_META_ANNOTATIONS`||Overrides specific kay-value-pairs inside `ANNOTATIONS` field in log line metadata.||
+|`LOGDNA_META_LABELS`||Overrides specific kay-value-pairs inside `LABELS` field in log line metadata.||
 
 
 All regular expressions use [Perl-style syntax][regex-syntax] with case sensitivity by default. If you don't
