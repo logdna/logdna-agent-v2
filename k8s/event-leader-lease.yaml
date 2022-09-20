@@ -2,7 +2,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: logdna-agent-reporter-lease
+  name: logdna-agent-k8-events-lease
   namespace: logdna-agent
 rules:
 - apiGroups: ["coordination.k8s.io"]
