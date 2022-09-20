@@ -36,7 +36,10 @@ impl std::convert::TryFrom<PathBuf> for DirPathBuf {
 
         #[cfg(windows)]
         {
-            Ok(DirPathBuf { inner: path })
+            Ok(DirPathBuf {
+                inner: path,
+                postfix: None,
+            })
         }
     }
 }
@@ -59,7 +62,10 @@ impl std::convert::TryFrom<&Path> for DirPathBuf {
 
         #[cfg(windows)]
         {
-            Ok(DirPathBuf { inner: path.into() })
+            Ok(DirPathBuf {
+                inner: path.into(),
+                postfix: None,
+            })
         }
     }
 }
