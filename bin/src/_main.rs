@@ -1,7 +1,8 @@
+use futures::Stream;
+
 use config::{self, Config, DbPath, K8sLeaseConf, K8sTrackingConf};
 use fs::tail;
 use futures::stream;
-use futures::Stream;
 use futures::StreamExt;
 use http::batch::TimedRequestBatcherStreamExt;
 use http::client::{Client, ClientError, SendStatus};
@@ -42,6 +43,10 @@ use tokio::time::Duration;
 use crate::dep_audit;
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
 
+pub static REPORTER_LEASE_NAME: &str = "logdna-agent-reporter-lease";
+pub static K8S_EVENTS_LEASE_NAME: &str = "logdna-agent-k8-events-lease";
+pub static DEFAULT_CHECK_FOR_LEADER_S: i32 = 300;
+
 /// Debounce filesystem event
 static FS_EVENT_DELAY: Duration = Duration::from_millis(10);
 
@@ -57,9 +62,6 @@ static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 pub static PKG_NAME: &str = env!("CARGO_PKG_NAME");
 #[no_mangle]
 pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-pub const REPORTER_LEASE_NAME: &str = "logdna-agent-reporter-lease";
-pub const DEFAULT_CHECK_FOR_LEADER_S: i32 = 300;
 
 pub async fn _main(
     shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
@@ -148,134 +150,110 @@ pub async fn _main(
     let mut k8s_claimed_lease: Option<String> = None;
     let mut metrics_stream_feature_meta: Option<FeatureLeaderMeta> = None;
 
-    let (k8s_event_stream, metric_stats_stream) = match create_k8s_client_default_from_env(
-        user_agent.clone(),
-    ) {
-        Ok(k8s_client) => {
-            info!("K8s Config Startup Option: {:?}", &config.startup);
-            check_startup_lease_status(
-                Some(&config.startup),
-                &mut k8s_claimed_lease,
-                k8s_client.clone(),
-            )
-            .await;
+    let (k8s_event_stream, metric_stats_stream) =
+        match create_k8s_client_default_from_env(user_agent.clone()) {
+            Ok(k8s_client) => {
+                info!("K8s Config Startup Option: {:?}", &config.startup);
+                check_startup_lease_status(
+                    Some(&config.startup),
+                    &mut k8s_claimed_lease,
+                    k8s_client.clone(),
+                )
+                .await;
 
-            if config.log.use_k8s_enrichment == K8sTrackingConf::Always
-                && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
-            {
-                let node_name = std::env::var("NODE_NAME").ok();
-                match K8sMetadata::new(k8s_client.clone(), node_name.as_deref()).await {
-                    Ok((driver, v)) => {
-                        tokio::spawn(driver);
-                        executor.register(v);
-                        info!("Registered k8s metadata middleware");
-                    }
-                    Err(e) => {
-                        let message = format!(
-                            "The agent could not access k8s api after several attempts: {}",
-                            e
-                        );
-                        error!("{}", message);
-                        panic!("{}", message);
+                if config.log.use_k8s_enrichment == K8sTrackingConf::Always
+                    && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
+                {
+                    let node_name = std::env::var("NODE_NAME").ok();
+                    match K8sMetadata::new(k8s_client.clone(), node_name.as_deref()).await {
+                        Ok((driver, v)) => {
+                            tokio::spawn(driver);
+                            executor.register(v);
+                            info!("Registered k8s metadata middleware");
+                        }
+                        Err(e) => {
+                            let message = format!(
+                                "The agent could not access k8s api after several attempts: {}",
+                                e
+                            );
+                            error!("{}", message);
+                            panic!("{}", message);
+                        }
+                    };
+                }
+
+                let pod_name = std::env::var("POD_NAME").ok();
+                let namespace = std::env::var("NAMESPACE").ok();
+                let pod_label = std::env::var("POD_APP_LABEL").ok();
+
+                let k8s_event_stream = match config.log.log_k8s_events {
+                    K8sTrackingConf::Never => None,
+                    K8sTrackingConf::Always => {
+                        let k8s_event_stream_feature_meta = set_up_leader(
+                            &namespace,
+                            &k8s_client,
+                            &pod_name,
+                            K8S_EVENTS_LEASE_NAME.to_string(),
+                        )
+                        .await;
+
+                        Some(K8sEventStream::new(
+                            k8s_client.clone(),
+                            pod_name.unwrap_or_default(),
+                            namespace.unwrap_or_default(),
+                            pod_label.unwrap_or_default(),
+                            Arc::new(k8s_event_stream_feature_meta),
+                        ))
                     }
                 };
+
+                let pod_name = std::env::var("POD_NAME").ok();
+                let namespace = std::env::var("NAMESPACE").ok();
+
+                let metric_stats_stream = match config.log.log_metric_server_stats {
+                    K8sTrackingConf::Never => None,
+                    K8sTrackingConf::Always => {
+                        let created_metrics_stream_feature_meta = set_up_leader(
+                            &namespace,
+                            &k8s_client,
+                            &pod_name,
+                            REPORTER_LEASE_NAME.to_string(),
+                        )
+                        .await;
+
+                        let feature_leader = created_metrics_stream_feature_meta.leader.clone();
+                        metrics_stream_feature_meta = Some(created_metrics_stream_feature_meta);
+
+                        Some(MetricsStatsStream::new(k8s_client.clone(), feature_leader))
+                    }
+                };
+
+                match k8s_claimed_lease.as_ref() {
+                    Some(lease) => {
+                        info!("Releasing lease: {:?}", lease);
+                        let k8s_lease_api = k8s::lease::get_k8s_lease_api(
+                            &std::env::var("NAMESPACE").unwrap(),
+                            k8s_client.clone(),
+                        )
+                        .await;
+                        k8s::lease::release_lease(lease, &k8s_lease_api).await;
+                    }
+                    None => {
+                        info!("No K8s lease claimed during startup.");
+                    }
+                };
+
+                (k8s_event_stream, metric_stats_stream)
             }
-
-            let k8s_event_stream = match config.log.log_k8s_events {
-                K8sTrackingConf::Never => None,
-                K8sTrackingConf::Always => {
-                    let pod_name = std::env::var("POD_NAME").ok();
-                    let namespace = std::env::var("NAMESPACE").ok();
-                    let pod_label = std::env::var("POD_APP_LABEL").ok();
-                    match (pod_name, namespace, pod_label) {
-                        (Some(pod_name), Some(namespace), Some(pod_label)) => Some(
-                            K8sEventStream::new(k8s_client.clone(), pod_name, namespace, pod_label),
-                        ),
-                        (pn, n, pl) => {
-                            if pn.is_none() {
-                                warn!("Kubernetes event logging is configured, but POD_NAME env is not set")
-                            }
-                            if n.is_none() {
-                                warn!(
-                                        "Kubernetes event logging is configured, but NAMESPACE env is not set"
-                                    )
-                            }
-                            if pl.is_none() {
-                                warn!("Kubernetes event logging is configured, but POD_APP_LABEL env is not set")
-                            }
-                            warn!("Kubernetes event logging disabled");
-                            None
-                        }
-                    }
-                }
-            };
-
-            let pod_name = std::env::var("POD_NAME").ok();
-            let namespace = std::env::var("NAMESPACE").ok();
-
-            let metric_stats_stream = match config.log.log_metric_server_stats {
-                K8sTrackingConf::Never => None,
-                K8sTrackingConf::Always => {
-                    let lease_api = k8s::lease::get_k8s_lease_api(
-                        &namespace.clone().unwrap_or_default(),
-                        k8s_client.clone(),
-                    )
-                    .await;
-
-                    let leader = FeatureLeader::new(
-                        namespace.clone().unwrap_or_default(),
-                        REPORTER_LEASE_NAME.to_string(),
-                        pod_name.clone().unwrap_or_default(),
-                        lease_api,
-                    );
-
-                    let is_currently_leader = leader.try_claim_feature_leader().await;
-
-                    let leader_lease = leader.get_feature_leader_lease().await;
-                    let mut interval = DEFAULT_CHECK_FOR_LEADER_S;
-                    if let Ok(lease) = leader_lease {
-                        interval = lease
-                            .spec
-                            .map(|s| s.lease_duration_seconds.unwrap_or(0i32))
-                            .unwrap_or(0i32)
-                    }
-
-                    metrics_stream_feature_meta = Some(FeatureLeaderMeta {
-                        interval,
-                        leader: leader.clone(),
-                        is_currently_leader,
-                    });
-
-                    Some(MetricsStatsStream::new(k8s_client.clone(), leader))
-                }
-            };
-
-            match k8s_claimed_lease.as_ref() {
-                Some(lease) => {
-                    info!("Releasing lease: {:?}", lease);
-                    let k8s_lease_api = k8s::lease::get_k8s_lease_api(
-                        &std::env::var("NAMESPACE").unwrap(),
-                        k8s_client.clone(),
-                    )
-                    .await;
-                    k8s::lease::release_lease(lease, &k8s_lease_api).await;
-                }
-                None => {
-                    info!("No K8s lease claimed during startup.");
-                }
-            };
-
-            (k8s_event_stream, metric_stats_stream)
-        }
-        Err(K8sError::K8sNotInClusterError()) => {
-            debug!("Not in a k8s cluster, not initializing kube client");
-            (None, None)
-        }
-        Err(e) => {
-            warn!("Unable to initialize kubernetes client: {}", e);
-            (None, None)
-        }
-    };
+            Err(K8sError::K8sNotInClusterError()) => {
+                debug!("Not in a k8s cluster, not initializing kube client");
+                (None, None)
+            }
+            Err(e) => {
+                warn!("Unable to initialize kubernetes client: {}", e);
+                (None, None)
+            }
+        };
 
     match LineRules::new(
         &config.log.line_exclusion_regex,
@@ -376,11 +354,7 @@ pub async fn _main(
 
     let k8s_event_source: Option<_> = if let Some(fut) = k8s_event_stream.map(|e| e.event_stream())
     {
-        Some(
-            fut.await
-                .expect("Failed to create stream")
-                .map(StrictOrLazyLineBuilder::Strict),
-        )
+        Some(fut.await.map(StrictOrLazyLineBuilder::Strict))
     } else {
         None
     };
@@ -391,11 +365,11 @@ pub async fn _main(
                 // There is only a receiver if we aren't the leader.
                 stream::unfold(metrics_stream_feature_meta, |feature_meta| async move {
                     if let Some(feature_meta) = feature_meta {
-                        if !feature_meta.is_currently_leader {
+                        if !feature_meta.is_starting_leader {
                             loop {
                                 sleep(Duration::from_secs(
                                     (feature_meta.interval as u64)
-                                        + (rand::thread_rng().gen_range(0..=4) * 10),
+                                        + (rand::thread_rng().gen_range(0..=5) * 10),
                                 ))
                                 .await;
 
@@ -608,6 +582,42 @@ pub async fn _main(
         signal_name = get_signal() => {
             info!("Received {} signal, shutting down", signal_name)
         }
+    }
+}
+
+async fn set_up_leader(
+    namespace: &Option<String>,
+    k8s_client: &Kube_Client,
+    pod_name: &Option<String>,
+    feature: String,
+) -> FeatureLeaderMeta {
+    let lease_api =
+        k8s::lease::get_k8s_lease_api(&namespace.clone().unwrap_or_default(), k8s_client.clone())
+            .await;
+    let leader = FeatureLeader::new(
+        namespace.clone().unwrap_or_default(),
+        feature,
+        pod_name.clone().unwrap_or_default(),
+        lease_api,
+    );
+
+    let is_starting_leader = leader.try_claim_feature_leader().await;
+    let leader_lease = leader.get_feature_leader_lease().await;
+    let mut interval = DEFAULT_CHECK_FOR_LEADER_S;
+    if let Ok(lease) = leader_lease {
+        interval = lease
+            .spec
+            .map(|s| s.lease_duration_seconds.unwrap_or(0i32))
+            .unwrap_or(0i32);
+
+        if interval == 0 {
+            interval = DEFAULT_CHECK_FOR_LEADER_S;
+        }
+    }
+    FeatureLeaderMeta {
+        interval,
+        leader: leader.clone(),
+        is_starting_leader,
     }
 }
 

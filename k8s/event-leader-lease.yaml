@@ -1,0 +1,34 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: logdna-agent-k8-events-lease
+  namespace: logdna-agent
+rules:
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["get", "watch", "list", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: logdna-agent-k8-events-lease
+  namespace: logdna-agent
+subjects:
+- kind: ServiceAccount
+  name: logdna-agent
+  namespace: logdna-agent
+roleRef:
+  kind: Role
+  name: logdna-agent-k8-events-lease
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: coordination.k8s.io/v1
+kind: Lease
+metadata:
+  name: logdna-agent-k8-events-lease
+  namespace: logdna-agent
+  labels:
+    process: logdna-agent-k8-events
+spec:
+  leaseDurationSeconds: 45

@@ -870,13 +870,18 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
         .unwrap();
 }
 
-async fn create_agent_feature_lease(client: Client, namespace: &str) {
+async fn create_agent_feature_lease(
+    client: Client,
+    namespace: &str,
+    lease_name: &str,
+    process: &str,
+) {
     let r = serde_json::from_value(serde_json::json!({
         "apiVersion": "rbac.authorization.k8s.io/v1",
         "kind": "Role",
         "metadata": {
             "namespace": namespace,
-            "name": "logdna-agent-reporter-lease"
+            "name": lease_name
         },
         "rules": [
             {
@@ -907,13 +912,13 @@ async fn create_agent_feature_lease(client: Client, namespace: &str) {
         "apiVersion": "rbac.authorization.k8s.io/v1",
         "kind": "RoleBinding",
         "metadata": {
-            "name": "logdna-agent-reporter-lease",
+            "name": lease_name,
             "namespace": namespace
         },
         "roleRef": {
             "apiGroup": "rbac.authorization.k8s.io",
             "kind": "Role",
-            "name": "logdna-agent-reporter-lease"
+            "name": lease_name
         },
         "subjects": [
             {
@@ -934,9 +939,9 @@ async fn create_agent_feature_lease(client: Client, namespace: &str) {
         "apiVersion": "coordination.k8s.io/v1",
         "kind": "Lease",
         "metadata": {
-            "name": "logdna-agent-reporter-lease",
+            "name": lease_name,
             "labels": {
-                "process": "logdna-agent-reporter"
+                "process": process
             },
         },
         "spec": {
@@ -1125,6 +1130,15 @@ async fn test_k8s_events_logged() {
         }))
         .unwrap();
         nss.create(&PostParams::default(), &ns).await.unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+        create_agent_feature_lease(
+            client.clone(),
+            agent_namespace,
+            "logdna-agent-k8-events-lease",
+            "logdna-agent-k8-events",
+        )
+        .await;
 
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
@@ -1466,7 +1480,13 @@ async fn test_metric_stats_aggregator_enabled() {
         nss.create(&PostParams::default(), &ns).await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-        create_agent_feature_lease(client.clone(), agent_namespace).await;
+        create_agent_feature_lease(
+            client.clone(),
+            agent_namespace,
+            "logdna-agent-reporter-lease",
+            "logdna-agent-reporter",
+        )
+        .await;
 
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         let mock_ingester_socket_addr_str = create_mock_ingester_service(
@@ -1491,7 +1511,7 @@ async fn test_metric_stats_aggregator_enabled() {
             "always",
         )
         .await;
-        tokio::time::sleep(tokio::time::Duration::from_millis(45000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(60000)).await;
 
         let map = received.lock().await;
 
@@ -1553,7 +1573,13 @@ async fn test_metric_stats_aggregator_disabled() {
         nss.create(&PostParams::default(), &ns).await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-        create_agent_feature_lease(client.clone(), agent_namespace).await;
+        create_agent_feature_lease(
+            client.clone(),
+            agent_namespace,
+            "logdna-agent-reporter-lease",
+            "logdna-agent-reporter",
+        )
+        .await;
 
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         let mock_ingester_socket_addr_str = create_mock_ingester_service(
@@ -1639,7 +1665,13 @@ async fn test_feature_leader_grabbing_lease() {
         nss.create(&PostParams::default(), &ns).await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-        create_agent_feature_lease(client.clone(), agent_namespace).await;
+        create_agent_feature_lease(
+            client.clone(),
+            agent_namespace,
+            "logdna-agent-reporter-lease",
+            "logdna-agent-reporter",
+        )
+        .await;
 
         let lease_name = "logdna-agent-reporter-lease".to_string();
         let lease_api = k8s::lease::get_k8s_lease_api(agent_namespace, client.clone()).await;

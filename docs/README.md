@@ -294,6 +294,8 @@ Take a look at enabling journald monitoring for [Kubernetes](KUBERNETES.md#colle
 
 A Kubernetes event is exactly what it sounds like: a resource type that is automatically generated when state changes occur in other resources, or when errors or other messages manifest across the system. Monitoring events is useful for debugging your Kubernetes cluster.
 
+Only one pod in a cluster will report on k8 events for the entire cluster - the leader election process leverages leases. please see the event-leader-leases.yaml file in the k8s folder for the lease specifications, permissions.
+
 By default, the LogDNA agent does not capture Kubernetes events (and OpenShift events, as well, since OpenShift is built on top of Kubernetes clusters).
 
 To control whether the LogDNA agent collects Kubernetes events, configure the `LOGDNA_LOG_K8S_EVENTS` environment variable using one of these two values:
@@ -310,7 +312,7 @@ With this enabled the agent will pull from the kubernetes metrics-server, this a
 
 Reach out to Mezmo to get this feature enabled on the web application in addition to this configuration.
 
-Only one pod in a cluster will report metrics statistics for the entire cluster - the leader election process leverages leases. please see the leader-election-leases.yaml file in the k8s folder for the lease specifications, permissions.
+Only one pod in a cluster will report metrics statistics for the entire cluster - the leader election process leverages leases. please see the reporter-leader-leases.yaml file in the k8s folder for the lease specifications, permissions.
 
 To control whether the LogDNA agent reports usage statistics use the `LOGDNA_LOG_REPORTER_METRICS` environment variable with one of these two values:
 
