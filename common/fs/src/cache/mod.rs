@@ -298,7 +298,7 @@ impl FileSystem {
                 // Add missing directory to Rules
                 add_initial_dir_rules(&mut initial_dir_rules, &full_missing_dirpathbuff);
 
-                info!("Adding {:?} to missing directory watcher", path.inner);
+                info!("adding {:?} to missing directory watcher", path.inner);
                 missing_dirs.push(full_missing_path);
                 missing_dir_watcher
                     .watch(&path.inner, RecursiveMode::NonRecursive)
