@@ -1573,7 +1573,6 @@ async fn test_line_redact() {
     test_line_rules(None, None, redact, to_write, expected).await;
 }
 
-#[ignore]
 #[tokio::test]
 async fn test_directory_created_after_initialization() {
     let _ = env_logger::Builder::from_default_env().try_init();
@@ -1591,6 +1590,10 @@ async fn test_directory_created_after_initialization() {
         let file_path = future_dir.join("test.log");
         std::fs::create_dir(&future_dir).unwrap();
         File::create(&file_path).unwrap();
+
+        // Wait for file to be picked up by agent
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
         common::append_to_file(&file_path, 10, 5).unwrap();
         common::force_client_to_flush(&future_dir).await;
 
