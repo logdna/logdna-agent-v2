@@ -26,9 +26,9 @@ roleRef:
 apiVersion: coordination.k8s.io/v1
 kind: Lease
 metadata:
-  name: logdna-agent-k8-events-lease
+  name: logdna-agent-reporter-lease
   namespace: logdna-agent
   labels:
-    process: logdna-agent-k8s-event
+    process: logdna-agent-reporter
 spec:
-  leaseDurationSeconds: 45
+  leaseDurationSeconds: 300

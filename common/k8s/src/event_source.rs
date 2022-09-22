@@ -1,39 +1,32 @@
-use core::cmp::{Ord, Ordering};
+use crate::errors::K8sEventStreamError;
+use crate::feature_leader::{FeatureLeader, FeatureLeaderMeta};
+use crate::restarting_stream::{RequiresRestart, RestartingStream};
+use backoff::ExponentialBackoff;
+use chrono::{Duration, Utc};
+use core::time;
+use crossbeam::atomic::AtomicCell;
+use futures::{stream::try_unfold, Stream, StreamExt, TryStreamExt};
+use http::types::body::LineBuilder;
+use k8s_openapi::api::core::v1::{Event, ObjectReference, Pod};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
+use kube::api::ListParams;
+use kube::ResourceExt;
+use kube::{
+    runtime::{watcher, WatchStreamExt},
+    Api, Client,
+};
+use metrics::Metrics;
+use pin_utils::pin_mut;
+use rand::Rng;
+use regex::Regex;
+use serde::Serialize;
 use std::convert::TryInto;
 use std::convert::{Into, TryFrom};
 use std::num::NonZeroI64;
 use std::sync::Arc;
+use tokio::time::sleep;
 
-use backoff::ExponentialBackoff;
-use crossbeam::atomic::AtomicCell;
-
-use chrono::Duration;
-
-use futures::{stream::try_unfold, Stream, StreamExt, TryStreamExt};
-
-use k8s_openapi::api::core::v1::{Event, ObjectReference, Pod};
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
-use kube::api::ListParams;
-use kube::{
-    runtime::{watcher, WatchStreamExt},
-    Api, Client, Config,
-};
-
-use pin_utils::pin_mut;
-
-use serde::Serialize;
-
-use http::types::body::LineBuilder;
-
-use metrics::Metrics;
-
-use crate::errors::{K8sError, K8sEventStreamError};
-
-use crate::restarting_stream::{RequiresRestart, RestartingStream};
-
-use regex::Regex;
-
-const CONTAINER_NAME: &str = "logdna-agent";
+pub static K8S_EVENTS_LEASE_NAME: &str = "logdna-agent-k8-events-lease";
 
 lazy_static! {
     static ref APP_REGEX: Regex = {
@@ -227,6 +220,7 @@ impl TryFrom<EventLog> for LineBuilder {
 
 pub struct K8sEventStream {
     pub client: Client,
+    leader_meta: Arc<FeatureLeaderMeta>,
     pod_name: String,
     namespace: String,
     pod_label: String,
@@ -238,79 +232,20 @@ pub enum StreamElem<T> {
 }
 
 impl K8sEventStream {
-    pub fn new(client: Client, pod_name: String, namespace: String, pod_label: String) -> Self {
+    pub fn new(
+        client: Client,
+        pod_name: String,
+        namespace: String,
+        pod_label: String,
+        leader_meta: Arc<FeatureLeaderMeta>,
+    ) -> Self {
         Self {
             client,
+            leader_meta,
             pod_name,
             namespace,
             pod_label,
         }
-    }
-
-    pub fn try_default(
-        pod_name: String,
-        namespace: String,
-        pod_label: String,
-    ) -> Result<Self, K8sError> {
-        let config = match Config::from_cluster_env() {
-            Ok(v) => v,
-            Err(e) => {
-                return Err(K8sError::InitializationError(format!(
-                    "unable to get cluster configuration info: {}",
-                    e
-                )))
-            }
-        };
-        Ok(Self::new(
-            Client::try_from(config)?,
-            pod_name,
-            namespace,
-            pod_label,
-        ))
-    }
-
-    async fn get_oldest_pod(
-        api: Api<Pod>,
-        label: &str,
-    ) -> Result<Option<String>, K8sEventStreamError> {
-        let lp = ListParams::default().labels(&format!("app.kubernetes.io/name={}", label)); // filter instances by label
-        let pod_list = api.list(&lp).await.map_err(K8sEventStreamError::K8sError)?;
-        let oldest_post = pod_list
-            .iter()
-            .filter_map(|p| -> Option<(Option<u64>, &Time, &str)> {
-                if let (pod_gen, Some(pod_started_at), Some(pod_name)) = (
-                    // get pod generation, it will be there if there is an update strategy
-                    p.metadata.labels.as_ref().and_then(|l| {
-                        l.get("pod-template-generation")
-                            .and_then(|g| g.parse::<u64>().ok())
-                    }),
-                    get_pod_started_at(p),
-                    p.metadata.name.as_ref(),
-                ) {
-                    Some((pod_gen, pod_started_at, pod_name))
-                } else {
-                    None
-                }
-            })
-            // Keeps oldest pod
-            .reduce(
-                move |(gen, started_at, name),
-                      (o_gen, o_started_at, o_name)|
-                      -> (Option<u64>, &Time, &str) {
-                    // For our purposes later generations should sort earlier than later ones
-                    if Ordering::reverse(Ord::cmp(&gen, &o_gen))
-                        .then(Ord::cmp(started_at, o_started_at))
-                        .then(Ord::cmp(name, o_name))
-                        == Ordering::Less
-                    {
-                        (o_gen, o_started_at, o_name)
-                    } else {
-                        (gen, started_at, name)
-                    }
-                },
-            )
-            .map(|(_, _, name)| name.to_string());
-        Ok(oldest_post)
     }
 
     fn waiter_stream<T>(
@@ -319,6 +254,7 @@ impl K8sEventStream {
         pod_label: impl Into<String>,
         client: Arc<Client>,
         delete_time: Arc<AtomicCell<Option<NonZeroI64>>>,
+        leader_meta: Arc<FeatureLeaderMeta>,
     ) -> impl Stream<Item = Result<StreamElem<T>, K8sEventStreamError>> {
         let pod_name = pod_name.into();
         let namespace = namespace.into();
@@ -329,6 +265,7 @@ impl K8sEventStream {
             let namespace = namespace.clone();
             let pod_label = pod_label.clone();
             let client = client.clone();
+            let leader_meta = leader_meta.clone();
 
             let delete_time = delete_time.clone();
             let pods: Api<Pod> = Api::namespaced(client.as_ref().clone(), &namespace);
@@ -342,55 +279,56 @@ impl K8sEventStream {
                     Break,
                 }
 
-                if let Some(oldest_pod_name) =
-                    K8sEventStream::get_oldest_pod(pods.clone(), &pod_label).await?
-                {
-                    if oldest_pod_name == pod_name {
-                        info!("begin logging k8s events");
-                        Ok(None)
-                    } else {
-                        info!("watching pod {}", oldest_pod_name);
-                        let params = ListParams::default()
-                            .timeout(30)
-                            .labels(&format!("app.kubernetes.io/name={}", &pod_label)) // filter instances by label
-                            .fields(&format!("metadata.name={}", oldest_pod_name)); // filter instances by label
-                        let stream = watcher(pods.clone(), params)
-                            .skip_while(|e| {
-                                let matched = matches!(e, Ok(watcher::Event::<Pod>::Restarted(_)));
-                                async move { matched }
-                            })
-                            .map({
-                                move |e| match e {
-                                    Ok(watcher::Event::Deleted(e)) => {
-                                        info!("previous k8s event logger deleted");
-                                        delete_time.store(
-                                            e.metadata
-                                                .deletion_timestamp
-                                                .map(|t| {
-                                                    info!(
-                                                        "Ignoring k8s events before {}",
-                                                        t.0 - chrono::Duration::seconds(2)
-                                                    );
-                                                    NonZeroI64::new(t.0.timestamp() - 2)
-                                                })
-                                                .flatten(),
-                                        );
-                                        Cont::Break
-                                    }
-                                    _ => Cont::Cont,
-                                }
-                            })
-                            .filter_map(|e| async move {
-                                match e {
-                                    Cont::Cont => None,
-                                    Cont::Break => Some(((), ())),
-                                }
-                            });
-                        pin_mut!(stream);
-                        Ok(stream.next().await)
-                    }
+                let leader_pod = get_leader_pod_name(&leader_meta).await;
+
+                if leader_pod == pod_name {
+                    info!("begin logging k8s events");
+                    start_renewal_task(leader_meta.leader.clone());
+                    Ok(None)
                 } else {
-                    Ok(Some(((), ())))
+                    let params = ListParams::default()
+                        .timeout(30)
+                        .labels(&format!("app.kubernetes.io/name={}", &pod_label));
+                    let stream = watcher(pods.clone(), params)
+                        .skip_while(|e| {
+                            let matched = matches!(e, Ok(watcher::Event::<Pod>::Restarted(_)));
+                            async move { matched }
+                        })
+                        .map({
+                            move |e| match e {
+                                Ok(watcher::Event::Deleted(e)) => {
+                                    info!("Agent Down {}", e.name());
+
+                                    futures::executor::block_on(check_for_leader(
+                                        leader_meta.clone(),
+                                        e.name(),
+                                    ));
+
+                                    delete_time.store(
+                                        e.metadata
+                                            .deletion_timestamp
+                                            .map(|t| {
+                                                info!(
+                                                    "Ignoring k8s events before {}",
+                                                    t.0 - chrono::Duration::seconds(2)
+                                                );
+                                                NonZeroI64::new(t.0.timestamp() - 2)
+                                            })
+                                            .flatten(),
+                                    );
+                                    Cont::Break
+                                }
+                                _ => Cont::Cont,
+                            }
+                        })
+                        .filter_map(|e| async move {
+                            match e {
+                                Cont::Cont => None,
+                                Cont::Break => Some(((), ())),
+                            }
+                        });
+                    pin_mut!(stream);
+                    Ok(stream.next().await)
                 }
             }
         };
@@ -425,19 +363,29 @@ impl K8sEventStream {
             .filter({
                 move |event| {
                     let latest_event_time = latest_event_time.clone();
+
                     let earliest = previous_event_logger_delete_time.clone();
+
                     let ret = latest_event_time
                         .load()
                         .or_else(|| earliest.load())
                         .and_then(|earliest| {
                             let earliest =
                                 chrono::NaiveDateTime::from_timestamp(earliest.into(), 0);
+
                             event.as_ref().ok().and_then(|e| {
-                                e.last_timestamp
+                                if e.creation_timestamp().is_none()
+                                    && latest_event_time.load().is_none()
+                                {
+                                    return Some(false);
+                                }
+
+                                e.creation_timestamp()
                                     .as_ref()
                                     .map(|l| earliest < l.0.naive_utc())
                             })
                         });
+
                     async move { ret.unwrap_or(true) }
                 }
             })
@@ -445,7 +393,7 @@ impl K8sEventStream {
                 match event.map(|e| {
                     let latest_event_time = latest_event_time_w.clone();
                     let this_event_time = e
-                        .last_timestamp
+                        .creation_timestamp()
                         .as_ref()
                         .and_then(|t| NonZeroI64::new(t.0.timestamp() - 2));
 
@@ -453,14 +401,21 @@ impl K8sEventStream {
                         Metrics::k8s().increment_lines();
                         l
                     });
-                    if ret.is_ok() {
-                        latest_event_time.store(this_event_time)
+
+                    if ret.is_ok() && this_event_time.is_some() {
+                        latest_event_time.store(this_event_time);
                     };
                     ret
                 }) {
                     Ok(Ok(l)) => Ok(StreamElem::Event(l)),
-                    Ok(Err(e)) => Err(e),
-                    Err(e) => Err(e),
+                    Ok(Err(e)) => {
+                        latest_event_time_w.store(NonZeroI64::new(Utc::now().timestamp()));
+                        Err(e)
+                    }
+                    Err(e) => {
+                        latest_event_time_w.store(NonZeroI64::new(Utc::now().timestamp()));
+                        Err(e)
+                    }
                 }
             })
     }
@@ -471,6 +426,7 @@ impl K8sEventStream {
         pod_label: impl Into<String>,
         client: Arc<Client>,
         latest_event_time: Arc<AtomicCell<Option<NonZeroI64>>>,
+        leader_meta: Arc<FeatureLeaderMeta>,
     ) -> impl Stream<Item = Result<LineBuilder, K8sEventStreamError>> {
         let pod_name = pod_name.into();
         let namespace = namespace.into();
@@ -484,6 +440,7 @@ impl K8sEventStream {
             pod_label,
             client.clone(),
             previous_event_logger_delete_time.clone(),
+            leader_meta,
         );
 
         let event_stream = K8sEventStream::active_stream(
@@ -501,7 +458,7 @@ impl K8sEventStream {
         })
     }
 
-    pub async fn event_stream(self) -> Result<impl Stream<Item = LineBuilder> + Send, String> {
+    pub async fn event_stream(self) -> impl Stream<Item = LineBuilder> {
         let client = std::sync::Arc::new(self.client.clone());
 
         let latest_event_time: Arc<AtomicCell<Option<NonZeroI64>>> =
@@ -519,6 +476,7 @@ impl K8sEventStream {
                 pod_label.clone(),
                 _client.clone(),
                 _latest_event_time.clone(),
+                self.leader_meta.clone(),
             )
         };
 
@@ -530,26 +488,63 @@ impl K8sEventStream {
             _ => RequiresRestart::No,
         });
 
-        Ok(restarting_stream.await.filter_map(|e| async { e.ok() }))
+        restarting_stream.await.filter_map(|e| async { e.ok() })
     }
 }
 
-fn get_pod_started_at(p: &Pod) -> Option<&Time> {
-    // WTB do notation
-    p.status.as_ref().and_then(|s| {
-        s.container_statuses.as_ref().and_then(|cs| {
-            cs.iter()
-                .filter_map(|c| {
-                    if c.name == CONTAINER_NAME && c.ready {
-                        Some(c.state.as_ref().and_then(|st| {
-                            st.running.as_ref().and_then(|rs| rs.started_at.as_ref())
-                        }))
-                    } else {
-                        None
-                    }
-                })
-                .next()
-                .flatten()
-        })
-    })
+async fn get_leader_pod_name(leader_meta: &Arc<FeatureLeaderMeta>) -> String {
+    let lease = leader_meta.leader.get_feature_leader_lease().await;
+
+    if let Ok(lease) = lease {
+        if let Some(spec) = lease.spec {
+            if let Some(holder) = spec.holder_identity {
+                return holder;
+            }
+        }
+    }
+
+    String::new()
+}
+
+fn start_renewal_task(leader: FeatureLeader) {
+    tokio::spawn(async move {
+        loop {
+            sleep(time::Duration::from_secs(15)).await;
+            let result = leader.renew_feature_leader().await;
+
+            // lost leader
+            if !result {
+                break;
+            }
+        }
+    });
+}
+
+async fn check_for_leader(leader_meta: Arc<FeatureLeaderMeta>, deleted_pod: String) {
+    loop {
+        sleep(time::Duration::from_millis(
+            20000 + (rand::thread_rng().gen_range(1000..=10000)),
+        ))
+        .await;
+
+        let leader_pod = get_leader_pod_name(&leader_meta).await;
+
+        if deleted_pod != leader_pod {
+            break;
+        }
+
+        let result = leader_meta.leader.try_claim_feature_leader().await;
+
+        if result {
+            start_renewal_task(leader_meta.leader.clone());
+            break;
+        } else {
+            let current_lease_name = get_leader_pod_name(&leader_meta).await;
+
+            // another pod grabbed the lease
+            if leader_pod != current_lease_name {
+                break;
+            }
+        }
+    }
 }

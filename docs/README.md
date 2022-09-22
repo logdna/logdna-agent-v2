@@ -173,52 +173,53 @@ $ ARCH=aarch64 scripts/mk.image
 ### Options
 
 The agent accepts configuration from three different sources: environment variables, command line arguments and/or a
-configuration YAML file. The default configuration yaml file is located at `/etc/logdna/config.yaml`. The following
-options are available:
+configuration YAML file. The default configuration yaml file is located at `/etc/logdna/config.yaml`. Unless noted, when an option says *List of*, this would mean a comma separated list for Environment variable and a YAML array list for YAML.
 
-| Variable Name(s) | Description | Default |
-| ---|---|---|
-|`LOGDNA_INGESTION_KEY`<br>**Deprecated**: `LOGDNA_AGENT_KEY`|**Required**: The ingestion key associated with your LogDNA account||
-|`LOGDNA_CONFIG_FILE`<br>**Deprecated**: `DEFAULT_CONF_FILE`|Path to the configuration yaml|`/etc/logdna/config.yaml`|
-|`LOGDNA_HOST`<br>**Deprecated**: `LDLOGHOST`|The host to forward logs to|`logs.logdna.com`|
-|`LOGDNA_ENDPOINT`<br>**Deprecated**: `LDLOGPATH`|The endpoint to forward logs to|`/logs/agent`|
-|`LOGDNA_USE_SSL`<br>**Deprecated**: `LDLOGSSL`|Whether to use a SSL for sending logs|`true`|
-|`LOGDNA_USE_COMPRESSION`<br>**Deprecated**: `COMPRESS`|Whether to compress logs before sending|`true`|
-|`LOGDNA_GZIP_LEVEL`<br>**Deprecated**: `GZIP_COMPRESS_LEVEL`|If compression is enabled, this is the gzip compression level to use|`2`|
-|`LOGDNA_HOSTNAME`|The hostname metadata to attach to lines forwarded from this agent||
-|`LOGDNA_IP`|The IP metadata to attach to lines forwarded from this agent||
-|`LOGDNA_TAGS`|Comma separated list of tags metadata to attach to lines forwarded from this agent||
-|`LOGDNA_MAC`|The MAC metadata to attach to lines forwarded from this agent||
-|`LOGDNA_LOG_DIRS`<br>**Deprecated**: `LOG_DIRS`|Comma separated list of folders to recursively monitor for log events|`/var/log/`|
-|`LOGDNA_EXCLUSION_RULES`<br>**Deprecated**: `LOGDNA_EXCLUDE`|Comma separated list of glob patterns to exclude files from monitoring <sup>1</sup>|`/var/log/wtmp,/var/log/btmp,/var/log/utmp,` <br>`/var/log/wtmpx,/var/log/btmpx,/var/log/utmpx,` <br>`/var/log/asl/**,/var/log/sa/**,/var/log/sar*,` <br>`/var/log/tallylog,/var/log/fluentd-buffers/**/*,` <br>`/var/log/pods/**/*`|
-|`LOGDNA_EXCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_EXCLUDE_REGEX`|Comma separated list of regex patterns to exclude files from monitoring||
-|`LOGDNA_INCLUSION_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE`|Comma separated list of glob patterns to includes files for monitoring <sup>1</sup>|`*.log`|
-|`LOGDNA_INCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE_REGEX`|Comma separated list of regex patterns to include files from monitoring||
-|`LOGDNA_LINE_EXCLUSION_REGEX`|Comma separated list of regex patterns to exclude log lines. When set, the Agent will NOT send log lines that match any of these patterns.||
-|`LOGDNA_LINE_INCLUSION_REGEX`|Comma separated list of regex patterns to include log lines. When set, the Agent will send ONLY log lines that match any of these patterns.||
-|`LOGDNA_K8S_METADATA_LINE_EXCLUSION`|Comma separated list of Kubernetes selectors to exclude log lines associated with various Kubernetes resources||
-|`LOGDNA_K8S_METADATA_LINE_INCLUSION`|Comma separated list of Kubernetes selectors to include log lines associated with various Kubernetes resources||
-|`LOGDNA_REDACT_REGEX`|Comma separated list of regex patterns used to mask matching sensitive information (such as PII) before sending it in the log line.||
-|`LOGDNA_JOURNALD_PATHS`|Comma separated list of paths (directories or files) of journald paths to monitor||
-|`LOGDNA_LOOKBACK`|The lookback strategy on startup|`none`|
-|`LOGDNA_K8S_STARTUP_LEASE`|Determines whether or not to use K8 leases on startup|`never`|
-|`LOGDNA_USE_K8S_LOG_ENRICHMENT`|Determines whether the agent should query the K8s API to enrich log lines from other pods.|`always`|
-|`LOGDNA_LOG_K8S_EVENTS`|Determines whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
-|`LOGDNA_LOG_REPORTER_METRICS`|Determines whether or not metrics usage statistics is enabled.|`never`|
-|`LOGDNA_DB_PATH`|The directory in which the agent will store its state database. Note that the agent must have write access to the directory and be a persistent volume.|`/var/lib/logdna`|
-|`LOGDNA_METRICS_PORT`|The port number to expose a Prometheus endpoint target with the [agent internal metrics](INTERNAL_METRICS.md).||
-|`LOGDNA_INGEST_TIMEOUT`|The timeout of the API calls to the ingest API in milliseconds|`10000`|
-|`LOGDNA_INGEST_BUFFER_SIZE`|The size, in bytes, of the ingest data buffer used to batch log data with.|`2097152`|
-|`LOGDNA_RETRY_DIR`|The directory used by the agent to store data temporarily while retrying calls to the ingestion API.|`/tmp/logdna`|
-|`LOGDNA_RETRY_DISK_LIMIT`|The maximum amount of disk space the agent will use to store retry data. The value can be the total number of bytes or a human representation of space using suffixes "KB", "MB", "GB" or "TB", e.g. `10 MB` If left unset, the agent will not limit disk usage. If set to `0`, no retry data will be stored on disk.||
-|`LOGDNA_META_APP`|Overrides/omits `APP` field in log line metadata. [Examples](META.md)||
-|`LOGDNA_META_HOST`|Overrides/omits `HOST` field in log line metadata.||
-|`LOGDNA_META_ENV`|Overrides/omits `EMV` field in log line metadata.||
-|`LOGDNA_META_FILE`|Overrides/omits `FILE` field in log line metadata.||
-|`LOGDNA_META_K8S_FILE`|Overrides/omits `FILE` field in k8s log line metadata. Follows `LOGDNA_META_FILE`.||
-|`LOGDNA_META_JSON`|Overrides/omits `META` filed in log line metadata.||
-|`LOGDNA_META_ANNOTATIONS`|Overrides specific kay-value-pairs inside `ANNOTATIONS` field in log line metadata.||
-|`LOGDNA_META_LABELS`|Overrides specific kay-value-pairs inside `LABELS` field in log line metadata.||
+Some variables do not have a corresponding Yaml path because they are only applicable to k8s deployments and therefor would use environment variables.
+
+For backward compatibility agent v1 configuration file format is still supported. For example - upgrade to Agent v2 on Windows can re-use v1 config file from previous installation as-is.  *The format of these v1 configuration parameter names are the same as the environment variables without `LOGDNA_` and in lower case.*
+
+| Environment Variable Name | Yaml Path Name | Description | Default |
+| ---|---|---|---|
+|`LOGDNA_INGESTION_KEY`<br>**Deprecated**: `LOGDNA_AGENT_KEY`|`http.ingestion_key`|**Required**: The ingestion key associated with your LogDNA account||
+|`LOGDNA_CONFIG_FILE`<br>**Deprecated**: `DEFAULT_CONF_FILE`||Path to the configuration yaml|`/etc/logdna/config.yaml`|
+|`LOGDNA_HOST`<br>**Deprecated**: `LDLOGHOST`|`http.host`|The host to forward logs to|`logs.logdna.com`|
+|`LOGDNA_ENDPOINT`<br>**Deprecated**: `LDLOGPATH`|`http.endpoint`|The endpoint to forward logs to|`/logs/agent`|
+|`LOGDNA_USE_SSL`<br>**Deprecated**: `LDLOGSSL`|`http.use_ssl`|Whether to use a SSL for sending logs|`true`|
+|`LOGDNA_USE_COMPRESSION`<br>**Deprecated**: `COMPRESS`|`http.use_compression`|Whether to compress logs before sending|`true`|
+|`LOGDNA_GZIP_LEVEL`<br>**Deprecated**: `GZIP_COMPRESS_LEVEL`|`http.gzip_level`|If compression is enabled, this is the gzip compression level to use|`2`|
+|`LOGDNA_HOSTNAME`|`http.params.hostname`|The hostname metadata to attach to lines forwarded from this agent||
+|`LOGDNA_IP`|`http.params.ip`|The IP metadata to attach to lines forwarded from this agent||
+|`LOGDNA_TAGS`|`http.params.tags`|Comma separated list of tags metadata to attach to lines forwarded from this agent||
+|`LOGDNA_MAC`|`http.params.mac`|The MAC metadata to attach to lines forwarded from this agent||
+|`LOGDNA_LOG_DIRS`<br>**Deprecated**: `LOG_DIRS`|`log.dirs[]`|List of folders to recursively monitor for log events|`/var/log/`|
+|`LOGDNA_EXCLUSION_RULES`<br>**Deprecated**: `LOGDNA_EXCLUDE`|`log.exclude.glob[]`|List of glob patterns to exclude files from monitoring <sup>1</sup>|`/var/log/wtmp,/var/log/btmp,/var/log/utmp,` <br>`/var/log/wtmpx,/var/log/btmpx,/var/log/utmpx,` <br>`/var/log/asl/**,/var/log/sa/**,/var/log/sar*,` <br>`/var/log/tallylog,/var/log/fluentd-buffers/**/*,` <br>`/var/log/pods/**/*`|
+|`LOGDNA_EXCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_EXCLUDE_REGEX`|`log.exclude.regex[]`|List of regex patterns to exclude files from monitoring||
+|`LOGDNA_INCLUSION_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE`|`log.include.glob[]`|List of glob patterns to includes files for monitoring <sup>1</sup>|`*.log`|
+|`LOGDNA_INCLUSION_REGEX_RULES`<br>**Deprecated**: `LOGDNA_INCLUDE_REGEX`|`log.include.regex[]`|List of regex patterns to include files from monitoring||
+|`LOGDNA_LINE_EXCLUSION_REGEX`|`log.line_exclusion_regex[]`|List of regex patterns to exclude log lines. When set, the Agent will NOT send log lines that match any of these patterns.||
+|`LOGDNA_LINE_INCLUSION_REGEX`|`log.line_inclusion_regex[]`|List of regex patterns to include log lines. When set, the Agent will send ONLY log lines that match any of these patterns.||
+|`LOGDNA_REDACT_REGEX`|`log.line_redact_regex`|List of regex patterns used to mask matching sensitive information (such as PII) before sending it in the log line.||
+|`LOGDNA_JOURNALD_PATHS`|`journald.paths[]`|List of paths (directories or files) of journald paths to monitor||
+|`LOGDNA_LOOKBACK`|`log.lookback`|The lookback strategy on startup|`none`|
+|`LOGDNA_K8S_STARTUP_LEASE`||Determines whether or not to use K8 leases on startup|`never`|
+|`LOGDNA_USE_K8S_LOG_ENRICHMENT`||Determines whether the agent should query the K8s API to enrich log lines from other pods.|`always`|
+|`LOGDNA_LOG_K8S_EVENTS`||Determines whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
+|`LOGDNA_LOG_REPORTER_METRICS`||Determines whether or not metrics usage statistics is enabled.|`never`|
+|`LOGDNA_DB_PATH`|`log.db_path`|The directory in which the agent will store its state database. Note that the agent must have write access to the directory and be a persistent volume.|`/var/lib/logdna`|
+|`LOGDNA_METRICS_PORT`|`log.metrics_port`|The port number to expose a Prometheus endpoint target with the [agent internal metrics](INTERNAL_METRICS.md).||
+|`LOGDNA_INGEST_TIMEOUT`|`http.timeout`|The timeout of the API calls to the ingest API in milliseconds|`10000`|
+|`LOGDNA_INGEST_BUFFER_SIZE`|`http.body_size`|The size, in bytes, of the ingest data buffer used to batch log data with.|`2097152`|
+|`LOGDNA_RETRY_DIR`|`http.retry_dir`|The directory used by the agent to store data temporarily while retrying calls to the ingestion API.|`/tmp/logdna`|
+|`LOGDNA_RETRY_DISK_LIMIT`|`http.retry_disk_limit`|The maximum amount of disk space the agent will use to store retry data. The value can be the total number of bytes or a human representation of space using suffixes "KB", "MB", "GB" or "TB", e.g. `10 MB` If left unset, the agent will not limit disk usage. If set to `0`, no retry data will be stored on disk.||
+|`LOGDNA_META_APP`||Overrides/omits `APP` field in log line metadata. [Examples](META.md)||
+|`LOGDNA_META_HOST`||Overrides/omits `HOST` field in log line metadata.||
+|`LOGDNA_META_ENV`||Overrides/omits `ENV` field in log line metadata.||
+|`LOGDNA_META_FILE`||Overrides/omits `FILE` field in log line metadata.||
+|`LOGDNA_META_K8S_FILE`||Overrides/omits `FILE` field in k8s log line metadata. Follows `LOGDNA_META_FILE`.||
+|`LOGDNA_META_JSON`||Overrides/omits `META` filed in log line metadata.||
+|`LOGDNA_META_ANNOTATIONS`||Overrides specific kay-value-pairs inside `ANNOTATIONS` field in log line metadata.||
+|`LOGDNA_META_LABELS`||Overrides specific kay-value-pairs inside `LABELS` field in log line metadata.||
 
 
 All regular expressions use [Perl-style syntax][regex-syntax] with case sensitivity by default. If you don't
@@ -293,6 +294,8 @@ Take a look at enabling journald monitoring for [Kubernetes](KUBERNETES.md#colle
 
 A Kubernetes event is exactly what it sounds like: a resource type that is automatically generated when state changes occur in other resources, or when errors or other messages manifest across the system. Monitoring events is useful for debugging your Kubernetes cluster.
 
+Only one pod in a cluster will report on k8 events for the entire cluster - the leader election process leverages leases. please see the event-leader-leases.yaml file in the k8s folder for the lease specifications, permissions.
+
 By default, the LogDNA agent does not capture Kubernetes events (and OpenShift events, as well, since OpenShift is built on top of Kubernetes clusters).
 
 To control whether the LogDNA agent collects Kubernetes events, configure the `LOGDNA_LOG_K8S_EVENTS` environment variable using one of these two values:
@@ -309,7 +312,7 @@ With this enabled the agent will pull from the kubernetes metrics-server, this a
 
 Reach out to Mezmo to get this feature enabled on the web application in addition to this configuration.
 
-Only one pod in a cluster will report metrics statistics for the entire cluster - the leader election process leverages leases. please see the leader-election-leases.yaml file in the k8s folder for the lease specifications, permissions.
+Only one pod in a cluster will report metrics statistics for the entire cluster - the leader election process leverages leases. please see the reporter-leader-leases.yaml file in the k8s folder for the lease specifications, permissions.
 
 To control whether the LogDNA agent reports usage statistics use the `LOGDNA_LOG_REPORTER_METRICS` environment variable with one of these two values:
 
