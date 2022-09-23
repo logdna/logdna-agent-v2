@@ -1,9 +1,10 @@
 # LogDNA Agent
 
-[![agent version](https://img.shields.io/badge/Version-3.6.0-blue.svg)](https://shields.io/)
-[![made-with-rust](https://img.shields.io/badge/Made%20with-Rust-1f425f.svg)](https://www.rust-lang.org/)
+![agent version](https://img.shields.io/badge/Version-3.6.0-blue.svg)
+![made-with-rust](https://img.shields.io/badge/Made%20with-Rust-1f425f.svg)(https://www.rust-lang.org/)
 
 [Join us at the LogDNA community forum]: https://community.logdna.com
+
 The LogDNA agent is a resource-efficient log collection client that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
 
 
@@ -27,9 +28,6 @@ As part of the new company name change, we will be changing the name of our agen
 </table>
 
 
-[Rustc Version 1.46+]: https://img.shields.io/badge/rustc-1.42+-lightgray.svg
-[rustc]: https://blog.rust-lang.org/2020/03/12/Rust-1.42.html
-[Join us at the LogDNA community forum]: https://community.logdna.com
 [LogDNA]: https://logdna.com
 [Rust]: https://www.rust-lang.org/
 [Kubernetes]: https://kubernetes.io/
