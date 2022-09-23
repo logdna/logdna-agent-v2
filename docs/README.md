@@ -1,9 +1,9 @@
 # LogDNA Agent
 
-![agent version](https://img.shields.io/badge/Version-3.6.0-blue.svg)
-[![made-with-rust](https://img.shields.io/badge/Made%20with-Rust-1f425f.svg)](https://www.rust-lang.org/)
+![agent version](https://img.shields.io/badge/Version-3.6.0-E9FF92.svg)
+[![made-with-rust](https://img.shields.io/badge/Made%20with-Rust-orange.svg)](https://www.rust-lang.org/)
 
-Join us at the LogDNA community [forum](https://community.logdna.com).
+Mezmo, formerly LogDNA, enables enterprises to ingest all of their log data to a single platform, normalize it, and route it to the appropriate teams so that they can take meaningful action in real time. Join us at the Mezmo community [forum](https://community.logdna.com).
 
 The LogDNA agent is a resource-efficient log collection client that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
 
