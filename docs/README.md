@@ -1,6 +1,7 @@
 # LogDNA Agent
 
-[![Agent Version 3.6.0]][Agent]
+[![agent version](https://img.shields.io/badge/Version-3.6.0-blue.svg)](https://shields.io/)
+[![made-with-rust](https://img.shields.io/badge/Made%20with-Rust-1f425f.svg)](https://www.rust-lang.org/)
 [Join us at the LogDNA community forum]: https://community.logdna.com
 
 The LogDNA agent is a resource-efficient log collection client that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
