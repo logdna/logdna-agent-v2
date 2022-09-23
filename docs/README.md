@@ -1,6 +1,6 @@
 # LogDNA Agent
 
-[![Rustc Version 1.46+]][rustc]
+[![Agent Version 3.6.0]][Agent]
 [Join us at the LogDNA community forum]: https://community.logdna.com
 
 The LogDNA agent is a resource-efficient log collection client that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
@@ -141,7 +141,7 @@ You can also obtain the image and review our tagging scheme on [DockerHub](https
 
 ### Building Agent Binary on Linux
 
-The agent requires `v1.42+` of rustc [cargo-make](https://github.com/sagiegurari/cargo-make) to build. If the proper versions of rustc and cargo are installed; then simply run the following command to build the agent:
+The agent requires rustc [cargo-make](https://github.com/sagiegurari/cargo-make) to build. If rustc and cargo are installed; then simply run the following command to build the agent:
 
 ```
 cargo build --release
