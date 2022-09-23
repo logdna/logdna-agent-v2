@@ -140,7 +140,7 @@ You can also obtain the image and review our tagging scheme on [DockerHub](https
 
 ### Building Agent Binary on Linux
 
-The agent requires rustc [cargo-make](https://github.com/sagiegurari/cargo-make) to build. If rustc and cargo are installed; then simply run the following command to build the agent:
+The agent requires rustc [cargo-make](https://github.com/sagiegurari/cargo-make) to build. If rustc and cargo are [installed](https://www.rust-lang.org/tools/install); then simply run the following command to build the agent:
 
 ```
 cargo build --release
