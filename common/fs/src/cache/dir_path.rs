@@ -8,6 +8,8 @@ pub enum DirPathBufError {
     NotADirPath(PathBuf),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("directory config error occured")]
+    EmptyDirPath(Option<PathBuf>),
 }
 
 // Strongly typed wrapper around PathBuf, cannot be constructed unless
@@ -93,12 +95,22 @@ fn find_valid_path(
                 Ok(DirPathBuf { inner: p, postfix })
             } else {
                 warn!("{:?} is not a directory; moving to parent directory", p);
+                let root_pathbuf = Path::new("/");
                 let mut postfix_pathbuf = PathBuf::new();
                 let mut pop_pathbuf = PathBuf::new();
                 if let Some(path) = postfix {
                     pop_pathbuf.push(path);
                 }
-                let parent = level_up(&p).unwrap();
+                let parent = match level_up(&p) {
+                    Some(p) => {
+                        if p == root_pathbuf {
+                            panic!("configured directory recursed to root!");
+                        }
+                        p
+                    }
+                    None => return Err(DirPathBufError::NotADirPath(p)),
+                };
+
                 let tmp_dir = parent;
                 let postfix_path = p.strip_prefix(tmp_dir).ok();
                 postfix_pathbuf.push(postfix_path.unwrap());
@@ -106,7 +118,7 @@ fn find_valid_path(
                 find_valid_path(level_up(&p), Some(postfix_pathbuf))
             }
         }
-        None => Err(DirPathBufError::NotADirPath(path.unwrap())),
+        None => Err(DirPathBufError::EmptyDirPath(path)),
     }
 }
 
@@ -123,6 +135,8 @@ fn level_up(path: &Path) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    use std::env::temp_dir;
+
     use super::*;
 
     #[test]
@@ -133,7 +147,47 @@ mod tests {
         let new_pathbuf = level_up(Path::new("/test-directory/sub-directory"));
         assert_eq!(expe_pathbuf, new_pathbuf.unwrap());
 
+        let invalid_path = level_up(Path::new("/"));
+        assert_eq!(None, invalid_path);
+
         let root_path = level_up(Path::new(""));
         assert_eq!(None, root_path);
+    }
+
+    #[test]
+    fn test_find_value_path() {
+        let mut test_path = PathBuf::new();
+        let test_postfix = PathBuf::new();
+        let mut expected_pathbuff = PathBuf::new();
+        expected_pathbuff.push(Path::new("sub-test-path"));
+
+        let tmp_dir = temp_dir();
+        let tmp_test_dir = tmp_dir.join("test-dir");
+        std::fs::create_dir(&tmp_test_dir).expect("could not create tmp directory");
+        assert!(tmp_test_dir.is_dir());
+
+        test_path.push(tmp_test_dir.join("sub-test-path"));
+        let test_result = find_valid_path(Some(test_path), Some(test_postfix));
+        assert_eq!(expected_pathbuff, test_result.unwrap().postfix.unwrap());
+    }
+
+    #[test]
+    fn test_empty_find_value_path() {
+        let mut test_path = PathBuf::new();
+        let test_postfix = PathBuf::new();
+
+        test_path.push(Path::new(""));
+        let test_result = find_valid_path(Some(test_path), Some(test_postfix));
+        assert!(test_result.is_err());
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_root_find_value_path() {
+        let mut test_path = PathBuf::new();
+        let test_postfix = PathBuf::new();
+
+        test_path.push(Path::new("/does-not-exist"));
+        let _result = find_valid_path(Some(test_path), Some(test_postfix));
     }
 }
