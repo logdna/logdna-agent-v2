@@ -347,7 +347,7 @@ impl TryFrom<RawConfig> for Config {
                         //TODO: Need to fix this iteration as warning now happens in dir_path.rs
                         .try_into()
                         .map_err(|e| {
-                            warn!("{} is not a valid directory {}", d.display(), e);
+                            warn!("{} is not a valid directory: {}", d.display(), e);
                         })
                         .ok()
                 })
