@@ -98,8 +98,8 @@ fn find_valid_path(
                 let root_pathbuf = Path::new("/");
                 let mut postfix_pathbuf = PathBuf::new();
                 let mut pop_pathbuf = PathBuf::new();
-                if let Some(path) = postfix {
-                    pop_pathbuf.push(path);
+                if let Some(pop) = postfix {
+                    pop_pathbuf.push(pop);
                 }
                 let parent = match level_up(&p) {
                     Some(p) => {
