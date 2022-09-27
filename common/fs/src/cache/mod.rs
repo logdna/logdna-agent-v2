@@ -284,12 +284,17 @@ impl FileSystem {
                 add_initial_dir_rules(&mut initial_dir_rules, path);
             } else {
                 let mut full_missing_path = PathBuf::new();
+                let root_pathbuf = Path::new("/");
                 let mut format_postfix =
                     String::from(path.postfix.as_ref().unwrap().to_str().unwrap());
                 if format_postfix.ends_with('/') {
                     format_postfix.pop();
                 }
-                full_missing_path.push(format!("{}/{}", &path.inner.display(), format_postfix));
+                if &path.inner == root_pathbuf {
+                    full_missing_path.push(format!("{}{}", &path.inner.display(), format_postfix));
+                } else {
+                    full_missing_path.push(format!("{}/{}", &path.inner.display(), format_postfix));
+                }
                 let full_missing_dirpathbuff = DirPathBuf {
                     inner: full_missing_path.clone(),
                     postfix: None,
@@ -305,6 +310,7 @@ impl FileSystem {
                     .expect("Could not add path to missing directory watcher");
             }
         }
+        debug!("initial directory rules: {:?}\n", initial_dir_rules);
 
         let mut fs = Self {
             entries: Rc::new(RefCell::new(entries)),

@@ -104,7 +104,7 @@ fn find_valid_path(
                 let parent = match level_up(&p) {
                     Some(p) => {
                         if p == root_pathbuf {
-                            panic!("configured directory recursed to root!");
+                            warn!("root level directory was missing, as a result configured directory recursed to the root level!");
                         }
                         p
                     }
@@ -155,24 +155,49 @@ mod tests {
     }
 
     #[test]
-    fn test_find_value_path() {
+    fn test_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
         let mut expected_pathbuff = PathBuf::new();
         expected_pathbuff.push(Path::new("sub-test-path"));
 
         let tmp_dir = temp_dir();
-        let tmp_test_dir = tmp_dir.join("test-dir");
+        let tmp_test_dir = tmp_dir.join("test-dir-0");
         std::fs::create_dir(&tmp_test_dir).expect("could not create tmp directory");
         assert!(tmp_test_dir.is_dir());
 
         test_path.push(tmp_test_dir.join("sub-test-path"));
         let test_result = find_valid_path(Some(test_path), Some(test_postfix));
         assert_eq!(expected_pathbuff, test_result.unwrap().postfix.unwrap());
+
+        // Clean up
+        std::fs::remove_dir(&tmp_test_dir);
+        assert!(!tmp_test_dir.is_dir());
+    }
+    
+    #[test]
+    fn test_deep_find_valid_path() {
+        let mut test_path = PathBuf::new();
+        let test_postfix = PathBuf::new();
+        let mut expected_pathbuff = PathBuf::new();
+        expected_pathbuff.push(Path::new("sub-path/sub-sub-path"));
+
+        let tmp_dir = temp_dir();
+        let tmp_test_dir = tmp_dir.join("test-dir-2");
+        std::fs::create_dir(&tmp_test_dir).expect("could not create tmp directory");
+        assert!(tmp_test_dir.is_dir());
+
+        test_path.push(tmp_test_dir.join("sub-path/sub-sub-path"));
+        let test_result = find_valid_path(Some(test_path), Some(test_postfix));
+        assert_eq!(expected_pathbuff, test_result.unwrap().postfix.unwrap());
+        
+        // Clean up
+        std::fs::remove_dir(&tmp_test_dir);
+        assert!(!tmp_test_dir.is_dir());
     }
 
     #[test]
-    fn test_empty_find_value_path() {
+    fn test_empty_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
 
@@ -182,12 +207,14 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_root_find_value_path() {
+    fn test_root_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
+        let mut expected_pathbuff = PathBuf::new();
+        expected_pathbuff.push(Path::new("does-not-exist"));
 
         test_path.push(Path::new("/does-not-exist"));
-        let _result = find_valid_path(Some(test_path), Some(test_postfix));
+        let result = find_valid_path(Some(test_path), Some(test_postfix));
+        assert_eq!(expected_pathbuff, result.unwrap().postfix.unwrap());
     }
 }
