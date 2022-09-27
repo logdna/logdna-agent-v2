@@ -290,7 +290,7 @@ impl FileSystem {
                 if format_postfix.ends_with('/') {
                     format_postfix.pop();
                 }
-                if &path.inner == root_pathbuf {
+                if path.inner == root_pathbuf {
                     full_missing_path.push(format!("{}{}", &path.inner.display(), format_postfix));
                 } else {
                     full_missing_path.push(format!("{}/{}", &path.inner.display(), format_postfix));

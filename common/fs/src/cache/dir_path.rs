@@ -171,10 +171,10 @@ mod tests {
         assert_eq!(expected_pathbuff, test_result.unwrap().postfix.unwrap());
 
         // Clean up
-        std::fs::remove_dir(&tmp_test_dir);
+        std::fs::remove_dir(&tmp_test_dir).expect("could not remove tmp directory");
         assert!(!tmp_test_dir.is_dir());
     }
-    
+
     #[test]
     fn test_deep_find_valid_path() {
         let mut test_path = PathBuf::new();
@@ -190,9 +190,9 @@ mod tests {
         test_path.push(tmp_test_dir.join("sub-path/sub-sub-path"));
         let test_result = find_valid_path(Some(test_path), Some(test_postfix));
         assert_eq!(expected_pathbuff, test_result.unwrap().postfix.unwrap());
-        
+
         // Clean up
-        std::fs::remove_dir(&tmp_test_dir);
+        std::fs::remove_dir(&tmp_test_dir).expect("could not remove tmp directory");
         assert!(!tmp_test_dir.is_dir());
     }
 
