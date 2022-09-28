@@ -121,7 +121,7 @@ pub struct ArgumentOptions {
     journald_paths: Vec<String>,
 
     /// The lookback strategy on startup ("smallfiles", "start" or "none").
-    /// Defaults to "smallfiles".
+    /// Defaults to "none".
     #[structopt(long, env = env_vars::LOOKBACK)]
     lookback: Option<Lookback>,
 
