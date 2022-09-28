@@ -1,7 +1,9 @@
 # LogDNA Agent
 
-[![Rustc Version 1.46+]][rustc]
-[Join us at the LogDNA community forum]: https://community.logdna.com
+![agent version](https://img.shields.io/badge/Version-3.6.0-E9FF92.svg)
+[![made-with-rust](https://img.shields.io/badge/Made%20with-Rust-orange.svg)](https://www.rust-lang.org/)
+
+Mezmo, formerly LogDNA, enables enterprises to ingest all of their log data to a single platform, normalize it, and route it to the appropriate teams so that they can take meaningful action in real time. Join us at the Mezmo community [forum](https://community.logdna.com).
 
 The LogDNA agent is a resource-efficient log collection client that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
 
@@ -26,9 +28,6 @@ As part of the new company name change, we will be changing the name of our agen
 </table>
 
 
-[Rustc Version 1.46+]: https://img.shields.io/badge/rustc-1.42+-lightgray.svg
-[rustc]: https://blog.rust-lang.org/2020/03/12/Rust-1.42.html
-[Join us at the LogDNA community forum]: https://community.logdna.com
 [LogDNA]: https://logdna.com
 [Rust]: https://www.rust-lang.org/
 [Kubernetes]: https://kubernetes.io/
@@ -141,7 +140,7 @@ You can also obtain the image and review our tagging scheme on [DockerHub](https
 
 ### Building Agent Binary on Linux
 
-The agent requires `v1.42+` of rustc [cargo-make](https://github.com/sagiegurari/cargo-make) to build. If the proper versions of rustc and cargo are installed; then simply run the following command to build the agent:
+The agent requires rustc [cargo-make](https://github.com/sagiegurari/cargo-make) to build. If rustc and cargo are [installed](https://www.rust-lang.org/tools/install), simply run the following command to build the agent:
 
 ```
 cargo build --release
