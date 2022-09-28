@@ -84,7 +84,11 @@ impl From<DirPathBuf> for PathBuf {
     }
 }
 
-// Recursive directory back off
+/// If a path does not exist, the function continue to move to the parent directory
+/// until it finds a valid directory.
+///
+/// When a valid directory is found, it adds the missing piece of the directory
+/// path to `postfix` and returns the `DirPathBuf` result.
 fn find_valid_path(
     path: Option<PathBuf>,
     postfix: Option<PathBuf>,
@@ -183,11 +187,32 @@ mod tests {
         expected_pathbuff.push(Path::new("sub-path/sub-sub-path"));
 
         let tmp_dir = temp_dir();
-        let tmp_test_dir = tmp_dir.join("test-dir-2");
+        let tmp_test_dir = tmp_dir.join("test-dir-1");
         std::fs::create_dir(&tmp_test_dir).expect("could not create tmp directory");
         assert!(tmp_test_dir.is_dir());
 
         test_path.push(tmp_test_dir.join("sub-path/sub-sub-path"));
+        let test_result = find_valid_path(Some(test_path), Some(test_postfix));
+        assert_eq!(expected_pathbuff, test_result.unwrap().postfix.unwrap());
+
+        // Clean up
+        std::fs::remove_dir(&tmp_test_dir).expect("could not remove tmp directory");
+        assert!(!tmp_test_dir.is_dir());
+    }
+
+    #[test]
+    fn test_filename_find_valid_path() {
+        let mut test_path = PathBuf::new();
+        let test_postfix = PathBuf::new();
+        let mut expected_pathbuff = PathBuf::new();
+        expected_pathbuff.push(Path::new("test_file.log/"));
+
+        let tmp_dir = temp_dir();
+        let tmp_test_dir = tmp_dir.join("test-dir-2");
+        std::fs::create_dir(&tmp_test_dir).expect("could not create tmp directory");
+        assert!(tmp_test_dir.is_dir());
+
+        test_path.push(tmp_test_dir.join("test_file.log"));
         let test_result = find_valid_path(Some(test_path), Some(test_postfix));
         assert_eq!(expected_pathbuff, test_result.unwrap().postfix.unwrap());
 
@@ -207,7 +232,27 @@ mod tests {
     }
 
     #[test]
+    fn test_invalid_find_valid_path() {
+        let mut test_path = PathBuf::new();
+        let test_postfix = PathBuf::new();
+
+        test_path.push(Path::new("ivc:"));
+        let test_result = find_valid_path(Some(test_path), Some(test_postfix));
+        assert!(test_result.is_err());
+    }
+
+    #[test]
     fn test_root_find_valid_path() {
+        let mut test_path = PathBuf::new();
+        let test_postfix = PathBuf::new();
+
+        test_path.push(Path::new("/"));
+        let test_result = find_valid_path(Some(test_path), Some(test_postfix));
+        assert_eq!(Path::new(""), test_result.unwrap().postfix.unwrap());
+    }
+
+    #[test]
+    fn test_root_lvl_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
         let mut expected_pathbuff = PathBuf::new();
