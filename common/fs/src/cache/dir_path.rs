@@ -95,7 +95,7 @@ fn find_valid_path(
 ) -> Result<DirPathBuf, DirPathBufError> {
     match path {
         Some(p) => {
-            if p.is_dir() {
+            if matches!(std::fs::canonicalize(&p), Ok(_p)) {
                 Ok(DirPathBuf { inner: p, postfix })
             } else {
                 warn!("{:?} is not a directory; moving to parent directory", p);
