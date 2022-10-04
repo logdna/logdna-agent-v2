@@ -142,23 +142,21 @@ The image contains the actual agent code that is run on the Pods created by the 
 
 The upgrade path for the image depends on which image tag you are using in your DaemonSet.
 
-If your DaemonSet is configured with `logdna/logdna-agent:stable`, the default configuration setting, then restarting your Pods will trigger them to pull down the latest stable version of the LogDNA agent image.
+If your DaemonSet is configured with `logdna/logdna-agent:3`, or some other major version number, then restarting your Pods will trigger them to pull down the latest minor version of the LogDNA agent image for this major version (in this example `3`).
 
 ```console
 kubectl rollout restart daemonset -n logdna-agent logdna-agent
 ```
 
-Otherwise, if your DaemonSet is configured with a different tag (e.g. `logdna/logdna-agent:2.1.7`), you'll need to update the image and tag, which will trigger a rollover of all the pods.
+Otherwise, if your DaemonSet is configured with a different tag (e.g. `logdna/logdna-agent:3.5.1`), you'll need to update the image and tag, which will trigger a rollover of all the pods.
 
 ```console
-kubectl patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"logdna/logdna-agent:2.2.0"}]'
+kubectl patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"logdna/logdna-agent:3.5.1"}]'
 ```
 
-* `latest` - Update with each new revision including public betas.
-* `stable` - Updates with each major, minor, and patch version updates.
-* `2` - Updates with each minor and patch version updates under `2.x.x`.
-* `2.2` - Updates with each patch version update under `2.2.x`.
-* `2.2.0` - Targets a specific version of the agent.
+* `3` - Updates with each minor and patch version updates under `3.x.x`.
+* `3.5` - Updates with each patch version update under `3.5.x`.
+* `3.5.1` - Targets a specific version of the agent.
 
 __NOTE__ This list isn't exhaustive; for a full list check out the [logdna-agent dockerhub page](https://hub.docker.com/r/logdna/logdna-agent)
 
