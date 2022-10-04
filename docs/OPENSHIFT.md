@@ -92,7 +92,7 @@ Older versions of our configurations do not provide these labels. In that case, 
 
 ### Upgrading your Image
 
-The image contains the actual agent code that is run on the Pods created by the DaemonSet. New versions of the agent always strive for backwards compatibility with old configuration versions. Any breaking changes will be outlined in the [release page](https://github.com/logdna/logdna-agent-v2/releases). We always recommend upgrading to the latest configuration to guarantee access to new features.
+The image contains the actual agent code that is run on the Pods created by the DaemonSet. New versions of the agent always strive for backwards compatibility with old configuration versions. Any breaking changes will be outlined in the [change log](https://docs.mezmo.com/changelog). We always recommend upgrading to the latest configuration to guarantee access to new features.
 
 The upgrade path for the image depends on which image tag you are using in your DaemonSet.
 
