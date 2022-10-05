@@ -83,7 +83,7 @@ impl MetricsStatsStream {
 async fn process_reporter_info(
     client: Client,
 ) -> anyhow::Result<(Vec<String>, Vec<String>, String)> {
-    info!("Generating metrics report...");
+    log::trace!("Generating metrics report...");
     let pods = self::get_all_pods(client.clone()).await?;
     let nodes = self::get_all_nodes(client.clone()).await?;
     let pod_metrics = self::call_metric_api("PodMetrics", client.clone()).await?;
@@ -117,8 +117,8 @@ async fn process_reporter_info(
         &mut node_pod_counts_map,
         &mut node_container_counts_map,
     );
-    let node_strings = format_node_str(&node_stats);
 
+    let node_strings = format_node_str(&node_stats);
     let cluster_stats = build_cluster_stats(&node_stats);
     let cluster_stats_string = format_cluster_str(&cluster_stats);
 
@@ -209,6 +209,7 @@ fn build_cluster_stats(node_stats: &Vec<NodeStats>) -> ClusterStats {
             cluster_stats.nodes_unschedulable += 1;
         }
     }
+
     cluster_stats
 }
 
@@ -231,12 +232,13 @@ fn format_pod_str(
                 .copy_stats(controller_stats);
         }
 
-        let display_str = format!(
+        let pod_str = format!(
             r#"{{"kube":{}}}"#,
             serde_json::to_string(&translated_pod_container).unwrap_or_else(|_| String::from(""))
         );
 
-        pod_strings.push(display_str)
+        log::trace!("{}", pod_str);
+        pod_strings.push(pod_str)
     }
     pod_strings
 }
@@ -248,17 +250,22 @@ fn format_node_str(nodes: &Vec<NodeStats>) -> Vec<String> {
             r#"{{"kube":{}}}"#,
             serde_json::to_string(&node).unwrap_or_else(|_| String::from(""))
         );
+
+        log::trace!("{}", node_str);
         node_strings.push(node_str);
     }
+
     node_strings
 }
 
 fn format_cluster_str(cluster_stats: &ClusterStats) -> String {
-    let cluster_string = format!(
+    let cluster_str = format!(
         r#"{{"kube":{}}}"#,
         serde_json::to_string(&cluster_stats).unwrap_or_else(|_| String::from(""))
     );
-    cluster_string
+
+    log::trace!("{}", cluster_str);
+    cluster_str
 }
 
 fn process_pods(

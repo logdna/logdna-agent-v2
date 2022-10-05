@@ -203,7 +203,7 @@ For backward compatibility agent v1 configuration file format is still supported
 |`LOGDNA_K8S_STARTUP_LEASE`||Determines whether or not to use K8 leases on startup|`never`|
 |`LOGDNA_USE_K8S_LOG_ENRICHMENT`||Determines whether the agent should query the K8s API to enrich log lines from other pods.|`always`|
 |`LOGDNA_LOG_K8S_EVENTS`||Determines whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
-|`LOGDNA_LOG_REPORTER_METRICS`||Determines whether or not metrics usage statistics is enabled.|`never`|
+|`LOGDNA_LOG_METRIC_SERVER_STATS`||Determines whether or not metrics usage statistics is enabled.|`never`|
 |`LOGDNA_DB_PATH`|`log.db_path`|The directory in which the agent will store its state database. Note that the agent must have write access to the directory and be a persistent volume.|`/var/lib/logdna`|
 |`LOGDNA_METRICS_PORT`|`log.metrics_port`|The port number to expose a Prometheus endpoint target with the [agent internal metrics](INTERNAL_METRICS.md).||
 |`LOGDNA_INGEST_TIMEOUT`|`http.timeout`|The timeout of the API calls to the ingest API in milliseconds|`10000`|
