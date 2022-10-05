@@ -49,7 +49,6 @@ As part of the new company name change, we will be changing the name of our agen
   * [Configuring the Environment](#configuring-the-environment)
   * [Configuring Lookback](#configuring-lookback)
   * [Configuring Journald](#configuring-journald)
-  * [Configuring Kubernetes Events](#configuring-events)
   * [Configuring regex for redaction and exclusion or inclusion](#configuring-regex-for-redaction-and-exclusion-or-inclusion)
   * [Resource Limits](#resource-limits)
   * [Exposing Agent Metrics](#exposing-agent-metrics)

@@ -266,6 +266,9 @@ __NOTE__ In this "no-cap" deployment Agent does not support the "stateful" mode 
 
 ### Enabling K8 Events
 
+1. Apply Lease for events (https://github.com/logdna/logdna-agent-v2/blob/master/k8s/event-leader-lease.yaml)
+2. Enable (set to always): LOGDNA_LOG_K8S_EVENTS
+
 A Kubernetes event is exactly what it sounds like: a resource type that is automatically generated when state changes occur in other resources, or when errors or other messages manifest across the system. Monitoring events is useful for debugging your Kubernetes cluster.
 
 Only one pod in a cluster will report on k8 events for the entire cluster - the leader election process leverages leases. please see the event-leader-leases.yaml file in the k8s folder for the lease specifications, permissions.
@@ -281,6 +284,10 @@ __Note:__ The default option is `never`.
 > :warning: Due to a ["won't fix" bug in the Kubernetes API](https://github.com/kubernetes/kubernetes/issues/41743), the LogDNA agent collects events from the entire cluster, including multiple nodes. To prevent duplicate logs when running multiple pods, the LogDNA agent pods defer responsibilty of capturing events to the oldest pod in the cluster. If that pod is down, the next oldest LogDNA agent pod will take over responsibility and continue from where the previous pod left off.
 
 ### Enabling Metrics Reporter Statistics
+
+1. Start metrics server (https://github.com/kubernetes-sigs/metrics-server#installation)
+2. Apply Lease for reporter (https://github.com/logdna/logdna-agent-v2/blob/master/k8s/reporter-leader-lease.yaml)
+3. Enable (set to always): LOGDNA_LOG_REPORTER_METRICS
 
 With this enabled the agent will pull from the kubernetes metrics-server, this allows the agent to report on CPU/Memory usage statistics for pods and nodes in the cluster. These statistics will be viewable on the web application for individual log lines showing usage for the pod and node associated with that log line.
 
