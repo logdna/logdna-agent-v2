@@ -295,7 +295,7 @@ Reach out to Mezmo to get this feature enabled on the web application in additio
 
 Only one pod in a cluster will report metrics statistics for the entire cluster - the leader election process leverages leases. please see the reporter-leader-leases.yaml file in the k8s folder for the lease specifications, permissions.
 
-To control whether the LogDNA agent reports usage statistics use the `LOG_METRIC_SERVER_STATS` environment variable with one of these two values:
+To control whether the LogDNA agent reports usage statistics use the `LOGDNA_LOG_METRIC_SERVER_STATS` environment variable with one of these two values:
 
 * `always` - Always report usage
 * `never` - Never report usage
