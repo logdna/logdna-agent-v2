@@ -287,7 +287,7 @@ __Note:__ The default option is `never`.
 
 1. Start metrics server (https://github.com/kubernetes-sigs/metrics-server#installation)
 2. Apply Lease for reporter (https://github.com/logdna/logdna-agent-v2/blob/master/k8s/reporter-leader-lease.yaml)
-3. Enable (set to always): LOG_METRIC_SERVER_STATS
+3. Enable (set to always): LOGDNA_LOG_METRIC_SERVER_STATS
 
 With this enabled the agent will pull from the kubernetes metrics-server, this allows the agent to report on CPU/Memory usage statistics for pods and nodes in the cluster. These statistics will be viewable on the web application for individual log lines showing usage for the pod and node associated with that log line.
 
