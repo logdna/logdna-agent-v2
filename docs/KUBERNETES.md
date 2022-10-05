@@ -287,7 +287,7 @@ __Note:__ The default option is `never`.
 
 1. Start metrics server (https://github.com/kubernetes-sigs/metrics-server#installation)
 2. Apply Lease for reporter (https://github.com/logdna/logdna-agent-v2/blob/master/k8s/reporter-leader-lease.yaml)
-3. Enable (set to always): LOGDNA_LOG_REPORTER_METRICS
+3. Enable (set to always): LOG_METRIC_SERVER_STATS
 
 With this enabled the agent will pull from the kubernetes metrics-server, this allows the agent to report on CPU/Memory usage statistics for pods and nodes in the cluster. These statistics will be viewable on the web application for individual log lines showing usage for the pod and node associated with that log line.
 
@@ -295,7 +295,7 @@ Reach out to Mezmo to get this feature enabled on the web application in additio
 
 Only one pod in a cluster will report metrics statistics for the entire cluster - the leader election process leverages leases. please see the reporter-leader-leases.yaml file in the k8s folder for the lease specifications, permissions.
 
-To control whether the LogDNA agent reports usage statistics use the `LOGDNA_LOG_REPORTER_METRICS` environment variable with one of these two values:
+To control whether the LogDNA agent reports usage statistics use the `LOG_METRIC_SERVER_STATS` environment variable with one of these two values:
 
 * `always` - Always report usage
 * `never` - Never report usage
