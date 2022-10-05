@@ -289,36 +289,6 @@ If the agent pods have access to journald log files or directories, monitoring c
 
 Take a look at enabling journald monitoring for [Kubernetes](KUBERNETES.md#collecting-node-journald-logs) or [OpenShift](OPENSHIFT.md#collecting-node-journald-logs).
 
-### Configuring Events
-
-A Kubernetes event is exactly what it sounds like: a resource type that is automatically generated when state changes occur in other resources, or when errors or other messages manifest across the system. Monitoring events is useful for debugging your Kubernetes cluster.
-
-Only one pod in a cluster will report on k8 events for the entire cluster - the leader election process leverages leases. please see the event-leader-leases.yaml file in the k8s folder for the lease specifications, permissions.
-
-By default, the LogDNA agent does not capture Kubernetes events (and OpenShift events, as well, since OpenShift is built on top of Kubernetes clusters).
-
-To control whether the LogDNA agent collects Kubernetes events, configure the `LOGDNA_LOG_K8S_EVENTS` environment variable using one of these two values:
-
-* `always` - Always capture events
-* `never` - Never capture events
-__Note:__ The default option is `never`.
-
-> :warning: Due to a ["won't fix" bug in the Kubernetes API](https://github.com/kubernetes/kubernetes/issues/41743), the LogDNA agent collects events from the entire cluster, including multiple nodes. To prevent duplicate logs when running multiple pods, the LogDNA agent pods defer responsibilty of capturing events to the oldest pod in the cluster. If that pod is down, the next oldest LogDNA agent pod will take over responsibility and continue from where the previous pod left off.
-
-### Configuring Metrics Reporter Statistics
-
-With this enabled the agent will pull from the kubernetes metrics-server, this allows the agent to report on CPU/Memory usage statistics for pods and nodes in the cluster. These statistics will be viewable on the web application for individual log lines showing usage for the pod and node associated with that log line.
-
-Reach out to Mezmo to get this feature enabled on the web application in addition to this configuration.
-
-Only one pod in a cluster will report metrics statistics for the entire cluster - the leader election process leverages leases. please see the reporter-leader-leases.yaml file in the k8s folder for the lease specifications, permissions.
-
-To control whether the LogDNA agent reports usage statistics use the `LOGDNA_LOG_REPORTER_METRICS` environment variable with one of these two values:
-
-* `always` - Always report usage
-* `never` - Never report usage
-__Note:__ The default option is `never`.
-
 ### Configuring regex for redaction and exclusion or inclusion
 
 You can define rules, using regex (regular expressions), to control what log data is collected by the agent and forwarded to LogDNA.
