@@ -14,7 +14,7 @@ type OsWatcher = notify::INotifyWatcher;
 #[cfg(not(any(target_os = "linux")))]
 type OsWatcher = notify::PollWatcher;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 /// Event wrapper to that hides platform and implementation details.
 ///
 /// Gives us the ability to hide/map events from the used library and minimize code changes in
@@ -59,7 +59,7 @@ pub enum Event {
     Error(Error, Option<PathId>),
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Error {
     /// Generic error
     ///

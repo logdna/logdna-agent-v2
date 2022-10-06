@@ -144,7 +144,7 @@ pub(crate) fn get_inode(_path: &Path, file: Option<&std::fs::File>) -> std::io::
 /// Turns an inotify event into an event stream
 fn as_event_stream(
     fs: Arc<Mutex<FileSystem>>,
-    event_result: WatchEvent,
+    event_result: &WatchEvent,
     event_time: EventTimestamp,
 ) -> impl Stream<Item = (Result<Event, Error>, EventTimestamp)> {
     let a = match fs
@@ -192,9 +192,11 @@ fn get_initial_events(
 fn get_resume_events(
     fs: &Arc<Mutex<FileSystem>>,
 ) -> impl Stream<Item = (WatchEvent, EventTimestamp)> {
-    let _fs = fs.try_lock().expect("couldn't lock filesystem cache");
-    _fs.resume_events_recv
-        .clone()
+    let resume_events_recv = {
+        let _fs = fs.try_lock().expect("couldn't lock filesystem cache");
+        _fs.resume_events_recv.clone()
+    };
+    resume_events_recv
         .map({
             let fs = fs.clone();
             move |(inode, event_time)| {
@@ -206,6 +208,110 @@ fn get_resume_events(
             }
         })
         .filter_map(|e| async { e })
+}
+
+struct DelayedEvent<T> {
+    delayed_until: std::time::Instant,
+    event: T,
+}
+
+impl<T> PartialEq for DelayedEvent<T> {
+    fn eq(&self, other: &DelayedEvent<T>) -> bool {
+        self.delayed_until == other.delayed_until
+    }
+}
+
+impl<T> Eq for DelayedEvent<T> {}
+
+impl<T> PartialOrd for DelayedEvent<T> {
+    fn partial_cmp(&self, other: &DelayedEvent<T>) -> Option<std::cmp::Ordering> {
+        self.delayed_until.partial_cmp(&other.delayed_until)
+    }
+}
+
+impl<T> Ord for DelayedEvent<T> {
+    fn cmp(&self, other: &DelayedEvent<T>) -> std::cmp::Ordering {
+        self.delayed_until.cmp(&other.delayed_until)
+    }
+}
+
+impl<T> From<(std::time::Instant, T)> for DelayedEvent<T> {
+    fn from(args: (std::time::Instant, T)) -> DelayedEvent<T> {
+        DelayedEvent {
+            delayed_until: args.0,
+            event: args.1,
+        }
+    }
+}
+
+fn get_delayed_events<T>(
+    st: impl Stream<Item = T> + Unpin,
+    delay: std::time::Duration,
+) -> impl Stream<Item = T> {
+    futures::stream::unfold((st, std::collections::BinaryHeap::new(), false), {
+        move |(mut st, mut delayed_events, mut stream_done)| {
+            async move {
+                let mut return_val = None;
+                loop {
+                    // If any delayed events have expired we should return those
+                    // before awaiting the retry_stream
+                    if delayed_events.peek().map_or(false, |de: &DelayedEvent<_>| {
+                        std::time::Instant::now() > de.delayed_until
+                    }) {
+                        return_val = Some(delayed_events.pop().unwrap().event);
+                    }
+                    // Grab any retry events that are already on the retry_stream
+                    loop {
+                        match tokio::time::timeout(Duration::from_secs(0), st.next()).await {
+                            Ok(Some(t)) => {
+                                delayed_events.push(DelayedEvent::from((
+                                    std::time::Instant::now() + delay,
+                                    t,
+                                )));
+                                // We got something, poll again
+                                continue;
+                            }
+                            Ok(None) => {
+                                stream_done = false;
+                            }
+                            _ => {}
+                        }
+                        // Got nothing, break
+                        break;
+                    }
+                    // We can be productive, return the delayed event
+                    if let Some(ret) = return_val {
+                        return Some((ret, (st, delayed_events, stream_done)));
+                    }
+                    if let Some(de) = delayed_events.peek() {
+                        if let Ok(Some(t)) =
+                            tokio::time::timeout_at((de.delayed_until).into(), st.next()).await
+                        {
+                            delayed_events.push((std::time::Instant::now() + delay, t).into());
+                        }
+                    }
+                }
+            }
+        }
+    })
+}
+
+fn get_retry_events(
+    fs: &Arc<Mutex<FileSystem>>,
+) -> impl Stream<Item = (WatchEvent, EventTimestamp, u32)> {
+    let retry_events = {
+        let _fs = fs.try_lock().expect("couldn't lock filesystem cache");
+        _fs.retry_events_recv.clone()
+    };
+    get_delayed_events(retry_events, Duration::from_secs(1)).filter_map(
+        |(event, ts, retries)| async move {
+            if retries <= 5 {
+                Some((event, ts, retries + 1))
+            } else {
+                None
+            }
+        },
+    )
 }
 
 pub struct FileSystem {
@@ -226,6 +332,10 @@ pub struct FileSystem {
 
     resume_events_recv: async_channel::Receiver<(u64, EventTimestamp)>,
     resume_events_send: async_channel::Sender<(u64, EventTimestamp)>,
+
+    retry_events_recv: async_channel::Receiver<(WatchEvent, EventTimestamp, u32)>,
+    retry_events_send: async_channel::Sender<(WatchEvent, EventTimestamp, u32)>,
+
     ignored_dirs: HashSet<PathBuf>,
 }
 
@@ -262,6 +372,7 @@ impl FileSystem {
         delay: Duration,
     ) -> Self {
         let (resume_events_send, resume_events_recv) = async_channel::unbounded();
+        let (retry_events_send, retry_events_recv) = async_channel::unbounded();
         initial_dirs.iter().for_each(|path| {
             if !path.inner.is_dir() {
                 panic!("initial dirs must be dirs")
@@ -328,6 +439,8 @@ impl FileSystem {
             initial_events: Vec::new(),
             resume_events_recv,
             resume_events_send,
+            retry_events_recv,
+            retry_events_send,
             ignored_dirs,
         };
 
@@ -401,23 +514,28 @@ impl FileSystem {
         };
 
         let mfs = fs.clone(); // clone fs for missing files
-        let missing_dirs = mfs
-            .try_lock()
-            .expect("could not lock filesystem cache")
-            .missing_dirs
-            .clone();
-        let missing_dir_watcher = mfs
-            .try_lock()
-            .expect("could not lock filesystem cache")
-            .missing_dir_watcher
-            .take()
-            .unwrap_or_else(|| Watcher::new(Duration::new(0, 10000000)));
+        let (missing_dirs, missing_dir_watcher, missing_dir_event_stream, retry_event_sender) = {
+            let mut _mfs = mfs.try_lock().expect("could not lock filesystem cache");
 
-        let missing_dir_event_stream = missing_dir_watcher.receive();
+            let missing_dirs = _mfs.missing_dirs.clone();
+            let missing_dir_watcher = _mfs
+                .missing_dir_watcher
+                .take()
+                .unwrap_or_else(|| Watcher::new(Duration::new(0, 10000000)));
+
+            let missing_dir_event_stream = missing_dir_watcher.receive();
+            let retry_event_sender = _mfs.retry_events_send.clone();
+            (
+                missing_dirs,
+                missing_dir_watcher,
+                missing_dir_event_stream,
+                retry_event_sender,
+            )
+        };
 
         let missing_dir_event = futures::stream::unfold(
             (
-                mfs,
+                fs.clone(),
                 missing_dirs,
                 missing_dir_watcher,
                 Box::pin(missing_dir_event_stream),
@@ -431,7 +549,7 @@ impl FileSystem {
                             // Got a complete directory match, inserting it
                             info!("missing directory {:?} was found!", path);
                             return Some((
-                                as_event_stream(mfs.clone(), event, OffsetDateTime::now_utc()),
+                                as_event_stream(mfs.clone(), &event, OffsetDateTime::now_utc()),
                                 (mfs, missing, watcher, stream),
                             ));
                         }
@@ -445,7 +563,7 @@ impl FileSystem {
                                     return Some((
                                         as_event_stream(
                                             mfs.clone(),
-                                            create_event,
+                                            &create_event,
                                             OffsetDateTime::now_utc(),
                                         ),
                                         (mfs, missing, watcher, stream),
@@ -462,17 +580,75 @@ impl FileSystem {
         )
         .flatten();
 
-        let initial_events = get_initial_events(&fs);
-        let resume_events_recv = get_resume_events(&fs);
-        let events = futures::stream::select(resume_events_recv, events_stream)
+        use futures::future::Either;
+        let resume_events = get_resume_events(&fs);
+        let events = futures::stream::select(events_stream, resume_events).map(Either::Left);
+
+        let retry_events = get_retry_events(&fs).map(Either::Right);
+
+        let events = futures::stream::select(events, retry_events)
             .map(|event_result| async { event_result })
             .buffered(EVENT_STREAM_BUFFER_COUNT)
-            .map(move |(event, event_time)| {
+            .map({
                 let fs = fs.clone();
-                as_event_stream(fs, event, event_time)
+                move |e| {
+                    let (event, event_time, retries) = match e {
+                        Either::Left((event, event_time)) => (event, event_time, None),
+                        Either::Right((event, event_time, retries)) => {
+                            (event, event_time, Some(retries))
+                        }
+                    };
+                    let fs = fs.clone();
+                    as_event_stream(fs, &event, event_time).filter_map({
+                        let retry_event_sender = retry_event_sender.clone();
+                        move |(e, event_time)| {
+                            let retry_event_sender = retry_event_sender.clone();
+                            // Make sure we only clone the event if there's a error
+                            let event = e.as_ref().err().map(|_| event.clone());
+                            async move {
+                                match e {
+                                    Ok(_) => Some((e, event_time)),
+                                    Err(e) => {
+                                        match e {
+                                            /*
+                                            #[error("error watching: {0:?} {1:?}")]
+                                            Watch(Option<PathBuf>, notify_stream::Error),
+                                            #[error("got event for untracked watch descriptor: {0:?}")]
+                                            WatchEvent(PathBuf),
+                                            #[error("unexpected existing entry")]
+                                            Existing,
+                                            #[error("parent should be a directory")]
+                                            ParentNotValid,
+                                            #[error("path is not valid: {0:?}")]
+                                            PathNotValid(PathBuf),
+                                            #[error("The process lacks permissions to view directory contents")]
+                                            DirectoryListNotValid(io::Error, PathBuf),
+                                            */
+                                            Error::File(_io_error)
+                                            | Error::DirectoryListNotValid(_io_error, _) => {
+                                                // TODO check if it's a permission error?
+                                                retry_event_sender
+                                                    .send((
+                                                        event.unwrap(),
+                                                        event_time,
+                                                        retries.unwrap_or(0),
+                                                    ))
+                                                    .await
+                                                    .unwrap();
+                                            }
+                                            _ => {}
+                                        }
+                                        None
+                                    }
+                                }
+                            }
+                        }
+                    })
+                }
             })
             .flatten();
 
+        let initial_events = get_initial_events(&fs);
         Ok(futures::stream::select(
             initial_events.chain(events),
             missing_dir_event,
@@ -480,7 +656,7 @@ impl FileSystem {
     }
 
     /// Handles inotify events and may produce Event(s) that are returned upstream through sender
-    fn process(&mut self, watch_event: WatchEvent) -> FsResult<Vec<Event>> {
+    fn process(&mut self, watch_event: &WatchEvent) -> FsResult<Vec<Event>> {
         let _entries = self.entries.clone();
         let mut _entries = _entries.borrow_mut();
 
@@ -488,33 +664,33 @@ impl FileSystem {
 
         // TODO: Remove OsString names
         let result = match watch_event {
-            WatchEvent::Create(wd) => self.process_create(&wd, &mut _entries),
-            WatchEvent::Write(wd) => match self.process_modify(&wd) {
+            WatchEvent::Create(wd) => self.process_create(wd, &mut _entries),
+            WatchEvent::Write(wd) => match self.process_modify(wd) {
                 Err(Error::WatchEvent(_)) => {
-                    self.process_create(&wd, &mut _entries).and_then(|mut e| {
-                        e.extend(self.process_modify(&wd)?);
+                    self.process_create(wd, &mut _entries).and_then(|mut e| {
+                        e.extend(self.process_modify(wd)?);
                         Ok(e)
                     })
                 }
                 e => e,
             },
-            WatchEvent::Remove(wd) => self.process_delete(&wd, &mut _entries),
+            WatchEvent::Remove(wd) => self.process_delete(wd, &mut _entries),
             WatchEvent::Rename(from_wd, to_wd) => {
                 // Source path should exist and be tracked to be a move
                 let is_from_path_ok = self
-                    .get_first_entry(&from_wd)
+                    .get_first_entry(from_wd)
                     .map(|entry| self.entry_path_passes(entry, &_entries))
                     .unwrap_or(false);
 
                 // Target path pass the inclusion/exclusion rules to be a move
-                let is_to_path_ok = self.passes(&to_wd, &_entries);
+                let is_to_path_ok = self.passes(to_wd, &_entries);
 
                 if is_to_path_ok && is_from_path_ok {
-                    self.process_rename(&from_wd, &to_wd, &mut _entries)
+                    self.process_rename(from_wd, to_wd, &mut _entries)
                 } else if is_to_path_ok {
-                    self.process_create(&to_wd, &mut _entries)
+                    self.process_create(to_wd, &mut _entries)
                 } else if is_from_path_ok {
-                    self.process_delete(&from_wd, &mut _entries)
+                    self.process_delete(from_wd, &mut _entries)
                 } else {
                     // Most likely parent was removed, dropping all child watch descriptors
                     // and we've got the child watch event already queued up
@@ -527,7 +703,7 @@ impl FileSystem {
                     "There was an error mapping a file change: {:?} ({:?})",
                     e, p
                 );
-                Err(Error::Watch(p, e))
+                Err(Error::Watch(p.clone(), e.clone()))
             }
             WatchEvent::Rescan => Err(Error::Rescan),
         };
