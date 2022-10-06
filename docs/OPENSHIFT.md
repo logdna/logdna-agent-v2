@@ -92,28 +92,26 @@ Older versions of our configurations do not provide these labels. In that case, 
 
 ### Upgrading your Image
 
-The image contains the actual agent code that is run on the Pods created by the DaemonSet. New versions of the agent always strive for backwards compatibility with old configuration versions. Any breaking changes will be outlined in the [release page](https://github.com/logdna/logdna-agent-v2/releases). We always recommend upgrading to the latest configuration to guarantee access to new features.
+The image contains the actual agent code that is run on the Pods created by the DaemonSet. New versions of the agent always strive for backwards compatibility with old configuration versions. Any breaking changes will be outlined in the [change log](https://docs.mezmo.com/changelog). We always recommend upgrading to the latest configuration to guarantee access to new features.
 
 The upgrade path for the image depends on which image tag you are using in your DaemonSet.
 
-If your DaemonSet is configured with `logdna/logdna-agent:stable`, the default configuration setting, then restarting your Pods will trigger them to pull down the latest stable version of the LogDNA agent image.
+If your DaemonSet is configured with `logdna/logdna-agent:3`, or some other major version number, then restarting your Pods will trigger them to pull down the latest minor for this major version (in this example `3`) version of the LogDNA agent image .
 
 ```console
 oc rollout restart daemonset logdna-agent
 ```
 
-Otherwise, if your DaemonSet is configured with a different tag (e.g. `logdna/logdna-agent:2.1.7`), you'll need to update the image and tag, which will trigger a rollover of all the pods.
+Otherwise, if your DaemonSet is configured with a different tag (e.g. `logdna/logdna-agent:3.5.1`), you'll need to update the image and tag, which will trigger a rollover of all the pods.
 
 ```console
-oc patch daemonset logdna-agent --type json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"logdna/logdna-agent:2.2.0"}]'
+oc patch daemonset logdna-agent --type json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"logdna/logdna-agent:3.5.1"}]'
 ```
 
 The specific tag you should use depends on your requirements, we offer a list of tags for varying compatibility:
-* `latest` - Update with each new revision including public betas.
-* `stable` - Updates with each major, minor, and patch version updates.
-* `2` - Updates with each minor and patch version updates under `2.x.x`.
-* `2.2` - Updates with each patch version update under `2.2.x`.
-* `2.2.0` - Targets a specific version of the agent.
+* `3` - Updates with each minor and patch version updates under `3.x.x`.
+* `3.5` - Updates with each patch version update under `3.5.x`.
+* `3.5.1` - Targets a specific version of the agent.
 
 **Note:** This list isn't exhaustive; for a full list check out the [logdna-agent dockerhub page](https://hub.docker.com/r/logdna/logdna-agent)
 
