@@ -248,26 +248,41 @@ fn get_delayed_events<T>(
     st: impl Stream<Item = T> + Unpin,
     delay: std::time::Duration,
 ) -> impl Stream<Item = T> {
+    use std::cmp::Reverse;
     futures::stream::unfold((st, std::collections::BinaryHeap::new(), false), {
         move |(mut st, mut delayed_events, mut stream_done)| {
             async move {
                 let mut return_val = None;
                 loop {
+                    if stream_done && delayed_events.is_empty() {
+                        return None;
+                    }
                     // If any delayed events have expired we should return those
                     // before awaiting the retry_stream
-                    if delayed_events.peek().map_or(false, |de: &DelayedEvent<_>| {
-                        std::time::Instant::now() > de.delayed_until
-                    }) {
-                        return_val = Some(delayed_events.pop().unwrap().event);
+                    let now = std::time::Instant::now();
+                    while delayed_events
+                        .peek()
+                        .map_or(false, |de: &Reverse<DelayedEvent<_>>| {
+                            now > de.0.delayed_until
+                        })
+                    {
+                        return_val
+                            .get_or_insert_with(Vec::new)
+                            .push(delayed_events.pop().unwrap().0.event);
                     }
                     // Grab any retry events that are already on the retry_stream
+                    let mut st_ready_chunks = st.ready_chunks(100);
                     loop {
-                        match tokio::time::timeout(Duration::from_secs(0), st.next()).await {
-                            Ok(Some(t)) => {
-                                delayed_events.push(DelayedEvent::from((
-                                    std::time::Instant::now() + delay,
-                                    t,
-                                )));
+                        match tokio::time::timeout(Duration::from_millis(0), st_ready_chunks.next())
+                            .await
+                        {
+                            Ok(Some(c)) => {
+                                for t in c {
+                                    delayed_events.push(Reverse(DelayedEvent::from((
+                                        std::time::Instant::now() + delay,
+                                        t,
+                                    ))));
+                                }
                                 // We got something, poll again
                                 continue;
                             }
@@ -279,21 +294,27 @@ fn get_delayed_events<T>(
                         // Got nothing, break
                         break;
                     }
+                    st = st_ready_chunks.into_inner();
                     // We can be productive, return the delayed event
                     if let Some(ret) = return_val {
-                        return Some((ret, (st, delayed_events, stream_done)));
+                        return Some((
+                            futures::stream::iter(ret),
+                            (st, delayed_events, stream_done),
+                        ));
                     }
-                    if let Some(de) = delayed_events.peek() {
+                    if let Some(Reverse(de)) = delayed_events.peek() {
                         if let Ok(Some(t)) =
                             tokio::time::timeout_at((de.delayed_until).into(), st.next()).await
                         {
-                            delayed_events.push((std::time::Instant::now() + delay, t).into());
+                            delayed_events
+                                .push(Reverse((std::time::Instant::now() + delay, t).into()));
                         }
                     }
                 }
             }
         }
     })
+    .flatten()
 }
 
 fn get_retry_events(
@@ -305,6 +326,7 @@ fn get_retry_events(
     };
     get_delayed_events(retry_events, Duration::from_secs(1)).filter_map(
         |(event, ts, retries)| async move {
+            debug!("Retry {} for event {:?}", retries + 1, event);
             if retries <= 5 {
                 Some((event, ts, retries + 1))
             } else {
@@ -460,6 +482,7 @@ impl FileSystem {
                 } else {
                     if let Err(e) = fs.insert(&path_cpy, &mut initial_dir_events, &mut entries) {
                         // It can failed due to permissions or some other restriction
+                        // TODO: add to retry events
                         debug!(
                             "Initial insertion of {} failed: {}",
                             path_cpy.to_str().unwrap(),
@@ -483,6 +506,7 @@ impl FileSystem {
             {
                 if let Err(e) = fs.insert(path, &mut initial_dir_events, &mut entries) {
                     // It can failed due to file restrictions
+                    // TODO: add to retry events
                     debug!(
                         "Initial recursive scan insertion of {} failed: {}",
                         path.to_str().unwrap(),
@@ -605,6 +629,7 @@ impl FileSystem {
                             let retry_event_sender = retry_event_sender.clone();
                             // Make sure we only clone the event if there's a error
                             let event = e.as_ref().err().map(|_| event.clone());
+                            debug!("checking event to see if it needs retried");
                             async move {
                                 match e {
                                     Ok(_) => Some((e, event_time)),
@@ -627,6 +652,7 @@ impl FileSystem {
                                             Error::File(_io_error)
                                             | Error::DirectoryListNotValid(_io_error, _) => {
                                                 // TODO check if it's a permission error?
+                                                debug!("Sending event to retry queue");
                                                 retry_event_sender
                                                     .send((
                                                         event.unwrap(),
@@ -708,7 +734,7 @@ impl FileSystem {
             WatchEvent::Rescan => Err(Error::Rescan),
         };
 
-        if let Err(e) = result {
+        if let Err(ref e) = result {
             match e {
                 Error::PathNotValid(path) => {
                     debug!("Path is not longer valid: {}", path.display());
@@ -720,10 +746,8 @@ impl FileSystem {
                     warn!("Processing notify event resulted in error: {}", e);
                 }
             }
-            Ok(Vec::new())
-        } else {
-            result
         }
+        result
     }
 
     fn process_create(
@@ -2538,5 +2562,40 @@ mod tests {
         remove_dir_all(&sub_dir_path).unwrap();
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_delayed_queue() {
+        let (retry_events_send, retry_events_recv) = async_channel::unbounded();
+
+        let mut delay_queue = Box::pin(get_delayed_events(
+            retry_events_recv,
+            Duration::from_secs(2),
+        ));
+
+        let start = std::time::Instant::now();
+        for i in 0..100 {
+            retry_events_send.send(i).await.unwrap();
+        }
+
+        let _ = delay_queue.next().await;
+
+        let next = std::time::Instant::now();
+        assert!(next - start > Duration::from_secs(1));
+
+        delay_queue.as_mut().take(50).collect::<Vec<_>>().await;
+        let delta = std::time::Instant::now() - next;
+        let next = std::time::Instant::now();
+        assert!(delta < Duration::from_millis(1), "{:?}", delta);
+
+        retry_events_send.send(100).await.unwrap();
+        delay_queue.as_mut().take(49).collect::<Vec<_>>().await;
+        let delta = std::time::Instant::now() - next;
+        let next = std::time::Instant::now();
+        assert!(delta < Duration::from_millis(1), "{:?}", delta);
+
+        delay_queue.as_mut().take(1).collect::<Vec<_>>().await;
+        let delta = std::time::Instant::now() - next;
+        assert!(delta > Duration::from_secs(1), "{:?}", delta);
     }
 }
