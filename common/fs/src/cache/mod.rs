@@ -992,7 +992,7 @@ impl FileSystem {
                         .iter()
                         .filter_map(|path| {
                             let is_reachable = self.is_reachable(&mut cuts, path, _entries).ok();
-                            is_reachable.and_then(|b| (!b).then(|| path))
+                            is_reachable.and_then(|b| (!b).then_some(path))
                         })
                         .filter_map(|path| {
                             let ret = self

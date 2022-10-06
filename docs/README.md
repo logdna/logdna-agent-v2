@@ -1,7 +1,9 @@
 # LogDNA Agent
 
-[![Rustc Version 1.46+]][rustc]
-[Join us at the LogDNA community forum]: https://community.logdna.com
+![agent version](https://img.shields.io/badge/Version-3.6.0-E9FF92.svg)
+[![made-with-rust](https://img.shields.io/badge/Made%20with-Rust-orange.svg)](https://www.rust-lang.org/)
+
+Mezmo, formerly LogDNA, enables enterprises to ingest all of their log data to a single platform, normalize it, and route it to the appropriate teams so that they can take meaningful action in real time. Join us at the Mezmo community [forum](https://community.logdna.com).
 
 The LogDNA agent is a resource-efficient log collection client that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
 
@@ -26,9 +28,6 @@ As part of the new company name change, we will be changing the name of our agen
 </table>
 
 
-[Rustc Version 1.46+]: https://img.shields.io/badge/rustc-1.42+-lightgray.svg
-[rustc]: https://blog.rust-lang.org/2020/03/12/Rust-1.42.html
-[Join us at the LogDNA community forum]: https://community.logdna.com
 [LogDNA]: https://logdna.com
 [Rust]: https://www.rust-lang.org/
 [Kubernetes]: https://kubernetes.io/
@@ -50,7 +49,6 @@ As part of the new company name change, we will be changing the name of our agen
   * [Configuring the Environment](#configuring-the-environment)
   * [Configuring Lookback](#configuring-lookback)
   * [Configuring Journald](#configuring-journald)
-  * [Configuring Kubernetes Events](#configuring-events)
   * [Configuring regex for redaction and exclusion or inclusion](#configuring-regex-for-redaction-and-exclusion-or-inclusion)
   * [Resource Limits](#resource-limits)
   * [Exposing Agent Metrics](#exposing-agent-metrics)
@@ -141,7 +139,7 @@ You can also obtain the image and review our tagging scheme on [DockerHub](https
 
 ### Building Agent Binary on Linux
 
-The agent requires `v1.42+` of rustc [cargo-make](https://github.com/sagiegurari/cargo-make) to build. If the proper versions of rustc and cargo are installed; then simply run the following command to build the agent:
+The agent requires rustc [cargo-make](https://github.com/sagiegurari/cargo-make) to build. If rustc and cargo are [installed](https://www.rust-lang.org/tools/install), simply run the following command to build the agent:
 
 ```
 cargo build --release
@@ -205,7 +203,7 @@ For backward compatibility agent v1 configuration file format is still supported
 |`LOGDNA_K8S_STARTUP_LEASE`||Determines whether or not to use K8 leases on startup|`never`|
 |`LOGDNA_USE_K8S_LOG_ENRICHMENT`||Determines whether the agent should query the K8s API to enrich log lines from other pods.|`always`|
 |`LOGDNA_LOG_K8S_EVENTS`||Determines whether the agent should log Kubernetes resource events. This setting only affects tracking and logging Kubernetes resource changes via watches. When disabled, the agent may still query k8s metadata to enrich log lines from other pods depending on the value of `LOGDNA_USE_K8S_LOG_ENRICHMENT` setting value.|`never`|
-|`LOGDNA_LOG_REPORTER_METRICS`||Determines whether or not metrics usage statistics is enabled.|`never`|
+|`LOGDNA_LOG_METRIC_SERVER_STATS`||Determines whether or not metrics usage statistics is enabled.|`never`|
 |`LOGDNA_DB_PATH`|`log.db_path`|The directory in which the agent will store its state database. Note that the agent must have write access to the directory and be a persistent volume.|`/var/lib/logdna`|
 |`LOGDNA_METRICS_PORT`|`log.metrics_port`|The port number to expose a Prometheus endpoint target with the [agent internal metrics](INTERNAL_METRICS.md).||
 |`LOGDNA_INGEST_TIMEOUT`|`http.timeout`|The timeout of the API calls to the ingest API in milliseconds|`10000`|
@@ -289,36 +287,6 @@ file in docs directory of this repository.
 If the agent pods have access to journald log files or directories, monitoring can be enabled on them with the `LOGDNA_JOURNALD_PATHS`. Common values include `/var/log/journal` and `/run/systemd/journal`. To specify both, use a comma separated list: `/var/log/journal,/run/systemd/journal`.
 
 Take a look at enabling journald monitoring for [Kubernetes](KUBERNETES.md#collecting-node-journald-logs) or [OpenShift](OPENSHIFT.md#collecting-node-journald-logs).
-
-### Configuring Events
-
-A Kubernetes event is exactly what it sounds like: a resource type that is automatically generated when state changes occur in other resources, or when errors or other messages manifest across the system. Monitoring events is useful for debugging your Kubernetes cluster.
-
-Only one pod in a cluster will report on k8 events for the entire cluster - the leader election process leverages leases. please see the event-leader-leases.yaml file in the k8s folder for the lease specifications, permissions.
-
-By default, the LogDNA agent does not capture Kubernetes events (and OpenShift events, as well, since OpenShift is built on top of Kubernetes clusters).
-
-To control whether the LogDNA agent collects Kubernetes events, configure the `LOGDNA_LOG_K8S_EVENTS` environment variable using one of these two values:
-
-* `always` - Always capture events
-* `never` - Never capture events
-__Note:__ The default option is `never`.
-
-> :warning: Due to a ["won't fix" bug in the Kubernetes API](https://github.com/kubernetes/kubernetes/issues/41743), the LogDNA agent collects events from the entire cluster, including multiple nodes. To prevent duplicate logs when running multiple pods, the LogDNA agent pods defer responsibilty of capturing events to the oldest pod in the cluster. If that pod is down, the next oldest LogDNA agent pod will take over responsibility and continue from where the previous pod left off.
-
-### Configuring Metrics Reporter Statistics
-
-With this enabled the agent will pull from the kubernetes metrics-server, this allows the agent to report on CPU/Memory usage statistics for pods and nodes in the cluster. These statistics will be viewable on the web application for individual log lines showing usage for the pod and node associated with that log line.
-
-Reach out to Mezmo to get this feature enabled on the web application in addition to this configuration.
-
-Only one pod in a cluster will report metrics statistics for the entire cluster - the leader election process leverages leases. please see the reporter-leader-leases.yaml file in the k8s folder for the lease specifications, permissions.
-
-To control whether the LogDNA agent reports usage statistics use the `LOGDNA_LOG_REPORTER_METRICS` environment variable with one of these two values:
-
-* `always` - Always report usage
-* `never` - Never report usage
-__Note:__ The default option is `never`.
 
 ### Configuring regex for redaction and exclusion or inclusion
 

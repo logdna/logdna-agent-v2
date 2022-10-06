@@ -62,6 +62,10 @@ struct Opt {
     /// Ingester delay
     #[structopt(long)]
     ingester_delay: Option<u64>,
+
+    /// stderr log file path
+    #[structopt(long)]
+    stderr_log_file_path: Option<String>,
 }
 
 pub fn get_available_port() -> Option<u16> {
@@ -230,11 +234,23 @@ async fn main() -> Result<(), std::io::Error> {
 
     println!("Building Agent");
 
-    let cargo_build = escargot::CargoBuild::new()
+    let mut cargo_build = escargot::CargoBuild::new()
         .manifest_path(manifest_path)
         .bin("logdna-agent")
         .release()
-        .current_target()
+        .current_target();
+
+    let features: Vec<std::ffi::OsString> = Vec::new();
+
+    #[cfg(feature="dhat-heap")]
+    let features = { let mut features= features; features.push("dhat-heap".into()); features};
+
+    cargo_build = match features {
+        features if !features.is_empty() => cargo_build.no_default_features().features(features.join(std::ffi::OsStr::new(","))),
+        _ => cargo_build
+    };
+
+    let cargo_build = cargo_build
         .run()
         .unwrap();
 
@@ -315,9 +331,18 @@ async fn main() -> Result<(), std::io::Error> {
     let stderr_reader = std::io::BufReader::new(agent_stderr);
     std::thread::spawn({
         let wpb1 = wpb.clone();
+        let agent_stderr_filepath = opt.stderr_log_file_path.clone();
         move || {
+            let mut agent_stderr_file = agent_stderr_filepath.map(|fp|std::io::LineWriter::new(std::fs::File::create(fp).unwrap()));
             for _line in stderr_reader.lines() {
-                wpb1.println(format!("Agent STDOUT: {}", _line.unwrap()));
+                if let Some(ref mut agent_stderr_file) = agent_stderr_file {
+                    agent_stderr_file.write(_line.as_ref().unwrap().as_bytes()).unwrap();
+                    agent_stderr_file.write_all(b"\n").unwrap();
+                }
+                wpb1.println(format!("Agent STDERR: {}", _line.as_ref().unwrap()));
+            }
+            if let Some(ref mut agent_stderr_file) = agent_stderr_file {
+                agent_stderr_file.flush().unwrap();
             }
         }
     });

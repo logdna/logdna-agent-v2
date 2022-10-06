@@ -12,7 +12,21 @@ mod stream_adapter;
 
 use crate::_main::_main;
 
-fn main() {
+#[cfg(feature = "dhat-heap")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
+
+#[cfg(all(unix, feature = "jemalloc"))]
+#[global_allocator]
+static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+#[cfg(all(feature = "dhat-heap", feature = "jemalloc"))]
+compile_error!("feature \"dhat-heap\" and feature \"jemalloc\" cannot be enabled at the same time");
+
+fn main() -> anyhow::Result<()> {
+    #[cfg(feature = "dhat-heap")]
+    let _profiler = dhat::Profiler::new_heap();
+
     // covert logdna env vars to mezmo ones
     Config::process_logdna_env_vars();
 
