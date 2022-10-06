@@ -563,7 +563,7 @@ pub async fn _main(
         });
 
     // Concurrently run the line streams and listen for the `shutdown` signal
-    Ok(tokio::select! {
+    tokio::select! {
         _ = lines_driver => {}
         _ = retry_driver => {}
         _ = &mut shutdown_rx => {
@@ -572,7 +572,8 @@ pub async fn _main(
         signal_name = get_signal() => {
             info!("Received {} signal, shutting down", signal_name)
         }
-    })
+    }
+    Ok(())
 }
 
 async fn set_up_leader(
