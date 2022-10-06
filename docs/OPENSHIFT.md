@@ -96,7 +96,7 @@ The image contains the actual agent code that is run on the Pods created by the 
 
 The upgrade path for the image depends on which image tag you are using in your DaemonSet.
 
-If your DaemonSet is configured with `logdna/logdna-agent:3`, or some other major version number, then restarting your Pods will trigger them to pull down the latest minor for this major version (in this example `3`) version of the LogDNA agent image .
+If your DaemonSet is configured with `logdna/logdna-agent:3`, or some other major version number, then restarting your Pods will trigger them to pull down the latest minor for this major version (in this example `3`) version of the LogDNA agent image.
 
 ```console
 oc rollout restart daemonset logdna-agent
