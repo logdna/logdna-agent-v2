@@ -50,10 +50,6 @@ pub static DEFAULT_CHECK_FOR_LEADER_S: i32 = 300;
 /// Debounce filesystem event
 static FS_EVENT_DELAY: Duration = Duration::from_millis(10);
 
-#[cfg(unix)]
-#[global_allocator]
-static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
-
 // Statically include the CARGO_PKG_NAME and CARGO_PKG_VERSIONs in the binary
 // and export under the PKG_NAME and PKG_VERSION symbols.
 // These are used to identify the application and version, for example as part
@@ -66,20 +62,17 @@ pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub async fn _main(
     shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
     mut shutdown_rx: tokio::sync::oneshot::Receiver<()>,
-) {
+) -> anyhow::Result<()> {
     // Actually use the data to work around a bug in rustc:
     // https://github.com/rust-lang/rust/issues/47384
     #[cfg(feature = "dep_audit")]
     dep_audit::get_auditable_dependency_list()
         .map_or_else(|e| trace!("{}", e), |d| trace!("{}", d));
 
-    let config = match Config::new(std::env::args_os()) {
-        Ok(v) => v,
-        Err(e) => {
-            error!("config error: {}", e);
-            std::process::exit(1);
-        }
-    };
+    let config = Config::new(std::env::args_os()).map_err(|e| {
+        error!("config error: {}", e);
+        e
+    })?;
 
     tokio::spawn(async {
         Metrics::log_periodically().await;
@@ -255,25 +248,22 @@ pub async fn _main(
             }
         };
 
-    match LineRules::new(
-        &config.log.line_exclusion_regex,
-        &config.log.line_inclusion_regex,
-        &config.log.line_redact_regex,
-    ) {
-        Ok(v) => executor.register(v),
-        Err(e) => {
+    executor.register(
+        LineRules::new(
+            &config.log.line_exclusion_regex,
+            &config.log.line_inclusion_regex,
+            &config.log.line_redact_regex,
+        )
+        .map_err(|e| {
             error!("line regex is invalid: {}", e);
-            std::process::exit(1);
-        }
-    };
+            e
+        })?,
+    );
 
-    match MetaRules::new(MetaRulesConfig::from_env()) {
-        Ok(v) => executor.register(v),
-        Err(e) => {
-            error!("line regex is invalid: {}", e);
-            std::process::exit(1);
-        }
-    };
+    executor.register(MetaRules::new(MetaRulesConfig::from_env()).map_err(|e| {
+        error!("line regex is invalid: {}", e);
+        e
+    })?);
 
     executor.init();
 
@@ -583,6 +573,7 @@ pub async fn _main(
             info!("Received {} signal, shutting down", signal_name)
         }
     }
+    Ok(())
 }
 
 async fn set_up_leader(
