@@ -2372,6 +2372,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn filesystem_test_basic_ops_per_platform() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
