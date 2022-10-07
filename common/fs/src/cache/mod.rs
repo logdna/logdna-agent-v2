@@ -210,6 +210,7 @@ fn get_resume_events(
 
 pub struct FileSystem {
     watcher: Watcher,
+    missing_dir_watcher: Option<Watcher>,
     pub entries: Rc<RefCell<EntryMap>>,
     symlinks: Symlinks,
     watch_descriptors: WatchDescriptors,
@@ -217,7 +218,7 @@ pub struct FileSystem {
     master_rules: Rules,
     initial_dirs: Vec<DirPathBuf>,
     initial_dir_rules: Rules,
-
+    missing_dirs: Vec<PathBuf>,
     initial_events: Vec<Event>,
 
     lookback_config: Lookback,
@@ -262,19 +263,54 @@ impl FileSystem {
     ) -> Self {
         let (resume_events_send, resume_events_recv) = async_channel::unbounded();
         initial_dirs.iter().for_each(|path| {
-            if !path.is_dir() {
+            if !path.inner.is_dir() {
                 panic!("initial dirs must be dirs")
             }
         });
+
+        let mut missing_dirs: Vec<PathBuf> = Vec::new();
+
         let watcher = Watcher::new(delay);
+        let mut missing_dir_watcher = Watcher::new(delay);
         let entries = SlotMap::new();
 
         let mut initial_dir_rules = Rules::new();
         let ignored_dirs = HashSet::new();
 
+        // Adds initial directories and constructs missing directory
+        // vector and adds prefix path to the missing directory watcher
         for path in initial_dirs.iter() {
-            add_initial_dir_rules(&mut initial_dir_rules, path);
+            if path.postfix.is_none() {
+                add_initial_dir_rules(&mut initial_dir_rules, path);
+            } else {
+                let mut full_missing_path = PathBuf::new();
+                let root_pathbuf = Path::new("/");
+                let mut format_postfix =
+                    String::from(path.postfix.as_ref().unwrap().to_str().unwrap());
+                if format_postfix.ends_with('/') {
+                    format_postfix.pop();
+                }
+                if path.inner == root_pathbuf {
+                    full_missing_path.push(format!("{}{}", &path.inner.display(), format_postfix));
+                } else {
+                    full_missing_path.push(format!("{}/{}", &path.inner.display(), format_postfix));
+                }
+                let full_missing_dirpathbuff = DirPathBuf {
+                    inner: full_missing_path.clone(),
+                    postfix: None,
+                };
+
+                // Add missing directory to Rules
+                add_initial_dir_rules(&mut initial_dir_rules, &full_missing_dirpathbuff);
+
+                info!("adding {:?} to missing directory watcher", path.inner);
+                missing_dirs.push(full_missing_path);
+                missing_dir_watcher
+                    .watch(&path.inner, RecursiveMode::NonRecursive)
+                    .expect("Could not add path to missing directory watcher");
+            }
         }
+        debug!("initial directory rules: {:?}\n", initial_dir_rules);
 
         let mut fs = Self {
             entries: Rc::new(RefCell::new(entries)),
@@ -284,9 +320,11 @@ impl FileSystem {
             master_rules: rules,
             initial_dirs: initial_dirs.clone(),
             initial_dir_rules,
+            missing_dirs,
             lookback_config,
             initial_offsets,
             watcher,
+            missing_dir_watcher: Some(missing_dir_watcher),
             initial_events: Vec::new(),
             resume_events_recv,
             resume_events_send,
@@ -296,6 +334,7 @@ impl FileSystem {
         let entries = fs.entries.clone();
         let mut entries = entries.borrow_mut();
 
+        // Initial dirs
         let mut initial_dir_events = Vec::new();
         for dir in initial_dirs
             .into_iter()
@@ -339,6 +378,7 @@ impl FileSystem {
                 }
             }
         }
+
         for event in initial_dir_events {
             match event {
                 Event::New(entry_key) => fs.initial_events.push(Event::Initialize(entry_key)),
@@ -348,6 +388,7 @@ impl FileSystem {
         fs
     }
 
+    // Stream events
     pub fn stream_events(
         fs: Arc<Mutex<FileSystem>>,
     ) -> Result<impl Stream<Item = (Result<Event, Error>, EventTimestamp)>, std::io::Error> {
@@ -358,6 +399,68 @@ impl FileSystem {
                 .watcher;
             watcher.receive()
         };
+
+        let mfs = fs.clone(); // clone fs for missing files
+        let missing_dirs = mfs
+            .try_lock()
+            .expect("could not lock filesystem cache")
+            .missing_dirs
+            .clone();
+        let missing_dir_watcher = mfs
+            .try_lock()
+            .expect("could not lock filesystem cache")
+            .missing_dir_watcher
+            .take()
+            .unwrap_or_else(|| Watcher::new(Duration::new(0, 10000000)));
+
+        let missing_dir_event_stream = missing_dir_watcher.receive();
+
+        let missing_dir_event = futures::stream::unfold(
+            (
+                mfs,
+                missing_dirs,
+                missing_dir_watcher,
+                Box::pin(missing_dir_event_stream),
+            ),
+            move |(mfs, missing, mut watcher, mut stream)| async move {
+                loop {
+                    let (event, _) = stream.next().await?;
+                    debug!("missing directory watcher event: {:?}", event);
+                    if let notify_stream::Event::Create(ref path) = event {
+                        if missing.contains(path) {
+                            // Got a complete directory match, inserting it
+                            info!("missing directory {:?} was found!", path);
+                            return Some((
+                                as_event_stream(mfs.clone(), event, OffsetDateTime::now_utc()),
+                                (mfs, missing, watcher, stream),
+                            ));
+                        }
+                        if missing.iter().any(|m| m.starts_with(&path)) {
+                            info!("found sub-path of missing directory {:?}", path);
+                            for dir in missing.iter() {
+                                // Check if full path was created along with sub-path
+                                if dir.exists() {
+                                    info!("full path exists {:?}", dir);
+                                    let create_event = WatchEvent::Create(dir.clone());
+                                    return Some((
+                                        as_event_stream(
+                                            mfs.clone(),
+                                            create_event,
+                                            OffsetDateTime::now_utc(),
+                                        ),
+                                        (mfs, missing, watcher, stream),
+                                    ));
+                                }
+                                watcher
+                                    .watch(path, RecursiveMode::NonRecursive)
+                                    .expect("Could not add inital value to missing_dir_watch");
+                            }
+                        }
+                    }
+                }
+            },
+        )
+        .flatten();
 
         let initial_events = get_initial_events(&fs);
         let resume_events_recv = get_resume_events(&fs);
@@ -370,7 +473,10 @@ impl FileSystem {
             })
             .flatten();
 
-        Ok(initial_events.chain(events))
+        Ok(futures::stream::select(
+            initial_events.chain(events),
+            missing_dir_event,
+        ))
     }
 
     /// Handles inotify events and may produce Event(s) that are returned upstream through sender
