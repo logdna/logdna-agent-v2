@@ -1,10 +1,12 @@
+use crate::cache::delayed_stream::delayed_stream;
 use crate::cache::entry::Entry;
 use crate::cache::event::Event;
 use crate::cache::tailed_file::TailedFile;
 use crate::lookback::Lookback;
 use crate::rule::{RuleDef, Rules, Status};
-use notify_stream::{Event as WatchEvent, RecursiveMode, Watcher};
 
+use metrics::Metrics;
+use notify_stream::{Event as WatchEvent, RecursiveMode, Watcher};
 use state::{FileId, Span, SpanVec};
 
 use std::borrow::Cow;
@@ -17,6 +19,7 @@ use std::ops::Deref;
 use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{fmt, fs, io};
 
 use futures::{Stream, StreamExt};
@@ -26,13 +29,13 @@ use thiserror::Error;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
 
+mod delayed_stream;
 pub mod dir_path;
 pub mod entry;
 pub mod event;
 pub mod tailed_file;
+
 pub use dir_path::{DirPathBuf, DirPathBufError};
-use metrics::Metrics;
-use std::time::Duration;
 
 type Children = HashMap<OsString, EntryKey>;
 type Symlinks = HashMap<PathBuf, Vec<EntryKey>>;
@@ -210,113 +213,6 @@ fn get_resume_events(
         .filter_map(|e| async { e })
 }
 
-struct DelayedEvent<T> {
-    delayed_until: std::time::Instant,
-    event: T,
-}
-
-impl<T> PartialEq for DelayedEvent<T> {
-    fn eq(&self, other: &DelayedEvent<T>) -> bool {
-        self.delayed_until == other.delayed_until
-    }
-}
-
-impl<T> Eq for DelayedEvent<T> {}
-
-impl<T> PartialOrd for DelayedEvent<T> {
-    fn partial_cmp(&self, other: &DelayedEvent<T>) -> Option<std::cmp::Ordering> {
-        self.delayed_until.partial_cmp(&other.delayed_until)
-    }
-}
-
-impl<T> Ord for DelayedEvent<T> {
-    fn cmp(&self, other: &DelayedEvent<T>) -> std::cmp::Ordering {
-        self.delayed_until.cmp(&other.delayed_until)
-    }
-}
-
-impl<T> From<(std::time::Instant, T)> for DelayedEvent<T> {
-    fn from(args: (std::time::Instant, T)) -> DelayedEvent<T> {
-        DelayedEvent {
-            delayed_until: args.0,
-            event: args.1,
-        }
-    }
-}
-
-fn get_delayed_events<T>(
-    st: impl Stream<Item = T> + Unpin,
-    delay: std::time::Duration,
-) -> impl Stream<Item = T> {
-    use std::cmp::Reverse;
-    futures::stream::unfold((st, std::collections::BinaryHeap::new(), false), {
-        move |(mut st, mut delayed_events, mut stream_done)| {
-            async move {
-                let mut return_val = None;
-                loop {
-                    if stream_done && delayed_events.is_empty() {
-                        return None;
-                    }
-                    // If any delayed events have expired we should return those
-                    // before awaiting the retry_stream
-                    let now = std::time::Instant::now();
-                    while delayed_events
-                        .peek()
-                        .map_or(false, |de: &Reverse<DelayedEvent<_>>| {
-                            now > de.0.delayed_until
-                        })
-                    {
-                        return_val
-                            .get_or_insert_with(Vec::new)
-                            .push(delayed_events.pop().unwrap().0.event);
-                    }
-                    // Grab any retry events that are already on the retry_stream
-                    let mut st_ready_chunks = st.ready_chunks(100);
-                    loop {
-                        match tokio::time::timeout(Duration::from_millis(0), st_ready_chunks.next())
-                            .await
-                        {
-                            Ok(Some(c)) => {
-                                for t in c {
-                                    delayed_events.push(Reverse(DelayedEvent::from((
-                                        std::time::Instant::now() + delay,
-                                        t,
-                                    ))));
-                                }
-                                // We got something, poll again
-                                continue;
-                            }
-                            Ok(None) => {
-                                stream_done = false;
-                            }
-                            _ => {}
-                        }
-                        // Got nothing, break
-                        break;
-                    }
-                    st = st_ready_chunks.into_inner();
-                    // We can be productive, return the delayed event
-                    if let Some(ret) = return_val {
-                        return Some((
-                            futures::stream::iter(ret),
-                            (st, delayed_events, stream_done),
-                        ));
-                    }
-                    if let Some(Reverse(de)) = delayed_events.peek() {
-                        if let Ok(Some(t)) =
-                            tokio::time::timeout_at((de.delayed_until).into(), st.next()).await
-                        {
-                            delayed_events
-                                .push(Reverse((std::time::Instant::now() + delay, t).into()));
-                        }
-                    }
-                }
-            }
-        }
-    })
-    .flatten()
-}
-
 fn get_retry_events(
     fs: &Arc<Mutex<FileSystem>>,
 ) -> impl Stream<Item = (WatchEvent, EventTimestamp, u32)> {
@@ -324,7 +220,7 @@ fn get_retry_events(
         let _fs = fs.try_lock().expect("couldn't lock filesystem cache");
         _fs.retry_events_recv.clone()
     };
-    get_delayed_events(retry_events, Duration::from_secs(1)).filter_map(
+    delayed_stream(retry_events, Duration::from_secs(1)).filter_map(
         |(event, ts, retries)| async move {
             debug!("Retry {} for event {:?}", retries + 1, event);
             if retries <= 5 {
@@ -2562,40 +2458,5 @@ mod tests {
         remove_dir_all(&sub_dir_path).unwrap();
 
         Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_delayed_queue() {
-        let (retry_events_send, retry_events_recv) = async_channel::unbounded();
-
-        let mut delay_queue = Box::pin(get_delayed_events(
-            retry_events_recv,
-            Duration::from_secs(2),
-        ));
-
-        let start = std::time::Instant::now();
-        for i in 0..100 {
-            retry_events_send.send(i).await.unwrap();
-        }
-
-        let _ = delay_queue.next().await;
-
-        let next = std::time::Instant::now();
-        assert!(next - start > Duration::from_secs(1));
-
-        delay_queue.as_mut().take(50).collect::<Vec<_>>().await;
-        let delta = std::time::Instant::now() - next;
-        let next = std::time::Instant::now();
-        assert!(delta < Duration::from_millis(1), "{:?}", delta);
-
-        retry_events_send.send(100).await.unwrap();
-        delay_queue.as_mut().take(49).collect::<Vec<_>>().await;
-        let delta = std::time::Instant::now() - next;
-        let next = std::time::Instant::now();
-        assert!(delta < Duration::from_millis(1), "{:?}", delta);
-
-        delay_queue.as_mut().take(1).collect::<Vec<_>>().await;
-        let delta = std::time::Instant::now() - next;
-        assert!(delta > Duration::from_secs(1), "{:?}", delta);
     }
 }
