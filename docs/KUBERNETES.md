@@ -154,8 +154,6 @@ Otherwise, if your DaemonSet is configured with a different tag (e.g. `logdna/lo
 kubectl patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"logdna/logdna-agent:3.5.1"}]'
 ```
 
-* `latest` - Update with each new revision including public betas.
-* `stable` - Updates with each major, minor, and patch version updates.
 * `3` - Updates with each minor and patch version updates under `3.x.x`.
 * `3.5` - Updates with each patch version update under `3.5.x`.
 * `3.5.1` - Targets a specific version of the agent.
