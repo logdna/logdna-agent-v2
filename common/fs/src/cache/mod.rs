@@ -47,6 +47,8 @@ type EntryMap = SlotMap<EntryKey, entry::Entry>;
 type FsResult<T> = Result<T, Error>;
 
 pub const EVENT_STREAM_BUFFER_COUNT: usize = 1000;
+const EVENT_RETRY_DELAY_MS: u64 = 1000;
+const EVENT_RETRY_COUNT: u32 = 5;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -215,21 +217,21 @@ fn get_resume_events(
 
 fn get_retry_events(
     fs: &Arc<Mutex<FileSystem>>,
+    retry_delay: Duration,
+    retry_limit: u32,
 ) -> impl Stream<Item = (WatchEvent, EventTimestamp, u32)> {
     let retry_events = {
         let _fs = fs.try_lock().expect("couldn't lock filesystem cache");
         _fs.retry_events_recv.clone()
     };
-    delayed_stream(retry_events, Duration::from_secs(1)).filter_map(
-        |(event, ts, retries)| async move {
-            debug!("Retry {} for event {:?}", retries + 1, event);
-            if retries <= 5 {
-                Some((event, ts, retries + 1))
-            } else {
-                None
-            }
-        },
-    )
+    delayed_stream(retry_events, retry_delay).filter_map(move |(event, ts, retries)| async move {
+        debug!("retry {} for event {:?}", retries + 1, event);
+        if retries <= retry_limit {
+            Some((event, ts, retries + 1))
+        } else {
+            None
+        }
+    })
 }
 
 pub struct FileSystem {
@@ -378,7 +380,6 @@ impl FileSystem {
                 } else {
                     if let Err(e) = fs.insert(&path_cpy, &mut initial_dir_events, &mut entries) {
                         // It can failed due to permissions or some other restriction
-                        // TODO: add to retry events
                         debug!(
                             "Initial insertion of {} failed: {}",
                             path_cpy.to_str().unwrap(),
@@ -402,7 +403,6 @@ impl FileSystem {
             {
                 if let Err(e) = fs.insert(path, &mut initial_dir_events, &mut entries) {
                     // It can failed due to file restrictions
-                    // TODO: add to retry events
                     debug!(
                         "Initial recursive scan insertion of {} failed: {}",
                         path.to_str().unwrap(),
@@ -504,7 +504,12 @@ impl FileSystem {
         let resume_events = get_resume_events(&fs);
         let events = futures::stream::select(events_stream, resume_events).map(Either::Left);
 
-        let retry_events = get_retry_events(&fs).map(Either::Right);
+        let retry_events = get_retry_events(
+            &fs,
+            Duration::from_millis(EVENT_RETRY_DELAY_MS),
+            EVENT_RETRY_COUNT,
+        )
+        .map(Either::Right);
 
         let events = futures::stream::select(events, retry_events)
             .map(|event_result| async { event_result })
@@ -525,30 +530,12 @@ impl FileSystem {
                             let retry_event_sender = retry_event_sender.clone();
                             // Make sure we only clone the event if there's a error
                             let event = e.as_ref().err().map(|_| event.clone());
-                            debug!("checking event to see if it needs retried");
                             async move {
                                 match e {
                                     Ok(_) => Some((e, event_time)),
                                     Err(e) => {
                                         match e {
-                                            /*
-                                            #[error("error watching: {0:?} {1:?}")]
-                                            Watch(Option<PathBuf>, notify_stream::Error),
-                                            #[error("got event for untracked watch descriptor: {0:?}")]
-                                            WatchEvent(PathBuf),
-                                            #[error("unexpected existing entry")]
-                                            Existing,
-                                            #[error("parent should be a directory")]
-                                            ParentNotValid,
-                                            #[error("path is not valid: {0:?}")]
-                                            PathNotValid(PathBuf),
-                                            #[error("The process lacks permissions to view directory contents")]
-                                            DirectoryListNotValid(io::Error, PathBuf),
-                                            */
-                                            Error::File(_io_error)
-                                            | Error::DirectoryListNotValid(_io_error, _) => {
-                                                // TODO check if it's a permission error?
-                                                debug!("Sending event to retry queue");
+                                            Error::File(_) | Error::DirectoryListNotValid(_, _) => {
                                                 retry_event_sender
                                                     .send((
                                                         event.unwrap(),
