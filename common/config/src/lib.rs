@@ -549,7 +549,7 @@ mod tests {
         // Default
         assert_eq!(
             DbPath::from(None),
-            DbPath::Path(PathBuf::from("/var/lib/logdna/"))
+            DbPath::Path(PathBuf::from(DEFAULT_DB_PATH))
         );
 
         // Actual path
