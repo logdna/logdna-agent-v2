@@ -343,12 +343,12 @@ impl TryFrom<RawConfig> for Config {
                 .log
                 .dirs
                 .into_iter()
-                // Filter off paths that are not directories and warn about them
+                // Find valid directory paths and keep track of missing paths
                 .filter_map(|d| {
                     d.clone()
                         .try_into()
                         .map_err(|e| {
-                            warn!("{} is not a valid directory {}", d.display(), e);
+                            warn!("{} is not a valid directory: {}", d.display(), e);
                         })
                         .ok()
                 })
@@ -553,7 +553,7 @@ mod tests {
         // Default
         assert_eq!(
             DbPath::from(None),
-            DbPath::Path(PathBuf::from("/var/lib/logdna/"))
+            DbPath::Path(PathBuf::from(DEFAULT_DB_PATH))
         );
 
         // Actual path

@@ -117,7 +117,7 @@ else ifeq ($(STATIC), 1)
 	BINDGEN_EXTRA_CLANG_ARGS:=-I /usr/local/$(ARCH)-linux-musl/include
 	TARGET=$(ARCH)-unknown-linux-musl
 	BUILD_ENVS=ROCKSDB_LIB_DIR=/usr/local/rocksdb/$(ARCH)-linux-musl/lib ROCKSDB_INCLUDE_DIR=/usr/local/rocksdb/$(ARCH)-linux-musl/include ROCKSDB_STATIC=1 JEMALLOC_SYS_WITH_LG_PAGE=16
-else
+else ifneq ($(MAKECMDGOALS),bench)
 	FEATURES?=libjournald
 	RUSTFLAGS:=
 endif

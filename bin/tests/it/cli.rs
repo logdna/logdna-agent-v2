@@ -924,6 +924,79 @@ async fn test_partial_fsynced_lines() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(unix)]
+async fn test_transient_access_denied() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+    let file_path = dir.join("test.log");
+
+    let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &addr);
+    settings.lookback = Some("start");
+
+    settings.exclusion_regex = Some(r"/var\w*");
+    let mut agent_handle = common::spawn_agent(settings);
+    let agent_stderr = agent_handle.stderr.take();
+    let mut stderr_reader = BufReader::new(agent_stderr.unwrap());
+    common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+    consume_output(stderr_reader.into_inner());
+
+    let (server_result, _) = tokio::join!(server, async {
+        let mut file = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .mode(0o660)
+            .open(&file_path)
+            .unwrap();
+        write!(file, "{}", "line 1\n").unwrap();
+        file.sync_all().unwrap();
+        fs::set_permissions(&file_path, fs::Permissions::from_mode(0o000)).unwrap();
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+
+        // Agent has failed to open the file
+        {
+            let map = received.lock().await;
+            // The ingester should not have received any lines yet
+            let line = map.get(file_path.to_str().unwrap());
+            assert!(line.is_none(), "{:?}", line);
+        }
+
+        fs::set_permissions(&file_path, fs::Permissions::from_mode(0o775)).unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+
+        // Agent has successfully opened the file
+        {
+            let map = received.lock().await;
+            // The ingester should not have received any lines yet
+            let line = map.get(file_path.to_str().unwrap());
+            assert!(line.is_some(), "{:?}", line);
+        }
+
+        write!(file, "{}", "line 2\n").unwrap();
+        file.sync_all().unwrap();
+        common::force_client_to_flush(&dir).await;
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        {
+            let map = received.lock().await;
+            let file_info = map.get(file_path.to_str().unwrap()).unwrap();
+            assert_eq!(
+                file_info.values,
+                vec!["line 1\n".to_string(), "line 2\n".to_string()]
+            );
+        }
+
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_tags() {
     let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
@@ -1573,7 +1646,6 @@ async fn test_line_redact() {
     test_line_rules(None, None, redact, to_write, expected).await;
 }
 
-#[ignore]
 #[tokio::test]
 async fn test_directory_created_after_initialization() {
     let _ = env_logger::Builder::from_default_env().try_init();
@@ -1591,6 +1663,10 @@ async fn test_directory_created_after_initialization() {
         let file_path = future_dir.join("test.log");
         std::fs::create_dir(&future_dir).unwrap();
         File::create(&file_path).unwrap();
+
+        // Wait for file to be picked up by agent
+        tokio::time::sleep(Duration::from_millis(500)).await;
+
         common::append_to_file(&file_path, 10, 5).unwrap();
         common::force_client_to_flush(&future_dir).await;
 
