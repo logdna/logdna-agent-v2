@@ -224,41 +224,29 @@ fn set_k8s_line_rule(rules: &[String]) -> Result<K8sLineRules, K8sLineRulesError
 fn get_rule_object(rules: &[String]) -> MultiMap<&str, String> {
     let mut rules_vec = MultiMap::new();
     for rule in rules.iter() {
-        match REG_NAMESPACE.captures(rule) {
-            Some(val) => {
-                rules_vec.insert(
-                    NAMESPACE_KEY,
-                    val.get(1).map(|m| m.as_str()).unwrap().to_string(),
-                );
-            }
-            None => (),
+        if let Some(val) = REG_NAMESPACE.captures(rule) {
+            rules_vec.insert(
+                NAMESPACE_KEY,
+                val.get(1).map(|m| m.as_str()).unwrap().to_string(),
+            );
         }
-        match REG_NAME.captures(rule) {
-            Some(val) => {
-                rules_vec.insert(
-                    POD_NAME_KEY,
-                    val.get(1).map(|m| m.as_str()).unwrap().to_string(),
-                );
-            }
-            None => (),
+        if let Some(val) = REG_NAME.captures(rule) {
+            rules_vec.insert(
+                POD_NAME_KEY,
+                val.get(1).map(|m| m.as_str()).unwrap().to_string(),
+            );
         }
-        match REG_LABEL.captures(rule) {
-            Some(val) => {
-                rules_vec.insert(
-                    LABEL_KEY,
-                    val.get(1).map(|m| m.as_str()).unwrap().to_string(),
-                );
-            }
-            None => (),
+        if let Some(val) = REG_LABEL.captures(rule) {
+            rules_vec.insert(
+                LABEL_KEY,
+                val.get(1).map(|m| m.as_str()).unwrap().to_string(),
+            );
         }
-        match REG_ANNOTATION.captures(rule) {
-            Some(val) => {
-                rules_vec.insert(
-                    ANNOTATION_KEY,
-                    val.get(1).map(|m| m.as_str()).unwrap().to_string(),
-                );
-            }
-            None => (),
+        if let Some(val) = REG_ANNOTATION.captures(rule) {
+            rules_vec.insert(
+                ANNOTATION_KEY,
+                val.get(1).map(|m| m.as_str()).unwrap().to_string(),
+            );
         }
     }
 
