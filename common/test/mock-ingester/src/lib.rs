@@ -49,7 +49,7 @@ pub struct FileInfo {
     pub lines: usize,
     pub annotation: Option<HashMap<String, String>>,
     pub label: Option<HashMap<String, String>>,
-    pub meta: Option<Value>
+    pub meta: Option<Value>,
 }
 
 #[derive(Debug, Error)]
@@ -75,7 +75,7 @@ pub struct Line {
     host: Option<String>,
     app: Option<String>,
     level: Option<String>,
-    meta: Option<Value>
+    meta: Option<Value>,
 }
 
 // #[derive(Debug)]
@@ -183,7 +183,7 @@ impl Service<Request<Body>> for Svc {
                             lines: 0,
                             annotation: None,
                             label: None,
-                            meta: None
+                            meta: None,
                         }
                     });
 
