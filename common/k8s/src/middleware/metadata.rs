@@ -126,11 +126,9 @@ impl Middleware for K8sMetadata {
                 if let Some(pod) = self.store.get(&obj_ref) {
                     let meta_object =
                         extract_image_name_and_tag(parse_result.container_name, pod.as_ref());
-                    if meta_object.is_some() {
-                        if line.set_meta(json!(meta_object)).is_err() {
-                            log::trace!("Unable to set meta object{:?}", meta_object);
-                            return Status::Skip;
-                        }
+                    if meta_object.is_some() && line.set_meta(json!(meta_object)).is_err() {
+                        log::trace!("Unable to set meta object{:?}", meta_object);
+                        return Status::Skip;
                     }
 
                     if let Some(ref annotations) = pod.metadata.annotations {
