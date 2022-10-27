@@ -32,7 +32,7 @@ pub enum Error {
     K8s(#[from] kube::Error),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct MetaObject {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename(serialize = "Image Name"))]
@@ -126,8 +126,10 @@ impl Middleware for K8sMetadata {
                 if let Some(pod) = self.store.get(&obj_ref) {
                     let meta_object =
                         extract_image_name_and_tag(parse_result.container_name, pod.as_ref());
-                    if line.set_meta(json!(meta_object)).is_err() {
+                    if meta_object.is_none() || line.set_meta(json!(meta_object)).is_err() {
                         return Status::Skip;
+                    } else {
+                        log::trace!("Unable to set meta object{:?}", meta_object);
                     }
 
                     if let Some(ref annotations) = pod.metadata.annotations {
@@ -162,7 +164,7 @@ impl Middleware for K8sMetadata {
     }
 }
 
-fn extract_image_name_and_tag(container_name: String, pod: &Pod) -> MetaObject {
+fn extract_image_name_and_tag(container_name: String, pod: &Pod) -> Option<MetaObject> {
     if let Some(spec) = &pod.spec {
         for container in &spec.containers {
             if container.name.eq_ignore_ascii_case(&container_name) && container.image.is_some() {
@@ -171,25 +173,22 @@ fn extract_image_name_and_tag(container_name: String, pod: &Pod) -> MetaObject {
                 if let Some(split) = container_image.split_once(':') {
                     let image = split.0.to_string();
                     let image_tag = split.1.to_string();
-                    return MetaObject {
+                    return Some(MetaObject {
                         image_name: Some(image),
                         tag: Some(image_tag),
-                    };
+                    });
                 } else {
                     let image = container_image;
-                    return MetaObject {
+                    return Some(MetaObject {
                         image_name: Some(image),
                         tag: None,
-                    };
+                    });
                 }
             }
         }
     }
 
-    MetaObject {
-        image_name: None,
-        tag: None,
-    }
+    None
 }
 
 #[cfg(test)]
@@ -291,7 +290,7 @@ mod tests {
     #[tokio::test]
     async fn test_extract_image_tag() {
         let test_pod = create_pod(Some("test:tag".to_string()));
-        let result = extract_image_name_and_tag("Container".to_string(), &test_pod);
+        let result = extract_image_name_and_tag("Container".to_string(), &test_pod).unwrap();
 
         assert_eq!("test".to_string(), result.image_name.unwrap());
         assert_eq!("tag".to_string(), result.tag.unwrap());
@@ -300,7 +299,7 @@ mod tests {
     #[tokio::test]
     async fn test_extract_image_tag_no_tag() {
         let test_pod = create_pod(Some("test".to_string()));
-        let result = extract_image_name_and_tag("Container".to_string(), &test_pod);
+        let result = extract_image_name_and_tag("Container".to_string(), &test_pod).unwrap();
 
         assert_eq!("test".to_string(), result.image_name.unwrap());
         assert_eq!(None, result.tag);
@@ -311,8 +310,7 @@ mod tests {
         let test_pod = create_pod(None);
         let result = extract_image_name_and_tag("Container".to_string(), &test_pod);
 
-        assert_eq!(None, result.image_name);
-        assert_eq!(None, result.tag);
+        assert!(result.is_none());
     }
 
     fn create_pod(image: Option<String>) -> Pod {

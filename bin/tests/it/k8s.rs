@@ -1070,8 +1070,12 @@ async fn test_k8s_enrichment() {
 
         let result = map.iter().find(|(k, _)| k.contains("sample-pod"));
         assert!(result.is_some());
+
         let (_, pod_file_info) = result.unwrap();
         let label = pod_file_info.label.as_ref();
+        let meta = pod_file_info.meta.as_ref();
+
+        assert_eq!(meta.unwrap()["Image Name"].as_str().unwrap(), "busybox");
         assert!(label.is_some());
         assert_eq!(label.unwrap()["app.kubernetes.io/name"], "sample-pod");
         assert_eq!(

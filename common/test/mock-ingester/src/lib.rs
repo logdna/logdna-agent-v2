@@ -6,6 +6,7 @@ use hyper::service::Service;
 use hyper::{Body, Request, Response};
 use serde::{Deserialize, Serialize};
 
+use serde_json::Value;
 use thiserror::Error;
 use tokio::macros::support::{Future, Pin};
 use tokio::sync::Mutex;
@@ -48,6 +49,7 @@ pub struct FileInfo {
     pub lines: usize,
     pub annotation: Option<HashMap<String, String>>,
     pub label: Option<HashMap<String, String>>,
+    pub meta: Option<Value>
 }
 
 #[derive(Debug, Error)]
@@ -73,6 +75,7 @@ pub struct Line {
     host: Option<String>,
     app: Option<String>,
     level: Option<String>,
+    meta: Option<Value>
 }
 
 // #[derive(Debug)]
@@ -180,6 +183,7 @@ impl Service<Request<Body>> for Svc {
                             lines: 0,
                             annotation: None,
                             label: None,
+                            meta: None
                         }
                     });
 
@@ -187,6 +191,7 @@ impl Service<Request<Body>> for Svc {
                     file_info.label = line.label.clone();
                     file_info.lines += 1;
                     file_info.values.push(raw_line);
+                    file_info.meta = line.meta;
                 }
             }
 
