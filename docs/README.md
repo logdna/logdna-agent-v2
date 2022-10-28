@@ -313,45 +313,6 @@ Notes:
 * All regular expressions are case-sensitive by default. If you don't want to differentiate between upper and lower-case letters, use non-capturing groups with a flag: `(?flags:exp)`, for example: `(?i:my_case_insensitive_regex)`
 * LogDNA also provides post-ingestion <a href="https://docs.logdna.com/docs/excluding-log-lines" target="_blank">exclusion rules</a> to control what log data is displayed and stored in LogDNA.
 
-### Configuration for Kubernetes Metadata Filtering
-
-In addition to being able to write custom regex expressions, the Agent can be configured to filter log lines associated with various Kubernetes resources. Specifically, the agent filters on Kubernetes Pod metadata. For example, include only log lines coming from a given namespace. This can be useful because writing a custom regex expression for filtering out logs coming from a specific resources requires the user to know how Kubernetes formats it's log files. Using the Kubernetes filtering configuration makes this much easier. 
-
-You can configure the Kubernetes Pod metadata filtering via the following environment variables:
-
-* include *only* log lines associated with a specific resource with `LOGDNA_K8S_METADATA_LINE_INCLUSION`
-* exclude log lines associated with specific resource with `LOGDNA_K8S_METADATA_LINE_EXCLUSION`
-
-Currently, we support filtering on four different fields: namespace, pod, label and annotation. The following shows the nomenclature for each of the supported fields:
-
-```
-  namespace:<value>
-  name:<value>
-  label.<key>:<value>
-  annotation.<key>:<value>
-``` 
-
-The following is a sample configuration:
-
-```
-"name": "LOGDNA_K8S_METADATA_LINE_INCLUSION"
-  "value": "namespace:default"
-
-"name": "LOGDNA_K8S_METADATA_LINE_EXCLUSION"
-  "value": "label.app.kubernetes.io/name:sample-app, annotation.user:sample-user"
-```
- 
- In the above configuration, the agent will return all log lines coming from the "default" Kubernetes namespace, but filter out anything with a label key/value of `app.kubernetes.io/name:sample-app` or an annotation with a key/value of `user:sample-user`. If both inclusion and exclusion filters are present in the configuration, the Agent will apply the inclusion rule first, followed by the exclusion rule.
-
- The Kubernetes filtering uses information from the K8s API. As a result, in order for filtering to work you need to have the `LOGDNA_USE_K8S_LOG_ENRICHMENT` set to `always`; which is the default.   
-
-**Note:**
-
-* As with regex filtering, the exclusion rules are applied after the inclusion rules. Therefore, in order for a lint to be ingested, it needs to match all inclusion rules (if any) and NOT match any exclusion rule.
-* For the key/value files, only integers [0-9], lower case letters [a-z] and the characters `.`, `/`, `-` are supported.
-* We do not support nested label or annotation structures; only simple key/value pairs.
-
-
 ### Resource Limits
 
 The agent is deployed as a Kubernetes DaemonSet, creating one pod per node selected. The agent collects logs of all

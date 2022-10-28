@@ -47,6 +47,7 @@ kubectl apply -f https://assets.logdna.com/clients/logdna-agent/3/agent-resource
 * [Collecting Node Journald Logs](#collecting-node-journald-logs)
   * [Enabling Journald on the Node](#enabling-journald-on-the-node)
   * [Enabling Journald Monitoring on the Agent](#enabling-journald-monitoring-on-the-agent)
+* [Configuration for Kubernetes Metadata Filtering](#configuration-for-kubernetes-metadata-filtering)
 * [Enabling K8 Events](#enabling-k8-events)
 * [Enabling Metrics Reporter Statistics](#enabling-metrics-reporter-statistics)
 * [GKE Autopilot](#gke-autopilot)
@@ -260,6 +261,46 @@ kubectl patch daemonset -n logdna-agent logdna-agent --type json -p '[{"op":"add
 Use `k8s/agent-resources-no-cap.yaml` to deploy Agent in GKE Autopilot or other clusters that do not allow DAC.
 
 __NOTE__ In this "no-cap" deployment Agent does not support the "stateful" mode mentioned in [documentation about enabling "statefulness" for the agent](KUBERNETES.md#enabling-persistent-agent-state).
+
+## Configuration for Kubernetes Metadata Filtering
+
+In addition to being able to write custom regex expressions, the Agent can be configured to filter log lines associated with various Kubernetes resources. Specifically, the agent filters on Kubernetes Pod metadata. For example, include only log lines coming from a given namespace. This can be useful because writing a custom regex expression for filtering out logs coming from a specific resources requires the user to know how Kubernetes formats it's log files. Using the Kubernetes filtering configuration makes this much easier. 
+
+You can configure the Kubernetes Pod metadata filtering via the following environment variables:
+
+* include *only* log lines associated with a specific resource with `LOGDNA_K8S_METADATA_LINE_INCLUSION`
+* exclude log lines associated with specific resource with `LOGDNA_K8S_METADATA_LINE_EXCLUSION`
+
+Currently, we support filtering on four different fields: namespace, pod, label and annotation. The following shows the nomenclature for each of the supported fields:
+
+```
+  namespace:<namespace-name>
+  name:<pod-name>
+  label.<key>:<value>
+  annotation.<key>:<value>
+``` 
+
+The following is a sample configuration:
+
+```
+"name": "LOGDNA_K8S_METADATA_LINE_INCLUSION"
+"value": "namespace:default"
+
+"name": "LOGDNA_K8S_METADATA_LINE_EXCLUSION"
+"value": "label.app.kubernetes.io/name:sample-app, annotation.user:sample-user"
+```
+ 
+ In the above configuration, the agent will return all log lines coming from the "default" Kubernetes namespace, but filter out anything with a label key/value of `app.kubernetes.io/name:sample-app` or an annotation with a key/value of `user:sample-user`. If both inclusion and exclusion filters are present in the configuration, the Agent will apply the inclusion rule first, followed by the exclusion rule. Also note that in above example that `label.<key><value>` is equal to `label.<app.kubernetes.io/name>:<sample-app>`, with the `app.kubernetes.io/name` being a common nomenclature for Kubernetes configuration. 
+
+ The Kubernetes filtering uses information from the K8s API. As a result, in order for filtering to work you need to have the `LOGDNA_USE_K8S_LOG_ENRICHMENT` set to `always`; which is the default.   
+
+**Note:**
+
+* As with regex filtering, the exclusion rules are applied after the inclusion rules. Therefore, in order for a lint to be ingested, it needs to match all inclusion rules (if any) and NOT match any exclusion rule.
+* For the key/value files, only integers [0-9], lower case letters [a-z] and the characters `.`, `/`, `-` are supported.
+* We do not support nested label or annotation structures; only simple key/value pairs.
+
+
 
 
 ### Enabling K8 Events
