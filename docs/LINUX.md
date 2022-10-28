@@ -146,3 +146,13 @@ Agent](https://github.com/logdna/logdna-agent)\: You might already have a config
     ```bash
     sudo systemctl enable logdna-agent
     ```
+
+---
+**NOTE**
+
+For users of Amazon Linux 2:
+- Amazon Linux 2 uses old version of systemd which does not support StateDirectory option in service configuration.
+- StateDirectory tells systemd to create “/var/lib/logdna" with proper permissions
+- StateDirectory line in “logdna-agent.service” file needs to be commented out on Amazon Linux 2.
+- if you want to run agent using non-root user then you need to create “/var/lib/logdna" directory manually and assign proper permissions for that user. agent needs read-write access to that folder.
+---
