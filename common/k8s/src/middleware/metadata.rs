@@ -13,11 +13,13 @@ use kube::{
     },
     Api, Client,
 };
+use serde_json::json;
 use std::pin::Pin;
 
 use backoff::ExponentialBackoff;
 use metrics::Metrics;
 use middleware::{Middleware, Status};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -28,6 +30,16 @@ pub enum Error {
     Utf(#[from] std::string::FromUtf8Error),
     #[error(transparent)]
     K8s(#[from] kube::Error),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MetaObject {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename(serialize = "Image Name"))]
+    pub image_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename(serialize = "Tag"))]
+    pub tag: Option<String>,
 }
 
 pub struct K8sMetadata {
@@ -112,6 +124,13 @@ impl Middleware for K8sMetadata {
                 let obj_ref =
                     ObjectRef::new(&parse_result.pod_name).within(&parse_result.pod_namespace);
                 if let Some(pod) = self.store.get(&obj_ref) {
+                    let meta_object =
+                        extract_image_name_and_tag(parse_result.container_name, pod.as_ref());
+                    if meta_object.is_some() && line.set_meta(json!(meta_object)).is_err() {
+                        log::trace!("Unable to set meta object{:?}", meta_object);
+                        return Status::Skip;
+                    }
+
                     if let Some(ref annotations) = pod.metadata.annotations {
                         if line
                             .set_annotations(
@@ -124,6 +143,7 @@ impl Middleware for K8sMetadata {
                             return Status::Skip;
                         };
                     }
+
                     if let Some(ref labels) = pod.metadata.labels {
                         if line
                             .set_labels(
@@ -143,10 +163,38 @@ impl Middleware for K8sMetadata {
     }
 }
 
+fn extract_image_name_and_tag(container_name: String, pod: &Pod) -> Option<MetaObject> {
+    if let Some(spec) = &pod.spec {
+        for container in &spec.containers {
+            if container.name.eq_ignore_ascii_case(&container_name) && container.image.is_some() {
+                let container_image = container.image.clone().unwrap();
+
+                if let Some(split) = container_image.split_once(':') {
+                    let image = split.0.to_string();
+                    let image_tag = split.1.to_string();
+                    return Some(MetaObject {
+                        image_name: Some(image),
+                        tag: Some(image_tag),
+                    });
+                } else {
+                    let image = container_image;
+                    return Some(MetaObject {
+                        image_name: Some(image),
+                        tag: None,
+                    });
+                }
+            }
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use http::types::body::{LineBuilder, LineMeta};
+    use k8s_openapi::api::core::v1::{Container, PodSpec};
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
     use std::collections::BTreeMap;
     use std::convert::TryFrom;
@@ -235,6 +283,53 @@ mod tests {
             } else {
                 panic!("Unexpected status");
             }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_extract_image_tag() {
+        let test_pod = create_pod(Some("test:tag".to_string()));
+        let result = extract_image_name_and_tag("Container".to_string(), &test_pod).unwrap();
+
+        assert_eq!("test".to_string(), result.image_name.unwrap());
+        assert_eq!("tag".to_string(), result.tag.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_extract_image_tag_no_tag() {
+        let test_pod = create_pod(Some("test".to_string()));
+        let result = extract_image_name_and_tag("Container".to_string(), &test_pod).unwrap();
+
+        assert_eq!("test".to_string(), result.image_name.unwrap());
+        assert_eq!(None, result.tag);
+    }
+
+    #[tokio::test]
+    async fn test_extract_image_tag_no_value() {
+        let test_pod = create_pod(None);
+        let result = extract_image_name_and_tag("Container".to_string(), &test_pod);
+
+        assert!(result.is_none());
+    }
+
+    fn create_pod(image: Option<String>) -> Pod {
+        let meta = ObjectMeta {
+            ..Default::default()
+        };
+
+        let spec = PodSpec {
+            containers: vec![Container {
+                name: "Container".to_string(),
+                image,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        Pod {
+            metadata: meta,
+            spec: Some(spec),
+            status: None,
         }
     }
 

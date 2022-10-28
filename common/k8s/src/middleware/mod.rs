@@ -13,13 +13,15 @@ lazy_static! {
 struct ParseResult {
     pod_name: String,
     pod_namespace: String,
+    container_name: String,
 }
 
 impl ParseResult {
-    fn new(pod_name: String, pod_namespace: String) -> ParseResult {
+    fn new(pod_name: String, pod_namespace: String, container_name: String) -> ParseResult {
         ParseResult {
             pod_name,
             pod_namespace,
+            container_name,
         }
     }
 }
@@ -29,5 +31,6 @@ fn parse_container_path(path: &str) -> Option<ParseResult> {
     Some(ParseResult::new(
         captures.get(1)?.as_str().into(),
         captures.get(2)?.as_str().into(),
+        captures.get(3)?.as_str().into(),
     ))
 }
