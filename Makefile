@@ -223,16 +223,20 @@ bench:
 
 .PHONY:clean
 clean: ## Clean all artifacts from the build process
-	$(RUST_COMMAND) "" "rm -fr target/* \$$CARGO_HOME/registry/* \$$CARGO_HOME/git/* vendor/* bench/target/* .cargo/config"
+	$(RUST_COMMAND) "" "rm -fr target/* bench/target/*"
 
 .PHONY:clean-docker
 clean-docker: ## Cleans the intermediate and final agent images left over from the build-image target
 	@# Clean any agent images, left over from the multi-stage build
 	if [[ ! -z "$(shell docker images -q $(REPO):$(CLEAN_TAG))" ]]; then docker images -q $(REPO):$(CLEAN_TAG) | xargs docker rmi -f; fi
 
+.PHONY:clean-cache
+clean-cache:
+	rm -fr vendor/* .cargo/config* \$$CARGO_HOME/registry/* \$$CARGO_HOME/git/*
+
 .PHONY:clean-all
-clean-all: clean-docker clean ## Deep cleans the project and removed any docker images
-	git clean -xdf
+clean-all: clean-docker clean-cache clean ## Deep cleans the project and removed any docker images
+	git clean -xdf;
 
 .PHONY:lint-format
 lint-format: ## Checks for formatting errors
