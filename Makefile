@@ -175,6 +175,9 @@ endif
 .PHONY:vendor
 vendor:
 	$(RUST_COMMAND) "" "mkdir -p .cargo && cargo vendor >> .cargo/config.toml"
+	@echo "" >> .cargo/config.toml
+	@echo "[net]" >> .cargo/config.toml
+	@echo "offline=true" >> .cargo/config.toml
 
 .PHONY:build-test
 build-test:
