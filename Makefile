@@ -174,7 +174,7 @@ endif
 
 .PHONY:vendor
 vendor:
-	$(RUST_COMMAND) "" "cargo vendor >> .cargo/config"
+	$(RUST_COMMAND) "" "mkdir -p .cargo && cargo vendor >> .cargo/config.toml"
 
 .PHONY:build-test
 build-test:
