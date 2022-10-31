@@ -102,6 +102,10 @@ WINDOWS?=
 
 NO_DEFAULT_FEATURES?=
 
+TARGET_DIR?=target/$(ARCH_TRIPLE)
+
+BUILD_ENVS=CARGO_TARGET_DIR=$(TARGET_DIR)
+
 ifneq ($(WINDOWS),)
 	FEATURES?=windows_service
 	TARGET=$(ARCH)-pc-windows-msvc
@@ -116,7 +120,7 @@ else ifeq ($(STATIC), 1)
 	RUSTFLAGS:=-C link-self-contained=yes -Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc -L /usr/local/$(ARCH)-linux-musl/lib/ -l static=stdc++ $(RUSTFLAGS)
 	BINDGEN_EXTRA_CLANG_ARGS:=-I /usr/local/$(ARCH)-linux-musl/include
 	TARGET=$(ARCH)-unknown-linux-musl
-	BUILD_ENVS=ROCKSDB_LIB_DIR=/usr/local/rocksdb/$(ARCH)-linux-musl/lib ROCKSDB_INCLUDE_DIR=/usr/local/rocksdb/$(ARCH)-linux-musl/include ROCKSDB_STATIC=1 JEMALLOC_SYS_WITH_LG_PAGE=16
+	BUILD_ENVS=$(BUILD_ENVS) ROCKSDB_LIB_DIR=/usr/local/rocksdb/$(ARCH)-linux-musl/lib ROCKSDB_INCLUDE_DIR=/usr/local/rocksdb/$(ARCH)-linux-musl/include ROCKSDB_STATIC=1 JEMALLOC_SYS_WITH_LG_PAGE=16
 else ifneq ($(MAKECMDGOALS),bench)
 	FEATURES?=libjournald
 	RUSTFLAGS:=
@@ -189,7 +193,7 @@ build: ## Build the agent
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
-	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && llvm-strip ./target/$(TARGET)/release/logdna-agent${BIN_SUFFIX}"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && llvm-strip ./$(TARGET_DIR)/$(TARGET)/release/logdna-agent${BIN_SUFFIX}"
 
 .PHONY:check
 check: ## Run unit tests
@@ -443,7 +447,7 @@ build-deb: build-release
 				-a "${ARCH}" \
 				--input-type dir \
 				--output-type deb \
-				-p "/build/target/${TARGET}/logdna-agent_$${package_version}-$${iteration}_${DEB_ARCH_NAME_${ARCH}}.deb" \
+				-p "/build/${TARGET_DIR}/${TARGET}/logdna-agent_$${package_version}-$${iteration}_${DEB_ARCH_NAME_${ARCH}}.deb" \
 				--name "logdna-agent" \
 				--version "$${package_version}" \
 				--iteration "$${iteration}" \
@@ -455,7 +459,7 @@ build-deb: build-release
 				--before-remove packaging/linux/before-remove \
 				--after-upgrade packaging/linux/after-upgrade \
 				--force --deb-no-default-config-files \
-				"/build/target/${TARGET}/release/logdna-agent=/usr/bin/logdna-agent" \
+				"/build/${TARGET_DIR}/${TARGET}/release/logdna-agent=/usr/bin/logdna-agent" \
 				"packaging/linux/logdna-agent.service=/lib/systemd/system/logdna-agent.service"'
 
 RPM_VERSION=1
@@ -471,7 +475,7 @@ build-rpm: build-release
 				--verbose \
 				--input-type dir \
 				--output-type rpm \
-				-p "/build/target/${TARGET}/logdna-agent-$${package_version}-$${iteration}.${ARCH}.rpm" \
+				-p "/build/${TARGET_DIR}/${TARGET}/logdna-agent-$${package_version}-$${iteration}.${ARCH}.rpm" \
 				--name "logdna-agent" \
 				--version "$${package_version}" \
 				--iteration "$${iteration}" \
@@ -483,23 +487,23 @@ build-rpm: build-release
 				--before-remove packaging/linux/before-remove \
 				--after-upgrade packaging/linux/after-upgrade \
 				--force \
-				"/build/target/${TARGET}/release/logdna-agent=/usr/bin/logdna-agent" \
+				"/build/${TARGET_DIR}/${TARGET}/release/logdna-agent=/usr/bin/logdna-agent" \
 				"packaging/linux/logdna-agent.service=/lib/systemd/system/logdna-agent.service"'
 
 .PHONY: publish-s3-binary
 publish-s3-binary:
 	if [ "$(WINDOWS)" != "" ]; then \
-	    aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent-svc.exe; \
-	    aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent.exe; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent-svc.exe; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent.exe; \
 	else \
-	    aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent; \
 	fi;
 
 define PUBLISH_SIGNED_RULE
 .PHONY: publish-s3-binary-signed-$(1)
 publish-s3-binary-signed-$(1):
 	if [ "$(WINDOWS)" != "" ]; then \
-	    $(eval BUILD_DIR := target/$(TARGET)/$(1)) \
+	    $(eval BUILD_DIR := ${TARGET_DIR}/$(TARGET)/$(1)) \
 	    $(eval SRC_ROOT := $(CURDIR)) \
 	    bash -c " \
 	    set -eu; \
