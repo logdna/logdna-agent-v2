@@ -35,6 +35,7 @@ ARG AWS_SECRET_ACCESS_KEY
 ARG BUILD_ENVS
 
 ARG TARGET
+ARG TARGET_DIR
 
 ARG UBI_MAJOR_VERSION
 ARG UBI_MINOR_VERSION
@@ -69,8 +70,8 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     if [ ! -d "vendor" || ! -f ".cargo/config.toml" ]; then CARGO_NET_OFFLINE=false; fi; \
     set -a; source /tmp/ubi${UBI_MAJOR_VERSION}.env; set +a && env && \
     cargo build --manifest-path bin/Cargo.toml --no-default-features ${FEATURES} --release $TARGET_ARG && \
-    llvm-strip ./target/${TARGET_DIR}/${TARGET}/release/logdna-agent && \
-    cp ./target/${TARGET_DIR}/${TARGET}/release/logdna-agent /logdna-agent && \
+    llvm-strip ./${TARGET_DIR}/${TARGET}/release/logdna-agent && \
+    cp ./${TARGET_DIR}/${TARGET}/release/logdna-agent /logdna-agent && \
     sccache --show-stats
 
 # Use Red Hat Universal Base Image Minimal as the final base image
