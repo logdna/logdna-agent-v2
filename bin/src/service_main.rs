@@ -54,9 +54,9 @@ fn service_main(_args: Vec<String>, svc_shutdown_rx: Receiver<()>) -> u32 {
         .write_mode(WriteMode::Direct)
         .duplicate_to_stderr(Duplicate::Warn)
         .rotate(
-            Criterion::Age(Age::Day),
+            Criterion::Size(1024 * 1000 * 5),
             Naming::Timestamps,
-            Cleanup::KeepLogFiles(7),
+            Cleanup::KeepLogFiles(5),
         )
         .start()
         .expect("failed to start log");
