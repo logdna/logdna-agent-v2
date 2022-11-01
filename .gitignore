@@ -14,3 +14,5 @@
 docker/.kind_config
 docker/.kind_config_host
 .kind_config
+vendor/
+.cargo/config.toml
