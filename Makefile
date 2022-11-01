@@ -103,6 +103,7 @@ WINDOWS?=
 ifneq ($(WINDOWS),)
 	FEATURES?=windows_service
 	TARGET=$(ARCH)-pc-windows-msvc
+	ARCH_TRIPLE?=$(ARCH)-windows-msvc
 	BINDGEN_EXTRA_CLANG_ARGS:=
 	RUSTFLAGS:=
 	RUSTFLAGS:=-C link-self-contained=yes -Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc
@@ -119,6 +120,9 @@ else
 	FEATURES?=libjournald
 	RUSTFLAGS:=
 endif
+
+TARGET_DIR?=target/$(ARCH_TRIPLE)
+BUILD_ENVS:=$(BUILD_ENVS) CARGO_TARGET_DIR=$(TARGET_DIR)
 
 # Should we profile the benchmarks
 PROFILE?=--profile
@@ -167,7 +171,10 @@ endif
 
 .PHONY:vendor
 vendor:
-	$(RUST_COMMAND) "" "cargo vendor >> .cargo/config"
+	$(RUST_COMMAND) "" "mkdir -p .cargo && cargo vendor >> .cargo/config.toml"
+	@echo "" >> .cargo/config.toml
+	@echo "[net]" >> .cargo/config.toml
+	@echo "offline=true" >> .cargo/config.toml
 
 .PHONY:build-test
 build-test:
@@ -179,7 +186,7 @@ build: ## Build the agent
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
-	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && llvm-strip ./target/$(TARGET)/release/logdna-agent${BIN_SUFFIX}"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && llvm-strip ./$(TARGET_DIR)/$(TARGET)/release/logdna-agent${BIN_SUFFIX}"
 
 .PHONY:check
 check: ## Run unit tests
@@ -213,16 +220,20 @@ bench:
 
 .PHONY:clean
 clean: ## Clean all artifacts from the build process
-	$(RUST_COMMAND) "" "rm -fr target/* \$$CARGO_HOME/registry/* \$$CARGO_HOME/git/* vendor/* bench/target/* .cargo/config"
+	$(RUST_COMMAND) "" "rm -fr target/* bench/target/*"
 
 .PHONY:clean-docker
 clean-docker: ## Cleans the intermediate and final agent images left over from the build-image target
 	@# Clean any agent images, left over from the multi-stage build
 	if [[ ! -z "$(shell docker images -q $(REPO):$(CLEAN_TAG))" ]]; then docker images -q $(REPO):$(CLEAN_TAG) | xargs docker rmi -f; fi
 
+.PHONY:clean-cache
+clean-cache:
+	rm -fr vendor/* .cargo/config* \$$CARGO_HOME/registry/* \$$CARGO_HOME/git/*
+
 .PHONY:clean-all
-clean-all: clean-docker clean ## Deep cleans the project and removed any docker images
-	git clean -xdf
+clean-all: clean-docker clean-cache clean ## Deep cleans the project and removed any docker images
+	git clean -xdf;
 
 .PHONY:lint-format
 lint-format: ## Checks for formatting errors
@@ -366,6 +377,7 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
 		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
 		--build-arg TARGET=$(TARGET) \
+		--build-arg TARGET_DIR=$(TARGET_DIR) \
 		--build-arg TARGET_ARCH=$(ARCH) \
 		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
@@ -388,6 +400,7 @@ build-image-debian: ## Build a docker image as specified in the Dockerfile.debia
 		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
 		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
 		--build-arg TARGET=$(TARGET) \
+		--build-arg TARGET_DIR=$(TARGET_DIR) \
 		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
 		--build-arg FEATURES='$(FEATURES_ARG)' \
@@ -409,6 +422,7 @@ build-image-debug: ## Build a docker image as specified in the Dockerfile.debug
 		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
 		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
 		--build-arg TARGET=$(TARGET) \
+		--build-arg TARGET_DIR=$(TARGET_DIR) \
 		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
 		--build-arg FEATURES='$(FEATURES_ARG)' \
@@ -429,7 +443,7 @@ build-deb: build-release
 				-a "${ARCH}" \
 				--input-type dir \
 				--output-type deb \
-				-p "/build/target/${TARGET}/logdna-agent_$${package_version}-$${iteration}_${DEB_ARCH_NAME_${ARCH}}.deb" \
+				-p "/build/${TARGET_DIR}/${TARGET}/logdna-agent_$${package_version}-$${iteration}_${DEB_ARCH_NAME_${ARCH}}.deb" \
 				--name "logdna-agent" \
 				--version "$${package_version}" \
 				--iteration "$${iteration}" \
@@ -441,7 +455,7 @@ build-deb: build-release
 				--before-remove packaging/linux/before-remove \
 				--after-upgrade packaging/linux/after-upgrade \
 				--force --deb-no-default-config-files \
-				"/build/target/${TARGET}/release/logdna-agent=/usr/bin/logdna-agent" \
+				"/build/${TARGET_DIR}/${TARGET}/release/logdna-agent=/usr/bin/logdna-agent" \
 				"packaging/linux/logdna-agent.service=/lib/systemd/system/logdna-agent.service"'
 
 RPM_VERSION=1
@@ -457,7 +471,7 @@ build-rpm: build-release
 				--verbose \
 				--input-type dir \
 				--output-type rpm \
-				-p "/build/target/${TARGET}/logdna-agent-$${package_version}-$${iteration}.${ARCH}.rpm" \
+				-p "/build/${TARGET_DIR}/${TARGET}/logdna-agent-$${package_version}-$${iteration}.${ARCH}.rpm" \
 				--name "logdna-agent" \
 				--version "$${package_version}" \
 				--iteration "$${iteration}" \
@@ -469,23 +483,23 @@ build-rpm: build-release
 				--before-remove packaging/linux/before-remove \
 				--after-upgrade packaging/linux/after-upgrade \
 				--force \
-				"/build/target/${TARGET}/release/logdna-agent=/usr/bin/logdna-agent" \
+				"/build/${TARGET_DIR}/${TARGET}/release/logdna-agent=/usr/bin/logdna-agent" \
 				"packaging/linux/logdna-agent.service=/lib/systemd/system/logdna-agent.service"'
 
 .PHONY: publish-s3-binary
 publish-s3-binary:
 	if [ "$(WINDOWS)" != "" ]; then \
-	    aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent-svc.exe; \
-	    aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent.exe; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent-svc.exe; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent.exe; \
 	else \
-	    aws s3 cp --acl public-read target/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent; \
 	fi;
 
 define PUBLISH_SIGNED_RULE
 .PHONY: publish-s3-binary-signed-$(1)
 publish-s3-binary-signed-$(1):
 	if [ "$(WINDOWS)" != "" ]; then \
-	    $(eval BUILD_DIR := target/$(TARGET)/$(1)) \
+	    $(eval BUILD_DIR := ${TARGET_DIR}/$(TARGET)/$(1)) \
 	    $(eval SRC_ROOT := $(CURDIR)) \
 	    bash -c " \
 	    set -eu; \
@@ -502,7 +516,7 @@ $(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_SIGNED_RULE,$(_type))))
 define MSI_RULE
 .PHONY: msi-$(1)
 msi-$(1): ## create signed exe(s) and msi in $(BUILD_DIR)/signed
-	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	$(eval BUILD_DIR := ${TARGET_DIR}/$(TARGET)/$(1))
 	$(eval SRC_ROOT := $(CURDIR))
 	$(eval CERT_FILE_NAME := "mezmo_cert_$(1).pfx")
 	bash -c " \
@@ -526,7 +540,7 @@ $(foreach _type, $(BUILD_TYPES), $(eval $(call MSI_RULE,$(_type))))
 define CHOCO_RULE
 .PHONY: choco-$(1)
 choco-$(1): ## create choco package using msi from logdna-agent-build-bin S3 baucket
-	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	$(eval BUILD_DIR := ${TARGET_DIR}/$(TARGET)/$(1))
 	$(eval SRC_ROOT := $(CURDIR))
 	bash -c " \
 	set -eu; \
@@ -540,7 +554,7 @@ $(foreach _type, $(BUILD_TYPES), $(eval $(call CHOCO_RULE,$(_type))))
 define PUBLISH_CHOCO_RULE
 .PHONY: publish-choco-$(1)
 publish-choco-$(1): ## publish choco package built & located in $(BUILD_DIR)/choco, requires env CHOCO_API_KEY defined
-	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	$(eval BUILD_DIR := ${TARGET_DIR}/$(TARGET)/$(1))
 	$(eval SRC_ROOT := $(CURDIR))
 	bash -c " \
 	set -eu; \
@@ -554,8 +568,8 @@ $(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_CHOCO_RULE,$(_type))))
 define PUBLISH_S3_CHOCO_RULE
 .PHONY: publish-s3-choco-$(1)
 publish-s3-choco-$(1): ## upload choco package to S3
-	$(eval PKG_NAME_FILE := "target/$(TARGET)/$(1)/choco/mezmo-agent.nupkg.name")
-	aws s3 cp --acl public-read "target/$(TARGET)/$(1)/choco/$$(shell cat $(PKG_NAME_FILE))" s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/$$(shell cat $(PKG_NAME_FILE));
+	$(eval PKG_NAME_FILE := "${TARGET_DIR}/$(TARGET)/$(1)/choco/mezmo-agent.nupkg.name")
+	aws s3 cp --acl public-read "${TARGET_DIR}/$(TARGET)/$(1)/choco/$$(shell cat $(PKG_NAME_FILE))" s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/$$(shell cat $(PKG_NAME_FILE));
 endef
 BUILD_TYPES=debug release
 $(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_S3_CHOCO_RULE,$(_type))))
