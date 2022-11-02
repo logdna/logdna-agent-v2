@@ -295,6 +295,10 @@ pub struct LogConfig {
     pub use_k8s_enrichment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub log_k8s_events: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub k8s_metadata_include: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub k8s_metadata_exclude: Option<Vec<String>>,
     pub log_metric_server_stats: Option<String>,
 }
 
@@ -438,6 +442,8 @@ impl Default for LogConfig {
             lookback: None,
             use_k8s_enrichment: None,
             log_k8s_events: None,
+            k8s_metadata_include: None,
+            k8s_metadata_exclude: None,
             log_metric_server_stats: None,
         }
     }
@@ -462,6 +468,10 @@ impl Merge for LogConfig {
             .merge(&other.use_k8s_enrichment, &default.use_k8s_enrichment);
         self.log_k8s_events
             .merge(&other.log_k8s_events, &default.log_k8s_events);
+        self.k8s_metadata_include
+            .merge(&other.k8s_metadata_include, &default.k8s_metadata_include);
+        self.k8s_metadata_exclude
+            .merge(&other.k8s_metadata_exclude, &default.k8s_metadata_exclude);
         self.log_metric_server_stats.merge(
             &other.log_metric_server_stats,
             &default.log_metric_server_stats,
@@ -504,6 +514,8 @@ mod tests {
         let new_config = new_config.unwrap();
         assert_eq!(config, new_config);
         assert_eq!(config.startup, k8s_config);
+        assert_eq!(config.log.k8s_metadata_include, None);
+        assert_eq!(config.log.k8s_metadata_exclude, None);
     }
 
     #[test]
@@ -811,6 +823,8 @@ inclusion_rules = /a/glob/include/**/*
 inclusion_regex_rules = /a/regex/include/.*
 line_exclusion_regex = a.*, b.*
 line_inclusion_regex = c.+
+k8s_metadata_line_inclusion = namespace:test-name, label.app:name
+k8s_metadata_line_exclusion = namespace:other-name, label.app:other-name
 # needs escaping in java properties
 redact_regex = \\\\S+@\\\\S+\\\\.\\\\S+
 ingest_timeout = 9999
@@ -876,6 +890,14 @@ ingest_buffer_size = 3145728
         assert_eq!(
             config.log.line_redact_regex,
             Some(vec_strings![r"\S+@\S+\.\S+"])
+        );
+        assert_eq!(
+            config.log.k8s_metadata_include,
+            Some(vec_strings!["namespace:test-name", "label.app:name"])
+        );
+        assert_eq!(
+            config.log.k8s_metadata_exclude,
+            Some(vec_strings!["namespace:other-name", "label.app:other-name"])
         );
         Ok(())
     }

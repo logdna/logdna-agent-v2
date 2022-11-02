@@ -3,6 +3,7 @@ use std::sync::Arc;
 use http::types::body::LineBufferMut;
 use std::thread::spawn;
 
+pub mod k8s_line_rules;
 pub mod line_rules;
 pub mod meta_rules;
 

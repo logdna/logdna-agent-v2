@@ -174,6 +174,14 @@ pub struct ArgumentOptions {
     #[structopt(long, env = env_vars::LINE_INCLUSION)]
     line_inclusion: Vec<String>,
 
+    /// List of Kubernetes pod metadata to include in log lines.
+    #[structopt(long = "k8-metadata-line-inclusion", env = env_vars::K8S_METADATA_LINE_INCLUSION)]
+    k8s_metadata_line_inclusion: Option<Vec<String>>,
+
+    /// List of Kubernetes pod metadata to exclude in log lines.
+    #[structopt(long = "k8s-metadata-line-exclusion", env = env_vars::K8S_METADATA_LINE_EXCLUSION)]
+    k8s_metadata_line_exclusion: Option<Vec<String>>,
+
     /// List of regex patterns used to mask matching sensitive information (such as PII) before
     /// sending it in the log line.
     #[structopt(long, env = env_vars::REDACT)]
@@ -343,6 +351,20 @@ impl ArgumentOptions {
             with_csv(self.line_inclusion)
                 .iter()
                 .for_each(|v| regex.push(v.clone()));
+        }
+
+        if self.k8s_metadata_line_inclusion.is_some() {
+            let values = raw.log.k8s_metadata_include.get_or_insert(Vec::new());
+            with_csv(self.k8s_metadata_line_inclusion.unwrap())
+                .iter()
+                .for_each(|v| values.push(v.clone()));
+        }
+
+        if self.k8s_metadata_line_exclusion.is_some() {
+            let values = raw.log.k8s_metadata_exclude.get_or_insert(Vec::new());
+            with_csv(self.k8s_metadata_line_exclusion.unwrap())
+                .iter()
+                .for_each(|v| values.push(v.clone()));
         }
 
         if !self.line_redact.is_empty() {
@@ -665,6 +687,8 @@ mod test {
         );
         assert_eq!(config.log.use_k8s_enrichment, None);
         assert_eq!(config.log.log_k8s_events, None);
+        assert_eq!(config.log.k8s_metadata_include, None);
+        assert_eq!(config.log.k8s_metadata_exclude, None);
         assert_eq!(config.log.db_path, None);
         assert_eq!(config.log.metrics_port, None);
         assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
@@ -797,6 +821,37 @@ mod test {
             Some(vec_strings!["g", "h", "i"])
         );
         assert_eq!(config.log.line_redact_regex, Some(vec_strings!["j,k", "l"]));
+    }
+
+    #[test]
+    fn merge_k8s_inclusion_exclusion() {
+        let argv = ArgumentOptions {
+            k8s_metadata_line_inclusion: Some(vec_strings![
+                "namespace:test-namespace",
+                "label.app:test-name"
+            ]),
+            k8s_metadata_line_exclusion: Some(vec_strings![
+                "name:another-namespace",
+                "annotation:another-name"
+            ]),
+            ..ArgumentOptions::default()
+        };
+        let config = argv.merge(RawConfig::default());
+
+        assert_eq!(
+            config.log.k8s_metadata_include,
+            Some(vec_strings![
+                "namespace:test-namespace",
+                "label.app:test-name"
+            ])
+        );
+        assert_eq!(
+            config.log.k8s_metadata_exclude,
+            Some(vec_strings![
+                "name:another-namespace",
+                "annotation:another-name"
+            ])
+        );
     }
 
     #[test]

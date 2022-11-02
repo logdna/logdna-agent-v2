@@ -1908,6 +1908,7 @@ dependencies = [
  "lazy_static",
  "log",
  "memoffset",
+ "multimap",
  "regex",
  "serde_json",
  "thiserror",
@@ -1991,6 +1992,15 @@ dependencies = [
  "net2",
  "winapi 0.2.8",
  "ws2_32-sys",
+]
+
+[[package]]
+name = "multimap"
+version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

@@ -598,6 +598,14 @@ fn get_agent_ds_yaml(
                                     "value": enrich_logs_with_k8s,
                                 },
                                 {
+                                    "name": "LOGDNA_K8S_METADATA_LINE_INCLUSION",
+                                    "value": "namespace:default"
+                                },
+                                {
+                                    "name": "LOGDNA_K8S_METADATA_LINE_EXCLUSION",
+                                    "value": "label.app.kubernetes.io/name:filter-pod"
+                                },
+                                {
                                     "name": "LOGDNA_LOG_METRIC_SERVER_STATS",
                                     "value": log_reporter_metrics,
                                 },
@@ -1089,6 +1097,14 @@ async fn test_k8s_enrichment() {
         let label = job_file_info.label.as_ref();
         assert!(label.is_some());
         assert_eq!(label.unwrap()["job-name"], "sample-job");
+
+        // Ensure k8s exclusion filter working
+        let result = map.iter().find(|(k, _)| k.contains("filter-pod"));
+        assert!(result.is_none());
+
+        // Ensure k8s inclusion is filter out non default namespaces
+        let result = map.iter().find(|(k, _)| k.contains("kube-system"));
+        assert!(result.is_none());
 
         shutdown_handle();
     });

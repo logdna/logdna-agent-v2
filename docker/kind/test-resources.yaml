@@ -30,3 +30,19 @@ spec:
       imagePullPolicy: IfNotPresent
       command: ["/bin/sh"]
       args: ['-c', 'while true; do echo "Hello from pod"; sleep 0.5; done']
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: filter-pod
+  labels:
+    app.kubernetes.io/name: filter-pod
+    app.kubernetes.io/instance: filter-pod-instance
+    app.kubernetes.io/version: 1.0.0
+spec:
+  containers:
+    - name: filter-pod
+      image: busybox
+      imagePullPolicy: IfNotPresent
+      command: ["/bin/sh"]
+      args: ['-c', 'while true; do echo "Hello from filter pod"; sleep 0.5; done']
