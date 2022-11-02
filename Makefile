@@ -460,7 +460,7 @@ publish-s3-binary:
 
 define publish_images
 	$(eval VCS_REF_BUILD_NUMBER_SHA:=$(shell echo "$(VCS_REF)$(BUILD_NUMBER)" | sha256sum | head -c 16))
-	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(VCS_REF_BUILD_NUMBER_SHA) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
+	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(VCS_REF_BUILD_NUMBER_SHA) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
 	@set -e; \
 	arch=$(shell docker inspect --format "{{.Architecture}}" $(REPO):$(IMAGE_TAG)); \
 	arr=($(TARGET_VERSIONS)); \
@@ -473,7 +473,7 @@ endef
 
 define publish_images_multi
 	$(eval VCS_REF_BUILD_NUMBER_SHA:=$(shell echo "$(VCS_REF)$(BUILD_NUMBER)" | sha256sum | head -c 16))
-	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(VCS_REF_BUILD_NUMBER_SHA) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
+	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(VCS_REF_BUILD_NUMBER_SHA) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
 	@set -e; \
 	arr=($(TARGET_VERSIONS)); \
 	for version in $${arr[@]}; do \
