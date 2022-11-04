@@ -867,6 +867,12 @@ impl FileSystem {
         if !self.passes(path, _entries) {
             // Do not continuously log ignored files
             if let false = self.ignored_dirs.contains(path) {
+                #[cfg(windows)]
+                self.ignored_dirs.insert(path.to_path_buf());
+                info!("ignoring {:?}", path);
+                _entries.clear();
+
+                #[cfg(unix)]
                 self.ignored_dirs.insert(path.to_path_buf());
                 info!("ignoring {:?}", path);
             }
