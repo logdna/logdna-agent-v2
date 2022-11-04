@@ -284,6 +284,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn test_create_file_after_dir_watch() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
 

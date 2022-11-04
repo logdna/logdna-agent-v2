@@ -24,5 +24,4 @@ install:
 
 test_script:
   - cargo test
-  - cargo test --features integration_tests --test cli test_tags -- --nocapture
 

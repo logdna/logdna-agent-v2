@@ -1647,6 +1647,7 @@ async fn test_line_redact() {
 }
 
 #[tokio::test]
+#[cfg(unix)]
 async fn test_directory_created_after_initialization() {
     let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
