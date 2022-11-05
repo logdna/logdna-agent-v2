@@ -395,7 +395,8 @@ impl FileSystem {
                 }
             }
 
-            for path in walkdir::WalkDir::new(dir)
+            let recursive_found_paths = walkdir::WalkDir::new(&dir)
+                .follow_links(true)
                 .into_iter()
                 .filter_map(|path| {
                     path.ok().and_then(|path| {
@@ -403,9 +404,26 @@ impl FileSystem {
                             .then(|| path.path().to_path_buf())
                     })
                 })
-                .collect::<Vec<_>>()
-                .iter()
-            {
+                .filter_map(|path: PathBuf| {
+                    fs::read_dir(&path).ok().map(|entries| {
+                        let mut ret = vec![path];
+                        ret.extend(entries.filter_map(|entry| {
+                            entry
+                                .ok()
+                                .and_then(|entry| entry.path().is_file().then_some(entry.path()))
+                        }));
+                        ret
+                    })
+                })
+                .flatten()
+                .collect::<Vec<PathBuf>>();
+
+            debug!(
+                "recursively discovered paths under {:#?}: {:#?}",
+                dir, recursive_found_paths
+            );
+
+            for path in recursive_found_paths.iter() {
                 if let Err(e) = fs.insert(path, &mut initial_dir_events, &mut entries) {
                     // It can failed due to file restrictions
                     debug!(
@@ -847,7 +865,7 @@ impl FileSystem {
     ) {
         let mut base_components: Vec<OsString> = into_components(entry.path());
         base_components.append(&mut components); // add components already discovered from previous recursive step
-        if self.is_initial_dir_target(entry.path()) {
+        if self.is_initial_dir_target(entry.path()) && !entry.path().is_dir() {
             // only want paths that fall in our watch window
             paths.push(entry.path().to_path_buf());
         }
