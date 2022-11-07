@@ -374,7 +374,7 @@ mod tests {
         w.watch(&dir, RecursiveMode::NonRecursive).unwrap();
 
         let file1_path = &dir.join("file1.log");
-        let mut file1 = File::create(&file1_path)?;
+        let mut file1 = File::create(file1_path)?;
 
         let stream = w.receive();
         pin_mut!(stream);
@@ -386,7 +386,7 @@ mod tests {
         is_match!(&items[0], Create, file1_path);
 
         // Manually add watch
-        w.watch(&file1_path, RecursiveMode::NonRecursive).unwrap();
+        w.watch(file1_path, RecursiveMode::NonRecursive).unwrap();
 
         wait_and_append!(file1);
         take!(stream, items);
@@ -451,8 +451,8 @@ mod tests {
 
         let file_path = &excluded_dir.join("file1.log");
         let symlink_path = dir.join("symlink.log");
-        let mut file = File::create(&file_path)?;
-        std::os::unix::fs::symlink(&file_path, &symlink_path)?;
+        let mut file = File::create(file_path)?;
+        std::os::unix::fs::symlink(file_path, &symlink_path)?;
 
         let stream = w.receive();
         pin_mut!(stream);
@@ -492,8 +492,8 @@ mod tests {
 
         let file_path = &excluded_dir.join("file1.log");
         let symlink_path = dir.join("symlink.log");
-        let mut file = File::create(&file_path)?;
-        std::os::unix::fs::symlink(&file_path, &symlink_path)?;
+        let mut file = File::create(file_path)?;
+        std::os::unix::fs::symlink(file_path, &symlink_path)?;
 
         let stream = w.receive();
         pin_mut!(stream);
@@ -541,8 +541,8 @@ mod tests {
 
         let file_path = &excluded_dir.join("file1.log");
         let symlink_path = dir.join("symlink.log");
-        let mut file = File::create(&file_path)?;
-        std::os::unix::fs::symlink(&file_path, &symlink_path)?;
+        let mut file = File::create(file_path)?;
+        std::os::unix::fs::symlink(file_path, &symlink_path)?;
         let mut items = Vec::new();
 
         // Add a watch manually
@@ -559,9 +559,9 @@ mod tests {
         tokio::time::sleep(DELAY).await;
 
         let file_new_path = &excluded_dir.join("file_new.log");
-        File::create(&file_new_path)?;
+        File::create(file_new_path)?;
         fs::remove_file(&symlink_path)?;
-        std::os::unix::fs::symlink(&file_new_path, &symlink_path)?;
+        std::os::unix::fs::symlink(file_new_path, &symlink_path)?;
 
         let mut items = Vec::new();
         take!(stream, items);
@@ -581,8 +581,8 @@ mod tests {
 
         let file1_path = &excluded_dir.join("file1.log");
         let symlink_path = &dir.join("symlink-dir");
-        let mut file1 = File::create(&file1_path)?;
-        std::os::unix::fs::symlink(&excluded_dir, &symlink_path)?;
+        let mut file1 = File::create(file1_path)?;
+        std::os::unix::fs::symlink(&excluded_dir, symlink_path)?;
 
         let mut w = Watcher::new(DELAY);
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
@@ -599,9 +599,9 @@ mod tests {
         take!(stream, items);
 
         let file2_path = &excluded_dir.join("file2.log");
-        let mut file2 = File::create(&file2_path)?;
+        let mut file2 = File::create(file2_path)?;
         let file_in_subdir_path = &sub_dir_path.join("file_in_subdir.log");
-        let mut file_in_subdir = File::create(&file_in_subdir_path)?;
+        let mut file_in_subdir = File::create(file_in_subdir_path)?;
         wait_and_append!(file2);
         wait_and_append!(file_in_subdir);
         take!(stream, items);
@@ -637,11 +637,11 @@ mod tests {
 
         let file1_path = &excluded_dir.join("file1.log");
         let symlink_path = &dir.join("symlink-dir");
-        let mut file1 = File::create(&file1_path)?;
+        let mut file1 = File::create(file1_path)?;
         let sub_dir_path = &excluded_dir.join("subdir");
         fs::create_dir(sub_dir_path)?;
         let file_in_subdir_path = &sub_dir_path.join("file_in_subdir.log");
-        let mut file_in_subdir = File::create(&file_in_subdir_path)?;
+        let mut file_in_subdir = File::create(file_in_subdir_path)?;
 
         let mut w = Watcher::new(DELAY);
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
@@ -651,7 +651,7 @@ mod tests {
         let mut items = Vec::new();
 
         tokio::time::sleep(DELAY * 2).await;
-        std::os::unix::fs::symlink(&excluded_dir, &symlink_path)?;
+        std::os::unix::fs::symlink(&excluded_dir, symlink_path)?;
 
         take!(stream, items);
         let predicate_fn = predicate::in_iter(items);
@@ -679,7 +679,7 @@ mod tests {
         assert!(predicate_fn.eval(&Event::Write(symlink_child_file2.clone())));
 
         let mut items = Vec::new();
-        fs::remove_file(&symlink_path)?;
+        fs::remove_file(symlink_path)?;
         take!(stream, items);
         let predicate_fn = predicate::in_iter(items);
         assert!(predicate_fn.eval(&Event::Remove(symlink_path.clone())));
@@ -737,8 +737,8 @@ mod tests {
 
         let file_path = &excluded_dir.join("file1.log");
         let link_path = &dir.join("symlink.log");
-        let mut file = File::create(&file_path)?;
-        fs::hard_link(&file_path, &link_path)?;
+        let mut file = File::create(file_path)?;
+        fs::hard_link(file_path, link_path)?;
 
         let mut w = Watcher::new(DELAY);
         w.watch(&dir, RecursiveMode::Recursive).unwrap();

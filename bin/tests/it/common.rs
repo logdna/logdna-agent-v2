@@ -35,7 +35,7 @@ pub fn append_to_file(file_path: &Path, lines: i32, sync_every: i32) -> Result<(
     let mut file = OpenOptions::new()
         .append(true)
         .create(true)
-        .open(&file_path)?;
+        .open(file_path)?;
 
     for i in 0..lines {
         if let Err(e) = writeln!(file, "{}", LINE) {
@@ -298,7 +298,7 @@ pub fn assert_agent_running(agent_handle: &mut Child) {
 
 pub fn open_files_include(id: u32, file: &Path) -> Option<String> {
     let child = Command::new("lsof")
-        .args(&["-l", "-p", &id.to_string()])
+        .args(["-l", "-p", &id.to_string()])
         .stdout(Stdio::piped())
         .spawn()
         .expect("failed to execute child");

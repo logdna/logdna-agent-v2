@@ -239,7 +239,7 @@ fn test_send_sigint_does_not_leave_file_descriptor() {
 fn test_signals(signal: nix::sys::signal::Signal) {
     fn is_file_open(file: &std::path::Path) -> bool {
         let child = Command::new("lsof")
-            .args(&[file.to_str().unwrap()])
+            .args([file.to_str().unwrap()])
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
