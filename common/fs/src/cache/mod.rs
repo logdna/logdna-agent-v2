@@ -1700,6 +1700,7 @@ mod tests {
     }
 
     /// Creates a symlink directory
+    #[cfg(unix)]
     #[tokio::test]
     async fn filesystem_create_symlink_directory() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
@@ -1762,6 +1763,7 @@ mod tests {
 
     // Deletes a directory
     #[tokio::test]
+    #[cfg(unix)]
     async fn filesystem_delete_filled_dir() -> io::Result<()> {
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
@@ -1794,6 +1796,7 @@ mod tests {
 
     // Deletes a directory
     #[tokio::test]
+    #[cfg(unix)]
     async fn filesystem_delete_nested_filled_dir() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
         // Now make a nested dir
@@ -1855,6 +1858,7 @@ mod tests {
 
     // Deletes a symlink
     #[tokio::test]
+    #[cfg(unix)]
     async fn filesystem_delete_symlink() {
         let tempdir = TempDir::new().unwrap();
         let path = tempdir.path().to_path_buf();
