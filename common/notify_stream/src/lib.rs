@@ -12,7 +12,7 @@ type PathId = std::path::PathBuf;
 #[cfg(target_os = "linux")]
 type OsWatcher = notify::INotifyWatcher;
 #[cfg(not(any(target_os = "linux")))]
-type OsWatcher = notify::PollWatcher;
+type OsWatcher = notify::RecommendedWatcher;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Event wrapper to that hides platform and implementation details.
