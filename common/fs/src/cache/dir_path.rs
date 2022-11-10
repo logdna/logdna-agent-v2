@@ -89,6 +89,7 @@ impl From<DirPathBuf> for PathBuf {
 ///
 /// When a valid directory is found, it adds the missing piece of the directory
 /// path to `postfix` and returns the `DirPathBuf` result.
+#[cfg(unix)]
 fn find_valid_path(
     path: Option<PathBuf>,
     postfix: Option<PathBuf>,
@@ -126,6 +127,8 @@ fn find_valid_path(
     }
 }
 
+/// Given a path, returns an `Option<PathBuf>` of the parent directory.
+#[cfg(unix)]
 fn level_up(path: &Path) -> Option<PathBuf> {
     let mut parent_path = PathBuf::new();
     match path.parent() {
