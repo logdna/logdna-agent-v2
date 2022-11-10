@@ -247,6 +247,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn test_unwatch_if_exists() {
         let dir = tempdir().unwrap();
         let dir_untracked = tempdir().unwrap();
@@ -317,6 +318,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn test_create_write_delete() -> io::Result<()> {
         let dir = tempdir().unwrap();
         let dir_path = dir.path();
@@ -365,6 +367,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn test_watch_file_write_after_create() -> io::Result<()> {
         let dir = tempdir().unwrap().into_path();
 
