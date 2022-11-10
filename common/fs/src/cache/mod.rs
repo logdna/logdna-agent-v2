@@ -478,7 +478,7 @@ impl FileSystem {
                                 (mfs, missing, watcher, stream),
                             ));
                         }
-                        if missing.iter().any(|m| m.starts_with(&path)) {
+                        if missing.iter().any(|m| m.starts_with(path)) {
                             info!("found sub-path of missing directory {:?}", path);
                             for dir in missing.iter() {
                                 // Check if full path was created along with sub-path
@@ -1061,7 +1061,7 @@ impl FileSystem {
             }
         } else {
             self.watcher
-                .watch(&path, RecursiveMode::NonRecursive)
+                .watch(path, RecursiveMode::NonRecursive)
                 .map_err(|e| Error::Watch(Some(path.to_path_buf()), e))?;
         }
         info!("watching {:?}", path);

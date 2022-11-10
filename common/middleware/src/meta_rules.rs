@@ -292,7 +292,7 @@ pub fn substitute(template: &str, variables: &HashMap<String, String>) -> String
             let k = key.as_str();
             if let Some(v) = variables.get(k) {
                 cap.name("var").map(|var| {
-                    output = output.replace(&var.as_str(), v);
+                    output = output.replace(var.as_str(), v);
                     Some(var)
                 });
             }
@@ -306,14 +306,14 @@ pub fn substitute(template: &str, variables: &HashMap<String, String>) -> String
             match variables.get(k) {
                 Some(v) => {
                     cap.name("var").map(|var| {
-                        output = output.replace(&var.as_str(), v);
+                        output = output.replace(var.as_str(), v);
                         Some(var)
                     });
                 }
                 None => {
                     cap.name("default").map(|default| {
                         cap.name("var").map(|var| {
-                            output = output.replace(&var.as_str(), default.as_str());
+                            output = output.replace(var.as_str(), default.as_str());
                             Some(var)
                         });
                         Some(default)

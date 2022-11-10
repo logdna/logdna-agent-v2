@@ -102,7 +102,7 @@ fn test_list_config_from_conf() -> io::Result<()> {
 
     let output: Output = cmd
         .env_clear()
-        .args(&["-c", config_file_path.to_str().unwrap()])
+        .args(["-c", config_file_path.to_str().unwrap()])
         .arg("-l")
         .unwrap();
     assert!(output.status.success());
@@ -149,7 +149,7 @@ fn test_legacy_and_new_confs_merge() -> io::Result<()> {
     )?;
 
     let new_conf_path = Path::new("/etc/logdna");
-    fs::create_dir_all(&new_conf_path)?;
+    fs::create_dir_all(new_conf_path)?;
     let new_conf_path = new_conf_path.join("config.yaml");
     let mut new_conf_file = File::create(new_conf_path)?;
     write!(
@@ -244,7 +244,7 @@ fn test_list_default_conf() -> io::Result<()> {
     let output: Output = cmd.env_clear().arg("-l").unwrap();
 
     // Remove file before any assert
-    fs::remove_file(&file_path)?;
+    fs::remove_file(file_path)?;
 
     assert!(output.status.success());
     let stdout = from_utf8(&output.stdout).unwrap();
@@ -261,34 +261,34 @@ fn test_command_line_arguments_should_set_config() {
     let _ = env_logger::Builder::from_default_env().try_init();
     test_command(
         |cmd| {
-            cmd.args(&["-k", "my_secret"])
-                .args(&["-d", "/d1/", "/d2/"])
-                .args(&["-t", "a", "b"])
-                .args(&["--host", "remotehost"])
-                .args(&["--endpoint-path", "/path/to/endpoint"])
-                .args(&["--use-ssl", "true"])
-                .args(&["--use-compression", "false"])
-                .args(&["--gzip-level", "3"])
-                .args(&["--os-hostname", "os_host_name_sample"])
-                .args(&["--ip", "1.2.3.4"])
-                .args(&["--mac-address", "01-23-45-67-89-AB-CD-EF"])
-                .args(&["--exclude", "a.*"])
-                .args(&["--exclude-regex", "b.*"])
-                .args(&["--include", "c.*"])
-                .args(&["--include-regex", "d.*"])
-                .args(&["--journald-paths", "/run/systemd/journal"])
-                .args(&["--lookback", "start"])
-                .args(&["--use-k8s-enrichment", "never"])
-                .args(&["--log-k8s-events", "always"])
-                .args(&["--db-path", "/var/lib/some-agent/"])
-                .args(&["--metrics-port", "9898"])
-                .args(&["--line-exclusion", "abc"])
-                .args(&["--line-inclusion", "z_inc"])
-                .args(&["--line-redact", "a@b.com"])
-                .args(&["--ingest-buffer-size", "123456"])
-                .args(&["--ingest-timeout", "9876"])
-                .args(&["--retry-dir", "/tmp/logdna/argv"])
-                .args(&["--retry-disk-limit", "9 MB"]);
+            cmd.args(["-k", "my_secret"])
+                .args(["-d", "/d1/", "/d2/"])
+                .args(["-t", "a", "b"])
+                .args(["--host", "remotehost"])
+                .args(["--endpoint-path", "/path/to/endpoint"])
+                .args(["--use-ssl", "true"])
+                .args(["--use-compression", "false"])
+                .args(["--gzip-level", "3"])
+                .args(["--os-hostname", "os_host_name_sample"])
+                .args(["--ip", "1.2.3.4"])
+                .args(["--mac-address", "01-23-45-67-89-AB-CD-EF"])
+                .args(["--exclude", "a.*"])
+                .args(["--exclude-regex", "b.*"])
+                .args(["--include", "c.*"])
+                .args(["--include-regex", "d.*"])
+                .args(["--journald-paths", "/run/systemd/journal"])
+                .args(["--lookback", "start"])
+                .args(["--use-k8s-enrichment", "never"])
+                .args(["--log-k8s-events", "always"])
+                .args(["--db-path", "/var/lib/some-agent/"])
+                .args(["--metrics-port", "9898"])
+                .args(["--line-exclusion", "abc"])
+                .args(["--line-inclusion", "z_inc"])
+                .args(["--line-redact", "a@b.com"])
+                .args(["--ingest-buffer-size", "123456"])
+                .args(["--ingest-timeout", "9876"])
+                .args(["--retry-dir", "/tmp/logdna/argv"])
+                .args(["--retry-disk-limit", "9 MB"]);
         },
         |d| {
             log::debug!("agent output: {:#?}", d);
@@ -568,12 +568,12 @@ startup: {{}}
 
     test_command(
         |cmd| {
-            cmd.args(&["-k", "123"])
-                .args(&["-c", config_file_path.to_str().unwrap()])
-                .args(&["-d", "/var/log2/,/var/log3/"])
-                .args(&["-t", "tag2", "tag3"])
-                .args(&["--exclude", "file.log"])
-                .args(&["--include", "file.zlog"]);
+            cmd.args(["-k", "123"])
+                .args(["-c", config_file_path.to_str().unwrap()])
+                .args(["-d", "/var/log2/,/var/log3/"])
+                .args(["-t", "tag2", "tag3"])
+                .args(["--exclude", "file.log"])
+                .args(["--include", "file.zlog"]);
         },
         |d| {
             assert!(
@@ -610,7 +610,7 @@ fn test_properties_config_min() -> io::Result<()> {
 
     test_command(
         |cmd| {
-            cmd.args(&["-c", config_file_path.to_str().unwrap()]);
+            cmd.args(["-c", config_file_path.to_str().unwrap()]);
         },
         |d| {
             // Verify that it starts thanks to having the key is good enough
@@ -642,7 +642,7 @@ hostname = some-linux-instance"
 
     test_command(
         |cmd| {
-            cmd.args(&["-c", config_file_path.to_str().unwrap()]);
+            cmd.args(["-c", config_file_path.to_str().unwrap()]);
         },
         |d| {
             assert!(is_match(r"log:\s+dirs:\s+\- /var/my_log\s+\- /var/my_log2")
@@ -684,7 +684,7 @@ line_exclusion_regex = (?i:debug),(?i:trace)"
 
     test_command(
         |cmd| {
-            cmd.args(&["-c", config_file_path.to_str().unwrap()]);
+            cmd.args(["-c", config_file_path.to_str().unwrap()]);
         },
         |d| {
             assert!(is_match(r"log:\s+dirs:\s+\- /var/log\s+\- /var/my_log2")
@@ -718,7 +718,7 @@ fn test_properties_default_conf() -> io::Result<()> {
             // No command argument
         },
         |d| {
-            fs::remove_file(&file_path).unwrap();
+            fs::remove_file(file_path).unwrap();
             assert!(is_match(r"log:\s+dirs:\s+\- /var/log/").unwrap().eval(d));
             assert!(contains("tags: sample_tag").eval(d));
         },
@@ -776,7 +776,7 @@ fn cmd_line_invalid_test(args: &[&str]) {
         .timeout(std::time::Duration::from_millis(500))
         .env_clear()
         .args(args)
-        .args(&["--key", "123"])
+        .args(["--key", "123"])
         .ok()
     {
         Ok(_) => panic!("it should have failed for {} but succeeded", args[0]),
