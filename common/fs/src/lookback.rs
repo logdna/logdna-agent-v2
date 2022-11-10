@@ -5,6 +5,7 @@ use thiserror::Error;
 pub enum Lookback {
     Start,
     SmallFiles,
+    Tail,
     None,
 }
 
@@ -26,6 +27,7 @@ impl std::str::FromStr for Lookback {
         {
             "start" => Ok(Lookback::Start),
             "smallfiles" => Ok(Lookback::SmallFiles),
+            "tail" => Ok(Lookback::Tail),
             "none" => Ok(Lookback::None),
             _ => Err(ParseLookbackError::Unknown(s.into())),
         }
@@ -41,6 +43,7 @@ impl fmt::Display for Lookback {
                 Lookback::Start => "start",
                 Lookback::SmallFiles => "smallfiles",
                 Lookback::None => "none",
+                Lookback::Tail => "tail",
             }
         )
     }
