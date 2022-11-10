@@ -1604,6 +1604,7 @@ mod tests {
 
     // Simulates the `create_copy` log rotation strategy
     #[tokio::test]
+    #[cfg(unix)]
     async fn filesystem_rotate_create_copy() -> io::Result<()> {
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
@@ -1833,6 +1834,7 @@ mod tests {
 
     // Deletes a file
     #[tokio::test]
+    #[cfg(unix)]
     async fn filesystem_delete_file() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
         let tempdir = TempDir::new()?;
@@ -1977,6 +1979,7 @@ mod tests {
 
     // Deletes a hardlink
     #[tokio::test]
+    #[cfg(unix)]
     async fn filesystem_delete_hardlink() -> io::Result<()> {
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
@@ -2002,6 +2005,7 @@ mod tests {
     // Deletes the pointee of a hardlink (not totally accurate since we're not deleting the inode
     // entry, but what evs)
     #[tokio::test]
+    #[cfg(unix)]
     async fn filesystem_delete_hardlink_pointee() -> io::Result<()> {
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
