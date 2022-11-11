@@ -147,6 +147,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(unix)]
     fn test_level_up() {
         let mut expe_pathbuf = PathBuf::new();
         expe_pathbuf.push("/test-directory");
@@ -162,6 +163,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
@@ -183,6 +185,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_deep_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
@@ -204,6 +207,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_filename_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
@@ -225,6 +229,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_empty_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
@@ -235,6 +240,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_invalid_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
@@ -245,6 +251,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_root_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
@@ -255,6 +262,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_root_lvl_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
