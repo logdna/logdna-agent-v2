@@ -808,10 +808,6 @@ impl FileSystem {
                 let mut should_lookback = false;
                 let file_len = path.metadata().map(|m| m.len()).unwrap_or(0);
 
-                if file_len > TAIL_WARN_THRESHOLD_B {
-                    log::warn!("lookback ocurred on larger file {:?}", path);
-                }
-
                 if let Ok(metadata) = path.metadata() {
                     if let Ok(file_create_time) = metadata.created() {
                         if file_create_time > self.fs_start_time {
@@ -821,6 +817,10 @@ impl FileSystem {
                 }
 
                 let smallfiles_offset = if should_lookback {
+                    if file_len > TAIL_WARN_THRESHOLD_B {
+                        log::warn!("lookback ocurred on larger file {:?}", path);
+                    }
+
                     SpanVec::new()
                 } else {
                     [Span::new(0, file_len).unwrap()].iter().collect()
