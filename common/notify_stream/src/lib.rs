@@ -247,7 +247,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[cfg(unix)]
     async fn test_unwatch_if_exists() {
         let dir = tempdir().unwrap();
         let dir_untracked = tempdir().unwrap();
@@ -318,7 +317,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[cfg(unix)]
     async fn test_create_write_delete() -> io::Result<()> {
         let dir = tempdir().unwrap();
         let dir_path = dir.path();
@@ -346,6 +344,7 @@ mod tests {
         w.watch(&file_path, RecursiveMode::NonRecursive).unwrap();
 
         wait_and_append!(file);
+        drop(file);
         fs::remove_file(&file_path)?;
 
         take!(stream, items);
