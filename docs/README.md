@@ -262,7 +262,8 @@ The valid values for this option are:
       * If there is information in the “state file”, use the last recorded state. 
       * If the file is not present in the “state file”, start at the beginning. 
    * When set to **`tail`**:
-      * Will read .log files starting at the beginning of the file, as opposed to the default (none) only lines after the agent starts, if the .log file was created after the agent has started. This can result in large .log files being processed if copied into log directory. A WARN log will be printed if this happens.  
+      * Will read .log files starting at the beginning of the file, if the .log file has a create timestamp that is later than when the agent began running.  
+      * Agent will warn if you are picking up .log files greater than 3MB.  
       
 
 **Notes:**
