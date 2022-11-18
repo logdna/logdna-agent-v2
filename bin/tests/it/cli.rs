@@ -890,6 +890,7 @@ fn lookback_tail_lines_are_delivered() {
         let (line_count, server) = tokio::join!(
             async {
                 let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
+                file.sync_all().expect("Failed to sync file");
                 let mut handle = common::spawn_agent(AgentSettings {
                     log_dirs: &dir_path,
                     exclusion_regex: Some(r"^/var.*"),
