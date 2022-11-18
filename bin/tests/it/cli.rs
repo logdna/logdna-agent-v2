@@ -934,6 +934,8 @@ fn lookback_tail_lines_file_created_after_agent_start_at_beginning() {
     });
 }
 
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn lookback_tail_lines_file_created_before_agent_start_at_end() {
     let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Couldn't create temp dir...");
