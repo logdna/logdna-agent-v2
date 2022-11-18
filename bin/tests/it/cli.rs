@@ -897,9 +897,6 @@ fn lookback_tail_lines_are_delivered() {
                     ..Default::default()
                 });
                 debug!("spawned agent");
-
-                let log_lines = "This is a test log line";
-
                 let file_path = dir.path().join("test.log");
                 let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
