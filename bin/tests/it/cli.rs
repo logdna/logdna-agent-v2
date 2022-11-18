@@ -887,7 +887,7 @@ fn lookback_tail_lines_are_delivered() {
     thread::sleep(std::time::Duration::from_secs(1));
 
     tokio_test::block_on(async {
-        let ((line_count, lines), server) = tokio::join!(
+        let (line_count, server) = tokio::join!(
             async {
                 let mut handle = common::spawn_agent(AgentSettings {
                     log_dirs: &dir_path,
@@ -902,10 +902,10 @@ fn lookback_tail_lines_are_delivered() {
                 let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
                 debug!("test log: {}", file_path.to_str().unwrap());
-                // Enough bytes to get past the lookback threshold
-                let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
-                (0..line_write_count).for_each(|_| {
-                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...")
+
+                (0..5).for_each(|i| {
+                    writeln!(file, "{} {}", log_lines, i)
+                        .expect("Couldn't write to temp log file...")
                 });
 
                 file.sync_all().expect("Failed to sync file");
@@ -922,11 +922,10 @@ fn lookback_tail_lines_are_delivered() {
                 let file_info = received.lock().await;
                 let file_info = file_info.get(file_path.to_str().unwrap()).unwrap();
                 let line_count = file_info.lines;
-                let lines = file_info.values.clone();
                 shutdown_handle();
 
                 handle.wait().unwrap();
-                (line_count, lines)
+                line_count
             },
             server
         );
