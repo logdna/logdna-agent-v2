@@ -884,8 +884,6 @@ fn lookback_tail_lines_are_delivered() {
 
     let log_lines = "This is a test log line";
 
-    let file_path = dir.path().join("test.log");
-
     thread::sleep(std::time::Duration::from_secs(1));
 
     tokio_test::block_on(async {
