@@ -917,14 +917,15 @@ fn lookback_tail_lines_file_created_after_agent_start_at_beginning() {
                 tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
                 handle.kill().unwrap();
-
-                debug!("getting lines from {}", file_path.to_str().unwrap());
-                let file_info = received.lock().await;
-                let file_info = file_info.get(file_path.to_str().unwrap()).unwrap();
-                let line_count = file_info.lines;
+                handle.wait().unwrap();
+                let line_count = received
+                    .lock()
+                    .await
+                    .get(file_path.to_str().unwrap())
+                    .unwrap()
+                    .lines;
                 shutdown_handle();
 
-                handle.wait().unwrap();
                 line_count
             },
             server
@@ -984,14 +985,15 @@ fn lookback_tail_lines_file_created_before_agent_start_at_end() {
                 tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
                 handle.kill().unwrap();
-
-                debug!("getting lines from {}", file_path.to_str().unwrap());
-                let file_info = received.lock().await;
-                let file_info = file_info.get(file_path.to_str().unwrap()).unwrap();
-                let line_count = file_info.lines;
+                handle.wait().unwrap();
+                let line_count = received
+                    .lock()
+                    .await
+                    .get(file_path.to_str().unwrap())
+                    .unwrap()
+                    .lines;
                 shutdown_handle();
 
-                handle.wait().unwrap();
                 line_count
             },
             server
