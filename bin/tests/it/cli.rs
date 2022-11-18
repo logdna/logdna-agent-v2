@@ -781,7 +781,7 @@ proptest! {
 }
 
 #[test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
+//#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn lookback_none_lines_are_delivered() {
     let _ = env_logger::Builder::from_default_env().try_init();
 
@@ -802,6 +802,21 @@ fn lookback_none_lines_are_delivered() {
     let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
     debug!("test log: {}", file_path.to_str().unwrap());
+    // Enough bytes to get past the lookback threshold
+    let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
+    (0..line_write_count)
+        .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
+
+    debug!(
+        "wrote {} lines to {} with size {}",
+        line_write_count,
+        file_path.to_str().unwrap(),
+        (log_lines.as_bytes().len() + 1) * line_write_count
+    );
+    file.sync_all().expect("Failed to sync file");
+
+    // Dump the agent's stdout
+    // TODO: assert that it's successfully uploaded
 
     tokio_test::block_on(async {
         let (line_count, _, server) = tokio::join!(
@@ -852,7 +867,7 @@ fn lookback_none_lines_are_delivered() {
 }
 
 #[test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
+//#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn lookback_tail_lines_are_delivered() {
     let _ = env_logger::Builder::from_default_env().try_init();
 
@@ -869,22 +884,17 @@ fn lookback_tail_lines_are_delivered() {
     );
     let log_lines = "This is a test log line";
 
-    let file_path = dir.path().join("test.log");
-    let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
-
-    debug!("test log: {}", file_path.to_str().unwrap());
-    (0..16384)
-        .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
-    file.sync_all().expect("Failed to sync file");
+    let file_path = dir.path().join("tail-test.log");
 
     tokio_test::block_on(async {
-        let (line_count, _, server) = tokio::join!(
+        let (line_count, server) = tokio::join!(
             async {
+                let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
                 let mut handle = common::spawn_agent(AgentSettings {
                     log_dirs: &dir_path,
                     exclusion_regex: Some(r"^/var.*"),
                     ssl_cert_file: Some(cert_file.path()),
-                    lookback: Some("tail"),
+                    lookback: Some("none"),
                     host: Some(&addr),
                     ..Default::default()
                 });
@@ -896,10 +906,16 @@ fn lookback_tail_lines_are_delivered() {
 
                 tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
 
-                handle.kill().unwrap();
+                (0..5).for_each(|_| {
+                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                    file.sync_all().expect("Failed to sync file");
+                });
+                file.sync_all().expect("Failed to sync file");
+                debug!("wrote 5 lines");
 
-                debug!("getting lines from {}", file_path.to_str().unwrap());
+                handle.kill().unwrap();
                 handle.wait().unwrap();
+
                 let line_count = received
                     .lock()
                     .await
@@ -908,15 +924,6 @@ fn lookback_tail_lines_are_delivered() {
                     .lines;
                 shutdown_handle();
                 line_count
-            },
-            async move {
-                tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
-                (0..5).for_each(|_| {
-                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
-                    file.sync_all().expect("Failed to sync file");
-                });
-                file.sync_all().expect("Failed to sync file");
-                debug!("wrote 5 lines");
             },
             server
         );
