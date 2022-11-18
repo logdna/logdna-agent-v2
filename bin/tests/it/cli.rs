@@ -868,7 +868,7 @@ fn lookback_none_lines_are_delivered() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
-fn lookback_tail_lines_are_delivered() {
+fn lookback_tail_lines_file_created_after_agent_start_at_beginning() {
     let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Couldn't create temp dir...");
 
@@ -931,6 +931,71 @@ fn lookback_tail_lines_are_delivered() {
         );
         server.unwrap();
         assert_eq!(line_count, 5);
+    });
+}
+
+fn lookback_tail_lines_file_created_before_agent_start_at_end() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+    let dir = tempdir().expect("Couldn't create temp dir...");
+
+    let dir_path = format!("{}/", dir.path().to_str().unwrap());
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester(
+        Some(common::HttpVersion::Http1),
+        Some(Box::new(|req| {
+            assert_eq!(req.version(), hyper::Version::HTTP_11);
+            None
+        })),
+        None,
+    );
+
+    let log_lines = "This is a test log line";
+
+    let file_path = dir.path().join("tail-test.log");
+    let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
+
+    debug!("test log: {}", file_path.to_str().unwrap());
+
+    (0..5).for_each(|i| {
+        writeln!(file, "{} {}", log_lines, i).expect("Couldn't write to temp log file...")
+    });
+
+    file.sync_all().expect("Failed to sync file");
+
+    thread::sleep(std::time::Duration::from_secs(1));
+
+    tokio_test::block_on(async {
+        let (line_count, server) = tokio::join!(
+            async {
+                let mut handle = common::spawn_agent(AgentSettings {
+                    log_dirs: &dir_path,
+                    exclusion_regex: Some(r"/var\w*"),
+                    ssl_cert_file: Some(cert_file.path()),
+                    lookback: Some("tail"),
+                    host: Some(&addr),
+                    ..Default::default()
+                });
+
+                let mut stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
+                common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+                consume_output(stderr_reader.into_inner());
+
+                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+                handle.kill().unwrap();
+
+                debug!("getting lines from {}", file_path.to_str().unwrap());
+                let file_info = received.lock().await;
+                let file_info = file_info.get(file_path.to_str().unwrap()).unwrap();
+                let line_count = file_info.lines;
+                shutdown_handle();
+
+                handle.wait().unwrap();
+                line_count
+            },
+            server
+        );
+        server.unwrap();
+        assert_eq!(line_count, 0);
     });
 }
 
