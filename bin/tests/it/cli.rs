@@ -867,7 +867,7 @@ fn lookback_none_lines_are_delivered() {
 }
 
 #[test]
-#[cfg_attr(not(feature = "integration_tests"), ignore)]
+//#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn lookback_tail_lines_are_delivered() {
     let _ = env_logger::Builder::from_default_env().try_init();
 
@@ -890,7 +890,13 @@ fn lookback_tail_lines_are_delivered() {
         let (line_count, server) = tokio::join!(
             async {
                 let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
+                debug!("test log: {}", file_path.to_str().unwrap());
+                let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
+                (0..line_write_count).for_each(|_| {
+                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...")
+                });
                 file.sync_all().expect("Failed to sync file");
+
                 let mut handle = common::spawn_agent(AgentSettings {
                     log_dirs: &dir_path,
                     exclusion_regex: Some(r"^/var.*"),
