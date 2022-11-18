@@ -882,28 +882,14 @@ fn lookback_tail_lines_are_delivered() {
         None,
     );
 
-    let file_path = dir.path().join("test.log");
-    let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
-
     let log_lines = "This is a test log line";
 
     let file_path = dir.path().join("test.log");
-    let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
-
-    debug!("test log: {}", file_path.to_str().unwrap());
-    // Enough bytes to get past the lookback threshold
-    let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
-    (0..line_write_count)
-        .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
-
-    file.sync_all().expect("Failed to sync file");
-
-    // Dump the agent's stdout
 
     thread::sleep(std::time::Duration::from_secs(1));
 
     tokio_test::block_on(async {
-        let ((line_count, lines), _, server) = tokio::join!(
+        let ((line_count, lines), server) = tokio::join!(
             async {
                 let mut handle = common::spawn_agent(AgentSettings {
                     log_dirs: &dir_path,
@@ -943,16 +929,6 @@ fn lookback_tail_lines_are_delivered() {
 
                 handle.wait().unwrap();
                 (line_count, lines)
-            },
-            async {
-                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-                (0..5).for_each(|i| {
-                    writeln!(file, "{}", i).expect("Couldn't write to temp log file...");
-                    file.sync_all().expect("Failed to sync file");
-                });
-                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-                file.sync_all().expect("Failed to sync file");
             },
             server
         );
