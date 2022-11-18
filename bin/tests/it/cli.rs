@@ -893,7 +893,7 @@ fn lookback_tail_lines_are_delivered() {
                     log_dirs: &dir_path,
                     exclusion_regex: Some(r"/var\w*"),
                     ssl_cert_file: Some(cert_file.path()),
-                    lookback: Some("start"),
+                    lookback: Some("tail"),
                     host: Some(&addr),
                     ..Default::default()
                 });
