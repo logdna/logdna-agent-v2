@@ -917,7 +917,6 @@ fn lookback_tail_lines_are_delivered() {
 
                 handle.kill().unwrap();
 
-
                 (0..5).for_each(|_| {
                     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
                     file.sync_all().expect("Failed to sync file");
