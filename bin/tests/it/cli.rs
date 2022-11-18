@@ -951,19 +951,6 @@ fn lookback_tail_lines_file_created_before_agent_start_at_end() {
         None,
     );
 
-    let log_lines = "This is a test log line";
-
-    let file_path = dir.path().join("tail-test-end.log");
-    let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
-
-    debug!("test log: {}", file_path.to_str().unwrap());
-
-    (0..5).for_each(|i| {
-        writeln!(file, "{} {}", log_lines, i).expect("Couldn't write to temp log file...")
-    });
-
-    file.sync_all().expect("Failed to sync file");
-
     thread::sleep(std::time::Duration::from_secs(1));
 
     tokio_test::block_on(async {
@@ -983,6 +970,20 @@ fn lookback_tail_lines_file_created_before_agent_start_at_end() {
                 consume_output(stderr_reader.into_inner());
 
                 tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+
+                let log_lines = "This is a test log line";
+
+                let file_path = dir.path().join("tail-test-end.log");
+                let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
+
+                debug!("test log: {}", file_path.to_str().unwrap());
+
+                (0..5).for_each(|i| {
+                    writeln!(file, "{} {}", log_lines, i)
+                        .expect("Couldn't write to temp log file...")
+                });
+
+                file.sync_all().expect("Failed to sync file");
 
                 handle.kill().unwrap();
                 handle.wait().unwrap();
