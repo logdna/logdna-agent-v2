@@ -947,7 +947,6 @@ fn lookback_tail_lines_file_created_before_agent_start_at_beg() {
         })),
         None,
     );
-    let log_lines = "This is a test log line";
 
     tokio_test::block_on(async {
         let (line_count, server) = tokio::join!(
