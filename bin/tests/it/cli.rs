@@ -884,19 +884,9 @@ fn lookback_tail_lines_are_delivered() {
     );
     let log_lines = "This is a test log line";
 
-    let file_path = dir.path().join("tail-test.log");
-
     tokio_test::block_on(async {
         let (line_count, server) = tokio::join!(
             async {
-                let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
-                debug!("test log: {}", file_path.to_str().unwrap());
-                let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
-                (0..line_write_count).for_each(|_| {
-                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...")
-                });
-                file.sync_all().expect("Failed to sync file");
-
                 let mut handle = common::spawn_agent(AgentSettings {
                     log_dirs: &dir_path,
                     exclusion_regex: Some(r"^/var.*"),
@@ -907,11 +897,26 @@ fn lookback_tail_lines_are_delivered() {
                 });
                 debug!("spawned agent");
 
+                let file_path = dir.path().join("test.log");
+                let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
+
+                debug!("test log: {}", file_path.to_str().unwrap());
+                // Enough bytes to get past the lookback threshold
+                let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
+                (0..line_write_count).for_each(|_| {
+                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...")
+                });
+
+                file.sync_all().expect("Failed to sync file");
+
                 let mut stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
                 common::wait_for_event("Enabling filesystem", &mut stderr_reader);
                 consume_output(stderr_reader.into_inner());
 
                 tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+
+                handle.kill().unwrap();
+
 
                 (0..5).for_each(|_| {
                     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
@@ -920,7 +925,6 @@ fn lookback_tail_lines_are_delivered() {
                 file.sync_all().expect("Failed to sync file");
                 debug!("wrote 5 lines");
 
-                handle.kill().unwrap();
                 handle.wait().unwrap();
 
                 let line_count = received
