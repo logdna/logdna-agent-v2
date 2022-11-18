@@ -867,7 +867,7 @@ fn lookback_none_lines_are_delivered() {
 }
 
 #[test]
-//#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn lookback_tail_lines_are_delivered() {
     let _ = env_logger::Builder::from_default_env().try_init();
 
