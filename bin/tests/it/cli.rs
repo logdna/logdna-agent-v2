@@ -898,7 +898,7 @@ fn lookback_tail_lines_file_created_after_agent_start_at_beginning() {
                     ..Default::default()
                 });
 
-                let file_path = dir.path().join("tail-test.log");
+                let file_path = dir.path().join("tail-test-start.log");
                 let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
                 debug!("test log: {}", file_path.to_str().unwrap());
@@ -952,7 +952,7 @@ fn lookback_tail_lines_file_created_before_agent_start_at_end() {
 
     let log_lines = "This is a test log line";
 
-    let file_path = dir.path().join("tail-test.log");
+    let file_path = dir.path().join("tail-test-end.log");
     let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
     debug!("test log: {}", file_path.to_str().unwrap());
