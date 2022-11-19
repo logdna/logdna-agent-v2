@@ -951,6 +951,11 @@ fn lookback_tail_lines_file_created_before_agent_start_at_beg() {
 
     let file_path = dir.path().join("start-tail-test.log");
     let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
+
+    debug!("test log: {}", file_path.to_str().unwrap());
+    (0..5)
+        .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
+
     file.sync_all().expect("Failed to sync file");
 
     // Dump the agent's stdout
