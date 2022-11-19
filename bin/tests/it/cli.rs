@@ -5,7 +5,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
 
 use crate::common::{self, consume_output, AgentSettings};
 
@@ -922,7 +922,6 @@ fn lookback_tail_lines_file_created_after_agent_start_at_beg() {
 
                 handle.kill().unwrap();
 
-                debug!("getting lines from {}", file_path.to_str().unwrap());
                 handle.wait().unwrap();
                 let line_count = received
                     .lock()
