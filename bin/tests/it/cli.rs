@@ -882,7 +882,6 @@ fn lookback_tail_lines_file_created_after_agent_start_at_end() {
         })),
         None,
     );
-    let log_lines = "This is a test log line";
 
     let file_path = dir.path().join("start-tail-test.log");
 
@@ -963,9 +962,6 @@ fn lookback_tail_lines_file_created_before_agent_start_at_end() {
         .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
 
     file.sync_all().expect("Failed to sync file");
-
-    // Dump the agent's stdout
-    // TODO: assert that it's successfully uploaded
 
     tokio_test::block_on(async {
         let (line_count, _, server) = tokio::join!(
