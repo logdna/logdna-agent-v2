@@ -5,7 +5,7 @@ use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use crate::common::{self, consume_output, AgentSettings};
 
@@ -896,16 +896,23 @@ fn lookback_tail_lines_file_created_after_agent_start_at_beg() {
                 });
                 debug!("spawned agent");
 
-                tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
-                let log_lines = "This is a test log line";
-
                 let file_path = dir.path().join("start-tail-test.log");
-                let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
-                (0..10).for_each(|_| {
-                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+
+                async move {
+                    let log_lines = "This is a test log line";
+                    let mut file =
+                        File::create(&file_path).expect("Couldn't create temp log file...");
+
+                    tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+                    (0..5).for_each(|_| {
+                        writeln!(file, "{}", log_lines)
+                            .expect("Couldn't write to temp log file...");
+                        file.sync_all().expect("Failed to sync file");
+                    });
                     file.sync_all().expect("Failed to sync file");
-                });
-                file.sync_all().expect("Failed to sync file");
+                    debug!("wrote 5 lines");
+                }
+                .await;
 
                 let mut stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
                 common::wait_for_event("Enabling filesystem", &mut stderr_reader);
