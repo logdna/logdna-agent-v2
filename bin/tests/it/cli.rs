@@ -899,6 +899,7 @@ fn lookback_tail_lines_file_created_after_agent_start_at_beg() {
                 let file_path = dir.path().join("start-tail-test.log");
 
                 async move {
+                    let file_path = dir.path().join("start-tail-test.log");
                     let log_lines = "This is a test log line";
                     let mut file =
                         File::create(&file_path).expect("Couldn't create temp log file...");
