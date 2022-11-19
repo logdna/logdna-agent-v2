@@ -868,7 +868,7 @@ fn lookback_none_lines_are_delivered() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
-fn lookback_tail_lines_file_created_before_after_start_at_beg() {
+fn lookback_tail_lines_file_created_after_agent_start_at_end() {
     let _ = env_logger::Builder::from_default_env().try_init();
 
     let dir = tempdir().expect("Couldn't create temp dir...");
@@ -885,8 +885,6 @@ fn lookback_tail_lines_file_created_before_after_start_at_beg() {
     let log_lines = "This is a test log line";
 
     let file_path = dir.path().join("start-tail-test.log");
-    let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
-    file.sync_all().expect("Failed to sync file");
 
     tokio_test::block_on(async {
         let (line_count, _, server) = tokio::join!(
