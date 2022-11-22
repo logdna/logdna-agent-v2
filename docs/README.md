@@ -230,9 +230,15 @@ for example:
 
 1. We support [this flavor of globber syntax](https://docs.rs/glob/*/glob/).
 
-As listed above, by default the agent will only ingest files with a `.log` extention. Some other common globing patterns to include in the `LOGDNA_INCLUSION_RULES` could be: 
+As listed above, by default the agent will only ingest files with a `.log` extention. Globing patterns are checked against full file path. Some other common globing patterns to include in the `LOGDNA_INCLUSION_RULES` could be: 
 
-1. Pattern to ingest files with both a `.log` extention AND extention-less files: `*.log,!(*.*)`
+1. Pattern to ingest files with both a `.log` extention AND extention-less files:
+  - `*.log,!(*.*)`
+2. Applied to specific log dir:
+  - `/var/log/containers/mypod*.log`
+  - `*/containers/mypod*.log`
+3. Applied to all log dirs:
+  - `*/app?.log`
 
 ### Configuring the Environment
 
