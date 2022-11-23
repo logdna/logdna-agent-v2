@@ -192,6 +192,10 @@ mod tests {
     use pin_utils::pin_mut;
     use std::fs::{self, File};
     use std::io::{self, Write};
+
+    #[cfg(target_os = "windows")]
+    use std::thread;
+
     use tempfile::tempdir;
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -317,6 +321,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn test_create_write_delete() -> io::Result<()> {
         let dir = tempdir().unwrap();
         let dir_path = dir.path();
@@ -344,7 +349,6 @@ mod tests {
         w.watch(&file_path, RecursiveMode::NonRecursive).unwrap();
 
         wait_and_append!(file);
-        drop(file);
         fs::remove_file(&file_path)?;
 
         take!(stream, items);
@@ -360,6 +364,52 @@ mod tests {
             })
             .collect();
 
+        is_match!(items.last().unwrap(), Remove, file_path);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[cfg(windows)]
+    async fn test_create_write_delete_win() -> io::Result<()> {
+        let dir = tempdir().unwrap();
+        let dir_path = dir.path();
+        let file_path = dir_path.join("file1.log");
+
+        let file_handle = std::thread::spawn({
+            let file_path_clone = file_path.clone();
+            move || {
+                thread::sleep(Duration::from_millis(500));
+                let mut file = File::create(&file_path_clone).unwrap();
+                let _ = writeln!(file, "WindowsSample"); // throws a NotifyWrite event
+                thread::sleep(Duration::from_millis(500));
+                let _ = fs::remove_file(file_path_clone);
+            }
+        });
+
+        let mut w = Watcher::new(DELAY);
+        w.watch(dir_path, RecursiveMode::NonRecursive).unwrap();
+        let stream = w.receive();
+        pin_mut!(stream);
+
+        file_handle.join().unwrap();
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let mut items = Vec::new();
+        take!(stream, items);
+
+        let is_equal = |p: &PathId| p.as_os_str() == file_path.as_os_str();
+        let items: Vec<_> = items
+            .iter()
+            .filter(|e| match e {
+                Event::Write(p) => is_equal(p),
+                Event::Remove(p) => is_equal(p),
+                Event::Create(p) => is_equal(p),
+                _ => false,
+            })
+            .collect();
+
+        is_match!(items[0], Create, file_path);
         is_match!(items.last().unwrap(), Remove, file_path);
 
         Ok(())
