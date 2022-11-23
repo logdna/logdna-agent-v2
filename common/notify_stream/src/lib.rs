@@ -381,7 +381,7 @@ mod tests {
             move || {
                 thread::sleep(Duration::from_millis(500));
                 let mut file = File::create(&file_path_clone).unwrap();
-                let _ = writeln!(file, "WindowsSample"); // throws a NotifyWrite event
+                let _ = writeln!(file, "WindowsSample"); // throws a NoticeWrite event
                 thread::sleep(Duration::from_millis(500));
                 let _ = fs::remove_file(file_path_clone);
             }
