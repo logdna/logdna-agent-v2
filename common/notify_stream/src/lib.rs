@@ -251,6 +251,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn test_unwatch_if_exists() {
         let dir = tempdir().unwrap();
         let dir_untracked = tempdir().unwrap();
