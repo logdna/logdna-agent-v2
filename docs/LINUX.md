@@ -159,7 +159,7 @@ Agent](https://github.com/logdna/logdna-agent)\: You might already have a config
 
 **For running as non-root**
 
-By default agent is managed by systemd.
+By default agent service is managed by systemd.
 
 You can override that behaviour in systemd by editing the agent's systemd unit file.
 
