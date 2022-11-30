@@ -850,7 +850,7 @@ where
         panic!("timed out waiting for agent to start: {}", *data);
     }
 
-    log::debug!("{}", data);
+    log::debug!("Agent STDERR output:\n{}", data);
     // Validate data
     data_f(data.deref());
 }
