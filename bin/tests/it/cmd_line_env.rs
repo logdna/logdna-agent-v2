@@ -827,7 +827,7 @@ where
         }
     });
 
-    // Wait for 30 seconds or until the agent has enabled the filesytem
+    // Wait for 120 seconds or until the agent has enabled the filesytem
     let (lock, cvar) = &*data;
     let guard = lock.lock().unwrap();
     let (guard, result) = cvar
