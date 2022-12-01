@@ -1,7 +1,8 @@
 extern crate notify;
 
 use futures::{stream, Stream};
-use notify::{DebouncedEvent, Error as NotifyError, Watcher as NotifyWatcher};
+use notify::{Error as NotifyError, Watcher as NotifyWatcher, Config};
+use notify_debouncer_mini::{new_debouncer, DebouncedEvent};
 use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
@@ -83,14 +84,14 @@ pub enum RecursiveMode {
 
 pub struct Watcher {
     watcher: OsWatcher,
-    rx: Rc<async_channel::Receiver<DebouncedEvent>>,
+    rx: Rc<async_channel::Receiver<Result<notify::Event, notify::Error>>>,
 }
 
 impl Watcher {
-    pub fn new(delay: Duration) -> Self {
+    pub fn new() -> Self {
         let (watcher_tx, blocking_rx) = std::sync::mpsc::channel();
 
-        let watcher = OsWatcher::new(watcher_tx, delay).unwrap();
+        let watcher = OsWatcher::new(watcher_tx, Config::default()).unwrap();
         let (async_tx, rx) = async_channel::unbounded();
         tokio::task::spawn_blocking(move || {
             while let Ok(event) = blocking_rx.recv() {

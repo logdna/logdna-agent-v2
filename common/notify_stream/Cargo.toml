@@ -6,7 +6,8 @@ edition = "2018"
 
 [dependencies]
 time = "0.3"
-notify = "4"
+notify = "5"
+notify-debouncer-mini = "0.2" 
 futures = "0.3"
 async-channel = "1.6"
 tokio = { package = "tokio", version = "1", features = ["rt-multi-thread"] }
