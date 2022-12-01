@@ -267,6 +267,10 @@ The valid values for this option are:
    * When set to **`start`**:
       * If there is information in the “state file”, use the last recorded state. 
       * If the file is not present in the “state file”, start at the beginning. 
+   * When set to **`tail`**:
+      * Will read .log files starting at the beginning of the file, if the .log file has a create timestamp that is later than when the agent began running.  
+      * Agent will warn if you are picking up .log files greater than 3MB.  
+      
 
 **Notes:**
 * If you configure the LogDNA Agent to run as non-root, review the [documentation](KUBERNETES.md#enabling-file-offset-tracking-across-restarts) about enabling "statefulness" for the LogDNA Agent.

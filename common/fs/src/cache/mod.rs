@@ -19,7 +19,7 @@ use std::ops::Deref;
 use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use std::{fmt, fs, io};
 
 use futures::{Stream, StreamExt};
@@ -49,6 +49,7 @@ type FsResult<T> = Result<T, Error>;
 pub const EVENT_STREAM_BUFFER_COUNT: usize = 1000;
 const EVENT_RETRY_DELAY_MS: u64 = 1000;
 const EVENT_RETRY_COUNT: u32 = 5;
+const TAIL_WARN_THRESHOLD_B: u64 = 3000000;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -246,6 +247,7 @@ pub struct FileSystem {
     initial_dir_rules: Rules,
     missing_dirs: Vec<PathBuf>,
     initial_events: Vec<Event>,
+    fs_start_time: SystemTime,
 
     lookback_config: Lookback,
     initial_offsets: HashMap<FileId, SpanVec>,
@@ -298,6 +300,8 @@ impl FileSystem {
                 panic!("initial dirs must be dirs")
             }
         });
+
+        let fs_start_time = SystemTime::now();
 
         let mut missing_dirs: Vec<PathBuf> = Vec::new();
 
@@ -352,6 +356,7 @@ impl FileSystem {
             initial_dirs: initial_dirs.clone(),
             initial_dir_rules,
             missing_dirs,
+            fs_start_time,
             lookback_config,
             initial_offsets,
             watcher,
@@ -799,6 +804,30 @@ impl FileSystem {
                 .metadata()
                 .map(|m| [Span::new(0, m.len()).unwrap()].iter().collect())
                 .unwrap_or_default(),
+            Lookback::Tail => {
+                let mut should_lookback = false;
+                let file_len = path.metadata().map(|m| m.len()).unwrap_or(0);
+
+                if let Ok(metadata) = path.metadata() {
+                    if let Ok(file_create_time) = metadata.created() {
+                        if file_create_time > self.fs_start_time {
+                            should_lookback = true
+                        }
+                    }
+                }
+
+                let smallfiles_offset = if should_lookback {
+                    if file_len > TAIL_WARN_THRESHOLD_B {
+                        log::warn!("lookback ocurred on larger file {:?}", path);
+                    }
+
+                    SpanVec::new()
+                } else {
+                    [Span::new(0, file_len).unwrap()].iter().collect()
+                };
+
+                _lookup_offset(&self.initial_offsets, &inode, path).unwrap_or(smallfiles_offset)
+            }
         }
     }
 
