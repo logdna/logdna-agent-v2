@@ -301,8 +301,8 @@ impl FileSystem {
 
         let mut missing_dirs: Vec<PathBuf> = Vec::new();
 
-        let watcher = Watcher::new(delay);
-        let mut missing_dir_watcher = Watcher::new(delay);
+        let watcher = Watcher::new();
+        let mut missing_dir_watcher = Watcher::new();
         let entries = SlotMap::new();
 
         let mut initial_dir_rules = Rules::new();
@@ -441,7 +441,7 @@ impl FileSystem {
             let missing_dir_watcher = _mfs
                 .missing_dir_watcher
                 .take()
-                .unwrap_or_else(|| Watcher::new(Duration::new(0, 10000000)));
+                .unwrap_or_else(|| Watcher::new());
 
             let missing_dir_event_stream = missing_dir_watcher.receive();
             let retry_event_sender = _mfs.retry_events_send.clone();

@@ -2,8 +2,9 @@ extern crate notify;
 
 use futures::{stream, Stream};
 use notify::event::{RemoveKind, CreateKind, DataChange, ModifyKind, RenameMode};
-use notify::{Error as NotifyError, Watcher as NotifyWatcher, Config, EventKind};
+use notify::{Error as NotifyError, Watcher as NotifyWatcher, Config, EventKind, ErrorKind};
 use notify_debouncer_mini::{new_debouncer, DebouncedEvent};
+use std::borrow::Borrow;
 use std::path::Path;
 use std::rc::Rc;
 use std::time::Duration;
@@ -76,6 +77,12 @@ pub enum Error {
 
     /// Attempted to remove a watch that does not exist
     WatchNotFound,
+
+    /// An invalid config was passed at runtime
+    InvalidConfig(Config),
+
+    /// Cannot watch anymore file
+    MaxFilesWatch
 }
 
 pub enum RecursiveMode {
@@ -111,22 +118,22 @@ impl Watcher {
     }
 
     /// Adds a new directory or file to watch
-    pub fn watch<P: AsRef<Path>>(&mut self, path: P, mode: RecursiveMode) -> Result<(), Error> {
-        log::trace!("watching {:?}", path.as_ref());
+    pub fn watch(&mut self, path: &Path, mode: RecursiveMode) -> Result<(), Error> {
+        log::trace!("watching {:?}", path);
         self.watcher.watch(path, mode.into()).map_err(|e| e.into())
     }
 
     /// Removes a file or directory
-    pub fn unwatch<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
-        log::trace!("unwatching {:?}", path.as_ref());
+    pub fn unwatch(&mut self, path: &Path) -> Result<(), Error> {
+        log::trace!("unwatching {:?}", path);
         self.watcher.unwatch(path).map_err(|e| e.into())
     }
 
     /// Removes a file or directory, ignoring watch not found errors.
     ///
     /// Returns Ok(true) when watch was found and removed.
-    pub fn unwatch_if_exists<P: AsRef<Path>>(&mut self, path: P) -> Result<bool, Error> {
-        log::trace!("unwatching {:?} if it exists", path.as_ref());
+    pub fn unwatch_if_exists(&mut self, path: &Path) -> Result<bool, Error> {
+        log::trace!("unwatching {:?} if it exists", path);
         match self.watcher.unwatch(path).map_err(|e| e.into()) {
             Ok(_) => Ok(true),
             Err(e) => match e {
@@ -142,14 +149,18 @@ impl Watcher {
         let rx = Rc::clone(&self.rx);
         Box::pin(stream::unfold(rx, |rx| async move {
             loop {
-                let received = rx.recv().await.expect("channel can not be closed");
+                let received = rx.recv().await.expect("channel can not be closed").unwrap();
                 log::trace!("received raw notify event: {:?}", received);
-                if let Some(mapped_event) = match received.unwrap().kind {
-                    EventKind::Remove(RemoveKind::Any) => Some(Event::Remove(received.unwrap().paths.first().unwrap())),
-                    EventKind::Create(CreateKind::Any) => Some(Event::Create(received.unwrap().paths.first().unwrap())),
-                    EventKind::Modify(ModifyKind::Data(DataChange::Any)) => Some(Event::Write(received.unwrap().paths.first().unwrap())),
-                    EventKind::Remove(RemoveKind::Any) => Some(Event::Remove(received.unwrap().paths.first().unwrap())),
-                    EventKind::Modify(ModifyKind::Name(notify::event::RenameMode::Both)) => Some(Event::Rename(received.unwrap().paths.first().unwrap(), received.unwrap().paths.last().unwrap())),
+                let event_path = received.paths.clone();
+                if let Some(mapped_event) = match received.kind {
+                    EventKind::Remove(RemoveKind::Any) => Some(Event::Remove(event_path.first().unwrap().to_path_buf())),
+                    EventKind::Create(CreateKind::Any) => Some(Event::Create(event_path.first().unwrap().to_path_buf())),
+                    EventKind::Modify(ModifyKind::Data(DataChange::Any)) => Some(Event::Write(event_path.first().unwrap().to_path_buf())),
+                    EventKind::Remove(RemoveKind::Any) => Some(Event::Remove(event_path.first().unwrap().to_path_buf())),
+                    EventKind::Modify(ModifyKind::Name(notify::event::RenameMode::Both)) => Some(Event::Rename(event_path.first().unwrap().to_path_buf(), event_path.first().unwrap().to_path_buf())),
+                    EventKind::Any => todo!(),
+                    EventKind::Access(_) => todo!(),
+                    EventKind::Other => todo!(),
                     _ => None,
                 } {
                     return Some(((mapped_event, OffsetDateTime::now_utc()), rx));
@@ -159,13 +170,16 @@ impl Watcher {
     }
 }
 
+
 impl From<notify::Error> for Error {
     fn from(e: notify::Error) -> Error {
-        match e {
-            NotifyError::Generic(s) => Error::Generic(s),
-            NotifyError::Io(err) => Error::Io(format!("{}", err)),
-            NotifyError::PathNotFound => Error::PathNotFound,
-            NotifyError::WatchNotFound => Error::WatchNotFound,
+        match e.kind {
+            ErrorKind::Generic(s) => Error::Generic(s),
+            ErrorKind::Io(err) => Error::Io(format!("{}", err)),
+            ErrorKind::PathNotFound => Error::PathNotFound,
+            ErrorKind::WatchNotFound => Error::WatchNotFound,
+            ErrorKind::InvalidConfig(c) => Error::InvalidConfig(c),
+            ErrorKind::MaxFilesWatch => Error::MaxFilesWatch,
         }
     }
 }
@@ -442,7 +456,7 @@ mod tests {
         let dir = tempdir()?.into_path();
         let excluded_dir = tempdir()?.into_path();
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let file_path = &excluded_dir.join("file1.log");
@@ -736,7 +750,7 @@ mod tests {
         let mut file = File::create(file_path)?;
         fs::hard_link(file_path, link_path)?;
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let stream = w.receive();
