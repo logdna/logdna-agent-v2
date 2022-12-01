@@ -1,7 +1,8 @@
 extern crate notify;
 
 use futures::{stream, Stream};
-use notify::{Error as NotifyError, Watcher as NotifyWatcher, Config};
+use notify::event::{RemoveKind, CreateKind, DataChange, ModifyKind, RenameMode};
+use notify::{Error as NotifyError, Watcher as NotifyWatcher, Config, EventKind};
 use notify_debouncer_mini::{new_debouncer, DebouncedEvent};
 use std::path::Path;
 use std::rc::Rc;
@@ -143,20 +144,13 @@ impl Watcher {
             loop {
                 let received = rx.recv().await.expect("channel can not be closed");
                 log::trace!("received raw notify event: {:?}", received);
-                if let Some(mapped_event) = match received {
-                    DebouncedEvent::NoticeRemove(p) => Some(Event::Remove(p)),
-                    DebouncedEvent::Create(p) => Some(Event::Create(p)),
-                    DebouncedEvent::Write(p) => Some(Event::Write(p)),
-                    DebouncedEvent::Rename(source, dest) => Some(Event::Rename(source, dest)),
-                    // TODO: Define what to do with Rescan
-                    DebouncedEvent::Rescan => Some(Event::Rescan),
-                    DebouncedEvent::Error(e, p) => Some(Event::Error(e.into(), p)),
-                    // NoticeWrite can be useful but we don't use it
-                    DebouncedEvent::NoticeWrite(_) => None,
-                    // Ignore `Remove`: we use `NoticeRemove` that comes before in the flow
-                    DebouncedEvent::Remove(_) => None,
-                    // Ignore attribute changes
-                    DebouncedEvent::Chmod(_) => None,
+                if let Some(mapped_event) = match received.unwrap().kind {
+                    EventKind::Remove(RemoveKind::Any) => Some(Event::Remove(received.unwrap().paths.first().unwrap())),
+                    EventKind::Create(CreateKind::Any) => Some(Event::Create(received.unwrap().paths.first().unwrap())),
+                    EventKind::Modify(ModifyKind::Data(DataChange::Any)) => Some(Event::Write(received.unwrap().paths.first().unwrap())),
+                    EventKind::Remove(RemoveKind::Any) => Some(Event::Remove(received.unwrap().paths.first().unwrap())),
+                    EventKind::Modify(ModifyKind::Name(notify::event::RenameMode::Both)) => Some(Event::Rename(received.unwrap().paths.first().unwrap(), received.unwrap().paths.last().unwrap())),
+                    _ => None,
                 } {
                     return Some(((mapped_event, OffsetDateTime::now_utc()), rx));
                 }
@@ -251,7 +245,7 @@ mod tests {
     async fn test_unwatch_if_exists() {
         let dir = tempdir().unwrap();
         let dir_untracked = tempdir().unwrap();
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(dir.path(), RecursiveMode::Recursive).unwrap();
         assert!(matches!(
             w.unwatch_if_exists(dir_untracked.path()),
@@ -265,7 +259,7 @@ mod tests {
         let dir = tempdir().unwrap().into_path();
         let dir_path = &dir;
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(dir_path, RecursiveMode::Recursive).unwrap();
 
         let file1_path = dir_path.join("file1.log");
@@ -292,7 +286,7 @@ mod tests {
         let dir = tempdir().unwrap().into_path();
         let dir_path = &dir;
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(dir_path, RecursiveMode::Recursive).unwrap();
 
         let stream = w.receive();
@@ -322,7 +316,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let dir_path = dir.path();
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         // Copy the same behaviour we use
         w.watch(dir_path, RecursiveMode::NonRecursive).unwrap();
 
@@ -369,7 +363,7 @@ mod tests {
     async fn test_watch_file_write_after_create() -> io::Result<()> {
         let dir = tempdir().unwrap().into_path();
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
 
         // We use non-recursive watches on directories and scan children manually
         // to have the same behaviour across all platforms
@@ -404,7 +398,7 @@ mod tests {
         let dir = tempdir()?.into_path();
         let excluded_dir = tempdir()?.into_path();
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let file_path = &excluded_dir.join("file1.log");
@@ -489,7 +483,7 @@ mod tests {
         let dir = tempdir()?.into_path();
         let excluded_dir = tempdir()?.into_path();
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let file_path = &excluded_dir.join("file1.log");
@@ -538,7 +532,7 @@ mod tests {
         let dir = tempdir()?.into_path();
         let excluded_dir = tempdir()?.into_path();
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let file_path = &excluded_dir.join("file1.log");
@@ -586,7 +580,7 @@ mod tests {
         let mut file1 = File::create(file1_path)?;
         std::os::unix::fs::symlink(&excluded_dir, symlink_path)?;
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let stream = w.receive();
@@ -645,7 +639,7 @@ mod tests {
         let file_in_subdir_path = &sub_dir_path.join("file_in_subdir.log");
         let mut file_in_subdir = File::create(file_in_subdir_path)?;
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let stream = w.receive();
@@ -713,7 +707,7 @@ mod tests {
         let mut file = File::create(&file_path)?;
         fs::hard_link(&file_path, &link_path)?;
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let stream = w.receive();
