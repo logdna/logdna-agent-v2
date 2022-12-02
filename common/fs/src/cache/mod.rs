@@ -2028,6 +2028,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn filesystem_move_dir_internal() -> io::Result<()> {
+
         let _ = env_logger::Builder::from_default_env().try_init();
         let tempdir = TempDir::new()?.into_path();
         let path = tempdir.clone();
@@ -2407,7 +2408,7 @@ mod tests {
         let events = take_events!(fs);
         assert_eq!(
             events.len(),
-            1,
+            2, // version 5 of notify-rs throws 2 write events
             "events: {:#?}",
             events
                 .into_iter()
@@ -2425,11 +2426,11 @@ mod tests {
 
         writeln!(file2, "hello")?;
         let events = take_events!(fs);
-        assert_eq!(events.len(), 1, "events: {:#?}", events);
+        assert_eq!(events.len(), 2, "events: {:#?}", events);
 
         writeln!(file3, "hello")?;
         let events = take_events!(fs);
-        assert_eq!(events.len(), 1, "events: {:#?}", events);
+        assert_eq!(events.len(), 2, "events: {:#?}", events);
 
         drop(file1);
         drop(file2);

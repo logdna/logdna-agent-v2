@@ -4,6 +4,7 @@ use futures::{stream, Stream};
 use notify::event::{RemoveKind, CreateKind, DataChange, ModifyKind, RenameMode};
 use notify::{Error as NotifyError, Watcher as NotifyWatcher, Config, EventKind, ErrorKind};
 use notify_debouncer_mini::{new_debouncer, DebouncedEvent};
+use std::any::Any;
 use std::borrow::Borrow;
 use std::path::Path;
 use std::rc::Rc;
@@ -151,18 +152,31 @@ impl Watcher {
             loop {
                 let received = rx.recv().await.expect("channel can not be closed").unwrap();
                 log::trace!("received raw notify event: {:?}", received);
+                println!("received RAW notify event: {:?}", received);
                 let event_path = received.paths.clone();
                 if let Some(mapped_event) = match received.kind {
+                    EventKind::Remove(RemoveKind::File) => Some(Event::Remove(event_path.first().unwrap().to_path_buf())),
+                    EventKind::Remove(RemoveKind::Folder) => Some(Event::Remove(event_path.first().unwrap().to_path_buf())),
+                    EventKind::Remove(RemoveKind::Other) => Some(Event::Remove(event_path.first().unwrap().to_path_buf())),
                     EventKind::Remove(RemoveKind::Any) => Some(Event::Remove(event_path.first().unwrap().to_path_buf())),
+                    EventKind::Create(CreateKind::File) => Some(Event::Create(event_path.first().unwrap().to_path_buf())),
+                    EventKind::Create(CreateKind::Folder) => Some(Event::Create(event_path.first().unwrap().to_path_buf())),
+                    EventKind::Create(CreateKind::Other) => Some(Event::Create(event_path.first().unwrap().to_path_buf())),
                     EventKind::Create(CreateKind::Any) => Some(Event::Create(event_path.first().unwrap().to_path_buf())),
+                    EventKind::Modify(ModifyKind::Data(DataChange::Content)) => Some(Event::Write(event_path.first().unwrap().to_path_buf())),
+                    EventKind::Modify(ModifyKind::Data(DataChange::Size)) => Some(Event::Write(event_path.first().unwrap().to_path_buf())),
+                    EventKind::Modify(ModifyKind::Data(DataChange::Other)) => Some(Event::Write(event_path.first().unwrap().to_path_buf())),
                     EventKind::Modify(ModifyKind::Data(DataChange::Any)) => Some(Event::Write(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Remove(RemoveKind::Any) => Some(Event::Remove(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Modify(ModifyKind::Name(notify::event::RenameMode::Both)) => Some(Event::Rename(event_path.first().unwrap().to_path_buf(), event_path.first().unwrap().to_path_buf())),
-                    EventKind::Any => todo!(),
-                    EventKind::Access(_) => todo!(),
-                    EventKind::Other => todo!(),
+                    EventKind::Modify(ModifyKind::Name(RenameMode::From)) => Some(Event::Remove(event_path.first().unwrap().to_path_buf())),
+                    EventKind::Modify(ModifyKind::Name(RenameMode::To)) => Some(Event::Create(event_path.first().unwrap().to_path_buf())),
+                    EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => Some(Event::Rename(event_path.first().unwrap().to_path_buf(), event_path.last().unwrap().to_path_buf())),
+                    EventKind::Modify(ModifyKind::Metadata(_)) => None,
+                    EventKind::Modify(ModifyKind::Other) => None,
+                    EventKind::Modify(ModifyKind::Any) => None,
+                    EventKind::Access(_) => None,
                     _ => None,
                 } {
+                    log::trace!("mapped event: {:?}\n", mapped_event);
                     return Some(((mapped_event, OffsetDateTime::now_utc()), rx));
                 }
             }
