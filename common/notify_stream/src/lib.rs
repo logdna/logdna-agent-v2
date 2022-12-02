@@ -1,14 +1,10 @@
 extern crate notify;
 
 use futures::{stream, Stream};
-use notify::event::{RemoveKind, CreateKind, DataChange, ModifyKind, RenameMode};
-use notify::{Error as NotifyError, Watcher as NotifyWatcher, Config, EventKind, ErrorKind};
-use notify_debouncer_mini::{new_debouncer, DebouncedEvent};
-use std::any::Any;
-use std::borrow::Borrow;
+use notify::event::{CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode};
+use notify::{Config, ErrorKind, EventKind, Watcher as NotifyWatcher};
 use std::path::Path;
 use std::rc::Rc;
-use std::time::Duration;
 use time::OffsetDateTime;
 
 type PathId = std::path::PathBuf;
@@ -83,7 +79,7 @@ pub enum Error {
     InvalidConfig(Config),
 
     /// Cannot watch anymore file
-    MaxFilesWatch
+    MaxFilesWatch,
 }
 
 pub enum RecursiveMode {
@@ -152,24 +148,45 @@ impl Watcher {
             loop {
                 let received = rx.recv().await.expect("channel can not be closed").unwrap();
                 log::trace!("received raw notify event: {:?}", received);
-                println!("received RAW notify event: {:?}", received);
                 let event_path = received.paths.clone();
                 if let Some(mapped_event) = match received.kind {
-                    EventKind::Remove(RemoveKind::File) => Some(Event::Remove(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Remove(RemoveKind::Folder) => Some(Event::Remove(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Remove(RemoveKind::Other) => Some(Event::Remove(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Remove(RemoveKind::Any) => Some(Event::Remove(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Create(CreateKind::File) => Some(Event::Create(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Create(CreateKind::Folder) => Some(Event::Create(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Create(CreateKind::Other) => Some(Event::Create(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Create(CreateKind::Any) => Some(Event::Create(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Modify(ModifyKind::Data(DataChange::Content)) => Some(Event::Write(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Modify(ModifyKind::Data(DataChange::Size)) => Some(Event::Write(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Modify(ModifyKind::Data(DataChange::Other)) => Some(Event::Write(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Modify(ModifyKind::Data(DataChange::Any)) => Some(Event::Write(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Modify(ModifyKind::Name(RenameMode::From)) => Some(Event::Remove(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Modify(ModifyKind::Name(RenameMode::To)) => Some(Event::Create(event_path.first().unwrap().to_path_buf())),
-                    EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => Some(Event::Rename(event_path.first().unwrap().to_path_buf(), event_path.last().unwrap().to_path_buf())),
+                    EventKind::Remove(RemoveKind::File) => {
+                        Some(Event::Remove(event_path.first().unwrap().to_path_buf()))
+                    }
+                    EventKind::Remove(RemoveKind::Folder) => {
+                        Some(Event::Remove(event_path.first().unwrap().to_path_buf()))
+                    }
+                    EventKind::Remove(RemoveKind::Other) => {
+                        Some(Event::Remove(event_path.first().unwrap().to_path_buf()))
+                    }
+                    EventKind::Remove(RemoveKind::Any) => {
+                        Some(Event::Remove(event_path.first().unwrap().to_path_buf()))
+                    }
+                    EventKind::Create(CreateKind::File) => {
+                        Some(Event::Create(event_path.first().unwrap().to_path_buf()))
+                    }
+                    EventKind::Create(CreateKind::Folder) => {
+                        Some(Event::Create(event_path.first().unwrap().to_path_buf()))
+                    }
+                    EventKind::Create(CreateKind::Other) => {
+                        Some(Event::Create(event_path.first().unwrap().to_path_buf()))
+                    }
+                    EventKind::Create(CreateKind::Any) => {
+                        Some(Event::Create(event_path.first().unwrap().to_path_buf()))
+                    }
+                    EventKind::Modify(ModifyKind::Data(DataChange::Any)) => {
+                        Some(Event::Write(event_path.first().unwrap().to_path_buf()))
+                    }
+                    EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
+                        Some(Event::Remove(event_path.first().unwrap().to_path_buf()))
+                    }
+                    EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
+                        Some(Event::Create(event_path.first().unwrap().to_path_buf()))
+                    }
+                    EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => Some(Event::Rename(
+                        event_path.first().unwrap().to_path_buf(),
+                        event_path.last().unwrap().to_path_buf(),
+                    )),
                     EventKind::Modify(ModifyKind::Metadata(_)) => None,
                     EventKind::Modify(ModifyKind::Other) => None,
                     EventKind::Modify(ModifyKind::Any) => None,
@@ -184,6 +201,11 @@ impl Watcher {
     }
 }
 
+impl Default for Watcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl From<notify::Error> for Error {
     fn from(e: notify::Error) -> Error {
@@ -215,6 +237,7 @@ mod tests {
     use pin_utils::pin_mut;
     use std::fs::{self, File};
     use std::io::{self, Write};
+    use std::time::Duration;
     use tempfile::tempdir;
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -591,8 +614,8 @@ mod tests {
         take!(stream, items);
 
         let predicate_fn = predicate::in_iter(items);
-        // The symlink was edited: yielded as a write in the symlink path
-        assert!(predicate_fn.eval(&Event::Write(symlink_path.clone())));
+        // The symlink was edited: notify-rs v5 yields a Create instead of a write (was Write in v4)
+        assert!(predicate_fn.eval(&Event::Create(symlink_path.clone())));
 
         Ok(())
     }

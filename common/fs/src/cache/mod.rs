@@ -289,7 +289,6 @@ impl FileSystem {
         lookback_config: Lookback,
         initial_offsets: HashMap<FileId, SpanVec>,
         rules: Rules,
-        delay: Duration,
     ) -> Self {
         let (resume_events_send, resume_events_recv) = async_channel::unbounded();
         let (retry_events_send, retry_events_recv) = async_channel::unbounded();
@@ -438,6 +437,7 @@ impl FileSystem {
             let mut _mfs = mfs.try_lock().expect("could not lock filesystem cache");
 
             let missing_dirs = _mfs.missing_dirs.clone();
+            #[allow(clippy::redundant_closure)]
             let missing_dir_watcher = _mfs
                 .missing_dir_watcher
                 .take()
@@ -1542,7 +1542,6 @@ mod tests {
             Lookback::Start,
             HashMap::new(),
             rules,
-            DELAY,
         )
     }
 
@@ -2028,7 +2027,6 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn filesystem_move_dir_internal() -> io::Result<()> {
-
         let _ = env_logger::Builder::from_default_env().try_init();
         let tempdir = TempDir::new()?.into_path();
         let path = tempdir.clone();
