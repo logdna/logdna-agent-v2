@@ -379,7 +379,7 @@ impl FileSystem {
             .map(|path| -> PathBuf { path.into() })
         {
             let mut path_cpy: PathBuf = dir.clone();
-            loop {
+            while path_cpy.components().count() > 1 {
                 if !path_cpy.exists() {
                     path_cpy.pop();
                 } else {
@@ -394,6 +394,13 @@ impl FileSystem {
                     break;
                 }
             }
+
+            if !(path_cpy.components().count() > 1) {
+                debug!("Not recursively walking paths under {:?}", path_cpy);
+                continue;
+            }
+
+            debug!("recursively walking paths under {:#?}", dir);
 
             let recursive_found_paths = walkdir::WalkDir::new(&dir)
                 .follow_links(true)
