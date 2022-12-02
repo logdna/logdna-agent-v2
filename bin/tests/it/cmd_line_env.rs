@@ -1,4 +1,3 @@
-use assert_cmd::cargo::CommandCargoExt;
 use predicate::str::{contains, is_match};
 use predicates::prelude::predicate;
 use predicates::Predicate;
@@ -7,11 +6,11 @@ use std::fs::{self, File};
 use std::io;
 use std::io::BufRead;
 use std::io::Write;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::str::from_utf8;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use tempfile::tempdir;
 
@@ -669,6 +668,7 @@ hostname = some-linux-instance"
 #[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_properties_config_common() -> io::Result<()> {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let config_dir = tempdir()?;
     let config_file_path = config_dir.path().join("sample.conf");
     let mut file = File::create(&config_file_path)?;
@@ -707,6 +707,7 @@ line_exclusion_regex = (?i:debug),(?i:trace)"
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_properties_default_conf() -> io::Result<()> {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let data = "key = 1234\ntags = sample_tag";
     let file_path = Path::new("/etc/logdna.conf");
     let mut conf_file = File::create(file_path)?;
@@ -731,6 +732,7 @@ fn test_properties_default_conf() -> io::Result<()> {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_properties_default_yaml() -> io::Result<()> {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = Path::new("/etc/logdna/");
     fs::create_dir_all(dir)?;
     let file_path = dir.join("config.yaml");
@@ -797,7 +799,7 @@ where
     CmdF: Fn(&mut Command),
     DataF: Fn(&str),
 {
-    let mut cmd = Command::cargo_bin("logdna-agent").unwrap();
+    let mut cmd = crate::common::get_agent_command(None);
     cmd.env_clear()
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -806,39 +808,53 @@ where
     cmd_f(&mut cmd);
 
     let mut handle = cmd.spawn().unwrap();
-    let data = Arc::new(Mutex::new(String::new()));
+    let data = Arc::new((Mutex::new((true, String::new())), Condvar::new()));
     let d = data.clone();
     let stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
+
     std::thread::spawn(move || {
+        let (lock, cvar) = &*d;
         for line in stderr_reader.lines() {
             let line = &line.unwrap();
-            let mut data = d.lock().unwrap();
+            let mut guard = lock.lock().unwrap();
+            let (pending, data) = guard.deref_mut();
             data.push_str(line);
             data.push('\n');
+            if data.contains("Enabling filesystem") {
+                *pending = false;
+                cvar.notify_one();
+            };
         }
     });
 
-    loop {
-        let has_started = {
-            let data = data.lock().unwrap();
-            if handle.try_wait().ok().unwrap().is_some() {
-                panic!("process exited unexpectedly: {}", data);
-            }
-            data.contains("Enabling filesystem")
-        };
-        if has_started {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    // Wait for 120 seconds or until the agent has enabled the filesytem
+    let (lock, cvar) = &*data;
+    let guard = lock.lock().unwrap();
+    let (guard, result) = cvar
+        .wait_timeout_while(guard, Duration::from_secs(120), |&mut (pending, _)| pending)
+        .unwrap();
 
-    let data = data.lock().unwrap();
-    // Validate data
-    data_f(data.deref());
+    let (pending, data) = guard.deref();
+
+    // Make sure the agent is still running
+    assert!(
+        matches!(handle.try_wait(), Ok(None)),
+        "Process ended unexpectedly"
+    );
 
     handle.kill().unwrap();
+    handle.wait().unwrap();
+
+    // Kill the agent
+    if result.timed_out() || *pending {
+        panic!("timed out waiting for agent to start: {}", *data);
+    }
+
+    log::debug!("Agent STDERR output:\n{}", data);
+    // Validate data
+    data_f(data.deref());
 }
 
 fn get_bin_command() -> assert_cmd::Command {
-    assert_cmd::Command::cargo_bin("logdna-agent").unwrap()
+    assert_cmd::Command::from_std(crate::common::get_agent_command(None))
 }
