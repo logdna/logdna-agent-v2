@@ -187,9 +187,11 @@ impl Watcher {
                         event_path.first().unwrap().to_path_buf(),
                         event_path.last().unwrap().to_path_buf(),
                     )),
+                    EventKind::Modify(ModifyKind::Any) => {
+                        Some(Event::Write(event_path.first().unwrap().to_path_buf()))
+                    },
                     EventKind::Modify(ModifyKind::Metadata(_)) => None,
                     EventKind::Modify(ModifyKind::Other) => None,
-                    EventKind::Modify(ModifyKind::Any) => None,
                     EventKind::Access(_) => None,
                     _ => None,
                 } {
