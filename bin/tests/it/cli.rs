@@ -866,6 +866,155 @@ fn lookback_none_lines_are_delivered() {
     });
 }
 
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn lookback_tail_lines_file_created_after_agent_start_at_beg() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+
+    let dir = tempdir().expect("Couldn't create temp dir...");
+    let dir_path = format!("{}/", dir.path().to_str().unwrap());
+
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester(
+        Some(common::HttpVersion::Http2),
+        Some(Box::new(|req| {
+            assert_eq!(req.version(), hyper::Version::HTTP_2);
+            None
+        })),
+        None,
+    );
+
+    tokio_test::block_on(async {
+        let (line_count, server) = tokio::join!(
+            async {
+                let mut handle = common::spawn_agent(AgentSettings {
+                    log_dirs: &dir_path,
+                    exclusion_regex: Some(r"^/var.*"),
+                    ssl_cert_file: Some(cert_file.path()),
+                    lookback: Some("tail"),
+                    host: Some(&addr),
+                    ..Default::default()
+                });
+                debug!("spawned agent");
+
+                let file_path = dir.path().join("start-tail-test.log");
+
+                async move {
+                    let file_path = dir.path().join("start-tail-test.log");
+                    let log_lines = "This is a test log line";
+                    let mut file =
+                        File::create(&file_path).expect("Couldn't create temp log file...");
+
+                    tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+                    (0..5).for_each(|_| {
+                        writeln!(file, "{}", log_lines)
+                            .expect("Couldn't write to temp log file...");
+                        file.sync_all().expect("Failed to sync file");
+                    });
+                    file.sync_all().expect("Failed to sync file");
+                    debug!("wrote 5 lines");
+                }
+                .await;
+
+                let mut stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
+                common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+                consume_output(stderr_reader.into_inner());
+
+                tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+
+                handle.kill().unwrap();
+
+                handle.wait().unwrap();
+                let line_count = received
+                    .lock()
+                    .await
+                    .get(file_path.to_str().unwrap())
+                    .unwrap()
+                    .lines;
+                shutdown_handle();
+                line_count
+            },
+            server
+        );
+        server.unwrap();
+        assert_eq!(line_count, 5);
+    });
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn lookback_tail_lines_file_created_before_agent_start_at_end() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+
+    let dir = tempdir().expect("Couldn't create temp dir...");
+    let dir_path = format!("{}/", dir.path().to_str().unwrap());
+
+    let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester(
+        Some(common::HttpVersion::Http2),
+        Some(Box::new(|req| {
+            assert_eq!(req.version(), hyper::Version::HTTP_2);
+            None
+        })),
+        None,
+    );
+    let log_lines = "This is a test log line";
+
+    let file_path = dir.path().join("end-tail-test.log");
+    let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
+
+    debug!("test log: {}", file_path.to_str().unwrap());
+    (0..5)
+        .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
+
+    file.sync_all().expect("Failed to sync file");
+
+    tokio_test::block_on(async {
+        let (line_count, _, server) = tokio::join!(
+            async {
+                let mut handle = common::spawn_agent(AgentSettings {
+                    log_dirs: &dir_path,
+                    exclusion_regex: Some(r"^/var.*"),
+                    ssl_cert_file: Some(cert_file.path()),
+                    lookback: Some("tail"),
+                    host: Some(&addr),
+                    ..Default::default()
+                });
+                debug!("spawned agent");
+
+                let mut stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
+                common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+                consume_output(stderr_reader.into_inner());
+
+                tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+
+                handle.kill().unwrap();
+
+                debug!("getting lines from {}", file_path.to_str().unwrap());
+                handle.wait().unwrap();
+                let line_count = received
+                    .lock()
+                    .await
+                    .get(file_path.to_str().unwrap())
+                    .unwrap()
+                    .lines;
+                shutdown_handle();
+                line_count
+            },
+            async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+                (0..5).for_each(|_| {
+                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                    file.sync_all().expect("Failed to sync file");
+                });
+                file.sync_all().expect("Failed to sync file");
+                debug!("wrote 5 lines");
+            },
+            server
+        );
+        server.unwrap();
+        assert_eq!(line_count, 5);
+    });
+}
+
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_partial_fsynced_lines() {
@@ -1303,6 +1452,74 @@ async fn test_symlink_to_symlink_initialization_excluded_file() {
         let map = received.lock().await;
         let file_info = map
             .get(symlink_path.to_str().unwrap())
+            .expect("symlink not found");
+        for i in 0..20 {
+            assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
+        }
+        agent_handle.kill().expect("Could not kill process");
+        shutdown_handle();
+    });
+    server_result.unwrap();
+}
+
+#[tokio::test]
+#[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
+#[cfg(unix)]
+async fn test_symlink_to_dir_initialization_excluded_file() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+    let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let test_dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let excluded_dir = test_dir.join("excluded");
+    std::fs::create_dir(&excluded_dir).unwrap();
+    let tracked_dir = test_dir.join("tracked");
+    std::fs::create_dir(&tracked_dir).unwrap();
+
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+    let file_path = excluded_dir.join("test.log");
+    let excluded_symlink_path = excluded_dir.join("test-symlink.log");
+    let tracked_dir_symlink_path = tracked_dir.join(excluded_dir.file_name().unwrap());
+    let tracked_symlink_path = tracked_dir_symlink_path.join("test-symlink.log");
+    let symlink_path = log_dir.join("test-symlink.log");
+    File::create(&file_path).expect("Couldn't create temp log file...");
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&file_path)
+        .unwrap();
+    for i in 0..10 {
+        writeln!(file, "SAMPLE {}", i).unwrap();
+    }
+    file.sync_all().unwrap();
+
+    std::os::unix::fs::symlink(&file_path, &excluded_symlink_path).unwrap();
+    std::os::unix::fs::symlink(&excluded_symlink_path, &symlink_path).unwrap();
+    std::os::unix::fs::symlink(&excluded_dir, &tracked_dir_symlink_path).unwrap();
+
+    assert!(tracked_symlink_path.exists());
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+    let (server_result, _) = tokio::join!(server, async {
+        let mut settings = AgentSettings::with_mock_ingester(test_dir.to_str().unwrap(), &addr);
+        settings.lookback = Some("smallfiles");
+        let excluded_dir_str = format!("{}/**", excluded_dir.to_str().unwrap());
+        settings.exclusion = Some(&excluded_dir_str);
+        let mut agent_handle = common::spawn_agent(settings);
+        let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
+        common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+        // Consume output
+        consume_output(stderr_reader.into_inner());
+        for i in 10..20 {
+            writeln!(file, "SAMPLE {}", i).unwrap();
+        }
+        file.sync_all().unwrap();
+        common::force_client_to_flush(&log_dir).await;
+        // Wait for the data to be received by the mock ingester
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        let map = received.lock().await;
+        assert!(map.get(symlink_path.to_str().unwrap()).is_none());
+        assert!(map.get(excluded_symlink_path.to_str().unwrap()).is_none());
+        let file_info = map
+            .get(tracked_symlink_path.to_str().unwrap())
             .expect("symlink not found");
         for i in 0..20 {
             assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
