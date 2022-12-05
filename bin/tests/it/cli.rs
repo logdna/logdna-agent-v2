@@ -1465,6 +1465,74 @@ async fn test_symlink_to_symlink_initialization_excluded_file() {
 #[tokio::test]
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
+async fn test_symlink_to_dir_initialization_excluded_file() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+    let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let test_dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let excluded_dir = test_dir.join("excluded");
+    std::fs::create_dir(&excluded_dir).unwrap();
+    let tracked_dir = test_dir.join("tracked");
+    std::fs::create_dir(&tracked_dir).unwrap();
+
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+    let file_path = excluded_dir.join("test.log");
+    let excluded_symlink_path = excluded_dir.join("test-symlink.log");
+    let tracked_dir_symlink_path = tracked_dir.join(excluded_dir.file_name().unwrap());
+    let tracked_symlink_path = tracked_dir_symlink_path.join("test-symlink.log");
+    let symlink_path = log_dir.join("test-symlink.log");
+    File::create(&file_path).expect("Couldn't create temp log file...");
+    let mut file = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open(&file_path)
+        .unwrap();
+    for i in 0..10 {
+        writeln!(file, "SAMPLE {}", i).unwrap();
+    }
+    file.sync_all().unwrap();
+
+    std::os::unix::fs::symlink(&file_path, &excluded_symlink_path).unwrap();
+    std::os::unix::fs::symlink(&excluded_symlink_path, &symlink_path).unwrap();
+    std::os::unix::fs::symlink(&excluded_dir, &tracked_dir_symlink_path).unwrap();
+
+    assert!(tracked_symlink_path.exists());
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+    let (server_result, _) = tokio::join!(server, async {
+        let mut settings = AgentSettings::with_mock_ingester(test_dir.to_str().unwrap(), &addr);
+        settings.lookback = Some("smallfiles");
+        let excluded_dir_str = format!("{}/**", excluded_dir.to_str().unwrap());
+        settings.exclusion = Some(&excluded_dir_str);
+        let mut agent_handle = common::spawn_agent(settings);
+        let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
+        common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+        // Consume output
+        consume_output(stderr_reader.into_inner());
+        for i in 10..20 {
+            writeln!(file, "SAMPLE {}", i).unwrap();
+        }
+        file.sync_all().unwrap();
+        common::force_client_to_flush(&log_dir).await;
+        // Wait for the data to be received by the mock ingester
+        tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+        let map = received.lock().await;
+        assert!(map.get(symlink_path.to_str().unwrap()).is_none());
+        assert!(map.get(excluded_symlink_path.to_str().unwrap()).is_none());
+        let file_info = map
+            .get(tracked_symlink_path.to_str().unwrap())
+            .expect("symlink not found");
+        for i in 0..20 {
+            assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
+        }
+        agent_handle.kill().expect("Could not kill process");
+        shutdown_handle();
+    });
+    server_result.unwrap();
+}
+
+#[tokio::test]
+#[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
+#[cfg(unix)]
 async fn test_symlink_to_hardlink_initialization_excluded_file() {
     let _ = env_logger::Builder::from_default_env().try_init();
 

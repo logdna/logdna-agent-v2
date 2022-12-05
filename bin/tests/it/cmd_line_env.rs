@@ -1,7 +1,6 @@
 use predicate::str::{contains, is_match};
 use predicates::prelude::predicate;
 use predicates::Predicate;
-use serial_test::serial;
 use std::fs::{self, File};
 use std::io;
 use std::io::BufRead;
@@ -88,7 +87,6 @@ fn test_version_is_included() {
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_list_config_from_conf() -> io::Result<()> {
     let _ = env_logger::Builder::from_default_env().try_init();
@@ -123,7 +121,6 @@ fn test_list_config_from_conf() -> io::Result<()> {
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_legacy_and_new_confs_merge() -> io::Result<()> {
@@ -232,7 +229,6 @@ fn test_list_config_no_options() -> io::Result<()> {
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 fn test_list_default_conf() -> io::Result<()> {
     let _ = env_logger::Builder::from_default_env().try_init();
@@ -524,7 +520,6 @@ fn test_deprecated_environment_variables_should_set_config() {
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_command_line_arguments_should_merge_config_from_file() {
     let config_dir = tempdir().unwrap().into_path();
@@ -599,7 +594,6 @@ startup: {{}}
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_properties_config_min() -> io::Result<()> {
     let config_dir = tempdir()?;
@@ -622,7 +616,6 @@ fn test_properties_config_min() -> io::Result<()> {
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_properties_config_legacy() -> io::Result<()> {
     let config_dir = tempdir()?;
@@ -665,7 +658,6 @@ hostname = some-linux-instance"
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_properties_config_common() -> io::Result<()> {
     let _ = env_logger::Builder::from_default_env().try_init();
@@ -703,7 +695,6 @@ line_exclusion_regex = (?i:debug),(?i:trace)"
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_properties_default_conf() -> io::Result<()> {
@@ -728,7 +719,6 @@ fn test_properties_default_conf() -> io::Result<()> {
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_properties_default_yaml() -> io::Result<()> {
@@ -801,6 +791,7 @@ where
 {
     let mut cmd = crate::common::get_agent_command(None);
     cmd.env_clear()
+        .env("RUST_LOG", "debug")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
@@ -818,6 +809,7 @@ where
             let line = &line.unwrap();
             let mut guard = lock.lock().unwrap();
             let (pending, data) = guard.deref_mut();
+            log::debug!("agent stderr: {}", line);
             data.push_str(line);
             data.push('\n');
             if data.contains("Enabling filesystem") {
@@ -827,11 +819,20 @@ where
         }
     });
 
-    // Wait for 120 seconds or until the agent has enabled the filesytem
+    let stdout_reader = std::io::BufReader::new(handle.stdout.take().unwrap());
+
+    std::thread::spawn(move || {
+        for line in stdout_reader.lines() {
+            let line = &line.unwrap();
+            log::debug!("agent stdout: {}", line);
+        }
+    });
+
+    // Wait for 30 seconds or until the agent has enabled the filesytem
     let (lock, cvar) = &*data;
     let guard = lock.lock().unwrap();
     let (guard, result) = cvar
-        .wait_timeout_while(guard, Duration::from_secs(120), |&mut (pending, _)| pending)
+        .wait_timeout_while(guard, Duration::from_secs(30), |&mut (pending, _)| pending)
         .unwrap();
 
     let (pending, data) = guard.deref();

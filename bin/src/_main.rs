@@ -286,6 +286,7 @@ pub async fn _main(
         .map(|s| Duration::from_millis(s.parse().unwrap()))
         .unwrap_or(FS_EVENT_DELAY);
 
+    debug!("Initialising journald source");
     #[cfg(all(feature = "libjournald", target_os = "linux"))]
     let (journalctl_source, journald_source) = if config.journald.paths.is_empty() {
         let journalctl_source = create_journalctl_source()
@@ -307,10 +308,13 @@ pub async fn _main(
         .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
         .map_err(|e| warn!("Error initializing journalctl source: {}", e))
         .ok();
+    debug!("Initialised journald source");
 
+    debug!("Initialising offset state");
     if let Some(offset_state) = offset_state {
         tokio::spawn(offset_state.run().unwrap());
     }
+    debug!("Initialised offset state");
 
     let ds_source_params = (
         config.log.dirs.clone(),
@@ -319,6 +323,7 @@ pub async fn _main(
         initial_offsets.clone(),
     );
 
+    debug!("Creating fs_source");
     let fs_source = tail::RestartingTailer::new(
         ds_source_params,
         // TODO check for any conditions that require the tailer to restart
@@ -355,14 +360,18 @@ pub async fn _main(
             Ok(lazy_lin_ser) => Some(StrictOrLazyLineBuilder::Lazy(lazy_lin_ser)),
         }
     });
+    debug!("Created fs_source");
 
+    debug!("Creating k8s_source");
     let k8s_event_source: Option<_> = if let Some(fut) = k8s_event_stream.map(|e| e.event_stream())
     {
         Some(fut.await.map(StrictOrLazyLineBuilder::Strict))
     } else {
         None
     };
+    debug!("Created k8s_source");
 
+    debug!("Creating metrics_stats_source");
     let metric_stats_source: Option<_> =
         if let Some(fut) = metric_stats_stream.map(|e| e.start_metrics_call_task()) {
             Some(
@@ -395,6 +404,7 @@ pub async fn _main(
         } else {
             None
         };
+    debug!("Created metrics_stats_source");
 
     pin_mut!(fs_source);
     pin_mut!(k8s_event_source);
