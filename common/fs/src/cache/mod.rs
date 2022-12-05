@@ -395,7 +395,7 @@ impl FileSystem {
                 }
             }
 
-            if !(path_cpy.components().count() > 1) {
+            if path_cpy.components().count() <= 1 {
                 debug!("Not recursively walking paths under {:?}", path_cpy);
                 continue;
             }
