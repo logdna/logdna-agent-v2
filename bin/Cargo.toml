@@ -34,6 +34,7 @@ k8s = { package = "k8s", path = "../common/k8s" }
 metrics = { package = "metrics", path = "../common/metrics" }
 journald = { package = "journald", path = "../common/journald" }
 state = { package = "state", path = "../common/state" }
+api = { package = "api", path = "../api" }
 
 bytes = "1"
 time = "0.3"

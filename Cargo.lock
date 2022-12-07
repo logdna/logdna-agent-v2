@@ -62,6 +62,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2cb2f989d18dd141ab8ae82f64d1a8cdd37e0840f73a406896cf5e99502fab61"
 
 [[package]]
+name = "api"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "combine",
+ "env_logger",
+ "futures",
+ "http 0.1.0",
+ "log",
+ "partial-io",
+ "serial_test",
+ "time 0.3.9",
+ "tokio",
+ "tokio-test",
+ "tokio-util",
+]
+
+[[package]]
 name = "assert_cmd"
 version = "2.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1928,6 +1946,7 @@ name = "logdna-agent"
 version = "3.9.0-dev"
 dependencies = [
  "anyhow",
+ "api",
  "assert_cmd",
  "async-trait",
  "auditable",
