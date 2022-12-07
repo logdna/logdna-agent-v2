@@ -467,11 +467,7 @@ impl FileSystem {
             let mut _mfs = mfs.try_lock().expect("could not lock filesystem cache");
 
             let missing_dirs = _mfs.missing_dirs.clone();
-            #[allow(clippy::redundant_closure)]
-            let missing_dir_watcher = _mfs
-                .missing_dir_watcher
-                .take()
-                .unwrap_or_else(|| Watcher::new());
+            let missing_dir_watcher = _mfs.missing_dir_watcher.take().unwrap_or_else(Watcher::new);
 
             let missing_dir_event_stream = missing_dir_watcher.receive();
             let retry_event_sender = _mfs.retry_events_send.clone();
