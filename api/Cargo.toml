@@ -1,0 +1,31 @@
+[package]
+name = "api"
+version = "0.1.0"
+authors = ["dkhokhlov <dkhokhlov@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+http = { package = "http", path = "../common/http" }
+
+tokio = { package = "tokio", version = "1", features = ["macros", "process", "rt-multi-thread", "time"] }
+futures = "0.3"
+log = "0.4"
+time = "0.3"
+
+# journalctl
+combine = { package = "combine", version = "4" }
+bytes = { package = "bytes", version = "1" }
+tokio_util = { package = "tokio-util", version = "0.7", features = ["codec"] }
+
+# tests
+serial_test = { version = "0.8", optional = true }
+
+[dev-dependencies]
+env_logger = "0.9"
+partial_io = { package = "partial-io", version = "0.5", features = ["tokio1"]}
+tokio-test = "0.4"
+
+[features]
+default = []
+tailer = []
+
