@@ -136,7 +136,7 @@ fn test_append_and_delete() {
     thread::sleep(std::time::Duration::from_millis(1000));
 
     debug!("got event, appending to file");
-    common::append_to_file(&file_path, 10, 10).expect("Could not append");
+    common::append_to_file(&file_path, 10_000, 50).expect("Could not append");
     fs::remove_file(&file_path).expect("Could not remove file");
 
     // Immediately, start appending in a new file
@@ -293,7 +293,7 @@ fn test_append_and_move() {
     let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
 
     common::wait_for_file_event("initialize", &file1_path, &mut stderr_reader);
-    common::append_to_file(&file1_path, 10, 10).expect("Could not append");
+    common::append_to_file(&file1_path, 10_000, 50).expect("Could not append");
     fs::rename(&file1_path, &file2_path).expect("Could not move file");
     fs::remove_file(&file2_path).expect("Could not remove file");
 
