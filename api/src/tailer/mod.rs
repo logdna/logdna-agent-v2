@@ -1,13 +1,20 @@
 use std::process::Stdio;
 
 use bytes::{Buf, BytesMut};
-use combine::{error::{ParseError, StreamError}, none_of, parser::{
-    combinator::{any_partial_state, AnyPartialState},
-    range::{recognize},
-}, Parser, skip_many, stream::{easy, PartialStream, RangeStream, StreamErrorFor}, token};
+use combine::{
+    error::{ParseError, StreamError},
+    none_of,
+    parser::{
+        combinator::{any_partial_state, AnyPartialState},
+        range::recognize,
+    },
+    skip_many,
+    stream::{easy, PartialStream, RangeStream, StreamErrorFor},
+    token, Parser,
+};
 use futures::{Stream, StreamExt};
 use log::{info, trace, warn};
-use tokio::process::Child;
+use tokio::process::{ChildStderr, ChildStdin};
 use tokio_util::codec::{Decoder, FramedRead};
 use win32job::Job;
 
@@ -17,11 +24,10 @@ use crate::tailer::error::TailerError;
 
 mod error;
 
-const TAILER_CMD: &str = "C:\\Program Files\\Mezmo\\winevt-tailer.exe";
-
 pub struct TailerApiDecoder {
     state: AnyPartialState,
-    child: Child,
+    _stdin: ChildStdin,
+    _stderr: ChildStderr,
     _job: Job,
 }
 
@@ -43,10 +49,11 @@ impl FieldValue {
 type TailerRecord = String;
 
 // The actual parser for the Tailer API format
-fn decode_parser<'a, Input>() -> impl Parser<Input, Output=TailerRecord, PartialState=AnyPartialState> + 'a
-    where
-        Input: RangeStream<Token=u8, Range=&'a [u8]> + 'a,
-        Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+fn decode_parser<'a, Input>(
+) -> impl Parser<Input, Output = TailerRecord, PartialState = AnyPartialState> + 'a
+where
+    Input: RangeStream<Token = u8, Range = &'a [u8]> + 'a,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     /*
     Tailer API log lines are 'etf-8' encoded and separated by a single newline.
@@ -56,22 +63,21 @@ fn decode_parser<'a, Input>() -> impl Parser<Input, Output=TailerRecord, Partial
             skip_many(none_of(b"\n".iter().copied())),
             // entries are line separated
             token(b'\n'),
-        )).and_then(
-            |bytes: &[u8]| {
-                std::str::from_utf8(bytes)
-                    .map(|s| s.to_string())
-                    .map_err(StreamErrorFor::<Input>::other)
-            },
-        )
+        ))
+        .and_then(|bytes: &[u8]| {
+            std::str::from_utf8(bytes)
+                .map(|s| s.to_string())
+                .map_err(StreamErrorFor::<Input>::other)
+        }),
     )
 }
 
 // tokenizer - extract lines
-fn find_next_record<'a, Input>() -> impl Parser<Input, Output=(), PartialState=AnyPartialState> + 'a
-    where
-        Input: RangeStream<Token=u8, Range=&'a [u8]> + 'a,
-    // Necessary due to rust-lang/rust#24159
-        Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+fn find_next_record<'a, Input>(
+) -> impl Parser<Input, Output = (), PartialState = AnyPartialState> + 'a
+where
+    Input: RangeStream<Token = u8, Range = &'a [u8]> + 'a,
+    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     any_partial_state(
         (
@@ -84,13 +90,8 @@ fn find_next_record<'a, Input>() -> impl Parser<Input, Output=(), PartialState=A
 }
 
 impl TailerApiDecoder {
-    fn process_default_record(
-        record: &TailerRecord,
-    ) -> Result<Option<LineBuilder>, TailerError> {
-        eprintln!("LINE='{:?}'", record);
-        Ok(Some(
-            LineBuilder::new().line(record).file("winevt_tailer"),
-        ))
+    fn process_default_record(record: &TailerRecord) -> Result<Option<LineBuilder>, TailerError> {
+        Ok(Some(LineBuilder::new().line(record).file("winevt_tailer")))
     }
 }
 
@@ -167,33 +168,44 @@ impl Decoder for TailerApiDecoder {
     }
 }
 
-pub fn create_tailer_source() -> Result<impl Stream<Item=LineBuilder>, std::io::Error> {
+pub fn create_tailer_source(
+    exe_path: &str,
+    args: Vec<&str>,
+) -> Result<impl Stream<Item = LineBuilder>, std::io::Error> {
     let tailer_job = Job::create().unwrap();
     let mut info = tailer_job.query_extended_limit_info().unwrap();
     info.limit_kill_on_job_close();
     tailer_job.set_extended_limit_info(&mut info).unwrap();
 
-    let tailer_process = tokio::process::Command::new(TAILER_CMD)
-        .arg("-f")// follow
-        .arg("-b")// lookback
-        .arg("10")
+    let mut tailer_process = tokio::process::Command::new(exe_path)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stderr(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()?;
 
-    tailer_job.assign_process(tailer_process.raw_handle().unwrap()).unwrap();
+    tailer_job
+        .assign_process(tailer_process.raw_handle().unwrap())
+        .expect("Failed to assign tailer process to job.");
 
-    let mut decoder = TailerApiDecoder {
+    let tailer_stdout = tailer_process.stdout.take().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::Other, "cannot get tailer stdout handle")
+    })?;
+
+    let tailer_stderr = tailer_process.stderr.take().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::Other, "cannot get tailer stderr handle")
+    })?;
+
+    let tailer_stdin = tailer_process.stdin.take().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::Other, "cannot get tailer stdin handle")
+    })?;
+
+    let decoder = TailerApiDecoder {
         state: AnyPartialState::default(),
-        child: tailer_process,
+        _stdin: tailer_stdin,
+        _stderr: tailer_stderr,
         _job: tailer_job,
     };
-
-    let tailer_stdout = decoder.child.stdout.take().ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "cannot get tailer stdout handle",
-        )
-    })?;
 
     info!("Listening to Tailer");
     Ok(
@@ -220,17 +232,47 @@ pub fn create_tailer_source() -> Result<impl Stream<Item=LineBuilder>, std::io::
 
 #[cfg(test)]
 mod test {
-
-    use combine::{ none_of, parser::{
-        range::{recognize},
-    }, Parser, skip_many1};
     use combine::stream::position;
+    use combine::{none_of, parser::range::recognize, skip_many1, Parser};
+    use futures::StreamExt;
 
     #[tokio::test]
     async fn test_my_parse() {
+        let _ = env_logger::Builder::from_default_env().try_init();
         let mut parser = recognize(skip_many1(none_of(b"\n".iter().copied())));
-        let result = parser.parse(position::Stream::new(&b"{abc\nABC"[..]))
+        let result = parser
+            .parse(position::Stream::new(&b"123\n456\n789"[..]))
             .map(|(output, input)| (output, input.input));
-        eprintln!("DONE='{:?}'", result);
+        assert_eq!(
+            "123",
+            String::from_utf8_lossy(result.unwrap().0).to_string()
+        );
+    }
+
+    #[tokio::test]
+    async fn stream_gets_some_logs() {
+        use super::create_tailer_source;
+        use std::time::Duration;
+        use tokio::time::{sleep, timeout};
+
+        let _ = env_logger::Builder::from_default_env().try_init();
+
+        let tailer_cmd = "cmd";
+        let tailer_args = vec!["/C", "echo line1 && echo line2 && pause"];
+
+        let mut stream = Box::pin(create_tailer_source(tailer_cmd, tailer_args).unwrap());
+
+        sleep(Duration::from_millis(50)).await;
+
+        let first_line = match timeout(Duration::from_millis(500), stream.next()).await {
+            Err(e) => {
+                panic!("unable to grab first batch of lines from stream: {:?}", e);
+            }
+            Ok(None) => {
+                panic!("expected to get a line from journald stream");
+            }
+            Ok(Some(batch)) => batch,
+        };
+        assert!(first_line.line.is_some());
     }
 }

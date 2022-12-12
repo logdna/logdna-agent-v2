@@ -329,10 +329,14 @@ pub async fn _main(
         false => None,
     };
 
-    #[cfg(all(target_os = "windows"))]
-    let _ts = create_tailer_source();
+    let _tailer_cmd = "C:\\Program Files\\Mezmo\\winevt-tailer.exe";
+    let _tailer_args = vec!["-f", "-b", "10"];
+    #[cfg(target_os = "windows")]
+    let tailer_source = create_tailer_source(_tailer_cmd, _tailer_args)
+        .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
+        .map_err(|e| warn!("Error initializing tailer source: {}", e))
+        .ok();
     debug!("Initialised api tailer source");
-
 
     debug!("Initialising offset state");
     let fo_state_handles = offset_state
@@ -443,6 +447,9 @@ pub async fn _main(
     #[cfg(target_os = "linux")]
     pin_mut!(journalctl_source);
 
+    #[cfg(target_os = "windows")]
+    pin_mut!(tailer_source);
+
     #[cfg(all(feature = "libjournald", target_os = "linux"))]
     pin_mut!(journald_source);
 
@@ -454,6 +461,9 @@ pub async fn _main(
 
     #[cfg(all(feature = "libjournald", target_os = "linux"))]
     let mut journald_source: Option<std::pin::Pin<&mut _>> = journald_source.as_pin_mut();
+
+    #[cfg(target_os = "windows")]
+    let mut tailer_source: Option<std::pin::Pin<&mut _>> = tailer_source.as_pin_mut();
 
     let mut metric_server_source: Option<std::pin::Pin<&mut _>> = metric_stats_source.as_pin_mut();
 
@@ -474,6 +484,11 @@ pub async fn _main(
     #[cfg(all(not(feature = "libjournald"), target_os = "linux"))]
     if let Some(s) = journalctl_source.as_mut() {
         info!("Enabling journalctl event source");
+        sources.push(s)
+    }
+    #[cfg(target_os = "windows")]
+    if let Some(s) = tailer_source.as_mut() {
+        info!("Enabling tailer event source");
         sources.push(s)
     }
 
