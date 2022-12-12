@@ -2028,7 +2028,7 @@ mod tests {
 
     // Deletes a hardlink
     #[tokio::test]
-    #[cgf(unix)]
+    #[cfg(unix)]
     async fn filesystem_delete_hardlink() -> io::Result<()> {
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
