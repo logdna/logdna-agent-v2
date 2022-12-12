@@ -15,10 +15,15 @@ time = "0.3"
 # tailer
 combine = { package = "combine", version = "4" }
 bytes = { package = "bytes", version = "1" }
-win32job = "1"
 tokio_util = { package = "tokio-util", version = "0.7", features = ["codec"] }
+
 # tests
 serial_test = { version = "0.8", optional = true }
+
+[target.'cfg(any(windows))'.dependencies]
+win32job = { package = "win32job", version = "1" }
+
+
 
 [dev-dependencies]
 env_logger = "0.9"
