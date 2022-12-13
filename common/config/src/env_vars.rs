@@ -16,6 +16,7 @@ pub const K8S_METADATA_LINE_EXCLUSION: &str = "MZ_K8S_METADATA_LINE_EXCLUSION";
 pub const HOSTNAME: &str = "MZ_HOSTNAME";
 pub const IP: &str = "MZ_IP";
 pub const MAC: &str = "MZ_MAC";
+pub const SYSTEMD_JOURNAL_TAILER: &str = "MZ_SYSTEMD_JOURNAL_TAILER";
 pub const JOURNALD_PATHS: &str = "MZ_JOURNALD_PATHS";
 pub const LOOKBACK: &str = "MZ_LOOKBACK";
 pub const DB_PATH: &str = "MZ_DB_PATH";
