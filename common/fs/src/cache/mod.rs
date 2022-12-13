@@ -1692,6 +1692,40 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    #[cfg(windows)]
+    async fn filesystem_rotate_create_copy_win() -> io::Result<()> {
+        let tempdir = TempDir::new()?;
+        let path = tempdir.path().to_path_buf();
+        let fs = create_fs(&path);
+
+        // Copy and remove
+        let a = path.join("a");
+        let a_clone = a.clone();
+        let old = path.join("a.old");
+        let old_clone = old.clone();
+
+        let file_handle = std::thread::spawn(move || {
+            let a_file = a_clone;
+            let old_file = old_clone;
+            File::create(&a_file);
+            copy(&a_file, &old_file);
+            remove_file(&a_file);
+        });
+        file_handle.join().unwrap();
+
+        take_events!(fs);
+        take_events!(fs);
+
+        take_events!(fs);
+        let entry_key = lookup!(fs, a);
+        assert!(entry_key.is_none());
+        let entry_key = lookup!(fs, old);
+        assert_is_file!(fs, entry_key);
+
+        Ok(())
+    }
+
     // Creates a plain old dir
     #[tokio::test]
     async fn filesystem_create_dir() {
@@ -1883,20 +1917,37 @@ mod tests {
 
     // Deletes a file
     #[tokio::test]
-    #[cfg(unix)]
     async fn filesystem_delete_file() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
 
         let file_path = path.join("file.log");
+
+        #[cfg(windows)]
+        let file_path_clone = file_path.clone();
+
+        #[cfg(unix)]
         File::create(file_path.clone())?;
 
         let fs = create_fs(&path);
 
-        assert!(lookup!(fs, file_path).is_some());
+        #[cfg(unix)]
+        {
+            assert!(lookup!(fs, file_path).is_some());
+            remove_file(&file_path)?;
+        }
 
-        remove_file(&file_path)?;
+        #[cfg(windows)]
+        {
+            let file_handle = std::thread::spawn(move || {
+                let file = file_path_clone;
+                let _var = File::create(&file);
+                remove_file(file);
+            });
+            file_handle.join().unwrap();
+        }
+
         take_events!(fs);
 
         take_events!(fs);
@@ -2051,6 +2102,40 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    #[cfg(windows)]
+    async fn filesystem_delete_hardlink_win() -> io::Result<()> {
+        let tempdir = TempDir::new()?;
+        let path = tempdir.path().to_path_buf();
+        let fs = create_fs(&path);
+
+        // Copy and remove
+        let a = path.join("a");
+        let a_clone = a.clone();
+        let old = path.join("a.old");
+        let old_clone = old.clone();
+
+        let file_handle = std::thread::spawn(move || {
+            let a_file = a_clone;
+            let old_file = old_clone;
+            File::create(&a_file);
+            copy(&a_file, &old_file);
+            remove_file(&a_file);
+        });
+        file_handle.join().unwrap();
+
+        take_events!(fs);
+        take_events!(fs);
+
+        take_events!(fs);
+        let entry_key = lookup!(fs, a);
+        assert!(entry_key.is_none());
+        let entry_key = lookup!(fs, old);
+        assert_is_file!(fs, entry_key);
+
+        Ok(())
+    }
+
     // Deletes the pointee of a hardlink (not totally accurate since we're not deleting the inode
     // entry, but what evs)
     #[tokio::test]
@@ -2067,6 +2152,34 @@ mod tests {
         let fs = create_fs(&path);
 
         remove_file(&a)?;
+        take_events!(fs);
+
+        assert!(lookup!(fs, a).is_none());
+        assert!(lookup!(fs, b).is_some());
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[cfg(windows)]
+    async fn filesystem_delete_hardlink_pointee_win() -> io::Result<()> {
+        let tempdir = TempDir::new()?;
+        let path = tempdir.path().to_path_buf();
+
+        let a = path.join("a");
+        let b = path.join("b");
+        let a_clone = a.clone();
+        let b_clone = b.clone();
+        let file_handle = std::thread::spawn(move || {
+            let afile = a_clone;
+            let bfile = b_clone;
+            let avar = File::create(&afile);
+            let bvar = File::create(&bfile);
+            hard_link(&afile, &bfile);
+            remove_file(afile);
+        });
+        file_handle.join().unwrap();
+        let fs = create_fs(&path);
+
         take_events!(fs);
 
         assert!(lookup!(fs, a).is_none());
