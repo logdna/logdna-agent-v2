@@ -1502,6 +1502,9 @@ mod tests {
     use std::{io, panic};
     use tempfile::{tempdir, TempDir};
 
+    #[cfg(windows)]
+    use std::sync::mpsc;
+
     static DELAY: Duration = Duration::from_millis(200);
 
     macro_rules! take_events {
@@ -1701,16 +1704,18 @@ mod tests {
 
         // Copy and remove
         let a = path.join("a");
-        let a_clone = a.clone();
         let old = path.join("a.old");
-        let old_clone = old.clone();
 
-        let file_handle = std::thread::spawn(move || {
-            let a_file = a_clone;
-            let old_file = old_clone;
-            File::create(&a_file);
-            copy(&a_file, &old_file);
-            remove_file(&a_file);
+        let file_handle = std::thread::spawn({
+            let a_file = a.clone();
+            let old_file = old.clone();
+            move || {
+                File::create(&a_file).unwrap();
+                assert!(&a_file.is_file());
+                copy(&a_file, &old_file).unwrap();
+                remove_file(&a_file).unwrap();
+                assert!(!&a_file.is_file());
+            }
         });
         file_handle.join().unwrap();
 
@@ -1917,39 +1922,57 @@ mod tests {
 
     // Deletes a file
     #[tokio::test]
+    #[cfg(unix)]
     async fn filesystem_delete_file() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
 
         let file_path = path.join("file.log");
-
-        #[cfg(windows)]
-        let file_path_clone = file_path.clone();
-
-        #[cfg(unix)]
         File::create(file_path.clone())?;
 
         let fs = create_fs(&path);
 
-        #[cfg(unix)]
-        {
-            assert!(lookup!(fs, file_path).is_some());
-            remove_file(&file_path)?;
-        }
+        assert!(lookup!(fs, file_path).is_some());
 
-        #[cfg(windows)]
-        {
-            let file_handle = std::thread::spawn(move || {
-                let file = file_path_clone;
-                let _var = File::create(&file);
-                remove_file(file);
-            });
-            file_handle.join().unwrap();
-        }
-
+        remove_file(&file_path)?;
         take_events!(fs);
 
+        take_events!(fs);
+        take_events!(fs);
+        assert!(lookup!(fs, file_path).is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[cfg(windows)]
+    async fn filesystem_delete_file_win() -> io::Result<()> {
+        let (tx_main, rx_main) = mpsc::channel();
+        let (tx_thread, rx_thread) = mpsc::channel();
+
+        let _ = env_logger::Builder::from_default_env().try_init();
+        let tempdir = TempDir::new()?;
+        let path = tempdir.path().to_path_buf();
+        let file_path = path.join("file.log");
+
+        let file_handle = std::thread::spawn({
+            let file = file_path.clone();
+            move || {
+                File::create(&file).unwrap();
+                tx_thread.send(true).unwrap();
+                rx_main.recv().unwrap();
+                remove_file(file).unwrap();
+            }
+        });
+        rx_thread.recv().unwrap();
+
+        let fs = create_fs(&path);
+        assert!(lookup!(fs, file_path).is_some());
+
+        tx_main.send(true).unwrap();
+        file_handle.join().unwrap();
+
+        take_events!(fs);
         take_events!(fs);
         take_events!(fs);
 
@@ -2105,33 +2128,39 @@ mod tests {
     #[tokio::test]
     #[cfg(windows)]
     async fn filesystem_delete_hardlink_win() -> io::Result<()> {
+        let (tx_main, rx_main) = mpsc::channel();
+        let (tx_thread, rx_thread) = mpsc::channel();
+
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
-        let fs = create_fs(&path);
 
         // Copy and remove
         let a = path.join("a");
-        let a_clone = a.clone();
-        let old = path.join("a.old");
-        let old_clone = old.clone();
+        let b = path.join("b");
 
-        let file_handle = std::thread::spawn(move || {
-            let a_file = a_clone;
-            let old_file = old_clone;
-            File::create(&a_file);
-            copy(&a_file, &old_file);
-            remove_file(&a_file);
+        let file_handle = std::thread::spawn({
+            let a_file = a.clone();
+            let b_file = b.clone();
+            move || {
+                File::create(&a_file).unwrap();
+                hard_link(&a_file, &b_file).unwrap();
+                tx_thread.send(true).unwrap();
+                rx_main.recv().unwrap();
+                remove_file(&b_file).unwrap();
+            }
         });
+        rx_thread.recv().unwrap();
+        let fs = create_fs(&path);
+
+        assert!(lookup!(fs, a).is_some());
+        assert!(lookup!(fs, b).is_some());
+
+        tx_main.send(true).unwrap();
         file_handle.join().unwrap();
 
         take_events!(fs);
-        take_events!(fs);
-
-        take_events!(fs);
-        let entry_key = lookup!(fs, a);
-        assert!(entry_key.is_none());
-        let entry_key = lookup!(fs, old);
-        assert_is_file!(fs, entry_key);
+        assert!(lookup!(fs, a).is_some());
+        assert!(lookup!(fs, b).is_none());
 
         Ok(())
     }
@@ -2162,26 +2191,35 @@ mod tests {
     #[tokio::test]
     #[cfg(windows)]
     async fn filesystem_delete_hardlink_pointee_win() -> io::Result<()> {
+        let (tx_main, rx_main) = mpsc::channel();
+        let (tx_thread, rx_thread) = mpsc::channel();
+
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
 
         let a = path.join("a");
         let b = path.join("b");
-        let a_clone = a.clone();
-        let b_clone = b.clone();
-        let file_handle = std::thread::spawn(move || {
-            let afile = a_clone;
-            let bfile = b_clone;
-            let avar = File::create(&afile);
-            let bvar = File::create(&bfile);
-            hard_link(&afile, &bfile);
-            remove_file(afile);
+        let file_handle = std::thread::spawn({
+            let afile = a.clone();
+            let bfile = b.clone();
+            move || {
+                File::create(&afile).unwrap();
+                hard_link(&afile, &bfile).unwrap();
+                tx_thread.send(true).unwrap();
+                rx_main.recv().unwrap();
+                remove_file(afile).unwrap();
+            }
         });
-        file_handle.join().unwrap();
+        rx_thread.recv().unwrap();
         let fs = create_fs(&path);
 
-        take_events!(fs);
+        assert!(lookup!(fs, a).is_some());
+        assert!(lookup!(fs, b).is_some());
 
+        tx_main.send(true).unwrap();
+        file_handle.join().unwrap();
+
+        take_events!(fs);
         assert!(lookup!(fs, a).is_none());
         assert!(lookup!(fs, b).is_some());
         Ok(())

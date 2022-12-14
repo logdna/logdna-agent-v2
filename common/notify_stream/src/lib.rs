@@ -422,26 +422,38 @@ mod tests {
     #[tokio::test]
     #[cfg(windows)]
     async fn test_create_write_delete_win() -> io::Result<()> {
+        let (tx_main, rx_main) = mpsc::channel();
+        let (tx_thread, rx_thread) = mpsc::channel();
+
         let dir = tempdir().unwrap();
         let dir_path = dir.path();
         let file_path = dir_path.join("file1.log");
 
+        let mut w = Watcher::new();
+        w.watch(dir_path, RecursiveMode::NonRecursive).unwrap();
+
         let file_handle = std::thread::spawn({
             let file_path_clone = file_path.clone();
             move || {
-                thread::sleep(Duration::from_millis(500));
                 let mut file = File::create(&file_path_clone).unwrap();
                 let _ = writeln!(file, "WindowsSample");
-                thread::sleep(Duration::from_millis(500));
+                let _ = tx_thread.send(true);
+                let _ = rx_main.recv();
                 let _ = fs::remove_file(file_path_clone);
             }
         });
-
-        let mut w = Watcher::new();
-        w.watch(dir_path, RecursiveMode::NonRecursive).unwrap();
+        let _ = rx_thread.recv();
         let stream = w.receive();
         pin_mut!(stream);
 
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let mut items = Vec::new();
+        take!(stream, items);
+
+        assert!(!items.is_empty());
+        is_match!(&items[0], Create, file_path);
+
+        let _ = tx_main.send(true);
         file_handle.join().unwrap();
 
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -459,7 +471,6 @@ mod tests {
             })
             .collect();
 
-        is_match!(items[0], Create, file_path);
         is_match!(items.last().unwrap(), Remove, file_path);
 
         Ok(())
