@@ -610,8 +610,9 @@ async fn test_z_journald_support() {
     settings.journald_dirs = Some(dir);
     settings.features = Some("libjournald");
     settings.exclusion_regex = Some(r"^(?!/var/log/journal).*$");
-    assert_eq!(systemd::journal::print(6, "Sample info"), 0);
+    settings.log_journal_d = Some("true");
 
+    assert_eq!(systemd::journal::print(6, "Sample info"), 0);
     let mut agent_handle = common::spawn_agent(settings);
     let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
 
@@ -624,7 +625,7 @@ async fn test_z_journald_support() {
         }
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
 
         let map = received.lock().await;
         let file_info = map.values().next().unwrap();
@@ -643,6 +644,57 @@ async fn test_z_journald_support() {
 
 #[tokio::test]
 #[cfg(all(target_os = "linux", feature = "integration_tests"))]
+async fn test_z_journald_support_no_flag() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let dir = "/var/log/journal";
+    let (server, _received, shutdown_handle, addr) = common::start_http_ingester();
+    let mut settings = AgentSettings::with_mock_ingester("/var/log/journal", &addr);
+    settings.journald_dirs = Some(dir);
+    settings.features = Some("libjournald");
+    settings.exclusion_regex = Some(r"^(?!/var/log/journal).*$");
+
+    assert_eq!(systemd::journal::print(6, "Sample info"), 0);
+    let mut agent_handle = common::spawn_agent(settings);
+    let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
+
+    let (server_result, _) = tokio::join!(server, async {
+        common::wait_for_event("monitoring journald path", &mut agent_stderr);
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
+    common::assert_agent_running(&mut agent_handle);
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[tokio::test]
+#[cfg(all(target_os = "linux", feature = "integration_tests"))]
+async fn test_z_journalctl_support_true_flag_no_path() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let (server, _received, shutdown_handle, addr) = common::start_http_ingester();
+    let mut settings = AgentSettings::with_mock_ingester("/var/log/journal", &addr);
+    settings.features = Some("libjournald");
+    settings.journald_dirs = None;
+    settings.log_journal_d = Some("true");
+
+    assert_eq!(systemd::journal::print(6, "Sample info"), 0);
+    let mut agent_handle = common::spawn_agent(settings);
+    let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
+
+    let (server_result, _) = tokio::join!(server, async {
+        common::wait_for_event("journalctl", &mut agent_stderr);
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
+    common::assert_agent_running(&mut agent_handle);
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[tokio::test]
+#[cfg(all(target_os = "linux", feature = "integration_tests"))]
 async fn test_journalctl_support() {
     let _ = env_logger::Builder::from_default_env().try_init();
     assert_eq!(systemd::journal::print(6, "Sample info"), 0);
@@ -650,6 +702,7 @@ async fn test_journalctl_support() {
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let mut settings = AgentSettings::with_mock_ingester("/var/log/journal", &addr);
     settings.journald_dirs = None;
+    settings.log_journal_d = Some("true");
     settings.exclusion_regex = Some(r"^(?!/var/log/journal).*$");
 
     assert_eq!(systemd::journal::print(6, "Sample info"), 0);

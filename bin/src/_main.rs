@@ -286,24 +286,35 @@ pub async fn _main(
         .map(|s| Duration::from_millis(s.parse().unwrap()))
         .unwrap_or(FS_EVENT_DELAY);
 
-    debug!("Initialising journald source");
     #[cfg(all(feature = "libjournald", target_os = "linux"))]
-    if config.journald.systemd_journal_tailer {
-        let (journalctl_source, journald_source) = if config.journald.paths.is_empty() {
-            let journalctl_source = create_journalctl_source()
-                .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
-                .map_err(|e| {
-                    info!("Journalctl source was not initialized");
-                    debug!("Journalctl source initialization error: {}", e);
-                });
-            (journalctl_source.ok(), None)
-        } else {
-            (
-                None,
-                Some(create_source(&config.journald.paths).map(StrictOrLazyLineBuilder::Strict)),
-            )
-        };
-    }
+    let journald_source = match config.journald.systemd_journal_tailer {
+        true => {
+            if !config.journald.paths.is_empty() {
+                Some(create_source(&config.journald.paths).map(StrictOrLazyLineBuilder::Strict))
+            } else {
+                None
+            }
+        }
+        false => None,
+    };
+
+    #[cfg(all(feature = "libjournald", target_os = "linux"))]
+    let journalctl_source = match config.journald.systemd_journal_tailer {
+        true => {
+            if config.journald.paths.is_empty() {
+                create_journalctl_source()
+                    .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
+                    .map_err(|e| {
+                        info!("Journalctl source was not initialized");
+                        debug!("Journalctl source initialization error: {}", e);
+                    })
+                    .ok()
+            } else {
+                None
+            }
+        }
+        false => None,
+    };
 
     #[cfg(all(not(feature = "libjournald"), target_os = "linux"))]
     let journalctl_source = match config.journald.systemd_journal_tailer {
@@ -313,7 +324,6 @@ pub async fn _main(
             .ok(),
         false => None,
     };
-    debug!("Initialising journald source");
 
     debug!("Initialising offset state");
     if let Some(offset_state) = offset_state {
