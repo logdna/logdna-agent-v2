@@ -199,6 +199,7 @@ For backward compatibility agent v1 configuration file format is still supported
 |`LOGDNA_LINE_INCLUSION_REGEX`|`log.line_inclusion_regex[]`|List of regex patterns to include log lines. When set, the Agent will send ONLY log lines that match any of these patterns.||
 |`LOGDNA_REDACT_REGEX`|`log.line_redact_regex`|List of regex patterns used to mask matching sensitive information (such as PII) before sending it in the log line.||
 |`LOGDNA_JOURNALD_PATHS`|`journald.paths[]`|List of paths (directories or files) of journald paths to monitor||
+|`MZ_SYSTEMD_JOURNAL_TAILER`||True/False toggles journald on the agent|'true'|
 |`LOGDNA_LOOKBACK`|`log.lookback`|The lookback strategy on startup|`none`|
 |`LOGDNA_K8S_STARTUP_LEASE`||Determines whether or not to use K8 leases on startup|`never`|
 |`LOGDNA_USE_K8S_LOG_ENRICHMENT`||Determines whether the agent should query the K8s API to enrich log lines from other pods.|`always`|
@@ -294,7 +295,7 @@ file in docs directory of this repository.
 
 ### Configuring Journald
 
-If the agent pods have access to journald log files or directories, monitoring can be enabled on them with the `LOGDNA_JOURNALD_PATHS`. Common values include `/var/log/journal` and `/run/systemd/journal`. To specify both, use a comma separated list: `/var/log/journal,/run/systemd/journal`.
+If the agent pods have access to journald log files or directories, monitoring can be enabled on them with the `LOGDNA_JOURNALD_PATHS` as well as setting `MZ_SYSTEMD_JOURNAL_TAILER` to true, or leaving blank which defaults to true. Common values include `/var/log/journal` and `/run/systemd/journal`. To specify both, use a comma separated list: `/var/log/journal,/run/systemd/journal`.
 
 Take a look at enabling journald monitoring for [Kubernetes](KUBERNETES.md#collecting-node-journald-logs) or [OpenShift](OPENSHIFT.md#collecting-node-journald-logs).
 

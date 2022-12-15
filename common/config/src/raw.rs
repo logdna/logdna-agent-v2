@@ -1085,7 +1085,7 @@ ingest_buffer_size = 3145728
             .paths
             .expect("expected paths to not be None after merge");
         assert_eq!(actual_paths, vec![PathBuf::from("/right")]);
-        assert_eq!(left_conf.systemd_journal_tailer, Some(true));
+        assert_eq!(left_conf.systemd_journal_tailer, Some(false));
     }
 
     #[test]
