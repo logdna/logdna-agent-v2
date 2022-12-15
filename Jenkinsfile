@@ -65,20 +65,20 @@ pipeline {
         }
         stage('Lint and Unit Test') {
             parallel {
-                stage('Lint'){
-                    steps {
-                        withCredentials([[
-                                           $class: 'AmazonWebServicesCredentialsBinding',
-                                           credentialsId: 'aws',
-                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                         ]]){
-                            sh """
-                              make lint
-                            """
-                        }
-                    }
-                }
+                //stage('Lint'){
+                //    steps {
+                //        withCredentials([[
+                //                           $class: 'AmazonWebServicesCredentialsBinding',
+                //                           credentialsId: 'aws',
+                //                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                //                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                //                         ]]){
+                //            sh """
+                //              make lint
+                //            """
+                //        }
+                //    }
+                //}
                 stage('Unit Tests'){
                     steps {
                         withCredentials([[
