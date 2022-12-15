@@ -1953,21 +1953,21 @@ mod tests {
         let _ = env_logger::Builder::from_default_env().try_init();
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
+        let fs = create_fs(&path);
         let file_path = path.join("file.log");
 
         let file_handle = std::thread::spawn({
             let file = file_path.clone();
             move || {
                 File::create(&file).unwrap();
+                assert!(&file.is_file());
                 tx_thread.send(true).unwrap();
                 rx_main.recv().unwrap();
-                remove_file(file).unwrap();
+                remove_file(&file).unwrap();
+                assert!(!file.is_file());
             }
         });
         rx_thread.recv().unwrap();
-
-        let fs = create_fs(&path);
-        assert!(lookup!(fs, file_path).is_some());
 
         tx_main.send(true).unwrap();
         file_handle.join().unwrap();
@@ -2133,6 +2133,7 @@ mod tests {
 
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
+        let fs = create_fs(&path);
 
         // Copy and remove
         let a = path.join("a");
@@ -2144,16 +2145,15 @@ mod tests {
             move || {
                 File::create(&a_file).unwrap();
                 hard_link(&a_file, &b_file).unwrap();
+                assert!(&a_file.is_file());
+                assert!(&b_file.is_file());
                 tx_thread.send(true).unwrap();
                 rx_main.recv().unwrap();
                 remove_file(&b_file).unwrap();
+                assert!(!b_file.is_file());
             }
         });
         rx_thread.recv().unwrap();
-        let fs = create_fs(&path);
-
-        assert!(lookup!(fs, a).is_some());
-        assert!(lookup!(fs, b).is_some());
 
         tx_main.send(true).unwrap();
         file_handle.join().unwrap();
@@ -2196,25 +2196,25 @@ mod tests {
 
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
+        let fs = create_fs(&path);
 
         let a = path.join("a");
         let b = path.join("b");
         let file_handle = std::thread::spawn({
-            let afile = a.clone();
-            let bfile = b.clone();
+            let a_file = a.clone();
+            let b_file = b.clone();
             move || {
-                File::create(&afile).unwrap();
-                hard_link(&afile, &bfile).unwrap();
+                File::create(&a_file).unwrap();
+                hard_link(&a_file, &b_file).unwrap();
+                assert!(&a_file.is_file());
+                assert!(&b_file.is_file());
                 tx_thread.send(true).unwrap();
                 rx_main.recv().unwrap();
-                remove_file(afile).unwrap();
+                remove_file(&a_file).unwrap();
+                assert!(!a_file.is_file());
             }
         });
         rx_thread.recv().unwrap();
-        let fs = create_fs(&path);
-
-        assert!(lookup!(fs, a).is_some());
-        assert!(lookup!(fs, b).is_some());
 
         tx_main.send(true).unwrap();
         file_handle.join().unwrap();
@@ -2222,6 +2222,7 @@ mod tests {
         take_events!(fs);
         assert!(lookup!(fs, a).is_none());
         assert!(lookup!(fs, b).is_some());
+
         Ok(())
     }
 
