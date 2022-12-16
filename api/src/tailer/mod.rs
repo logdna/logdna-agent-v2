@@ -1,6 +1,7 @@
 use std::process::Stdio;
 
 use bytes::{Buf, BytesMut};
+use combine::parser::byte::crlf;
 use combine::{
     error::{ParseError, StreamError},
     none_of,
@@ -10,7 +11,7 @@ use combine::{
     },
     skip_many,
     stream::{easy, PartialStream, RangeStream, StreamErrorFor},
-    token, Parser,
+    Parser,
 };
 use futures::{Stream, StreamExt};
 use log::{info, trace, warn};
@@ -31,21 +32,6 @@ pub struct TailerApiDecoder {
     _job: Job,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum FieldValue {
-    Bytes(Vec<u8>),
-    Utf8(String),
-}
-
-impl FieldValue {
-    pub fn to_string_lossy(&self) -> String {
-        match self {
-            FieldValue::Bytes(b) => String::from_utf8_lossy(b).to_string(),
-            FieldValue::Utf8(s) => s.clone(),
-        }
-    }
-}
-
 type TailerRecord = String;
 
 // The actual parser for the Tailer API format
@@ -59,16 +45,13 @@ where
     Tailer API log lines are 'etf-8' encoded and separated by a single newline.
     */
     any_partial_state(
-        recognize((
-            skip_many(none_of(b"\n".iter().copied())),
-            // entries are line separated
-            token(b'\n'),
-        ))
-        .and_then(|bytes: &[u8]| {
-            std::str::from_utf8(bytes)
-                .map(|s| s.to_string())
-                .map_err(StreamErrorFor::<Input>::other)
-        }),
+        recognize((skip_many(none_of(b"\r\n".iter().copied())), crlf())).and_then(
+            |bytes: &[u8]| {
+                std::str::from_utf8(bytes)
+                    .map(|s| s.to_string())
+                    .map_err(StreamErrorFor::<Input>::other)
+            },
+        ),
     )
 }
 
@@ -79,19 +62,14 @@ where
     Input: RangeStream<Token = u8, Range = &'a [u8]> + 'a,
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
-    any_partial_state(
-        (
-            skip_many(none_of(b"\n".iter().copied())),
-            // entries are line separated
-            token(b'\n'),
-        )
-            .map(|_| ()),
-    )
+    any_partial_state((skip_many(none_of(b"\r\n".iter().copied())), crlf()).map(|_| ()))
 }
 
 impl TailerApiDecoder {
     fn process_default_record(record: &TailerRecord) -> Result<Option<LineBuilder>, TailerError> {
-        Ok(Some(LineBuilder::new().line(record).file("winevt_tailer")))
+        Ok(Some(
+            LineBuilder::new().line(record.trim()).file("winevt_tailer"),
+        ))
     }
 }
 
@@ -239,9 +217,9 @@ mod test {
     #[tokio::test]
     async fn test_my_parse() {
         let _ = env_logger::Builder::from_default_env().try_init();
-        let mut parser = recognize(skip_many1(none_of(b"\n".iter().copied())));
+        let mut parser = recognize(skip_many1(none_of(b"\r\n".iter().copied())));
         let result = parser
-            .parse(position::Stream::new(&b"123\n456\n789"[..]))
+            .parse(position::Stream::new(&b"123\r\n456\r\n789"[..]))
             .map(|(output, input)| (output, input.input));
         assert_eq!(
             "123",
