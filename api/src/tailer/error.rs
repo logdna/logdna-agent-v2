@@ -1,5 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
+#[allow(dead_code)] // TODO
 #[derive(Debug)]
 pub enum TailerError {
     InvalidJSON(String),
@@ -14,7 +15,6 @@ impl Display for TailerError {
         }
     }
 }
-
 
 #[test]
 fn test_root_lvl_find_valid_path() {
