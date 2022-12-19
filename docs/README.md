@@ -295,7 +295,7 @@ file in docs directory of this repository.
 
 ### Configuring Journald
 
-If the agent pods have access to journald log files or directories, monitoring can be enabled on them with the `LOGDNA_JOURNALD_PATHS` as well as setting `MZ_SYSTEMD_JOURNAL_TAILER` to true, or leaving blank which defaults to true. Common values include `/var/log/journal` and `/run/systemd/journal`. To specify both, use a comma separated list: `/var/log/journal,/run/systemd/journal`.
+If the agent pods have access to journald log files or directories, monitoring can be enabled on them with the `LOGDNA_JOURNALD_PATHS` as well as setting `MZ_SYSTEMD_JOURNAL_TAILER` to true, or leaving blank which defaults to true. Both variables are required to be configured. Common values include for `LOGDNA_JOURNALD_PATHS` - `/var/log/journal` and `/run/systemd/journal`. To specify both, use a comma separated list: `/var/log/journal,/run/systemd/journal`.
 
 Take a look at enabling journald monitoring for [Kubernetes](KUBERNETES.md#collecting-node-journald-logs) or [OpenShift](OPENSHIFT.md#collecting-node-journald-logs).
 
