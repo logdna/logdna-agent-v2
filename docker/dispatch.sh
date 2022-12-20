@@ -3,9 +3,13 @@
 curpath=$(dirname "$0")
 
 _term() {
+  # disable=sc2317
   docker kill "$child"
+  # disable=sc2317
   status=$(docker inspect "$child" --format='{{.State.ExitCode}}')
+  # disable=sc2317
   docker rm "$child"
+  # disable=sc2317
   exit "$status"
 }
 
