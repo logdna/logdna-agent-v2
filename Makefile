@@ -263,7 +263,7 @@ lint-docker: ## Lint the Dockerfile for issues
 .PHONY:lint-shell
 lint-shell: ## Lint the Dockerfile for issues
 	$(SHELLCHECK_COMMAND) "" "shellcheck docker/lib.sh"
-	$(SHELLCHECK_COMMAND) "" "shellcheck docker/dispatch.sh --ignore SC2317"
+	$(SHELLCHECK_COMMAND) "" "shellcheck docker/dispatch.sh"
 	$(SHELLCHECK_COMMAND) "" "shellcheck docker/journald_dispatch.sh"
 
 .PHONY:lint
