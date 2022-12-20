@@ -258,7 +258,6 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
     }
 
     if let Some(value) = map.get(&SYSTEMD_JOURNAL_TAILER) {
-        log::error!("HEYYY {}", value);
         result.journald.systemd_journal_tailer = Some(value.parse().unwrap_or(true));
     }
 
