@@ -10,6 +10,7 @@ _term() {
 }
 
 # shellcheck source=/dev/null
+# shellcheck disable=SC2317
 . "$curpath/lib.sh"
 
 extra_args="$(get_volume_mounts "$1" "$3") $(get_sccache_args)"
