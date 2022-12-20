@@ -279,7 +279,8 @@ pin_project! {
         #[pin]
         pending: Option<Fut>,
         #[pin]
-        start_time: Option<Instant>
+        start_time: Option<Instant>,
+        restart_interval: Duration,  // zero - no restarts
     }
 }
 
@@ -290,7 +291,7 @@ where
     S: Stream<Item = T>,
     Fut: Future<Output = S>,
 {
-    pub async fn new(params: P, restart: C, mut f: F) -> Self {
+    pub async fn new(params: P, restart: C, mut f: F, restart_interval: Duration) -> Self {
         let stream = f(&params).await;
         Self {
             params,
@@ -299,6 +300,7 @@ where
             stream,
             pending: None,
             start_time: Some(Instant::now()),
+            restart_interval: restart_interval,
         }
     }
 }
@@ -322,7 +324,9 @@ where
         Poll::Ready(loop {
             // check for periodic restart
             if let Some(start_time) = this.start_time.as_mut().as_pin_mut() {
-                if start_time.elapsed().as_secs() > 20 {
+                if this.restart_interval.as_secs() > 0
+                    && start_time.elapsed().as_secs() > this.restart_interval.as_secs()
+                {
                     this.start_time.set(Some(Instant::now()));
                     let stream_fut = (this.f)(this.params);
                     this.pending.set(Some(stream_fut));

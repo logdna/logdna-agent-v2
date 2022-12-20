@@ -216,6 +216,10 @@ pub struct ArgumentOptions {
     /// etc. Numbers need to be integer values.
     #[structopt(long, env = env_vars::RETRY_DISK_LIMIT)]
     retry_disk_limit: Option<Bytes<u64>>,
+
+    /// Interval in sec between clearing of various unconstrained agent caches
+    #[structopt(long, env = env_vars::CLEAR_CACHE_INTERVAL)]
+    clear_cache_interval: Option<u32>
 }
 
 impl ArgumentOptions {
@@ -380,6 +384,10 @@ impl ArgumentOptions {
             with_csv(self.line_redact)
                 .iter()
                 .for_each(|v| regex.push(v.clone()));
+        }
+
+        if self.clear_cache_interval.is_some() {
+            raw.log.clear_cache_interval = self.clear_cache_interval
         }
 
         raw

@@ -357,6 +357,7 @@ pub async fn _main(
             let tailer = tail::Tailer::new(watched_dirs, rules, lookback, offsets);
             async move { tail::process(tailer).expect("except Failed to create FS Tailer") }
         },
+        config.log.clear_cache_interval,  // we restart tailer to clear fs cache
     )
     .await
     .filter_map(|r| async {

@@ -92,6 +92,7 @@ pub struct AgentSettings<'a> {
     pub ingest_timeout: Option<&'a str>,
     pub ingest_buffer_size: Option<&'a str>,
     pub log_level: Option<&'a str>,
+    pub clear_cache_interval: Option<u32>,
 }
 
 impl<'a> AgentSettings<'a> {

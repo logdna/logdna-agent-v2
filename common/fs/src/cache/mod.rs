@@ -371,10 +371,6 @@ impl FileSystem {
             _c: countme::Count::new()
         };
 
-        countme::enable(true);
-        let counts = countme::get::<FileSystem>();
-        eprintln!("@@@@@@@@@@@@@@@@ total={}  live={}  max_live={}", counts.total, counts.live, counts.max_live);
-
         let entries = fs.entries.clone();
         let mut entries = entries.borrow_mut();
 
