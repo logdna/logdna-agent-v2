@@ -10,7 +10,6 @@ _term() {
 }
 
 # shellcheck source=/dev/null
-# shellcheck disable=SC2317
 . "$curpath/lib.sh"
 
 extra_args="$(get_volume_mounts "$1" "$3") $(get_sccache_args)"
@@ -20,10 +19,12 @@ trap _term INT
 
 if [ "$HOST_MACHINE" = "Mac" ]; then
 	# shellcheck disable=SC2086
+	# shellcheck disable=SC2317
 	child=$(docker run -dit -w "$1" $extra_args -v "$2" $4 "$3" /bin/sh -ic "$5")
 	#docker run --rm -it -w "$1" $extra_args -v "$2" $4 "$3" /bin/bash -ic "$5"
 elif [ "$HOST_MACHINE" = "Linux" ]; then
 	# shellcheck disable=SC2086
+	# shellcheck disable=SC2317
 	child=$(docker run -dit -u "$(id -u)":"$(id -g)" -w "$1" $extra_args -v "$2" $4 "$3" /bin/sh -ic "$5")
 fi
 
