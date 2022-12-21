@@ -528,6 +528,7 @@ mod test {
     use humanize_rs::bytes::Unit;
 
     use std::env::set_var;
+    use crate::raw;
 
     #[cfg(unix)]
     static EXCLUSION_GLOB_DEFAULT: &str = "/var/log/wtmp,/var/log/btmp,/var/log/utmp,/var/log/wtmpx,/var/log/btmpx,/var/log/utmpx,/var/log/asl/**,/var/log/sa/**,/var/log/sar*,/var/log/tallylog,/var/log/fluentd-buffers/**/*,/var/log/pods/**/*";
@@ -709,6 +710,7 @@ mod test {
         assert_eq!(config.log.metrics_port, None);
         assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
         assert_eq!(config.log.log_metric_server_stats, None);
+        assert_eq!(config.log.clear_cache_interval, Some(raw::LogConfig::default().clear_cache_interval.unwrap()));
     }
 
     #[test]
@@ -736,6 +738,7 @@ mod test {
             ingest_timeout: Some(1111111),
             ingest_buffer_size: Some(222222),
             retry_dir: some_string!("/tmp/argv"),
+            clear_cache_interval: Some(777),
             retry_disk_limit: Some(Bytes::new(123456, Unit::Byte).unwrap()),
             ..ArgumentOptions::default()
         };
@@ -767,6 +770,7 @@ mod test {
         assert_eq!(config.journald.paths, Some(vec_paths!["/a"]));
         assert_eq!(config.journald.systemd_journal_tailer, Some(false));
         assert_eq!(config.startup.option, Some(String::from("always")));
+        assert_eq!(config.log.clear_cache_interval, Some(777));
     }
 
     #[test]
