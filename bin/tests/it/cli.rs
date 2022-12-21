@@ -2352,6 +2352,16 @@ fn test_clear_cache() {
     common::wait_for_event("restarting stream, interval=3", &mut stderr_reader);
     debug!("got restarting");
 
+    // check that fs tailer is functional after restart
+    thread::sleep(std::time::Duration::from_millis(1000));
+    debug!("delete & append again");
+    fs::remove_file(&file_path).expect("Could not remove file");
+    // Immediately, start appending in a new file
+    common::append_to_file(&file_path, 5, 5).expect("Could not append");
+
+    debug!("waiting for watching");
+    common::wait_for_file_event("watching", &file_path, &mut stderr_reader);
+
     consume_output(stderr_reader.into_inner());
 
     common::assert_agent_running(&mut agent_handle);
