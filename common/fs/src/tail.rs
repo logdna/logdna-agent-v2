@@ -16,6 +16,8 @@ use tokio::sync::Mutex;
 
 use futures::{ready, Future, Stream, StreamExt};
 
+use std::time::{Duration, Instant};
+
 use pin_project_lite::pin_project;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -275,7 +277,9 @@ pin_project! {
         #[pin]
         stream: S,
         #[pin]
-        pending: Option<Fut>
+        pending: Option<Fut>,
+        #[pin]
+        start_time: Option<Instant>
     }
 }
 
@@ -294,6 +298,7 @@ where
             f,
             stream,
             pending: None,
+            start_time: Some(Instant::now()),
         }
     }
 }
@@ -315,6 +320,15 @@ where
         let mut this = self.project();
 
         Poll::Ready(loop {
+            // check for periodic restart
+            if let Some(start_time) = this.start_time.as_mut().as_pin_mut() {
+                if start_time.elapsed().as_secs() > 20 {
+                    this.start_time.set(Some(Instant::now()));
+                    let stream_fut = (this.f)(this.params);
+                    this.pending.set(Some(stream_fut));
+                    info!("restarting stream");
+                }
+            }
             if let Some(p) = this.pending.as_mut().as_pin_mut() {
                 let stream = ready!(p.poll(cx));
                 this.pending.set(None);
