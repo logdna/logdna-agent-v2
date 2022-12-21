@@ -291,7 +291,6 @@ impl FileSystem {
         lookback_config: Lookback,
         initial_offsets: HashMap<FileId, SpanVec>,
         rules: Rules,
-        delay: Duration,
     ) -> Self {
         let (resume_events_send, resume_events_recv) = async_channel::unbounded();
         let (retry_events_send, retry_events_recv) = async_channel::unbounded();
@@ -305,8 +304,8 @@ impl FileSystem {
 
         let mut missing_dirs: Vec<PathBuf> = Vec::new();
 
-        let watcher = Watcher::new(delay);
-        let mut missing_dir_watcher = Watcher::new(delay);
+        let watcher = Watcher::new();
+        let mut missing_dir_watcher = Watcher::new();
         let entries = SlotMap::new();
 
         let mut initial_dir_rules = Rules::new();
@@ -468,10 +467,7 @@ impl FileSystem {
             let mut _mfs = mfs.try_lock().expect("could not lock filesystem cache");
 
             let missing_dirs = _mfs.missing_dirs.clone();
-            let missing_dir_watcher = _mfs
-                .missing_dir_watcher
-                .take()
-                .unwrap_or_else(|| Watcher::new(Duration::new(0, 10000000)));
+            let missing_dir_watcher = _mfs.missing_dir_watcher.take().unwrap_or_else(Watcher::new);
 
             let missing_dir_event_stream = missing_dir_watcher.receive();
             let retry_event_sender = _mfs.retry_events_send.clone();
@@ -1506,6 +1502,9 @@ mod tests {
     use std::{io, panic};
     use tempfile::{tempdir, TempDir};
 
+    #[cfg(windows)]
+    use std::sync::mpsc;
+
     static DELAY: Duration = Duration::from_millis(200);
 
     macro_rules! take_events {
@@ -1596,7 +1595,6 @@ mod tests {
             Lookback::Start,
             HashMap::new(),
             rules,
-            DELAY,
         )
     }
 
@@ -1658,6 +1656,7 @@ mod tests {
 
     // Simulates the `create_copy` log rotation strategy
     #[tokio::test]
+    #[cfg(unix)]
     async fn filesystem_rotate_create_copy() -> io::Result<()> {
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
@@ -1692,6 +1691,42 @@ mod tests {
             let entry_key = lookup!(fs, a);
             assert_is_file!(fs, entry_key);
         }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[cfg(windows)]
+    async fn filesystem_rotate_create_copy_win() -> io::Result<()> {
+        let tempdir = TempDir::new()?;
+        let path = tempdir.path().to_path_buf();
+        let fs = create_fs(&path);
+
+        // Copy and remove
+        let a = path.join("a");
+        let old = path.join("a.old");
+
+        let file_handle = std::thread::spawn({
+            let a_file = a.clone();
+            let old_file = old.clone();
+            move || {
+                File::create(&a_file).unwrap();
+                assert!(&a_file.is_file());
+                copy(&a_file, &old_file).unwrap();
+                remove_file(&a_file).unwrap();
+                assert!(!&a_file.is_file());
+            }
+        });
+        file_handle.join().unwrap();
+
+        take_events!(fs);
+        take_events!(fs);
+
+        take_events!(fs);
+        let entry_key = lookup!(fs, a);
+        assert!(entry_key.is_none());
+        let entry_key = lookup!(fs, old);
+        assert_is_file!(fs, entry_key);
 
         Ok(())
     }
@@ -1887,6 +1922,7 @@ mod tests {
 
     // Deletes a file
     #[tokio::test]
+    #[cfg(unix)]
     async fn filesystem_delete_file() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
         let tempdir = TempDir::new()?;
@@ -1902,6 +1938,41 @@ mod tests {
         remove_file(&file_path)?;
         take_events!(fs);
 
+        take_events!(fs);
+        take_events!(fs);
+        assert!(lookup!(fs, file_path).is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[cfg(windows)]
+    async fn filesystem_delete_file_win() -> io::Result<()> {
+        let (tx_main, rx_main) = mpsc::channel();
+        let (tx_thread, rx_thread) = mpsc::channel();
+
+        let _ = env_logger::Builder::from_default_env().try_init();
+        let tempdir = TempDir::new()?;
+        let path = tempdir.path().to_path_buf();
+        let fs = create_fs(&path);
+        let file_path = path.join("file.log");
+
+        let file_handle = std::thread::spawn({
+            let file = file_path.clone();
+            move || {
+                File::create(&file).unwrap();
+                assert!(&file.is_file());
+                tx_thread.send(true).unwrap();
+                rx_main.recv().unwrap();
+                remove_file(&file).unwrap();
+                assert!(!file.is_file());
+            }
+        });
+        rx_thread.recv().unwrap();
+
+        tx_main.send(true).unwrap();
+        file_handle.join().unwrap();
+
+        take_events!(fs);
         take_events!(fs);
         take_events!(fs);
 
@@ -2031,6 +2102,7 @@ mod tests {
 
     // Deletes a hardlink
     #[tokio::test]
+    #[cfg(unix)]
     async fn filesystem_delete_hardlink() -> io::Result<()> {
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
@@ -2053,9 +2125,50 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    #[cfg(windows)]
+    async fn filesystem_delete_hardlink_win() -> io::Result<()> {
+        let (tx_main, rx_main) = mpsc::channel();
+        let (tx_thread, rx_thread) = mpsc::channel();
+
+        let tempdir = TempDir::new()?;
+        let path = tempdir.path().to_path_buf();
+        let fs = create_fs(&path);
+
+        // Copy and remove
+        let a = path.join("a");
+        let b = path.join("b");
+
+        let file_handle = std::thread::spawn({
+            let a_file = a.clone();
+            let b_file = b.clone();
+            move || {
+                File::create(&a_file).unwrap();
+                hard_link(&a_file, &b_file).unwrap();
+                assert!(&a_file.is_file());
+                assert!(&b_file.is_file());
+                tx_thread.send(true).unwrap();
+                rx_main.recv().unwrap();
+                remove_file(&b_file).unwrap();
+                assert!(!b_file.is_file());
+            }
+        });
+        rx_thread.recv().unwrap();
+
+        tx_main.send(true).unwrap();
+        file_handle.join().unwrap();
+
+        take_events!(fs);
+        assert!(lookup!(fs, a).is_some());
+        assert!(lookup!(fs, b).is_none());
+
+        Ok(())
+    }
+
     // Deletes the pointee of a hardlink (not totally accurate since we're not deleting the inode
     // entry, but what evs)
     #[tokio::test]
+    #[cfg(unix)]
     async fn filesystem_delete_hardlink_pointee() -> io::Result<()> {
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
@@ -2072,6 +2185,44 @@ mod tests {
 
         assert!(lookup!(fs, a).is_none());
         assert!(lookup!(fs, b).is_some());
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[cfg(windows)]
+    async fn filesystem_delete_hardlink_pointee_win() -> io::Result<()> {
+        let (tx_main, rx_main) = mpsc::channel();
+        let (tx_thread, rx_thread) = mpsc::channel();
+
+        let tempdir = TempDir::new()?;
+        let path = tempdir.path().to_path_buf();
+        let fs = create_fs(&path);
+
+        let a = path.join("a");
+        let b = path.join("b");
+        let file_handle = std::thread::spawn({
+            let a_file = a.clone();
+            let b_file = b.clone();
+            move || {
+                File::create(&a_file).unwrap();
+                hard_link(&a_file, &b_file).unwrap();
+                assert!(&a_file.is_file());
+                assert!(&b_file.is_file());
+                tx_thread.send(true).unwrap();
+                rx_main.recv().unwrap();
+                remove_file(&a_file).unwrap();
+                assert!(!a_file.is_file());
+            }
+        });
+        rx_thread.recv().unwrap();
+
+        tx_main.send(true).unwrap();
+        file_handle.join().unwrap();
+
+        take_events!(fs);
+        assert!(lookup!(fs, a).is_none());
+        assert!(lookup!(fs, b).is_some());
+
         Ok(())
     }
 
@@ -2461,7 +2612,7 @@ mod tests {
         let events = take_events!(fs);
         assert_eq!(
             events.len(),
-            1,
+            2, // version 5 of notify-rs throws 2 write events
             "events: {:#?}",
             events
                 .into_iter()
@@ -2479,11 +2630,11 @@ mod tests {
 
         writeln!(file2, "hello")?;
         let events = take_events!(fs);
-        assert_eq!(events.len(), 1, "events: {:#?}", events);
+        assert_eq!(events.len(), 2, "events: {:#?}", events);
 
         writeln!(file3, "hello")?;
         let events = take_events!(fs);
-        assert_eq!(events.len(), 1, "events: {:#?}", events);
+        assert_eq!(events.len(), 2, "events: {:#?}", events);
 
         drop(file1);
         drop(file2);

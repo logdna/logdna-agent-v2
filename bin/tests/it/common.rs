@@ -285,6 +285,7 @@ where
     let mut lines_buffer = String::new();
     let instant = std::time::Instant::now();
 
+    debug!("event info: {:?}", event_info);
     for _safeguard in 0..100_000 {
         assert!(
             instant.elapsed() < delay.unwrap_or(std::time::Duration::from_secs(20)),
@@ -299,6 +300,7 @@ where
         lines_buffer.push_str(&line);
         lines_buffer.push('\n');
         if condition(&line) {
+            debug!("condition found: {:?}", line);
             return lines_buffer;
         }
         line.clear();

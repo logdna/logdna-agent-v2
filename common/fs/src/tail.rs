@@ -16,8 +16,6 @@ use tokio::sync::Mutex;
 
 use futures::{ready, Future, Stream, StreamExt};
 
-use std::time::Duration;
-
 use pin_project_lite::pin_project;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -255,7 +253,6 @@ impl Tailer {
         rules: Rules,
         lookback_config: Lookback,
         initial_offsets: Option<HashMap<FileId, SpanVec>>,
-        event_delay: Duration,
     ) -> Self {
         Self {
             fs_cache: Arc::new(Mutex::new(FileSystem::new(
@@ -263,7 +260,6 @@ impl Tailer {
                 lookback_config,
                 initial_offsets.unwrap_or_default(),
                 rules,
-                event_delay,
             ))),
             event_times: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -348,6 +344,7 @@ mod test {
     use std::io::Write;
     use std::panic;
     use std::rc::Rc;
+    use std::time::Duration;
     use tempfile::tempdir;
     use tokio_stream::StreamExt;
 
@@ -410,7 +407,6 @@ mod test {
                     rules,
                     Lookback::None,
                     None,
-                    DELAY,
                 );
 
                 let stream = process(tailer).expect("failed to read events");
@@ -457,7 +453,6 @@ mod test {
                     rules,
                     Lookback::SmallFiles,
                     None,
-                    DELAY,
                 );
 
                 let stream = process(tailer).expect("failed to read events");
@@ -506,7 +501,6 @@ mod test {
                     rules,
                     Lookback::Start,
                     None,
-                    DELAY,
                 );
 
                 let stream = process(tailer).expect("failed to read events");
