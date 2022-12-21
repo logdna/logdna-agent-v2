@@ -258,7 +258,7 @@ lint-audit: ## Audits packages for issues
 
 .PHONY:lint-docker
 lint-docker: ## Lint the Dockerfile for issues
-	$(HADOLINT_COMMAND) "" "hadolint Dockerfile --ignore DL3006 --ignore SC2086 --ignore SC2317"
+	$(HADOLINT_COMMAND) "" "hadolint Dockerfile --ignore DL3006 --ignore SC2086"
 
 .PHONY:lint-shell
 lint-shell: ## Lint the Dockerfile for issues
