@@ -51,10 +51,10 @@ KUBECONFIG=$curpath/.kind_config_host kubectl apply -f $curpath/kind/metrics-ser
 
 # Run the integration test binary in docker on the same network as the kubernetes cluster
 if [ "$HOST_MACHINE" = "Mac" ]; then
-	# shellcheck disable=SC2086
+	# shellcheck disable=SC2086,SC2317
 	child=$(docker run --network $kind_network -d -w "$1" $extra_args -v "$2" -v $curpath/.kind_config:$1/.kind_config -e KUBECONFIG=$1/.kind_config $5 "$4" /bin/sh -c "$6")
 elif [ "$HOST_MACHINE" = "Linux" ]; then
-	# shellcheck disable=SC2086
+	# shellcheck disable=SC2086,SC2317
 	child=$(docker run --network $kind_network -d -u "$(id -u)":"$(id -g)" -w "$1" $extra_args -v "$2" -v $curpath/.kind_config:$1/.kind_config -e KUBECONFIG=$1/.kind_config $5 "$4" /bin/sh -c "$6")
 fi
 
