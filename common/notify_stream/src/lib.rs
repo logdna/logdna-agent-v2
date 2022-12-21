@@ -1,10 +1,10 @@
 extern crate notify;
 
 use futures::{stream, Stream};
-use notify::{DebouncedEvent, Error as NotifyError, Watcher as NotifyWatcher};
+use notify::event::{CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode};
+use notify::{Config, ErrorKind, EventKind, Watcher as NotifyWatcher};
 use std::path::Path;
 use std::rc::Rc;
-use std::time::Duration;
 use time::OffsetDateTime;
 
 type PathId = std::path::PathBuf;
@@ -12,7 +12,7 @@ type PathId = std::path::PathBuf;
 #[cfg(target_os = "linux")]
 type OsWatcher = notify::INotifyWatcher;
 #[cfg(not(any(target_os = "linux")))]
-type OsWatcher = notify::PollWatcher;
+type OsWatcher = notify::RecommendedWatcher;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 /// Event wrapper to that hides platform and implementation details.
@@ -74,6 +74,12 @@ pub enum Error {
 
     /// Attempted to remove a watch that does not exist
     WatchNotFound,
+
+    /// An invalid config was passed at runtime
+    InvalidConfig(Config),
+
+    /// Cannot watch anymore file
+    MaxFilesWatch,
 }
 
 pub enum RecursiveMode {
@@ -83,14 +89,14 @@ pub enum RecursiveMode {
 
 pub struct Watcher {
     watcher: OsWatcher,
-    rx: Rc<async_channel::Receiver<DebouncedEvent>>,
+    rx: Rc<async_channel::Receiver<Result<notify::Event, notify::Error>>>,
 }
 
 impl Watcher {
-    pub fn new(delay: Duration) -> Self {
+    pub fn new() -> Self {
         let (watcher_tx, blocking_rx) = std::sync::mpsc::channel();
 
-        let watcher = OsWatcher::new(watcher_tx, delay).unwrap();
+        let watcher = OsWatcher::new(watcher_tx, Config::default()).unwrap();
         let (async_tx, rx) = async_channel::unbounded();
         tokio::task::spawn_blocking(move || {
             while let Ok(event) = blocking_rx.recv() {
@@ -109,22 +115,22 @@ impl Watcher {
     }
 
     /// Adds a new directory or file to watch
-    pub fn watch<P: AsRef<Path>>(&mut self, path: P, mode: RecursiveMode) -> Result<(), Error> {
-        log::trace!("watching {:?}", path.as_ref());
+    pub fn watch(&mut self, path: &Path, mode: RecursiveMode) -> Result<(), Error> {
+        log::trace!("watching {:?}", path);
         self.watcher.watch(path, mode.into()).map_err(|e| e.into())
     }
 
     /// Removes a file or directory
-    pub fn unwatch<P: AsRef<Path>>(&mut self, path: P) -> Result<(), Error> {
-        log::trace!("unwatching {:?}", path.as_ref());
+    pub fn unwatch(&mut self, path: &Path) -> Result<(), Error> {
+        log::trace!("unwatching {:?}", path);
         self.watcher.unwatch(path).map_err(|e| e.into())
     }
 
     /// Removes a file or directory, ignoring watch not found errors.
     ///
     /// Returns Ok(true) when watch was found and removed.
-    pub fn unwatch_if_exists<P: AsRef<Path>>(&mut self, path: P) -> Result<bool, Error> {
-        log::trace!("unwatching {:?} if it exists", path.as_ref());
+    pub fn unwatch_if_exists(&mut self, path: &Path) -> Result<bool, Error> {
+        log::trace!("unwatching {:?} if it exists", path);
         match self.watcher.unwatch(path).map_err(|e| e.into()) {
             Ok(_) => Ok(true),
             Err(e) => match e {
@@ -140,23 +146,57 @@ impl Watcher {
         let rx = Rc::clone(&self.rx);
         Box::pin(stream::unfold(rx, |rx| async move {
             loop {
-                let received = rx.recv().await.expect("channel can not be closed");
+                let received = rx.recv().await.expect("channel can not be closed").unwrap();
                 log::trace!("received raw notify event: {:?}", received);
-                if let Some(mapped_event) = match received {
-                    DebouncedEvent::NoticeRemove(p) => Some(Event::Remove(p)),
-                    DebouncedEvent::Create(p) => Some(Event::Create(p)),
-                    DebouncedEvent::Write(p) => Some(Event::Write(p)),
-                    DebouncedEvent::Rename(source, dest) => Some(Event::Rename(source, dest)),
-                    // TODO: Define what to do with Rescan
-                    DebouncedEvent::Rescan => Some(Event::Rescan),
-                    DebouncedEvent::Error(e, p) => Some(Event::Error(e.into(), p)),
-                    // NoticeWrite can be useful but we don't use it
-                    DebouncedEvent::NoticeWrite(_) => None,
-                    // Ignore `Remove`: we use `NoticeRemove` that comes before in the flow
-                    DebouncedEvent::Remove(_) => None,
-                    // Ignore attribute changes
-                    DebouncedEvent::Chmod(_) => None,
+                if let Some(mapped_event) = match received.kind {
+                    EventKind::Remove(RemoveKind::File) => {
+                        Some(Event::Remove(received.paths.first().unwrap().clone()))
+                    }
+                    EventKind::Remove(RemoveKind::Folder) => {
+                        Some(Event::Remove(received.paths.first().unwrap().clone()))
+                    }
+                    EventKind::Remove(RemoveKind::Other) => {
+                        Some(Event::Remove(received.paths.first().unwrap().clone()))
+                    }
+                    EventKind::Remove(RemoveKind::Any) => {
+                        Some(Event::Remove(received.paths.first().unwrap().clone()))
+                    }
+                    EventKind::Create(CreateKind::File) => {
+                        Some(Event::Create(received.paths.first().unwrap().clone()))
+                    }
+                    EventKind::Create(CreateKind::Folder) => {
+                        Some(Event::Create(received.paths.first().unwrap().clone()))
+                    }
+                    EventKind::Create(CreateKind::Other) => {
+                        Some(Event::Create(received.paths.first().unwrap().clone()))
+                    }
+                    EventKind::Create(CreateKind::Any) => {
+                        Some(Event::Create(received.paths.first().unwrap().clone()))
+                    }
+                    EventKind::Modify(ModifyKind::Data(DataChange::Any)) => {
+                        Some(Event::Write(received.paths.first().unwrap().clone()))
+                    }
+                    EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
+                        Some(Event::Remove(received.paths.first().unwrap().clone()))
+                    }
+                    EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
+                        Some(Event::Create(received.paths.first().unwrap().clone()))
+                    }
+                    EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => Some(Event::Rename(
+                        received.paths.first().unwrap().clone(),
+                        received.paths.last().unwrap().clone(),
+                    )),
+                    EventKind::Modify(ModifyKind::Other) => {
+                        Some(Event::Write(received.paths.first().unwrap().clone()))
+                    }
+                    EventKind::Modify(ModifyKind::Any) => {
+                        Some(Event::Write(received.paths.first().unwrap().clone()))
+                    }
+                    EventKind::Modify(ModifyKind::Metadata(_)) => None,
+                    EventKind::Access(_) => None,
+                    _ => None,
                 } {
+                    log::trace!("mapped event: {:?}\n", mapped_event);
                     return Some(((mapped_event, OffsetDateTime::now_utc()), rx));
                 }
             }
@@ -164,13 +204,21 @@ impl Watcher {
     }
 }
 
+impl Default for Watcher {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl From<notify::Error> for Error {
     fn from(e: notify::Error) -> Error {
-        match e {
-            NotifyError::Generic(s) => Error::Generic(s),
-            NotifyError::Io(err) => Error::Io(format!("{}", err)),
-            NotifyError::PathNotFound => Error::PathNotFound,
-            NotifyError::WatchNotFound => Error::WatchNotFound,
+        match e.kind {
+            ErrorKind::Generic(s) => Error::Generic(s),
+            ErrorKind::Io(err) => Error::Io(format!("{}", err)),
+            ErrorKind::PathNotFound => Error::PathNotFound,
+            ErrorKind::WatchNotFound => Error::WatchNotFound,
+            ErrorKind::InvalidConfig(c) => Error::InvalidConfig(c),
+            ErrorKind::MaxFilesWatch => Error::MaxFilesWatch,
         }
     }
 }
@@ -192,7 +240,14 @@ mod tests {
     use pin_utils::pin_mut;
     use std::fs::{self, File};
     use std::io::{self, Write};
+    use std::time::Duration;
     use tempfile::tempdir;
+
+    #[cfg(windows)]
+    use std::sync::mpsc;
+
+    #[cfg(windows)]
+    use std::thread;
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     use predicates::prelude::*;
@@ -247,10 +302,11 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn test_unwatch_if_exists() {
         let dir = tempdir().unwrap();
         let dir_untracked = tempdir().unwrap();
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(dir.path(), RecursiveMode::Recursive).unwrap();
         assert!(matches!(
             w.unwatch_if_exists(dir_untracked.path()),
@@ -264,7 +320,7 @@ mod tests {
         let dir = tempdir().unwrap().into_path();
         let dir_path = &dir;
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(dir_path, RecursiveMode::Recursive).unwrap();
 
         let file1_path = dir_path.join("file1.log");
@@ -291,7 +347,7 @@ mod tests {
         let dir = tempdir().unwrap().into_path();
         let dir_path = &dir;
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(dir_path, RecursiveMode::Recursive).unwrap();
 
         let stream = w.receive();
@@ -317,11 +373,12 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(unix)]
     async fn test_create_write_delete() -> io::Result<()> {
         let dir = tempdir().unwrap();
         let dir_path = dir.path();
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         // Copy the same behaviour we use
         w.watch(dir_path, RecursiveMode::NonRecursive).unwrap();
 
@@ -365,10 +422,68 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(windows)]
+    async fn test_create_write_delete_win() -> io::Result<()> {
+        let (tx_main, rx_main) = mpsc::channel();
+        let (tx_thread, rx_thread) = mpsc::channel();
+
+        let dir = tempdir().unwrap();
+        let dir_path = dir.path();
+        let file_path = dir_path.join("file1.log");
+
+        let mut w = Watcher::new();
+        w.watch(dir_path, RecursiveMode::NonRecursive).unwrap();
+
+        let file_handle = std::thread::spawn({
+            let file_path_clone = file_path.clone();
+            move || {
+                let mut file = File::create(&file_path_clone).unwrap();
+                let _ = writeln!(file, "WindowsSample");
+                let _ = tx_thread.send(true);
+                let _ = rx_main.recv();
+                let _ = fs::remove_file(file_path_clone);
+            }
+        });
+        let _ = rx_thread.recv();
+        let stream = w.receive();
+        pin_mut!(stream);
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let mut items = Vec::new();
+        take!(stream, items);
+
+        assert!(!items.is_empty());
+        is_match!(&items[0], Create, file_path);
+
+        let _ = tx_main.send(true);
+        file_handle.join().unwrap();
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        let mut items = Vec::new();
+        take!(stream, items);
+
+        let is_equal = |p: &PathId| p.as_os_str() == file_path.as_os_str();
+        let items: Vec<_> = items
+            .iter()
+            .filter(|e| match e {
+                Event::Write(p) => is_equal(p),
+                Event::Remove(p) => is_equal(p),
+                Event::Create(p) => is_equal(p),
+                _ => false,
+            })
+            .collect();
+
+        is_match!(items.last().unwrap(), Remove, file_path);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
     async fn test_watch_file_write_after_create() -> io::Result<()> {
         let dir = tempdir().unwrap().into_path();
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
 
         // We use non-recursive watches on directories and scan children manually
         // to have the same behaviour across all platforms
@@ -396,6 +511,58 @@ mod tests {
         Ok(())
     }
 
+    #[tokio::test]
+    #[cfg(windows)]
+    async fn test_watch_file_write_after_create_win() -> io::Result<()> {
+        let (tx_main, rx_main) = mpsc::channel();
+        let (tx_thread, rx_thread) = mpsc::channel();
+
+        let dir = tempdir().unwrap().into_path();
+
+        let mut w = Watcher::new();
+
+        // We use non-recursive watches on directories and scan children manually
+        // to have the same behaviour across all platforms
+        w.watch(&dir, RecursiveMode::NonRecursive).unwrap();
+
+        let file1_path = &dir.join("file1.log");
+        let file_handle = std::thread::spawn({
+            let file_path_clone = file1_path.clone();
+            move || {
+                let mut file = File::create(&file_path_clone).unwrap();
+                let _ = tx_thread.send(true);
+                let _ = rx_main.recv(); // wait for signal from main
+                let _ = writeln!(file, "WindowsSample");
+            }
+        });
+
+        // Main thread waits for file creation
+        let _ = rx_thread.recv(); // wait for thread to create file
+
+        let stream = w.receive();
+        pin_mut!(stream);
+
+        let mut items = Vec::new();
+        take!(stream, items);
+
+        assert!(!items.is_empty());
+        is_match!(&items[0], Create, file1_path);
+
+        // Manually add watch
+        w.watch(file1_path, RecursiveMode::NonRecursive).unwrap();
+
+        // Send signal to thread to write to file
+        let _ = tx_main.send(true);
+
+        // Wait for thread to finish writing to file
+        file_handle.join().unwrap();
+
+        take!(stream, items);
+
+        is_match!(&items.last().unwrap(), Write, file1_path);
+        Ok(())
+    }
+
     /// macOS will follow symlink files
     #[tokio::test]
     #[cfg(target_os = "macos")]
@@ -403,7 +570,7 @@ mod tests {
         let dir = tempdir()?.into_path();
         let excluded_dir = tempdir()?.into_path();
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let file_path = &excluded_dir.join("file1.log");
@@ -447,7 +614,7 @@ mod tests {
         let dir = tempdir()?.into_path();
         let excluded_dir = tempdir()?.into_path();
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let file_path = &excluded_dir.join("file1.log");
@@ -488,7 +655,7 @@ mod tests {
         let dir = tempdir()?.into_path();
         let excluded_dir = tempdir()?.into_path();
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let file_path = &excluded_dir.join("file1.log");
@@ -537,7 +704,7 @@ mod tests {
         let dir = tempdir()?.into_path();
         let excluded_dir = tempdir()?.into_path();
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let file_path = &excluded_dir.join("file1.log");
@@ -568,8 +735,8 @@ mod tests {
         take!(stream, items);
 
         let predicate_fn = predicate::in_iter(items);
-        // The symlink was edited: yielded as a write in the symlink path
-        assert!(predicate_fn.eval(&Event::Write(symlink_path.clone())));
+        // The symlink was edited: notify-rs v5 yields a Create instead of a write (was Write in v4)
+        assert!(predicate_fn.eval(&Event::Create(symlink_path.clone())));
 
         Ok(())
     }
@@ -585,7 +752,7 @@ mod tests {
         let mut file1 = File::create(file1_path)?;
         std::os::unix::fs::symlink(&excluded_dir, symlink_path)?;
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let stream = w.receive();
@@ -644,7 +811,7 @@ mod tests {
         let file_in_subdir_path = &sub_dir_path.join("file_in_subdir.log");
         let mut file_in_subdir = File::create(file_in_subdir_path)?;
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let stream = w.receive();
@@ -712,7 +879,7 @@ mod tests {
         let mut file = File::create(&file_path)?;
         fs::hard_link(&file_path, &link_path)?;
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let stream = w.receive();
@@ -741,7 +908,7 @@ mod tests {
         let mut file = File::create(file_path)?;
         fs::hard_link(file_path, link_path)?;
 
-        let mut w = Watcher::new(DELAY);
+        let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
 
         let stream = w.receive();

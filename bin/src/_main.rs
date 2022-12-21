@@ -282,7 +282,7 @@ pub async fn _main(
     executor.init();
 
     // Use an internal env var to support running integration test w/o additional delays
-    let event_delay = std::env::var(config::env_vars::INTERNAL_FS_DELAY)
+    let _event_delay = std::env::var(config::env_vars::INTERNAL_FS_DELAY)
         .map(|s| Duration::from_millis(s.parse().unwrap()))
         .unwrap_or(FS_EVENT_DELAY);
 
@@ -339,7 +339,7 @@ pub async fn _main(
             let rules = params.1.clone();
             let lookback = params.2.clone();
             let offsets = params.3.clone();
-            let tailer = tail::Tailer::new(watched_dirs, rules, lookback, offsets, event_delay);
+            let tailer = tail::Tailer::new(watched_dirs, rules, lookback, offsets);
             async move { tail::process(tailer).expect("except Failed to create FS Tailer") }
         },
     )
