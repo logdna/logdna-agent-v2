@@ -368,7 +368,7 @@ impl FileSystem {
             retry_events_recv,
             retry_events_send,
             ignored_dirs,
-            _c: countme::Count::new()
+            _c: countme::Count::new(),
         };
 
         let entries = fs.entries.clone();

@@ -219,7 +219,7 @@ pub struct ArgumentOptions {
 
     /// Interval in sec between clearing of various unconstrained agent caches
     #[structopt(long, env = env_vars::CLEAR_CACHE_INTERVAL)]
-    clear_cache_interval: Option<u32>
+    clear_cache_interval: Option<u32>,
 }
 
 impl ArgumentOptions {
@@ -527,8 +527,8 @@ mod test {
 
     use humanize_rs::bytes::Unit;
 
-    use std::env::set_var;
     use crate::raw;
+    use std::env::set_var;
 
     #[cfg(unix)]
     static EXCLUSION_GLOB_DEFAULT: &str = "/var/log/wtmp,/var/log/btmp,/var/log/utmp,/var/log/wtmpx,/var/log/btmpx,/var/log/utmpx,/var/log/asl/**,/var/log/sa/**,/var/log/sar*,/var/log/tallylog,/var/log/fluentd-buffers/**/*,/var/log/pods/**/*";
@@ -710,7 +710,10 @@ mod test {
         assert_eq!(config.log.metrics_port, None);
         assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
         assert_eq!(config.log.log_metric_server_stats, None);
-        assert_eq!(config.log.clear_cache_interval, Some(raw::LogConfig::default().clear_cache_interval.unwrap()));
+        assert_eq!(
+            config.log.clear_cache_interval,
+            Some(raw::LogConfig::default().clear_cache_interval.unwrap())
+        );
     }
 
     #[test]

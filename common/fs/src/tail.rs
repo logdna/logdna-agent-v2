@@ -300,7 +300,7 @@ where
             stream,
             pending: None,
             start_time: Some(Instant::now()),
-            restart_interval: restart_interval,
+            restart_interval,
         }
     }
 }
@@ -330,7 +330,10 @@ where
                     this.start_time.set(Some(Instant::now()));
                     let stream_fut = (this.f)(this.params);
                     this.pending.set(Some(stream_fut));
-                    info!("restarting stream, interval={}", this.restart_interval.as_secs());
+                    info!(
+                        "restarting stream, interval={}",
+                        this.restart_interval.as_secs()
+                    );
                 }
             }
             if let Some(p) = this.pending.as_mut().as_pin_mut() {

@@ -462,7 +462,7 @@ impl Default for LogConfig {
             k8s_metadata_include: None,
             k8s_metadata_exclude: None,
             log_metric_server_stats: None,
-            clear_cache_interval: Some(3600 * 3)  // 3 hours
+            clear_cache_interval: Some(3600 * 3), // 3 hours
         }
     }
 }

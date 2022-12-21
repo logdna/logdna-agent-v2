@@ -255,7 +255,10 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
     }
 
     if let Some(clear_cache_interval) = settings.clear_cache_interval {
-        agent.env("LOGDNA_CLEAR_CACHE_INTERVAL", format!("{}", clear_cache_interval));
+        agent.env(
+            "LOGDNA_CLEAR_CACHE_INTERVAL",
+            format!("{}", clear_cache_interval),
+        );
     }
 
     agent.spawn().expect("Failed to start agent")

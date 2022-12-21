@@ -383,13 +383,13 @@ impl TryFrom<RawConfig> for Config {
                 env_vars::LOG_METRIC_SERVER_STATS,
                 K8sTrackingConf::Never,
             ),
-            clear_cache_interval: Duration::from_secs(
-                raw.log.clear_cache_interval.unwrap_or_else( ||
+            clear_cache_interval: Duration::from_secs(raw.log.clear_cache_interval.unwrap_or_else(
+                || {
                     raw::LogConfig::default()
                         .clear_cache_interval
-                        .unwrap_or_default(),
-                ) as u64,
-            ),
+                        .unwrap_or_default()
+                },
+            ) as u64),
         };
 
         if log.use_k8s_enrichment == K8sTrackingConf::Never
