@@ -3,6 +3,7 @@
 curpath=$(dirname "$0")
 image="logdna-agent-journald:latest"
 
+# shellcheck disable=SC2317
 _term() {
 	if [ -z "$child" ]; then
     	status=$?
