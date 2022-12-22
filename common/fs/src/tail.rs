@@ -330,7 +330,7 @@ where
                     this.start_time.set(Some(Instant::now()));
                     let stream_fut = (this.f)(this.params);
                     this.pending.set(Some(stream_fut));
-                    info!("restarting stream");
+                    info!("restarting stream, interval={}", this.restart_interval.as_secs());
                 }
             }
             if let Some(p) = this.pending.as_mut().as_pin_mut() {
@@ -555,6 +555,7 @@ mod test {
             (watched_dirs, rules, Lookback::None, initial_offsets),
             |_: &String| false,
             |&_| async { futures::stream::empty() },
+            Duration::from_secs(3600),
         )
         .await;
 
@@ -579,6 +580,7 @@ mod test {
             (watched_dirs, rules, Lookback::None, initial_offsets),
             |_: &usize| false,
             |&_| async { futures::stream::iter(vec![1, 2, 3]) },
+            Duration::from_secs(3600),
         )
         .await;
 
@@ -616,6 +618,7 @@ mod test {
                     Some((cur, state))
                 }))
             },
+            Duration::from_secs(3600),
         )
         .await;
 
@@ -659,6 +662,7 @@ mod test {
                     }
                 }))
             },
+            Duration::from_secs(3600),
         )
         .await;
 
