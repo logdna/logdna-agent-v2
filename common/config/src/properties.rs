@@ -55,6 +55,7 @@ from_env_name!(INGEST_TIMEOUT);
 from_env_name!(INGEST_BUFFER_SIZE);
 from_env_name!(RETRY_DIR);
 from_env_name!(RETRY_DISK_LIMIT);
+from_env_name!(CLEAR_CACHE_INTERVAL);
 
 enum Key {
     FromEnv(&'static str),
@@ -301,6 +302,12 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
         argv::split_by_comma(value)
             .iter()
             .for_each(|v| regex_rules.push(v.to_string()));
+    }
+
+    if let Some(value) = map.get(&CLEAR_CACHE_INTERVAL) {
+        result.log.clear_cache_interval = Some(u32::from_str(value).map_err(|e| {
+            ConfigError::PropertyInvalid(format!("clear cache interval property is invalid: {}", e))
+        })?);
     }
 
     // Properties parser is very permissive
