@@ -1,17 +1,15 @@
-use assert_cmd::cargo::CommandCargoExt;
 use predicate::str::{contains, is_match};
 use predicates::prelude::predicate;
 use predicates::Predicate;
-use serial_test::serial;
 use std::fs::{self, File};
 use std::io;
 use std::io::BufRead;
 use std::io::Write;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::str::from_utf8;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use tempfile::tempdir;
 
@@ -89,7 +87,6 @@ fn test_version_is_included() {
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_list_config_from_conf() -> io::Result<()> {
     let _ = env_logger::Builder::from_default_env().try_init();
@@ -102,7 +99,7 @@ fn test_list_config_from_conf() -> io::Result<()> {
 
     let output: Output = cmd
         .env_clear()
-        .args(&["-c", config_file_path.to_str().unwrap()])
+        .args(["-c", config_file_path.to_str().unwrap()])
         .arg("-l")
         .unwrap();
     assert!(output.status.success());
@@ -124,7 +121,6 @@ fn test_list_config_from_conf() -> io::Result<()> {
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_legacy_and_new_confs_merge() -> io::Result<()> {
@@ -149,7 +145,7 @@ fn test_legacy_and_new_confs_merge() -> io::Result<()> {
     )?;
 
     let new_conf_path = Path::new("/etc/logdna");
-    fs::create_dir_all(&new_conf_path)?;
+    fs::create_dir_all(new_conf_path)?;
     let new_conf_path = new_conf_path.join("config.yaml");
     let mut new_conf_file = File::create(new_conf_path)?;
     write!(
@@ -233,7 +229,6 @@ fn test_list_config_no_options() -> io::Result<()> {
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 fn test_list_default_conf() -> io::Result<()> {
     let _ = env_logger::Builder::from_default_env().try_init();
@@ -244,7 +239,7 @@ fn test_list_default_conf() -> io::Result<()> {
     let output: Output = cmd.env_clear().arg("-l").unwrap();
 
     // Remove file before any assert
-    fs::remove_file(&file_path)?;
+    fs::remove_file(file_path)?;
 
     assert!(output.status.success());
     let stdout = from_utf8(&output.stdout).unwrap();
@@ -261,34 +256,34 @@ fn test_command_line_arguments_should_set_config() {
     let _ = env_logger::Builder::from_default_env().try_init();
     test_command(
         |cmd| {
-            cmd.args(&["-k", "my_secret"])
-                .args(&["-d", "/d1/", "/d2/"])
-                .args(&["-t", "a", "b"])
-                .args(&["--host", "remotehost"])
-                .args(&["--endpoint-path", "/path/to/endpoint"])
-                .args(&["--use-ssl", "true"])
-                .args(&["--use-compression", "false"])
-                .args(&["--gzip-level", "3"])
-                .args(&["--os-hostname", "os_host_name_sample"])
-                .args(&["--ip", "1.2.3.4"])
-                .args(&["--mac-address", "01-23-45-67-89-AB-CD-EF"])
-                .args(&["--exclude", "a.*"])
-                .args(&["--exclude-regex", "b.*"])
-                .args(&["--include", "c.*"])
-                .args(&["--include-regex", "d.*"])
-                .args(&["--journald-paths", "/run/systemd/journal"])
-                .args(&["--lookback", "start"])
-                .args(&["--use-k8s-enrichment", "never"])
-                .args(&["--log-k8s-events", "always"])
-                .args(&["--db-path", "/var/lib/some-agent/"])
-                .args(&["--metrics-port", "9898"])
-                .args(&["--line-exclusion", "abc"])
-                .args(&["--line-inclusion", "z_inc"])
-                .args(&["--line-redact", "a@b.com"])
-                .args(&["--ingest-buffer-size", "123456"])
-                .args(&["--ingest-timeout", "9876"])
-                .args(&["--retry-dir", "/tmp/logdna/argv"])
-                .args(&["--retry-disk-limit", "9 MB"]);
+            cmd.args(["-k", "my_secret"])
+                .args(["-d", "/d1/", "/d2/"])
+                .args(["-t", "a", "b"])
+                .args(["--host", "remotehost"])
+                .args(["--endpoint-path", "/path/to/endpoint"])
+                .args(["--use-ssl", "true"])
+                .args(["--use-compression", "false"])
+                .args(["--gzip-level", "3"])
+                .args(["--os-hostname", "os_host_name_sample"])
+                .args(["--ip", "1.2.3.4"])
+                .args(["--mac-address", "01-23-45-67-89-AB-CD-EF"])
+                .args(["--exclude", "a.*"])
+                .args(["--exclude-regex", "b.*"])
+                .args(["--include", "c.*"])
+                .args(["--include-regex", "d.*"])
+                .args(["--journald-paths", "/run/systemd/journal"])
+                .args(["--lookback", "start"])
+                .args(["--use-k8s-enrichment", "never"])
+                .args(["--log-k8s-events", "always"])
+                .args(["--db-path", "/var/lib/some-agent/"])
+                .args(["--metrics-port", "9898"])
+                .args(["--line-exclusion", "abc"])
+                .args(["--line-inclusion", "z_inc"])
+                .args(["--line-redact", "a@b.com"])
+                .args(["--ingest-buffer-size", "123456"])
+                .args(["--ingest-timeout", "9876"])
+                .args(["--retry-dir", "/tmp/logdna/argv"])
+                .args(["--retry-disk-limit", "9 MB"]);
         },
         |d| {
             log::debug!("agent output: {:#?}", d);
@@ -525,7 +520,6 @@ fn test_deprecated_environment_variables_should_set_config() {
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_command_line_arguments_should_merge_config_from_file() {
     let config_dir = tempdir().unwrap().into_path();
@@ -568,12 +562,12 @@ startup: {{}}
 
     test_command(
         |cmd| {
-            cmd.args(&["-k", "123"])
-                .args(&["-c", config_file_path.to_str().unwrap()])
-                .args(&["-d", "/var/log2/,/var/log3/"])
-                .args(&["-t", "tag2", "tag3"])
-                .args(&["--exclude", "file.log"])
-                .args(&["--include", "file.zlog"]);
+            cmd.args(["-k", "123"])
+                .args(["-c", config_file_path.to_str().unwrap()])
+                .args(["-d", "/var/log2/,/var/log3/"])
+                .args(["-t", "tag2", "tag3"])
+                .args(["--exclude", "file.log"])
+                .args(["--include", "file.zlog"]);
         },
         |d| {
             assert!(
@@ -600,7 +594,6 @@ startup: {{}}
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_properties_config_min() -> io::Result<()> {
     let config_dir = tempdir()?;
@@ -610,7 +603,7 @@ fn test_properties_config_min() -> io::Result<()> {
 
     test_command(
         |cmd| {
-            cmd.args(&["-c", config_file_path.to_str().unwrap()]);
+            cmd.args(["-c", config_file_path.to_str().unwrap()]);
         },
         |d| {
             // Verify that it starts thanks to having the key is good enough
@@ -623,7 +616,6 @@ fn test_properties_config_min() -> io::Result<()> {
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_properties_config_legacy() -> io::Result<()> {
     let config_dir = tempdir()?;
@@ -642,7 +634,7 @@ hostname = some-linux-instance"
 
     test_command(
         |cmd| {
-            cmd.args(&["-c", config_file_path.to_str().unwrap()]);
+            cmd.args(["-c", config_file_path.to_str().unwrap()]);
         },
         |d| {
             assert!(is_match(r"log:\s+dirs:\s+\- /var/my_log\s+\- /var/my_log2")
@@ -666,9 +658,9 @@ hostname = some-linux-instance"
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_properties_config_common() -> io::Result<()> {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let config_dir = tempdir()?;
     let config_file_path = config_dir.path().join("sample.conf");
     let mut file = File::create(&config_file_path)?;
@@ -684,7 +676,7 @@ line_exclusion_regex = (?i:debug),(?i:trace)"
 
     test_command(
         |cmd| {
-            cmd.args(&["-c", config_file_path.to_str().unwrap()]);
+            cmd.args(["-c", config_file_path.to_str().unwrap()]);
         },
         |d| {
             assert!(is_match(r"log:\s+dirs:\s+\- /var/log\s+\- /var/my_log2")
@@ -703,10 +695,10 @@ line_exclusion_regex = (?i:debug),(?i:trace)"
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_properties_default_conf() -> io::Result<()> {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let data = "key = 1234\ntags = sample_tag";
     let file_path = Path::new("/etc/logdna.conf");
     let mut conf_file = File::create(file_path)?;
@@ -718,7 +710,7 @@ fn test_properties_default_conf() -> io::Result<()> {
             // No command argument
         },
         |d| {
-            fs::remove_file(&file_path).unwrap();
+            fs::remove_file(file_path).unwrap();
             assert!(is_match(r"log:\s+dirs:\s+\- /var/log/").unwrap().eval(d));
             assert!(contains("tags: sample_tag").eval(d));
         },
@@ -727,10 +719,10 @@ fn test_properties_default_conf() -> io::Result<()> {
 }
 
 #[test]
-#[serial]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_properties_default_yaml() -> io::Result<()> {
+    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = Path::new("/etc/logdna/");
     fs::create_dir_all(dir)?;
     let file_path = dir.join("config.yaml");
@@ -776,7 +768,7 @@ fn cmd_line_invalid_test(args: &[&str]) {
         .timeout(std::time::Duration::from_millis(500))
         .env_clear()
         .args(args)
-        .args(&["--key", "123"])
+        .args(["--key", "123"])
         .ok()
     {
         Ok(_) => panic!("it should have failed for {} but succeeded", args[0]),
@@ -797,8 +789,9 @@ where
     CmdF: Fn(&mut Command),
     DataF: Fn(&str),
 {
-    let mut cmd = Command::cargo_bin("logdna-agent").unwrap();
+    let mut cmd = crate::common::get_agent_command(None);
     cmd.env_clear()
+        .env("RUST_LOG", "debug")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
@@ -806,39 +799,63 @@ where
     cmd_f(&mut cmd);
 
     let mut handle = cmd.spawn().unwrap();
-    let data = Arc::new(Mutex::new(String::new()));
+    let data = Arc::new((Mutex::new((true, String::new())), Condvar::new()));
     let d = data.clone();
     let stderr_reader = std::io::BufReader::new(handle.stderr.take().unwrap());
+
     std::thread::spawn(move || {
+        let (lock, cvar) = &*d;
         for line in stderr_reader.lines() {
             let line = &line.unwrap();
-            let mut data = d.lock().unwrap();
+            let mut guard = lock.lock().unwrap();
+            let (pending, data) = guard.deref_mut();
+            log::debug!("agent stderr: {}", line);
             data.push_str(line);
             data.push('\n');
+            if data.contains("Enabling filesystem") {
+                *pending = false;
+                cvar.notify_one();
+            };
         }
     });
 
-    loop {
-        let has_started = {
-            let data = data.lock().unwrap();
-            if handle.try_wait().ok().unwrap().is_some() {
-                panic!("process exited unexpectedly: {}", data);
-            }
-            data.contains("Enabling filesystem")
-        };
-        if has_started {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(50));
-    }
+    let stdout_reader = std::io::BufReader::new(handle.stdout.take().unwrap());
 
-    let data = data.lock().unwrap();
-    // Validate data
-    data_f(data.deref());
+    std::thread::spawn(move || {
+        for line in stdout_reader.lines() {
+            let line = &line.unwrap();
+            log::debug!("agent stdout: {}", line);
+        }
+    });
+
+    // Wait for 30 seconds or until the agent has enabled the filesytem
+    let (lock, cvar) = &*data;
+    let guard = lock.lock().unwrap();
+    let (guard, result) = cvar
+        .wait_timeout_while(guard, Duration::from_secs(30), |&mut (pending, _)| pending)
+        .unwrap();
+
+    let (pending, data) = guard.deref();
+
+    // Make sure the agent is still running
+    assert!(
+        matches!(handle.try_wait(), Ok(None)),
+        "Process ended unexpectedly"
+    );
 
     handle.kill().unwrap();
+    handle.wait().unwrap();
+
+    // Kill the agent
+    if result.timed_out() || *pending {
+        panic!("timed out waiting for agent to start: {}", *data);
+    }
+
+    log::debug!("Agent STDERR output:\n{}", data);
+    // Validate data
+    data_f(data.deref());
 }
 
 fn get_bin_command() -> assert_cmd::Command {
-    assert_cmd::Command::cargo_bin("logdna-agent").unwrap()
+    assert_cmd::Command::from_std(crate::common::get_agent_command(None))
 }

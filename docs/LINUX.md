@@ -148,11 +148,33 @@ Agent](https://github.com/logdna/logdna-agent)\: You might already have a config
     ```
 
 ---
-**NOTE**
+## Special Circumstances
 
-For users of Amazon Linux 2:
+**For users of Amazon Linux 2:**
 - Amazon Linux 2 uses old version of systemd which does not support StateDirectory option in service configuration.
 - StateDirectory tells systemd to create “/var/lib/logdna" with proper permissions
 - StateDirectory line in “logdna-agent.service” file needs to be commented out on Amazon Linux 2.
 - if you want to run agent using non-root user then you need to create “/var/lib/logdna" directory manually and assign proper permissions for that user. agent needs read-write access to that folder.
 ---
+
+**For running as non-root**
+
+By default agent service is managed by systemd.
+
+You can override that behaviour in systemd by editing the agent's systemd unit file.
+
+To run the agent as non-root you can follow these steps:
+1. Create or decide on an existing user (and optionally group) that you want the agent to run as.
+2. Run this command to open your $EDITOR the current agent systemd unit configuration.  
+`systemctl edit --full logdna-agent.service`
+3. Add the following lines under the `[Service]` section
+```
+User=<name of user>
+Group=<name of group>
+```
+4. Save and exit your editor
+5. Run this command to refresh the systemd configuration and restart the agent service systemctl daemon-reload && systemctl restart logdna-agent
+
+*NOTES:*
+- Make sure the agent service user/group has access to log dirs and files specified in agent config (/var/log etc)
+- If logrotate is using "create mode owner group" config option - make sure it is consistent with agent service user/group.

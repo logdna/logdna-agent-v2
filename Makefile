@@ -102,13 +102,11 @@ WINDOWS?=
 
 NO_DEFAULT_FEATURES?=
 
-TARGET_DIR?=target/$(ARCH_TRIPLE)
-
-BUILD_ENVS=CARGO_TARGET_DIR=$(TARGET_DIR)
 
 ifneq ($(WINDOWS),)
 	FEATURES?=windows_service
 	TARGET=$(ARCH)-pc-windows-msvc
+	ARCH_TRIPLE?=$(ARCH)-windows-msvc
 	BINDGEN_EXTRA_CLANG_ARGS:=
 	RUSTFLAGS:=
 	RUSTFLAGS:=-C link-self-contained=yes -Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc
@@ -125,6 +123,10 @@ else ifneq ($(MAKECMDGOALS),bench)
 	FEATURES?=libjournald
 	RUSTFLAGS:=
 endif
+
+TARGET_DIR?=target/$(ARCH_TRIPLE)
+BUILD_ENVS:=$(BUILD_ENVS) CARGO_TARGET_DIR=$(TARGET_DIR)
+
 
 # Should we profile the benchmarks
 PROFILE?=--profile
@@ -260,7 +262,7 @@ lint-audit: ## Audits packages for issues
 
 .PHONY:lint-docker
 lint-docker: ## Lint the Dockerfile for issues
-	$(HADOLINT_COMMAND) "" "hadolint Dockerfile --ignore DL3006 --ignore SC2086"
+	$(HADOLINT_COMMAND) "" "hadolint Dockerfile --ignore DL3006 --ignore SC2086 --ignore SC2317"
 
 .PHONY:lint-shell
 lint-shell: ## Lint the Dockerfile for issues
@@ -527,7 +529,7 @@ $(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_SIGNED_RULE,$(_type))))
 define MSI_RULE
 .PHONY: msi-$(1)
 msi-$(1): ## create signed exe(s) and msi in $(BUILD_DIR)/signed
-	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	$(eval BUILD_DIR := ${TARGET_DIR}/$(TARGET)/$(1))
 	$(eval SRC_ROOT := $(CURDIR))
 	$(eval CERT_FILE_NAME := "mezmo_cert_$(1).pfx")
 	bash -c " \
@@ -551,7 +553,7 @@ $(foreach _type, $(BUILD_TYPES), $(eval $(call MSI_RULE,$(_type))))
 define TEST_MSI_RULE
 .PHONY: test-msi-$(1)
 test-msi-$(1): ## test msi created in $(BUILD_DIR)/signed
-	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	$(eval BUILD_DIR := ${TARGET_DIR}/$(TARGET)/$(1))
 	$(eval SRC_ROOT := $(CURDIR))
 	bash -c " \
 	set -eu; \
@@ -567,7 +569,7 @@ $(foreach _type, $(BUILD_TYPES), $(eval $(call TEST_MSI_RULE,$(_type))))
 define CHOCO_RULE
 .PHONY: choco-$(1)
 choco-$(1): ## create choco package using msi from logdna-agent-build-bin S3 baucket
-	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	$(eval BUILD_DIR := ${TARGET_DIR}/$(TARGET)/$(1))
 	$(eval SRC_ROOT := $(CURDIR))
 	bash -c " \
 	set -eu; \
@@ -581,7 +583,7 @@ $(foreach _type, $(BUILD_TYPES), $(eval $(call CHOCO_RULE,$(_type))))
 define PUBLISH_CHOCO_RULE
 .PHONY: publish-choco-$(1)
 publish-choco-$(1): ## publish choco package built & located in $(BUILD_DIR)/choco, requires env CHOCO_API_KEY defined
-	$(eval BUILD_DIR := target/$(TARGET)/$(1))
+	$(eval BUILD_DIR := ${TARGET_DIR}/$(TARGET)/$(1))
 	$(eval SRC_ROOT := $(CURDIR))
 	bash -c " \
 	set -eu; \
@@ -595,8 +597,8 @@ $(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_CHOCO_RULE,$(_type))))
 define PUBLISH_S3_CHOCO_RULE
 .PHONY: publish-s3-choco-$(1)
 publish-s3-choco-$(1): ## upload choco package to S3
-	$(eval PKG_NAME_FILE := "target/$(TARGET)/$(1)/choco/mezmo-agent.nupkg.name")
-	aws s3 cp --acl public-read "target/$(TARGET)/$(1)/choco/$$(shell cat $(PKG_NAME_FILE))" s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/$$(shell cat $(PKG_NAME_FILE));
+	$(eval PKG_NAME_FILE := "${TARGET_DIR}/$(TARGET)/$(1)/choco/mezmo-agent.nupkg.name")
+	aws s3 cp --acl public-read "${TARGET_DIR}/$(TARGET)/$(1)/choco/$$(shell cat $(PKG_NAME_FILE))" s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/$$(shell cat $(PKG_NAME_FILE));
 endef
 BUILD_TYPES=debug release
 $(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_S3_CHOCO_RULE,$(_type))))

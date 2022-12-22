@@ -300,6 +300,8 @@ pub struct LogConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub k8s_metadata_exclude: Option<Vec<String>>,
     pub log_metric_server_stats: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clear_cache_interval: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
@@ -314,15 +316,30 @@ impl Merge for K8sStartupLeaseConfig {
     }
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone)]
 pub struct JournaldConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub paths: Option<Vec<PathBuf>>,
+
+    pub systemd_journal_tailer: Option<bool>,
+}
+
+impl Default for JournaldConfig {
+    fn default() -> Self {
+        JournaldConfig {
+            systemd_journal_tailer: Some(true),
+            paths: None,
+        }
+    }
 }
 
 impl Merge for JournaldConfig {
     fn merge(&mut self, other: &Self, default: &Self) {
         self.paths.merge(&other.paths, &default.paths);
+        self.systemd_journal_tailer.merge(
+            &other.systemd_journal_tailer,
+            &default.systemd_journal_tailer,
+        )
     }
 }
 
@@ -445,6 +462,7 @@ impl Default for LogConfig {
             k8s_metadata_include: None,
             k8s_metadata_exclude: None,
             log_metric_server_stats: None,
+            clear_cache_interval: Some(3600 * 6), // 6 hours
         }
     }
 }
@@ -476,6 +494,8 @@ impl Merge for LogConfig {
             &other.log_metric_server_stats,
             &default.log_metric_server_stats,
         );
+        self.clear_cache_interval
+            .merge(&other.clear_cache_interval, &default.clear_cache_interval);
     }
 }
 
@@ -516,6 +536,8 @@ mod tests {
         assert_eq!(config.startup, k8s_config);
         assert_eq!(config.log.k8s_metadata_include, None);
         assert_eq!(config.log.k8s_metadata_exclude, None);
+        assert_eq!(config.journald.systemd_journal_tailer, Some(true));
+        assert_eq!(config.journald.paths, None);
     }
 
     #[test]
@@ -1054,10 +1076,12 @@ ingest_buffer_size = 3145728
     fn journald_config_merge() {
         let mut left_conf = JournaldConfig {
             paths: Some(vec![Path::new("/left").to_path_buf()]),
+            systemd_journal_tailer: Some(false),
         };
 
         let right_conf = JournaldConfig {
             paths: Some(vec![Path::new("/right").to_path_buf()]),
+            systemd_journal_tailer: Some(true),
         };
 
         left_conf.merge(&right_conf, &JournaldConfig::default());
@@ -1066,6 +1090,7 @@ ingest_buffer_size = 3145728
             .paths
             .expect("expected paths to not be None after merge");
         assert_eq!(actual_paths, vec![PathBuf::from("/right")]);
+        assert_eq!(left_conf.systemd_journal_tailer, Some(false));
     }
 
     #[test]

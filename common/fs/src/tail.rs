@@ -16,7 +16,7 @@ use tokio::sync::Mutex;
 
 use futures::{ready, Future, Stream, StreamExt};
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use pin_project_lite::pin_project;
 use std::pin::Pin;
@@ -255,7 +255,6 @@ impl Tailer {
         rules: Rules,
         lookback_config: Lookback,
         initial_offsets: Option<HashMap<FileId, SpanVec>>,
-        event_delay: Duration,
     ) -> Self {
         Self {
             fs_cache: Arc::new(Mutex::new(FileSystem::new(
@@ -263,7 +262,6 @@ impl Tailer {
                 lookback_config,
                 initial_offsets.unwrap_or_default(),
                 rules,
-                event_delay,
             ))),
             event_times: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -279,7 +277,10 @@ pin_project! {
         #[pin]
         stream: S,
         #[pin]
-        pending: Option<Fut>
+        pending: Option<Fut>,
+        #[pin]
+        start_time: Option<Instant>,
+        restart_interval: Duration,  // zero - no restarts
     }
 }
 
@@ -290,7 +291,7 @@ where
     S: Stream<Item = T>,
     Fut: Future<Output = S>,
 {
-    pub async fn new(params: P, restart: C, mut f: F) -> Self {
+    pub async fn new(params: P, restart: C, mut f: F, restart_interval: Duration) -> Self {
         let stream = f(&params).await;
         Self {
             params,
@@ -298,6 +299,8 @@ where
             f,
             stream,
             pending: None,
+            start_time: Some(Instant::now()),
+            restart_interval,
         }
     }
 }
@@ -319,6 +322,20 @@ where
         let mut this = self.project();
 
         Poll::Ready(loop {
+            // check for periodic restart
+            if let Some(start_time) = this.start_time.as_mut().as_pin_mut() {
+                if this.restart_interval.as_secs() > 0
+                    && start_time.elapsed().as_secs() > this.restart_interval.as_secs()
+                {
+                    this.start_time.set(Some(Instant::now()));
+                    let stream_fut = (this.f)(this.params);
+                    this.pending.set(Some(stream_fut));
+                    info!(
+                        "restarting stream, interval={}",
+                        this.restart_interval.as_secs()
+                    );
+                }
+            }
             if let Some(p) = this.pending.as_mut().as_pin_mut() {
                 let stream = ready!(p.poll(cx));
                 this.pending.set(None);
@@ -348,6 +365,7 @@ mod test {
     use std::io::Write;
     use std::panic;
     use std::rc::Rc;
+    use std::time::Duration;
     use tempfile::tempdir;
     use tokio_stream::StreamExt;
 
@@ -410,7 +428,6 @@ mod test {
                     rules,
                     Lookback::None,
                     None,
-                    DELAY,
                 );
 
                 let stream = process(tailer).expect("failed to read events");
@@ -457,7 +474,6 @@ mod test {
                     rules,
                     Lookback::SmallFiles,
                     None,
-                    DELAY,
                 );
 
                 let stream = process(tailer).expect("failed to read events");
@@ -506,7 +522,6 @@ mod test {
                     rules,
                     Lookback::Start,
                     None,
-                    DELAY,
                 );
 
                 let stream = process(tailer).expect("failed to read events");
@@ -543,6 +558,7 @@ mod test {
             (watched_dirs, rules, Lookback::None, initial_offsets),
             |_: &String| false,
             |&_| async { futures::stream::empty() },
+            Duration::from_secs(3600),
         )
         .await;
 
@@ -567,6 +583,7 @@ mod test {
             (watched_dirs, rules, Lookback::None, initial_offsets),
             |_: &usize| false,
             |&_| async { futures::stream::iter(vec![1, 2, 3]) },
+            Duration::from_secs(3600),
         )
         .await;
 
@@ -604,6 +621,7 @@ mod test {
                     Some((cur, state))
                 }))
             },
+            Duration::from_secs(3600),
         )
         .await;
 
@@ -647,6 +665,7 @@ mod test {
                     }
                 }))
             },
+            Duration::from_secs(3600),
         )
         .await;
 

@@ -199,6 +199,7 @@ For backward compatibility agent v1 configuration file format is still supported
 |`LOGDNA_LINE_INCLUSION_REGEX`|`log.line_inclusion_regex[]`|List of regex patterns to include log lines. When set, the Agent will send ONLY log lines that match any of these patterns.||
 |`LOGDNA_REDACT_REGEX`|`log.line_redact_regex`|List of regex patterns used to mask matching sensitive information (such as PII) before sending it in the log line.||
 |`LOGDNA_JOURNALD_PATHS`|`journald.paths[]`|List of paths (directories or files) of journald paths to monitor||
+|`MZ_SYSTEMD_JOURNAL_TAILER`||True/False toggles journald on the agent|'true'|
 |`LOGDNA_LOOKBACK`|`log.lookback`|The lookback strategy on startup|`none`|
 |`LOGDNA_K8S_STARTUP_LEASE`||Determines whether or not to use K8 leases on startup|`never`|
 |`LOGDNA_USE_K8S_LOG_ENRICHMENT`||Determines whether the agent should query the K8s API to enrich log lines from other pods.|`always`|
@@ -230,9 +231,15 @@ for example:
 
 1. We support [this flavor of globber syntax](https://docs.rs/glob/*/glob/).
 
-As listed above, by default the agent will only ingest files with a `.log` extention. Some other common globing patterns to include in the `LOGDNA_INCLUSION_RULES` could be: 
+As listed above, by default the agent will only ingest files with a `.log` extention. Globing patterns are checked against full file path. Some other common globing patterns to include in the `LOGDNA_INCLUSION_RULES` could be: 
 
-1. Pattern to ingest files with both a `.log` extention AND extention-less files: `*.log,!(*.*)`
+1. Pattern to ingest files with both a `.log` extention AND extention-less files:
+  - `*.log,!(*.*)`
+2. Applied to specific log dir:
+  - `/var/log/containers/mypod*.log`
+  - `*/containers/mypod*.log`
+3. Applied to all log dirs:
+  - `*/app?.log`
 
 ### Configuring the Environment
 
@@ -261,6 +268,10 @@ The valid values for this option are:
    * When set to **`start`**:
       * If there is information in the “state file”, use the last recorded state. 
       * If the file is not present in the “state file”, start at the beginning. 
+   * When set to **`tail`**:
+      * Will read .log files starting at the beginning of the file, if the .log file has a create timestamp that is later than when the agent began running.  
+      * Agent will warn if you are picking up .log files greater than 3MB.  
+      
 
 **Notes:**
 * If you configure the LogDNA Agent to run as non-root, review the [documentation](KUBERNETES.md#enabling-file-offset-tracking-across-restarts) about enabling "statefulness" for the LogDNA Agent.
@@ -284,7 +295,7 @@ file in docs directory of this repository.
 
 ### Configuring Journald
 
-If the agent pods have access to journald log files or directories, monitoring can be enabled on them with the `LOGDNA_JOURNALD_PATHS`. Common values include `/var/log/journal` and `/run/systemd/journal`. To specify both, use a comma separated list: `/var/log/journal,/run/systemd/journal`.
+You can monitor journald log files or directories that the agent pods have access to by adding them to the `LOGDNA_JOURNALD_PATHS` and setting `MZ_SYSTEMD_JOURNAL_TAILER` to true. Alternatively you leave `MZ_SYSTEMD_JOURNAL_TAILER` blank as it defaults to true. Common values include for `LOGDNA_JOURNALD_PATHS` - `/var/log/journal` and `/run/systemd/journal`. To specify both, use a comma separated list: `/var/log/journal,/run/systemd/journal`.
 
 Take a look at enabling journald monitoring for [Kubernetes](KUBERNETES.md#collecting-node-journald-logs) or [OpenShift](OPENSHIFT.md#collecting-node-journald-logs).
 

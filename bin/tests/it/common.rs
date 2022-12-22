@@ -35,7 +35,7 @@ pub fn append_to_file(file_path: &Path, lines: i32, sync_every: i32) -> Result<(
     let mut file = OpenOptions::new()
         .append(true)
         .create(true)
-        .open(&file_path)?;
+        .open(file_path)?;
 
     for i in 0..lines {
         if let Err(e) = writeln!(file, "{}", LINE) {
@@ -75,6 +75,7 @@ pub struct AgentSettings<'a> {
     pub exclusion_regex: Option<&'a str>,
     pub features: Option<&'a str>,
     pub journald_dirs: Option<&'a str>,
+    pub log_journal_d: Option<&'a str>,
     pub startup_lease: Option<&'a str>,
     pub ssl_cert_file: Option<&'a std::path::Path>,
     pub lookback: Option<&'a str>,
@@ -91,6 +92,7 @@ pub struct AgentSettings<'a> {
     pub ingest_timeout: Option<&'a str>,
     pub ingest_buffer_size: Option<&'a str>,
     pub log_level: Option<&'a str>,
+    pub clear_cache_interval: Option<u32>,
 }
 
 impl<'a> AgentSettings<'a> {
@@ -99,6 +101,7 @@ impl<'a> AgentSettings<'a> {
             log_dirs,
             exclusion_regex: Some(r"^/var.*"),
             use_ssl: true,
+            log_journal_d: None,
             ..Default::default()
         }
     }
@@ -110,42 +113,55 @@ impl<'a> AgentSettings<'a> {
             use_ssl: false,
             ingester_key: Some("mock_key"),
             exclusion: Some("/var/log/**"),
+            log_journal_d: None,
             ..Default::default()
         }
     }
 }
 
-pub fn spawn_agent(settings: AgentSettings) -> Child {
+pub fn get_agent_command(features: Option<String>) -> Command {
     let mut manifest_path = std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     manifest_path.pop();
+    let mut target_dir = manifest_path.clone();
     manifest_path.push("bin/Cargo.toml");
+    target_dir.push("target");
 
     let feature_command_lock = {
         let agent_commands = AGENT_COMMANDS.lock();
         agent_commands
             .unwrap()
-            .entry(settings.features.map(String::from))
+            .entry(features.clone())
             .or_insert_with(|| Arc::new(Mutex::new(None)))
             .clone()
     };
 
-    let mut cmd = {
-        let mut f_c = feature_command_lock.lock().unwrap();
-        f_c.get_or_insert_with(|| {
-            let mut cargo_build = escargot::CargoBuild::new()
-                .manifest_path(manifest_path)
-                .bin("logdna-agent")
-                .release()
-                .current_target();
+    let mut target_dir = std::env::var("CARGO_TARGET_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or(target_dir);
+    if let Some(features) = features.clone() {
+        target_dir.push(features.replace(',', ""))
+    }
 
-            if let Some(features) = settings.features {
-                cargo_build = cargo_build.no_default_features().features(features);
-            }
-            cargo_build.run().unwrap()
-        })
-        .command()
-    };
+    let mut f_c = feature_command_lock.lock().unwrap();
+    f_c.get_or_insert_with(|| {
+        let mut cargo_build = escargot::CargoBuild::new()
+            .target_dir(target_dir)
+            .manifest_path(manifest_path)
+            .bin("logdna-agent")
+            .release()
+            .current_target();
 
+        if let Some(features) = features {
+            cargo_build = cargo_build.no_default_features().features(features);
+        }
+        cargo_build.run().unwrap()
+    })
+    .command()
+}
+
+pub fn spawn_agent(settings: AgentSettings) -> Child {
+    let features = settings.features.map(String::from);
+    let mut cmd = get_agent_command(features);
     let ingestion_key = if let Some(key) = settings.ingester_key {
         key.to_string()
     } else {
@@ -234,6 +250,17 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
         agent.env("LOGDNA_INGEST_BUFFER_SIZE", ingest_buffer_size);
     }
 
+    if let Some(log_journal_d) = settings.log_journal_d {
+        agent.env("MZ_SYSTEMD_JOURNAL_TAILER", log_journal_d);
+    }
+
+    if let Some(clear_cache_interval) = settings.clear_cache_interval {
+        agent.env(
+            "LOGDNA_CLEAR_CACHE_INTERVAL",
+            format!("{}", clear_cache_interval),
+        );
+    }
+
     agent.spawn().expect("Failed to start agent")
 }
 
@@ -266,6 +293,7 @@ where
     let mut lines_buffer = String::new();
     let instant = std::time::Instant::now();
 
+    debug!("event info: {:?}", event_info);
     for _safeguard in 0..100_000 {
         assert!(
             instant.elapsed() < delay.unwrap_or(std::time::Duration::from_secs(20)),
@@ -276,9 +304,11 @@ where
             continue;
         }
         debug!("{}", line.trim());
+
         lines_buffer.push_str(&line);
         lines_buffer.push('\n');
         if condition(&line) {
+            debug!("condition found: {:?}", line);
             return lines_buffer;
         }
         line.clear();
@@ -298,7 +328,7 @@ pub fn assert_agent_running(agent_handle: &mut Child) {
 
 pub fn open_files_include(id: u32, file: &Path) -> Option<String> {
     let child = Command::new("lsof")
-        .args(&["-l", "-p", &id.to_string()])
+        .args(["-l", "-p", &id.to_string()])
         .stdout(Stdio::piped())
         .spawn()
         .expect("failed to execute child");

@@ -65,19 +65,9 @@ impl PodStatsBuilder<'_> {
 
         let mut priority = None;
 
-        let namespace = self
-            .p
-            .metadata
-            .namespace
-            .clone()
-            .unwrap_or_else(|| "".to_string());
+        let namespace = self.p.metadata.namespace.clone().unwrap_or_default();
 
-        let pod = self
-            .p
-            .metadata
-            .name
-            .clone()
-            .unwrap_or_else(|| "".to_string());
+        let pod = self.p.metadata.name.clone().unwrap_or_default();
 
         match spec {
             Some(spec) => {
