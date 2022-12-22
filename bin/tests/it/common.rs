@@ -75,6 +75,7 @@ pub struct AgentSettings<'a> {
     pub exclusion_regex: Option<&'a str>,
     pub features: Option<&'a str>,
     pub journald_dirs: Option<&'a str>,
+    pub log_journal_d: Option<&'a str>,
     pub startup_lease: Option<&'a str>,
     pub ssl_cert_file: Option<&'a std::path::Path>,
     pub lookback: Option<&'a str>,
@@ -99,6 +100,7 @@ impl<'a> AgentSettings<'a> {
             log_dirs,
             exclusion_regex: Some(r"^/var.*"),
             use_ssl: true,
+            log_journal_d: None,
             ..Default::default()
         }
     }
@@ -110,6 +112,7 @@ impl<'a> AgentSettings<'a> {
             use_ssl: false,
             ingester_key: Some("mock_key"),
             exclusion: Some("/var/log/**"),
+            log_journal_d: None,
             ..Default::default()
         }
     }
@@ -246,6 +249,10 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
         agent.env("LOGDNA_INGEST_BUFFER_SIZE", ingest_buffer_size);
     }
 
+    if let Some(log_journal_d) = settings.log_journal_d {
+        agent.env("MZ_SYSTEMD_JOURNAL_TAILER", log_journal_d);
+    }
+
     agent.spawn().expect("Failed to start agent")
 }
 
@@ -289,6 +296,7 @@ where
             continue;
         }
         debug!("{}", line.trim());
+
         lines_buffer.push_str(&line);
         lines_buffer.push('\n');
         if condition(&line) {

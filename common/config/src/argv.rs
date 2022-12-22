@@ -115,6 +115,10 @@ pub struct ArgumentOptions {
     #[structopt(long = "include-regex", env = env_vars::INCLUSION_REGEX_RULES)]
     inclusion_regex: Vec<String>,
 
+    /// Turning on or off systemd-journal
+    #[structopt(long, env = env_vars::SYSTEMD_JOURNAL_TAILER)]
+    systemd_journal_tailer: Option<bool>,
+
     /// List of paths (directories or files) of journald paths to monitor,
     /// for example: /var/log/journal or /run/systemd/journal
     #[structopt(long, env = env_vars::JOURNALD_PATHS)]
@@ -313,6 +317,10 @@ impl ArgumentOptions {
             with_csv(self.journald_paths)
                 .iter()
                 .for_each(|v| paths.push(PathBuf::from(v)));
+        }
+
+        if self.systemd_journal_tailer.is_some() {
+            raw.journald.systemd_journal_tailer = self.systemd_journal_tailer
         }
 
         if self.lookback.is_some() {
@@ -715,6 +723,7 @@ mod test {
             log_k8s_events: Some(K8sTrackingConf::Never),
             log_metric_server_stats: Some(K8sTrackingConf::Always),
             journald_paths: vec_strings!("/a"),
+            systemd_journal_tailer: Some(false),
             k8s_startup_lease: Some(K8sLeaseConf::Always),
             ingest_timeout: Some(1111111),
             ingest_buffer_size: Some(222222),
@@ -748,6 +757,7 @@ mod test {
         assert_eq!(config.log.db_path, Some(PathBuf::from("a/b/c")));
         assert_eq!(config.log.metrics_port, Some(9089));
         assert_eq!(config.journald.paths, Some(vec_paths!["/a"]));
+        assert_eq!(config.journald.systemd_journal_tailer, Some(false));
         assert_eq!(config.startup.option, Some(String::from("always")));
     }
 

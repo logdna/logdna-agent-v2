@@ -129,6 +129,7 @@ pub struct LogConfig {
 #[derive(Debug)]
 pub struct JournaldConfig {
     pub paths: Vec<PathBuf>,
+    pub systemd_journal_tailer: bool,
 }
 
 #[derive(Clone, core::fmt::Debug, Display, EnumString, Eq, PartialEq)]
@@ -422,6 +423,7 @@ impl TryFrom<RawConfig> for Config {
 
         let journald = JournaldConfig {
             paths: raw.journald.paths.unwrap_or_default().into_iter().collect(),
+            systemd_journal_tailer: raw.journald.systemd_journal_tailer.unwrap_or(true),
         };
 
         Ok(Config {

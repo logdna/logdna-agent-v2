@@ -38,6 +38,7 @@ from_env_name!(INCLUSION_REGEX_RULES);
 from_env_name!(IP);
 from_env_name!(MAC);
 from_env_name!(JOURNALD_PATHS);
+from_env_name!(SYSTEMD_JOURNAL_TAILER);
 from_env_name!(LOOKBACK);
 from_env_name!(DB_PATH);
 from_env_name!(METRICS_PORT);
@@ -254,6 +255,10 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
         argv::split_by_comma(value)
             .iter()
             .for_each(|v| paths.push(PathBuf::from(v)));
+    }
+
+    if let Some(value) = map.get(&SYSTEMD_JOURNAL_TAILER) {
+        result.journald.systemd_journal_tailer = Some(value.parse().unwrap_or(true));
     }
 
     result.log.lookback = map.get_string(&LOOKBACK);
