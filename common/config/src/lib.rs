@@ -124,11 +124,13 @@ pub struct LogConfig {
     pub k8s_metadata_include: Vec<String>,
     pub k8s_metadata_exclude: Vec<String>,
     pub log_metric_server_stats: K8sTrackingConf,
+    pub clear_cache_interval: Duration,
 }
 
 #[derive(Debug)]
 pub struct JournaldConfig {
     pub paths: Vec<PathBuf>,
+    pub systemd_journal_tailer: bool,
 }
 
 #[derive(Clone, core::fmt::Debug, Display, EnumString, Eq, PartialEq)]
@@ -381,6 +383,13 @@ impl TryFrom<RawConfig> for Config {
                 env_vars::LOG_METRIC_SERVER_STATS,
                 K8sTrackingConf::Never,
             ),
+            clear_cache_interval: Duration::from_secs(raw.log.clear_cache_interval.unwrap_or_else(
+                || {
+                    raw::LogConfig::default()
+                        .clear_cache_interval
+                        .unwrap_or_default()
+                },
+            ) as u64),
         };
 
         if log.use_k8s_enrichment == K8sTrackingConf::Never
@@ -422,6 +431,7 @@ impl TryFrom<RawConfig> for Config {
 
         let journald = JournaldConfig {
             paths: raw.journald.paths.unwrap_or_default().into_iter().collect(),
+            systemd_journal_tailer: raw.journald.systemd_journal_tailer.unwrap_or(true),
         };
 
         Ok(Config {

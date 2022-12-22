@@ -38,6 +38,7 @@ from_env_name!(INCLUSION_REGEX_RULES);
 from_env_name!(IP);
 from_env_name!(MAC);
 from_env_name!(JOURNALD_PATHS);
+from_env_name!(SYSTEMD_JOURNAL_TAILER);
 from_env_name!(LOOKBACK);
 from_env_name!(DB_PATH);
 from_env_name!(METRICS_PORT);
@@ -54,6 +55,7 @@ from_env_name!(INGEST_TIMEOUT);
 from_env_name!(INGEST_BUFFER_SIZE);
 from_env_name!(RETRY_DIR);
 from_env_name!(RETRY_DISK_LIMIT);
+from_env_name!(CLEAR_CACHE_INTERVAL);
 
 enum Key {
     FromEnv(&'static str),
@@ -256,6 +258,10 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
             .for_each(|v| paths.push(PathBuf::from(v)));
     }
 
+    if let Some(value) = map.get(&SYSTEMD_JOURNAL_TAILER) {
+        result.journald.systemd_journal_tailer = Some(value.parse().unwrap_or(true));
+    }
+
     result.log.lookback = map.get_string(&LOOKBACK);
     result.log.use_k8s_enrichment = map.get_string(&USE_K8S_LOG_ENRICHMENT);
     result.log.log_k8s_events = map.get_string(&LOG_K8S_EVENTS);
@@ -296,6 +302,12 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
         argv::split_by_comma(value)
             .iter()
             .for_each(|v| regex_rules.push(v.to_string()));
+    }
+
+    if let Some(value) = map.get(&CLEAR_CACHE_INTERVAL) {
+        result.log.clear_cache_interval = Some(u32::from_str(value).map_err(|e| {
+            ConfigError::PropertyInvalid(format!("clear cache interval property is invalid: {}", e))
+        })?);
     }
 
     // Properties parser is very permissive
