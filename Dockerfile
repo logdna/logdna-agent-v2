@@ -105,6 +105,7 @@ ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy
 COPY --from=build /logdna-agent /work/
 WORKDIR /work/
 
+# hadolint ignore=DL3041
 RUN microdnf update -y \
     && microdnf install ca-certificates libcap shadow-utils -y \
     && rm -rf /var/cache/yum \
