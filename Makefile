@@ -210,7 +210,7 @@ unit-test:
 
 .PHONY:unit-code-coverage
 unit-code-coverage: ## Run code coverage report and output to STDOUT
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo llvm-cov --dir --stdout --object-directory=common/fs"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo llvm-cov --stdout --object-directory=common/fs"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
