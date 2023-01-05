@@ -343,6 +343,7 @@ pub async fn _main(
             async move { tail::process(tailer).expect("except Failed to create FS Tailer") }
         },
         config.log.clear_cache_interval, // we restart tailer to clear fs cache
+        None,
     )
     .await
     .filter_map(|r| async {
