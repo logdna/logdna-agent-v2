@@ -22,6 +22,8 @@ use pin_project_lite::pin_project;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
+
 type SyncHashMap<K, V> = Arc<Mutex<HashMap<K, V>>>;
 
 /// Tails files on a filesystem by inheriting events from a Watcher
@@ -281,6 +283,7 @@ pin_project! {
         #[pin]
         start_time: Option<Instant>,
         restart_interval: Duration,  // zero - no restarts
+        state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>, // None - no state
     }
 }
 
@@ -291,7 +294,13 @@ where
     S: Stream<Item = T>,
     Fut: Future<Output = S>,
 {
-    pub async fn new(params: P, restart: C, mut f: F, restart_interval: Duration) -> Self {
+    pub async fn new(
+        params: P,
+        restart: C,
+        mut f: F,
+        restart_interval: Duration,
+        state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
+    ) -> Self {
         let stream = f(&params).await;
         Self {
             params,
@@ -301,6 +310,7 @@ where
             pending: None,
             start_time: Some(Instant::now()),
             restart_interval,
+            state_handles,
         }
     }
 }
@@ -559,6 +569,7 @@ mod test {
             |_: &String| false,
             |&_| async { futures::stream::empty() },
             Duration::from_secs(3600),
+            None,
         )
         .await;
 
@@ -584,6 +595,7 @@ mod test {
             |_: &usize| false,
             |&_| async { futures::stream::iter(vec![1, 2, 3]) },
             Duration::from_secs(3600),
+            None,
         )
         .await;
 
@@ -622,6 +634,7 @@ mod test {
                 }))
             },
             Duration::from_secs(3600),
+            None,
         )
         .await;
 
@@ -666,6 +679,7 @@ mod test {
                 }))
             },
             Duration::from_secs(3600),
+            None,
         )
         .await;
 

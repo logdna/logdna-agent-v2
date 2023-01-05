@@ -200,6 +200,7 @@ pub enum FileOffsetEvent {
     Update(FileOffsetUpdate),
     Clear,
     Flush(Option<DefaultKey>),
+    GarbageCollect { retained_files: Vec<FileId> },
 }
 
 #[derive(Clone)]
@@ -508,6 +509,14 @@ fn handle_file_offset_event(
         },
         (_, FileOffsetEvent::Clear) => {
             pending.clear();
+            Ok(EventAction::Nop((
+                None,
+                (state, pending, span_buf, bytes_buf),
+            )))
+        }
+        (_, FileOffsetEvent::GarbageCollect { retained_files, .. }) => {
+            pending.clear();
+            // remove all except retained_files
             Ok(EventAction::Nop((
                 None,
                 (state, pending, span_buf, bytes_buf),
