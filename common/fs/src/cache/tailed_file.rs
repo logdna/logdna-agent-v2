@@ -181,16 +181,13 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         Ok(())
     }
     fn field_count(&self) -> usize {
-        3 + if Option::is_none(&self.annotations) {
-            0
-        } else {
-            1
-        } + if Option::is_none(&self.app) { 0 } else { 1 }
-            + if Option::is_none(&self.env) { 0 } else { 1 }
-            + if Option::is_none(&self.host) { 0 } else { 1 }
-            + if Option::is_none(&self.labels) { 0 } else { 1 }
-            + if Option::is_none(&self.level) { 0 } else { 1 }
-            + if Option::is_none(&self.meta) { 0 } else { 1 }
+        3 + usize::from(!Option::is_none(&self.annotations))
+            + usize::from(!Option::is_none(&self.app))
+            + usize::from(!Option::is_none(&self.env))
+            + usize::from(!Option::is_none(&self.host))
+            + usize::from(!Option::is_none(&self.labels))
+            + usize::from(!Option::is_none(&self.level))
+            + usize::from(!Option::is_none(&self.meta))
     }
 }
 
