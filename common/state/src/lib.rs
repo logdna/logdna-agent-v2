@@ -234,6 +234,7 @@ impl FileOffsetWriteHandle {
     }
 }
 
+#[derive(Clone)]
 pub struct FileOffsetFlushHandle {
     tx: async_channel::Sender<FileOffsetEvent>,
 }
@@ -248,6 +249,7 @@ impl FileOffsetFlushHandle {
     }
 }
 
+#[derive(Clone)]
 pub struct FileOffsetShutdownHandle {
     tx: async_channel::Sender<FileOffsetEvent>,
 }

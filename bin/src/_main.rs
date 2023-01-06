@@ -114,7 +114,7 @@ pub async fn _main(
         }
     }
 
-    let handles = offset_state
+    let state_handles = offset_state
         .as_ref()
         .map(|os| (os.write_handle(), os.flush_handle()));
 
@@ -132,7 +132,7 @@ pub async fn _main(
         retry,
         Some(config.http.require_ssl),
         concurrency_limit,
-        handles,
+        state_handles,
     ));
 
     if let Some(client) = Arc::get_mut(&mut client) {
@@ -326,6 +326,9 @@ pub async fn _main(
     };
 
     debug!("Initialising offset state");
+    let state_handles = offset_state
+        .as_ref()
+        .map(|os| (os.write_handle(), os.flush_handle()));
     if let Some(offset_state) = offset_state {
         tokio::spawn(offset_state.run().unwrap());
     }
@@ -336,6 +339,7 @@ pub async fn _main(
         config.log.rules.clone(),
         config.log.lookback.clone(),
         initial_offsets.clone(),
+        state_handles,
     );
 
     debug!("Creating fs_source");
@@ -349,16 +353,17 @@ pub async fn _main(
             }
             _ => false,
         },
-        |params| {
-            let watched_dirs = params.0.clone();
-            let rules = params.1.clone();
-            let lookback = params.2.clone();
-            let offsets = params.3.clone();
-            let tailer = tail::Tailer::new(watched_dirs, rules, lookback, offsets);
+        |(watched_dirs, rules, lookback, offsets, state_handles)| {
+            let tailer = tail::Tailer::new(
+                watched_dirs.clone(),
+                rules.clone(),
+                lookback.clone(),
+                offsets.clone(),
+                state_handles.clone(),
+            );
             async move { tail::process(tailer).expect("except Failed to create FS Tailer") }
         },
         config.log.clear_cache_interval, // we restart tailer to clear fs cache
-        None,
     )
     .await
     .filter_map(|r| async {

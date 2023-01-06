@@ -257,6 +257,7 @@ impl Tailer {
         rules: Rules,
         lookback_config: Lookback,
         initial_offsets: Option<HashMap<FileId, SpanVec>>,
+        state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
     ) -> Self {
         Self {
             fs_cache: Arc::new(Mutex::new(FileSystem::new(
@@ -264,6 +265,7 @@ impl Tailer {
                 lookback_config,
                 initial_offsets.unwrap_or_default(),
                 rules,
+                state_handles,
             ))),
             event_times: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -283,7 +285,6 @@ pin_project! {
         #[pin]
         start_time: Option<Instant>,
         restart_interval: Duration,  // zero - no restarts
-        state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>, // None - no state
     }
 }
 
@@ -294,13 +295,7 @@ where
     S: Stream<Item = T>,
     Fut: Future<Output = S>,
 {
-    pub async fn new(
-        params: P,
-        restart: C,
-        mut f: F,
-        restart_interval: Duration,
-        state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
-    ) -> Self {
+    pub async fn new(params: P, restart: C, mut f: F, restart_interval: Duration) -> Self {
         let stream = f(&params).await;
         Self {
             params,
@@ -310,7 +305,6 @@ where
             pending: None,
             start_time: Some(Instant::now()),
             restart_interval,
-            state_handles,
         }
     }
 }
@@ -438,6 +432,7 @@ mod test {
                     rules,
                     Lookback::None,
                     None,
+                    None,
                 );
 
                 let stream = process(tailer).expect("failed to read events");
@@ -483,6 +478,7 @@ mod test {
                         .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
                     rules,
                     Lookback::SmallFiles,
+                    None,
                     None,
                 );
 
@@ -532,6 +528,7 @@ mod test {
                     rules,
                     Lookback::Start,
                     None,
+                    None,
                 );
 
                 let stream = process(tailer).expect("failed to read events");
@@ -569,7 +566,6 @@ mod test {
             |_: &String| false,
             |&_| async { futures::stream::empty() },
             Duration::from_secs(3600),
-            None,
         )
         .await;
 
@@ -595,7 +591,6 @@ mod test {
             |_: &usize| false,
             |&_| async { futures::stream::iter(vec![1, 2, 3]) },
             Duration::from_secs(3600),
-            None,
         )
         .await;
 
@@ -634,7 +629,6 @@ mod test {
                 }))
             },
             Duration::from_secs(3600),
-            None,
         )
         .await;
 
@@ -679,7 +673,6 @@ mod test {
                 }))
             },
             Duration::from_secs(3600),
-            None,
         )
         .await;
 
