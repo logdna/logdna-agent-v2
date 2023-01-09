@@ -50,9 +50,9 @@ impl Client {
         retry: RetrySender,
         require_ssl: Option<bool>,
         concurrency_limit: Option<usize>,
-        state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
+        fo_state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
     ) -> Self {
-        let (state_write, state_flush) = state_handles
+        let (state_write, state_flush) = fo_state_handles
             .map(|(sw, sf)| (Some(sw), Some(sf)))
             .unwrap_or((None, None));
         Self {

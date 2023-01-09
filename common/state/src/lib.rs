@@ -247,6 +247,13 @@ impl FileOffsetFlushHandle {
     pub async fn clear(&self) -> Result<(), FileOffsetStateError> {
         Ok(self.tx.send(FileOffsetEvent::Clear).await?)
     }
+
+    pub async fn gc(&self, retained_files: Vec<FileId>) -> Result<(), FileOffsetStateError> {
+        Ok(self
+            .tx
+            .send(FileOffsetEvent::GarbageCollect { retained_files })
+            .await?)
+    }
 }
 
 #[derive(Clone)]

@@ -114,7 +114,7 @@ pub async fn _main(
         }
     }
 
-    let state_handles = offset_state
+    let fo_state_handles = offset_state
         .as_ref()
         .map(|os| (os.write_handle(), os.flush_handle()));
 
@@ -132,7 +132,7 @@ pub async fn _main(
         retry,
         Some(config.http.require_ssl),
         concurrency_limit,
-        state_handles,
+        fo_state_handles,
     ));
 
     if let Some(client) = Arc::get_mut(&mut client) {
@@ -326,7 +326,7 @@ pub async fn _main(
     };
 
     debug!("Initialising offset state");
-    let state_handles = offset_state
+    let fo_state_handles = offset_state
         .as_ref()
         .map(|os| (os.write_handle(), os.flush_handle()));
     if let Some(offset_state) = offset_state {
@@ -339,7 +339,7 @@ pub async fn _main(
         config.log.rules.clone(),
         config.log.lookback.clone(),
         initial_offsets.clone(),
-        state_handles,
+        fo_state_handles,
     );
 
     debug!("Creating fs_source");
@@ -353,13 +353,13 @@ pub async fn _main(
             }
             _ => false,
         },
-        |(watched_dirs, rules, lookback, offsets, state_handles)| {
+        |(watched_dirs, rules, lookback, offsets, fo_state_handles)| {
             let tailer = tail::Tailer::new(
                 watched_dirs.clone(),
                 rules.clone(),
                 lookback.clone(),
                 offsets.clone(),
-                state_handles.clone(),
+                fo_state_handles.clone(),
             );
             async move { tail::process(tailer).expect("except Failed to create FS Tailer") }
         },
