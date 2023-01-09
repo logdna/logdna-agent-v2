@@ -47,6 +47,14 @@ pipeline {
                 error("A maintainer needs to approve this PR for CI by commenting")
             }
         }
+        stage('Pull Build Images') {
+            steps {
+                sh """
+                    docker pull ${RUST_IMAGE_REPO}:bullseye-1-stable-x86_64
+                    docker pull ${RUST_IMAGE_REPO}:bullseye-1-stable-aarch64
+                """
+            }
+        }
         stage('Init QEMU') {
             steps {
                 sh "make init-qemu"
