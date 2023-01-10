@@ -371,7 +371,7 @@ pipeline {
                         allowMissing: false,
                         alwaysLinkToLastBuild: false,
                         keepAll: false,
-                        reportDir: "/tmp/workspace/${env.BUILD_TAG}/target/llvm-cov",
+                        reportDir: "target/llvm-cov/html",
                         reportFiles: 'index.html',
                         reportName: 'Mezmo Agent Code Coverage',
                         reportTitles: 'Agent Coverage'
