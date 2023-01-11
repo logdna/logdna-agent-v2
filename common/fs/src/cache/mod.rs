@@ -450,6 +450,26 @@ impl FileSystem {
             }
         }
 
+        // send event to FileOffsets state to cleanup unused inodes
+        let mut inodes: Vec<FileId> = Vec::new();
+        for entry in entries.values() {
+            // TODO convert to call-chain
+            if let Entry::File { data, .. } = entry {
+                let a = data.borrow();
+                let b = &a.get_inner();
+                let c = b
+                    .try_lock()
+                    .expect("Arc<Mutex<TailedFileInner>> clone detected!");
+                let d = c.get_inode();
+                inodes.push(d.into());
+            }
+        }
+        fs.fo_state_handles.clone().map(|(_, state_flush)| {
+            state_flush
+                .do_gc_blocking(inodes)
+                .expect("FileOffset state Garbage Collection failed")
+        });
+
         for event in initial_dir_events {
             match event {
                 Event::New(entry_key) => fs.initial_events.push(Event::Initialize(entry_key)),

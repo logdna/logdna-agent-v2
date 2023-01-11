@@ -11,6 +11,7 @@ use slotmap::{DefaultKey, SlotMap};
 
 use log::{error, info, warn};
 
+use async_channel::SendError;
 use std::collections::HashMap;
 use std::convert::{AsRef, Into, TryInto};
 use std::path::{Path, PathBuf};
@@ -248,11 +249,12 @@ impl FileOffsetFlushHandle {
         Ok(self.tx.send(FileOffsetEvent::Clear).await?)
     }
 
-    pub async fn gc(&self, retained_files: Vec<FileId>) -> Result<(), FileOffsetStateError> {
-        Ok(self
-            .tx
-            .send(FileOffsetEvent::GarbageCollect { retained_files })
-            .await?)
+    pub fn do_gc_blocking(
+        &self,
+        retained_files: Vec<FileId>,
+    ) -> Result<(), SendError<FileOffsetEvent>> {
+        self.tx
+            .send_blocking(FileOffsetEvent::GarbageCollect { retained_files })
     }
 }
 

@@ -14,7 +14,7 @@ use http::types::serialize::{
     SerializeUtf8, SerializeValue,
 };
 
-use state::{GetOffset, SpanVec};
+use state::{FileId, GetOffset, SpanVec};
 
 use metrics::Metrics;
 
@@ -337,6 +337,12 @@ pub struct TailedFileInner {
     path: PathBuf,
 }
 
+impl TailedFileInner {
+    pub fn get_inode(&self) -> FileId {
+        self.inode.into()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TailedFile<T> {
     inner: Arc<Mutex<TailedFileInner>>,
@@ -364,6 +370,10 @@ impl<T> TailedFile<T> {
             resume_events_sender,
             _phantom: std::marker::PhantomData::<T>,
         })
+    }
+
+    pub fn get_inner(&self) -> &Arc<Mutex<TailedFileInner>> {
+        &self.inner
     }
 }
 
