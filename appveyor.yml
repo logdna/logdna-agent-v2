@@ -25,4 +25,8 @@ install:
 
 test_script:
   - cargo test
-  - cargo llvm-cov 
+  - cargo llvm-cov --html
+
+artifacts:
+  - path: target/llvm-cov/html/index.html
+    name: Code Coverage
