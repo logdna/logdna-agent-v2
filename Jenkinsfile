@@ -106,19 +106,19 @@ pipeline {
                             """
                         }
                     }
-                }
-                post {
-                    // Publish HTML code coverage report
-                    success {
-                        publishHTML (target: [
-                            allowMissing: false,
-                            alwaysLinkToLastBuild: true,
-                            keepAll: true,
-                            reportDir: "target/llvm-cov/html",
-                            reportFiles: 'index.html',
-                            reportName: 'Mezmo Agent Code Coverage',
-                            reportTitles: 'Agent Coverage'
-                        ])
+                    post {
+                        // Publish HTML code coverage report
+                        success {
+                            publishHTML (target: [
+                                allowMissing: false,
+                                alwaysLinkToLastBuild: true,
+                                keepAll: true,
+                                reportDir: "target/llvm-cov/html",
+                                reportFiles: 'index.html',
+                                reportName: 'Mezmo Agent Code Coverage',
+                                reportTitles: 'Agent Coverage'
+                            ])
+                        }
                     }
                 }
             }
