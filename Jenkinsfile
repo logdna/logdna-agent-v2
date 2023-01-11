@@ -111,11 +111,11 @@ pipeline {
                         success {
                             publishHTML (target: [
                                 allowMissing: false,
-                                alwaysLinkToLastBuild: true,
-                                keepAll: true,
+                                alwaysLinkToLastBuild: false,
+                                keepAll: false,
                                 reportDir: "target/llvm-cov/html",
                                 reportFiles: 'index.html',
-                                reportName: 'Mezmo Agent Code Coverage',
+                                reportName: 'Mezmo Agent Code Coverage Report',
                                 reportTitles: 'Agent Coverage'
                             ])
                         }

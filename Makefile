@@ -208,7 +208,7 @@ test: unit-test test-journald ## Run unit tests
 unit-test:
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run $(TESTS) --no-fail-fast --nocapture"
 
-.PHONY:unit-code-coverage
+.PHONY:unit-test-coverage
 unit-code-coverage: ## Run code coverage report and output to HTML
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo llvm-cov --ignore-filename-regex=vendor/* --html --output-dir=target/llvm-cov"
 
