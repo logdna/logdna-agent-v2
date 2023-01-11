@@ -112,7 +112,7 @@ pipeline {
                             publishHTML (target: [
                                 allowMissing: false,
                                 alwaysLinkToLastBuild: true,
-                                keepAll: false,
+                                keepAll: true,
                                 reportDir: "target/llvm-cov/html",
                                 reportFiles: 'index.html',
                                 reportName: 'Code Coverage Report',
