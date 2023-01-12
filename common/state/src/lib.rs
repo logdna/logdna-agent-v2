@@ -9,7 +9,7 @@ use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use slotmap::{DefaultKey, SlotMap};
 
-use log::{error, info, warn};
+use log::{debug, error, info, warn};
 
 use async_channel::SendError;
 use std::collections::HashMap;
@@ -527,6 +527,8 @@ fn handle_file_offset_event(
         }
         (_, FileOffsetEvent::GarbageCollect { retained_files, .. }) => {
             pending.clear();
+            debug!("GarbageCollect: {:?}", retained_files);
+            state.retain(|inode, _| retained_files.contains(inode));
             // remove all except retained_files
             Ok(EventAction::Nop((
                 None,
