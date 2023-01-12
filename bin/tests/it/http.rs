@@ -44,7 +44,7 @@ async fn test_http_buffer_size() {
         common::consume_output(agent_stderr.into_inner());
         // generate some log data
         for _ in 0..10 {
-            write!(file, "abcdefghijklmnop\n").unwrap();
+            writeln!(file, "abcdefghijklmnop").unwrap();
         }
 
         // Wait for the data to be received by the mock ingester
