@@ -29,4 +29,4 @@ test_script:
 
 artifacts:
   - path: target/llvm-cov/html/index.html
-    name: Code Coverage
+    name: Code Coverage Report
