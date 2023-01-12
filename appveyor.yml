@@ -25,7 +25,6 @@ install:
   - cargo install cargo-llvm-cov
 
 test_script:
-  - cargo test
   - cargo llvm-cov --html
 
 artifacts:
