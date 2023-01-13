@@ -29,6 +29,8 @@ use thiserror::Error;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
 
+use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
+
 mod delayed_stream;
 pub mod dir_path;
 pub mod entry;
@@ -260,6 +262,8 @@ pub struct FileSystem {
 
     ignored_dirs: HashSet<PathBuf>,
 
+    state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
+
     _c: countme::Count<Self>,
 }
 
@@ -294,6 +298,7 @@ impl FileSystem {
         initial_offsets: HashMap<FileId, SpanVec>,
         rules: Rules,
         delay: Duration,
+        state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
     ) -> Self {
         let (resume_events_send, resume_events_recv) = async_channel::unbounded();
         let (retry_events_send, retry_events_recv) = async_channel::unbounded();
@@ -369,6 +374,7 @@ impl FileSystem {
             retry_events_recv,
             retry_events_send,
             ignored_dirs,
+            state_handles,
             _c: countme::Count::new(),
         };
 
@@ -1600,6 +1606,7 @@ mod tests {
             HashMap::new(),
             rules,
             DELAY,
+            None,
         )
     }
 
