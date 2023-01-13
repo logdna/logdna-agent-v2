@@ -91,6 +91,7 @@ pub struct AgentSettings<'a> {
     pub ingest_timeout: Option<&'a str>,
     pub ingest_buffer_size: Option<&'a str>,
     pub log_level: Option<&'a str>,
+    pub clear_cache_interval: Option<u32>,
 }
 
 impl<'a> AgentSettings<'a> {
@@ -246,6 +247,13 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
         agent.env("LOGDNA_INGEST_BUFFER_SIZE", ingest_buffer_size);
     }
 
+    }
+
+    if let Some(clear_cache_interval) = settings.clear_cache_interval {
+        agent.env(
+            "LOGDNA_CLEAR_CACHE_INTERVAL",
+            format!("{}", clear_cache_interval),
+        );
     agent.spawn().expect("Failed to start agent")
 }
 

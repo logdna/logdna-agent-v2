@@ -2273,3 +2273,46 @@ async fn test_endurance_writes() {
     server_result.unwrap();
     agent_handle.kill().expect("Could not kill process");
 }
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_clear_cache() {
+    let _ = env_logger::Builder::from_default_env().try_init();
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let file_path = dir.join("file1.log");
+    File::create(&file_path).expect("Could not create file");
+
+    let mut settings = AgentSettings::new(dir.to_str().unwrap());
+    settings.clear_cache_interval = Some(3);
+
+    let mut agent_handle = common::spawn_agent(settings);
+
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
+
+    common::wait_for_file_event("initialize", &file_path, &mut stderr_reader);
+
+    debug!("got event, appending to file");
+    common::append_to_file(&file_path, 5, 50).expect("Could not append");
+    thread::sleep(std::time::Duration::from_millis(5000));
+    common::append_to_file(&file_path, 5, 50).expect("Could not append");
+
+    debug!("waiting for restarting");
+    common::wait_for_event("restarting stream, interval=3", &mut stderr_reader);
+    debug!("got restarting");
+
+    // check that fs tailer is functional after restart
+    thread::sleep(std::time::Duration::from_millis(1000));
+    debug!("delete & append again");
+    fs::remove_file(&file_path).expect("Could not remove file");
+    // Immediately, start appending in a new file
+    common::append_to_file(&file_path, 5, 5).expect("Could not append");
+
+    debug!("waiting for watching");
+    common::wait_for_file_event("watching", &file_path, &mut stderr_reader);
+
+    consume_output(stderr_reader.into_inner());
+
+    common::assert_agent_running(&mut agent_handle);
+
+    agent_handle.kill().expect("Could not kill process");
+}

@@ -212,6 +212,10 @@ pub struct ArgumentOptions {
     /// etc. Numbers need to be integer values.
     #[structopt(long, env = env_vars::RETRY_DISK_LIMIT)]
     retry_disk_limit: Option<Bytes<u64>>,
+
+    /// Interval in sec between clearing of various unconstrained agent caches
+    #[structopt(long, env = env_vars::CLEAR_CACHE_INTERVAL)]
+    clear_cache_interval: Option<u32>,
 }
 
 impl ArgumentOptions {
@@ -374,6 +378,10 @@ impl ArgumentOptions {
                 .for_each(|v| regex.push(v.clone()));
         }
 
+        if self.clear_cache_interval.is_some() {
+            raw.log.clear_cache_interval = self.clear_cache_interval
+        }
+
         raw
     }
 
@@ -511,6 +519,7 @@ mod test {
 
     use humanize_rs::bytes::Unit;
 
+    use crate::raw;
     use std::env::set_var;
 
     #[cfg(unix)]
@@ -693,6 +702,10 @@ mod test {
         assert_eq!(config.log.metrics_port, None);
         assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
         assert_eq!(config.log.log_metric_server_stats, None);
+        assert_eq!(
+            config.log.clear_cache_interval,
+            Some(raw::LogConfig::default().clear_cache_interval.unwrap())
+        );
     }
 
     #[test]
@@ -719,6 +732,7 @@ mod test {
             ingest_timeout: Some(1111111),
             ingest_buffer_size: Some(222222),
             retry_dir: some_string!("/tmp/argv"),
+            clear_cache_interval: Some(777),
             retry_disk_limit: Some(Bytes::new(123456, Unit::Byte).unwrap()),
             ..ArgumentOptions::default()
         };
@@ -749,6 +763,7 @@ mod test {
         assert_eq!(config.log.metrics_port, Some(9089));
         assert_eq!(config.journald.paths, Some(vec_paths!["/a"]));
         assert_eq!(config.startup.option, Some(String::from("always")));
+        assert_eq!(config.log.clear_cache_interval, Some(777));
     }
 
     #[test]
