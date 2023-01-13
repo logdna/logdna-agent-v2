@@ -258,7 +258,7 @@ impl Tailer {
         lookback_config: Lookback,
         initial_offsets: Option<HashMap<FileId, SpanVec>>,
         event_delay: Duration,
-        state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
+        fo_state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
     ) -> Self {
         Self {
             fs_cache: Arc::new(Mutex::new(FileSystem::new(
@@ -267,7 +267,7 @@ impl Tailer {
                 initial_offsets.unwrap_or_default(),
                 rules,
                 event_delay,
-                state_handles,
+                fo_state_handles,
             ))),
             event_times: Arc::new(Mutex::new(HashMap::new())),
         }
