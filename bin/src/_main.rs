@@ -344,6 +344,7 @@ pub async fn _main(
                 rules.clone(),
                 lookback.clone(),
                 offsets.clone(),
+                event_delay,
                 fo_state_handles.clone(),
             );
             async move { tail::process(tailer).expect("except Failed to create FS Tailer") }
