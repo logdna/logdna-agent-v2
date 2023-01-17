@@ -29,7 +29,8 @@ pub fn random_line_string_vec(
     )
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(clippy::derive_partial_eq_without_eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct OffsetLine {
     pub line: Line,
     pub offset: Option<Offset>,
