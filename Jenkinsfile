@@ -73,7 +73,7 @@ pipeline {
         stage('Unit Tests'){
             when {
                 not {
-                    triggeredBy 'TimerTrigger'
+                    triggeredBy 'ParameterizedTimerTriggerCause'
                 }
             }
             steps {
@@ -92,7 +92,7 @@ pipeline {
         stage('Test') {
             when {
                 not {
-                    triggeredBy 'TimerTrigger'
+                    triggeredBy 'ParameterizedTimerTriggerCause'
                 }
             }
             environment {
