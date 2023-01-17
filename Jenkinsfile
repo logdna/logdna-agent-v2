@@ -59,7 +59,7 @@ pipeline {
             when {
               beforeAgent true
               not {
-                triggeredBy 'TimerTrigger'
+                triggeredBy 'ParameterizedTimerTriggerCause'
               }
             }
             steps {
