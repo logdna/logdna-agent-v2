@@ -371,7 +371,8 @@ impl K8sEventStream {
                         .or_else(|| earliest.load())
                         .and_then(|earliest| {
                             let earliest =
-                                chrono::NaiveDateTime::from_timestamp(earliest.into(), 0);
+                                chrono::NaiveDateTime::from_timestamp_opt(earliest.into(), 0)
+                                    .expect("Timestamp Out of Range");
 
                             event.as_ref().ok().and_then(|e| {
                                 if e.creation_timestamp().is_none()
