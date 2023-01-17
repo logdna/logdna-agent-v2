@@ -676,7 +676,7 @@ mod test {
     #[test]
     fn new_agent_state_dir_exists() {
         let state_dir = tempdir().unwrap().into_path();
-        let result = AgentState::new(&state_dir);
+        let result = AgentState::new(state_dir);
         assert!(result.is_ok(), "failed to create valid AgentState struct");
     }
 }

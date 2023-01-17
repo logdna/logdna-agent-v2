@@ -206,7 +206,7 @@ test: unit-test test-journald ## Run unit tests
 
 .PHONY:unit-test
 unit-test:
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run $(TESTS) --no-fail-fast --nocapture"
+	$(RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run $(TESTS) --no-fail-fast --nocapture"
 
 .PHONY:unit-test-coverage
 unit-code-coverage: ## Run code coverage report and output to HTML
@@ -215,7 +215,7 @@ unit-code-coverage: ## Run code coverage report and output to HTML
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
 	$(eval FEATURES := $(FEATURES) integration_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "--env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run --no-fail-fast --retries=2 $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) $(TEST_THREADS_ARG)"
+	$(DOCKER_JOURNALD_DISPATCH) "$(BUILD_ENV_DOCKER_ARGS) --env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run --no-fail-fast --retries=2 $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) $(TEST_THREADS_ARG)"
 
 .PHONY:k8s-test
 k8s-test: build-image-debian ## Run integration tests using k8s kind
@@ -225,7 +225,7 @@ k8s-test: build-image-debian ## Run integration tests using k8s kind
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
 	$(eval FEATURES := $(FEATURES) journald_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run --no-fail-fast $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald --test-threads=1"
+	$(DOCKER_JOURNALD_DISPATCH) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run --no-fail-fast $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald --test-threads=1"
 
 .PHONY:bench
 bench:

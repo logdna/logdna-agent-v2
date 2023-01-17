@@ -82,7 +82,7 @@ fn api_key_present() {
 
     // Check that the agent logs that it has sent lines from each file
     assert!(
-        predicate::str::contains(&format!(
+        predicate::str::contains(format!(
             "watching \"{}\"",
             before_file_path.to_str().unwrap()
         ))
@@ -90,29 +90,28 @@ fn api_key_present() {
         "'watching' not found in output: {}",
         output
     );
-    assert!(predicate::str::contains(&format!(
+    assert!(predicate::str::contains(format!(
         "tailer sendings lines for [\"{}\"]",
         before_file_path.to_str().unwrap()
     ))
     .eval(&output));
 
-    assert!(predicate::str::contains(&format!(
-        "watching \"{}\"",
-        test_file_path.to_str().unwrap()
-    ))
-    .eval(&output));
-    assert!(predicate::str::contains(&format!(
+    assert!(
+        predicate::str::contains(format!("watching \"{}\"", test_file_path.to_str().unwrap()))
+            .eval(&output)
+    );
+    assert!(predicate::str::contains(format!(
         "tailer sendings lines for [\"{}\"]",
         test_file_path.to_str().unwrap()
     ))
     .eval(&output));
 
-    assert!(predicate::str::contains(&format!(
+    assert!(predicate::str::contains(format!(
         "watching \"{}\"",
         test1_file_path.to_str().unwrap()
     ))
     .eval(&output));
-    assert!(predicate::str::contains(&format!(
+    assert!(predicate::str::contains(format!(
         "tailer sendings lines for [\"{}\"]",
         test1_file_path.to_str().unwrap()
     ))
@@ -1086,8 +1085,8 @@ async fn test_partial_fsynced_lines() {
             .open(&file_path)
             .unwrap();
 
-        write!(file, "{}", "first part ").unwrap();
-        write!(file, "{}", "second part").unwrap();
+        write!(file, "first part ").unwrap();
+        write!(file, "second part").unwrap();
 
         file.sync_all().unwrap();
         common::force_client_to_flush(&dir).await;
@@ -1100,8 +1099,8 @@ async fn test_partial_fsynced_lines() {
             assert!(line.is_none(), "{:?}", line);
         }
 
-        write!(file, "{}", " third part\n").unwrap();
-        write!(file, "{}", "begin second line").unwrap();
+        writeln!(file, " third part").unwrap();
+        write!(file, "begin second line").unwrap();
 
         file.sync_all().unwrap();
         common::force_client_to_flush(&dir).await;
@@ -1150,7 +1149,7 @@ async fn test_transient_access_denied() {
             .mode(0o660)
             .open(&file_path)
             .unwrap();
-        write!(file, "{}", "line 1\n").unwrap();
+        writeln!(file, "line 1").unwrap();
         file.sync_all().unwrap();
         fs::set_permissions(&file_path, fs::Permissions::from_mode(0o000)).unwrap();
 
@@ -1175,7 +1174,7 @@ async fn test_transient_access_denied() {
             assert!(line.is_some(), "{:?}", line);
         }
 
-        write!(file, "{}", "line 2\n").unwrap();
+        writeln!(file, "line 2").unwrap();
         file.sync_all().unwrap();
         common::force_client_to_flush(&dir).await;
 
@@ -1917,6 +1916,7 @@ async fn test_line_redact() {
 
 #[tokio::test]
 #[cfg(unix)]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_directory_created_after_initialization() {
     let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
