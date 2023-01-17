@@ -63,39 +63,38 @@ pipeline {
                 """
             }
         }
-        stage('Lint and Unit Test') {
-            parallel {
-                stage('Lint'){
-                    steps {
-                        withCredentials([[
-                                           $class: 'AmazonWebServicesCredentialsBinding',
-                                           credentialsId: 'aws',
-                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                         ]]){
-                            sh """
-                              make lint-audit
-                            """
-                        }
-                    }
+        stage('Lint') {
+            steps {
+                sh '''
+                    make lint-audit
+                '''
+            }
+        }
+        stage('Unit Tests'){
+            when {
+                not {
+                    triggeredBy 'ParameterizedTimerTriggerCause'
                 }
-                stage('Unit Tests'){
-                    steps {
-                        withCredentials([[
-                                           $class: 'AmazonWebServicesCredentialsBinding',
-                                           credentialsId: 'aws',
-                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                         ]]){
-                            sh """
-                              make -j2 test
-                            """
-                        }
-                    }
+            }
+            steps {
+                withCredentials([[
+                                    $class: 'AmazonWebServicesCredentialsBinding',
+                                    credentialsId: 'aws',
+                                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                    ]]){
+                    sh """
+                        make -j2 test
+                    """
                 }
             }
         }
         stage('Test') {
+            when {
+                not {
+                    triggeredBy 'ParameterizedTimerTriggerCause'
+                }
+            }
             environment {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
