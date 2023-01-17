@@ -44,7 +44,19 @@ pipeline {
                 sh "docker pull ${RUST_IMAGE_REPO}:${RUST_IMAGE_TAG}"
             }
         }
-        stage('Lint and Test') {
+        stage('Lint') {
+            steps {
+                sh '''
+                    make lint-audit
+                '''
+            }
+        }
+        stage('Test') {
+            when {
+                not {
+                    triggeredBy 'ParameterizedTimerTriggerCause'
+                }
+            }
             environment {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
@@ -66,7 +78,6 @@ pipeline {
                                                  secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                          ]]){
                             sh """
-                        make lint-audit
                         make test
                         make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
                     """
