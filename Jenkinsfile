@@ -13,7 +13,7 @@ pipeline {
     triggers {
         issueCommentTrigger(TRIGGER_PATTERN)
         parameterizedCron(
-            env.BRANCH_NAME ==~ /\d\.\d/ ? 'H 8 * * 1 % PUBLISH_GCR_IMAGE=true;PUBLISH_ICR_IMAGE=true' : ''
+            env.BRANCH_NAME ==~ /\d\.\d/ ? '30 9 * * 1 % PUBLISH_GCR_IMAGE=true;PUBLISH_ICR_IMAGE=true' : ''
         )
     }
     environment {
