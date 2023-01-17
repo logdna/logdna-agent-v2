@@ -5,7 +5,7 @@ agent_version=$(sed -nE "s/^version = \"(.+)\"\$$/\1/p" "$SRC_ROOT/bin/Cargo.tom
 export BUILD_VERSION="${BUILD_VERSION:-${agent_version}}"
 export TARGET=${TARGET:-x86_64-pc-windows-msvc}
 # relative to source root
-export BUILD_DIR="${BUILD_DIR:-target/$TARGET/debug}"
+export BUILD_DIR="${BUILD_DIR:-target/x86_64-windows-msvc/$TARGET/debug}"
 # comes from Jenkins
 export BUILD_NUMBER="${BUILD_NUMBER:-0}"
 # 4th dot if any replaced by dash
