@@ -2403,7 +2403,7 @@ fn test_offset_stream_state_gc() {
     debug!("got restarting");
 
     debug!("waiting for GC event with specific inode to retain");
-    let msg = format!("GarbageCollect: [FileId({})]", inode);
+    let msg = format!("GarbageCollect: [FileId({inode})]");
     common::wait_for_event(msg.as_str(), &mut stderr_reader);
     debug!("got GC event");
 
