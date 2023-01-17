@@ -135,7 +135,7 @@ impl TryFrom<&Path> for FsEntry {
 type EventTimestamp = time::OffsetDateTime;
 
 #[cfg(unix)]
-pub(crate) fn get_inode(path: &Path, _file: Option<&std::fs::File>) -> std::io::Result<u64> {
+pub fn get_inode(path: &Path, _file: Option<&std::fs::File>) -> std::io::Result<u64> {
     use std::os::unix::fs::MetadataExt;
 
     Ok(path.metadata()?.ino())

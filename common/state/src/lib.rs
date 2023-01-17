@@ -528,8 +528,8 @@ fn handle_file_offset_event(
         (_, FileOffsetEvent::GarbageCollect { retained_files, .. }) => {
             pending.clear();
             debug!("GarbageCollect: {:?}", retained_files);
-            state.retain(|inode, _| retained_files.contains(inode));
             // remove all except retained_files
+            state.retain(|inode, _| retained_files.contains(inode));
             Ok(EventAction::Nop((
                 None,
                 (state, pending, span_buf, bytes_buf),
