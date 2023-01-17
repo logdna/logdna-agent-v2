@@ -80,6 +80,11 @@ pipeline {
                     }
                 }
                 stage('Unit Tests'){
+                    when {
+                        not {
+                            triggeredBy 'TimerTrigger'
+                        }
+                    }
                     steps {
                         withCredentials([[
                                            $class: 'AmazonWebServicesCredentialsBinding',
@@ -96,6 +101,11 @@ pipeline {
             }
         }
         stage('Test') {
+            when {
+                not {
+                    triggeredBy 'TimerTrigger'
+                }
+            }
             environment {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
