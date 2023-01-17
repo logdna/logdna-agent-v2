@@ -8,3 +8,11 @@
 .DS_Store
 *.stamp
 /mk*
+.vscode/launch.json
+.vscode/settings.json
+.aws_creds_static
+docker/.kind_config
+docker/.kind_config_host
+.kind_config
+vendor/
+.cargo/config.toml
