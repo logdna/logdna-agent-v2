@@ -461,15 +461,14 @@ impl FileSystem {
                     .try_lock()
                     .expect("Arc<Mutex<TailedFileInner>> clone detected!")
                     .get_inode();
-                inodes.push(ino.into());
+                inodes.push(ino);
             }
         }
-        fs.fo_state_handles.clone().map(|(_, state_flush)| {
+        if let Some((_, state_flush)) = fs.fo_state_handles.clone() {
             state_flush
                 .do_gc_blocking(inodes)
                 .expect("FileOffset state Garbage Collection failed")
-        });
-
+        }
         for event in initial_dir_events {
             match event {
                 Event::New(entry_key) => fs.initial_events.push(Event::Initialize(entry_key)),
