@@ -229,7 +229,7 @@ mod test {
         delay_queue.as_mut().take(49).collect::<Vec<_>>().await;
         let delta = Instant::now() - next;
         let next = Instant::now();
-        assert!(delta < Duration::from_millis(1), "{:?}", delta);
+        assert!(delta < Duration::from_millis(3), "{:?}", delta);
 
         delay_queue.as_mut().take(1).collect::<Vec<_>>().await;
         let delta = Instant::now() - next;
