@@ -1,7 +1,5 @@
-#[macro_use]
-extern crate log;
-
 use logdna_mock_ingester::https_ingester;
+use tracing::info;
 
 use rcgen::generate_simple_self_signed;
 

@@ -12,6 +12,7 @@ use std::str::from_utf8;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 use tempfile::tempdir;
+use tracing::debug;
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
@@ -22,7 +23,7 @@ fn test_command_line_arguments_help() {
     let output: Output = cmd.env_clear().arg("--help").unwrap();
     assert!(output.status.success());
     let stdout = from_utf8(&output.stdout).unwrap();
-    log::debug!("agent stdout:\n{:?}", stdout);
+    debug!("agent stdout:\n{:?}", stdout);
 
     vec![
         // Check the version is printed in the help
@@ -286,7 +287,7 @@ fn test_command_line_arguments_should_set_config() {
                 .args(["--retry-disk-limit", "9 MB"]);
         },
         |d| {
-            log::debug!("agent output: {:#?}", d);
+            debug!("agent output: {:#?}", d);
             assert!(contains("tags: \"a,b\"").eval(d));
             assert!(is_match(r"log:\s+dirs:\s+\- /var/log/\s+\- /d1/\s+\- /d2/")
                 .unwrap()
@@ -809,7 +810,7 @@ where
             let line = &line.unwrap();
             let mut guard = lock.lock().unwrap();
             let (pending, data) = guard.deref_mut();
-            log::debug!("agent stderr: {}", line);
+            debug!("agent stderr: {}", line);
             data.push_str(line);
             data.push('\n');
             if data.contains("Enabling filesystem") {
@@ -824,7 +825,7 @@ where
     std::thread::spawn(move || {
         for line in stdout_reader.lines() {
             let line = &line.unwrap();
-            log::debug!("agent stdout: {}", line);
+            debug!("agent stdout: {}", line);
         }
     });
 
@@ -851,7 +852,7 @@ where
         panic!("timed out waiting for agent to start: {}", *data);
     }
 
-    log::debug!("Agent STDERR output:\n{}", data);
+    debug!("Agent STDERR output:\n{}", data);
     // Validate data
     data_f(data.deref());
 }

@@ -9,14 +9,13 @@ use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use slotmap::{DefaultKey, SlotMap};
 
-use log::{error, info, warn};
-
 use std::collections::HashMap;
 use std::convert::{AsRef, Into, TryInto};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use thiserror::Error;
+use tracing::{error, info, warn};
 
 mod offsets;
 mod span;

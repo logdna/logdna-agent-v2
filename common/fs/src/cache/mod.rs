@@ -28,6 +28,7 @@ use smallvec::SmallVec;
 use thiserror::Error;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
+use tracing::{debug, error, info, trace, warn};
 
 mod delayed_stream;
 pub mod dir_path;
@@ -148,6 +149,7 @@ pub(crate) fn get_inode(_path: &Path, file: Option<&std::fs::File>) -> std::io::
 }
 
 /// Turns an inotify event into an event stream
+#[tracing::instrument]
 fn as_event_stream(
     fs: Arc<Mutex<FileSystem>>,
     event_result: &WatchEvent,
@@ -842,7 +844,7 @@ impl FileSystem {
 
                 let smallfiles_offset = if should_lookback {
                     if file_len > TAIL_WARN_THRESHOLD_B {
-                        log::warn!("lookback ocurred on larger file {:?}", path);
+                        warn!("lookback ocurred on larger file {:?}", path);
                     }
 
                     SpanVec::new()
@@ -2260,7 +2262,7 @@ mod tests {
         assert!(lookup!(fs, sym_path).is_none());
         assert!(lookup!(fs, hard_path).is_none());
 
-        debug!(
+        tracing::debug!(
             "new dir contents: {:#?}",
             fs::read_dir(&new_dir_path).unwrap().collect::<Vec<_>>()
         );

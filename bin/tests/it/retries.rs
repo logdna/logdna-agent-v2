@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::tempdir;
+use tracing::debug;
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
@@ -139,7 +140,7 @@ async fn test_retry_location() {
 
         // Check that a retry file was created in the retry dir
         let matches = std::fs::read_dir(retry_dir).unwrap().filter(|r| {
-            log::debug!("{:?}", r);
+            debug!("{:?}", r);
             !matches!(r, Ok(path) if path.file_name().to_string_lossy().ends_with("\\.retry"))
         });
         assert!(matches.count() > 0);

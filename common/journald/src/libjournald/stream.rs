@@ -1,7 +1,6 @@
 use crate::libjournald::error::JournalError;
 use futures::{channel::oneshot, stream::Stream as FutureStream};
 use http::types::body::LineBuilder;
-use log::{info, trace, warn};
 use metrics::Metrics;
 use std::{
     mem::drop,
@@ -20,6 +19,7 @@ use std::{
 use systemd::journal::{
     Journal, JournalRecord, JournalSeek, OpenDirectoryOptions, OpenFilesOptions,
 };
+use tracing::{info, trace, warn};
 
 const KEY_MESSAGE: &str = "MESSAGE";
 const KEY_SYSTEMD_UNIT: &str = "_SYSTEMD_UNIT";

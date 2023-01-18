@@ -13,11 +13,11 @@ use std::thread;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 
 use futures::Future;
-use log::debug;
 use logdna_mock_ingester::{
     http_ingester, http_ingester_with_processors, https_ingester_with_processors, FileLineCounter,
     IngestError, ProcessFn, ReqFn,
 };
+use tracing::debug;
 
 pub use logdna_mock_ingester::HttpVersion;
 

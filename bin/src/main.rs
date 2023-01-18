@@ -1,9 +1,8 @@
-#[macro_use]
-extern crate log;
-
 use config::{self, Config};
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use tracing::{debug, info, trace, warn, Level};
+use tracing_subscriber::FmtSubscriber;
 
 mod _main;
 #[cfg(feature = "dep_audit")]
@@ -30,7 +29,14 @@ fn main() -> anyhow::Result<()> {
     // covert logdna env vars to mezmo ones
     Config::process_logdna_env_vars();
 
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // TODO: see if this can be used to set Level from environment.
+    //env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    let subscriber = FmtSubscriber::builder()
+        .with_thread_names(true)
+        .with_thread_ids(true)
+        .with_max_level(Level::INFO)
+        .finish();
+    tracing::subscriber::set_global_default(subscriber).expect("failied to set subscriber");
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
 
     // must be done at the very beginning and before other threads started

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use metrics::Metrics;
 use serde::{Serialize, Serializer};
 use std::time::Duration;
+use tracing::info;
 
 pub struct RateLimiter {
     pub slots: Arc<AtomicUsize>,

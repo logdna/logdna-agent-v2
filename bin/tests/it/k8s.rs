@@ -12,6 +12,7 @@ use k8s_openapi::api::core::v1::{Endpoints, Namespace, Pod, Service, ServiceAcco
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBinding};
 use kube::api::{Api, ListParams, LogParams, PostParams, WatchEvent};
 use kube::{Client, ResourceExt};
+use tracing::{debug, info};
 
 // workaround for unused functions in different features: https://github.com/rust-lang/rust/issues/46379
 use crate::common;
@@ -36,9 +37,9 @@ async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
                     .unwrap()
                     .boxed();
 
-                log::debug!("Logging agent pod {}", p.name());
+                debug!("Logging agent pod {}", p.name());
                 while let Some(line) = logs.next().await {
-                    log::debug!(
+                    debug!(
                         "LOG [{:?}] {:?}",
                         p.name(),
                         String::from_utf8_lossy(&line.unwrap())
@@ -1348,7 +1349,7 @@ async fn test_k8s_startup_leases_always_start() {
         drop(map);
 
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
-        log::info!("RELEASE AGENT STARTUP LEASE...");
+        info!("RELEASE AGENT STARTUP LEASE...");
         k8s::lease::release_lease("agent-startup-lease-1", &agent_lease_api).await;
         let available_lease =
             k8s::lease::get_available_lease(agent_lease_label, &agent_lease_api).await;

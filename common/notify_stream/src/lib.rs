@@ -6,6 +6,7 @@ use notify::{Config, ErrorKind, EventKind, Watcher as NotifyWatcher};
 use std::path::Path;
 use std::rc::Rc;
 use time::OffsetDateTime;
+use tracing::{info, trace};
 
 type PathId = std::path::PathBuf;
 
@@ -100,12 +101,12 @@ impl Watcher {
         let (async_tx, rx) = async_channel::unbounded();
         tokio::task::spawn_blocking(move || {
             while let Ok(event) = blocking_rx.recv() {
-                log::trace!("received {:#?} from blocking_rx", event);
+                trace!("received {:#?} from blocking_rx", event);
                 // Safely ignore closed error as it's caused by the runtime being dropped
                 // It can't result in a `TrySendError::Full` as it's an unbounded channel
                 let _ = async_tx.try_send(event);
             }
-            log::info!("Shutting down watcher");
+            info!("Shutting down watcher");
         });
 
         Self {
@@ -116,13 +117,13 @@ impl Watcher {
 
     /// Adds a new directory or file to watch
     pub fn watch(&mut self, path: &Path, mode: RecursiveMode) -> Result<(), Error> {
-        log::trace!("watching {:?}", path);
+        trace!("watching {:?}", path);
         self.watcher.watch(path, mode.into()).map_err(|e| e.into())
     }
 
     /// Removes a file or directory
     pub fn unwatch(&mut self, path: &Path) -> Result<(), Error> {
-        log::trace!("unwatching {:?}", path);
+        trace!("unwatching {:?}", path);
         self.watcher.unwatch(path).map_err(|e| e.into())
     }
 
@@ -130,7 +131,7 @@ impl Watcher {
     ///
     /// Returns Ok(true) when watch was found and removed.
     pub fn unwatch_if_exists(&mut self, path: &Path) -> Result<bool, Error> {
-        log::trace!("unwatching {:?} if it exists", path);
+        trace!("unwatching {:?} if it exists", path);
         match self.watcher.unwatch(path).map_err(|e| e.into()) {
             Ok(_) => Ok(true),
             Err(e) => match e {
@@ -147,7 +148,7 @@ impl Watcher {
         Box::pin(stream::unfold(rx, |rx| async move {
             loop {
                 let received = rx.recv().await.expect("channel can not be closed").unwrap();
-                log::trace!("received raw notify event: {:?}", received);
+                trace!("received raw notify event: {:?}", received);
                 if let Some(mapped_event) = match received.kind {
                     EventKind::Remove(RemoveKind::File) => {
                         Some(Event::Remove(received.paths.first().unwrap().clone()))
@@ -196,7 +197,7 @@ impl Watcher {
                     EventKind::Access(_) => None,
                     _ => None,
                 } {
-                    log::trace!("mapped event: {:?}\n", mapped_event);
+                    trace!("mapped event: {:?}\n", mapped_event);
                     return Some(((mapped_event, OffsetDateTime::now_utc()), rx));
                 }
             }

@@ -2,11 +2,11 @@ use crate::{Middleware, Status};
 use config::env_vars;
 use http::types::body::{KeyValueMap, LineBufferMut};
 use lazy_static::lazy_static;
-use log::error;
 use regex::bytes::Regex as RegexB;
 use regex::Regex;
 use std::collections::HashMap;
 use std::ops::Deref;
+use tracing::error;
 
 static K8S_LOG_DIR: &str = "/var/log/containers/";
 

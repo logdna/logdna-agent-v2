@@ -21,6 +21,7 @@ use metrics::Metrics;
 use middleware::{Middleware, Status};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+use tracing::{trace, warn};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -74,14 +75,14 @@ impl K8sMetadata {
                         match r {
                             Ok(event) => Some(event),
                             Err(e) => {
-                                log::warn!("k8s watch stream error: {}", e);
+                                warn!("k8s watch stream error: {}", e);
                                 None
                             }
                         }
                     })
                     .for_each(|p| async {
                         K8sMetadata::handle_pod(&store, p)
-                            .unwrap_or_else(|e| log::warn!("unable to process pod event: {}", e));
+                            .unwrap_or_else(|e| warn!("unable to process pod event: {}", e));
                     })
                     .await
             }
@@ -127,7 +128,7 @@ impl Middleware for K8sMetadata {
                     let meta_object =
                         extract_image_name_and_tag(parse_result.container_name, pod.as_ref());
                     if meta_object.is_some() && line.set_meta(json!(meta_object)).is_err() {
-                        log::trace!("Unable to set meta object{:?}", meta_object);
+                        trace!("Unable to set meta object{:?}", meta_object);
                         return Status::Skip;
                     }
 

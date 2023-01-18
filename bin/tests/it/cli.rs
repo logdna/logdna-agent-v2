@@ -11,7 +11,6 @@ use crate::common::{self, consume_output, AgentSettings};
 
 use assert_cmd::prelude::*;
 use futures::FutureExt;
-use log::{debug, info};
 use logdna_mock_ingester::FileInfo;
 use predicates::prelude::*;
 use proptest::prelude::*;
@@ -19,6 +18,7 @@ use tempfile::tempdir;
 use test_types::strategies::random_line_string_vec;
 use tokio::io::BufWriter;
 use tokio::task;
+use tracing::{debug, info};
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]

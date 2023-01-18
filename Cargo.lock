@@ -464,7 +464,6 @@ dependencies = [
  "humanize-rs",
  "java-properties",
  "lazy_static",
- "log",
  "scopeguard",
  "serde",
  "serde_yaml",
@@ -474,6 +473,8 @@ dependencies = [
  "sysinfo",
  "tempfile",
  "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1038,7 +1039,6 @@ dependencies = [
  "glob",
  "http 0.1.0",
  "lazy_static",
- "log",
  "memchr",
  "metrics",
  "middleware",
@@ -1283,7 +1283,6 @@ dependencies = [
  "futures",
  "futures-timer",
  "hyper",
- "log",
  "logdna-client",
  "metrics",
  "num_cpus",
@@ -1298,6 +1297,8 @@ dependencies = [
  "time 0.3.9",
  "tokio",
  "tokio-test",
+ "tracing",
+ "tracing-subscriber",
  "types",
  "uuid",
 ]
@@ -1594,7 +1595,6 @@ dependencies = [
  "env_logger",
  "futures",
  "http 0.1.0",
- "log",
  "metrics",
  "partial-io",
  "serial_test",
@@ -1603,6 +1603,8 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tokio-util",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1661,7 +1663,6 @@ dependencies = [
  "kube",
  "kube-derive",
  "lazy_static",
- "log",
  "metrics",
  "middleware",
  "parking_lot",
@@ -1677,6 +1678,8 @@ dependencies = [
  "tokio",
  "tower",
  "tower-http",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1948,7 +1951,6 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "kube-runtime",
- "log",
  "logdna-metrics-recorder",
  "logdna-mock-ingester",
  "metrics",
@@ -1979,6 +1981,8 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-test",
+ "tracing",
+ "tracing-subscriber",
  "types",
  "wait-timeout",
  "winservice",
@@ -2036,7 +2040,6 @@ dependencies = [
  "futures",
  "hyper",
  "hyper-rustls",
- "log",
  "rcgen",
  "rustls",
  "rustls-pemfile 1.0.2",
@@ -2047,6 +2050,8 @@ dependencies = [
  "tokio-rustls",
  "tokio-stream",
  "tokio-util",
+ "tracing",
+ "tracing-subscriber",
  "url",
 ]
 
@@ -2101,11 +2106,12 @@ version = "0.1.0"
 dependencies = [
  "json",
  "lazy_static",
- "log",
  "num",
  "prometheus",
  "tikv-jemalloc-ctl",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2115,12 +2121,13 @@ dependencies = [
  "config",
  "http 0.1.0",
  "lazy_static",
- "log",
  "memoffset 0.6.5",
  "multimap",
  "regex",
  "serde_json",
  "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2257,7 +2264,6 @@ dependencies = [
  "async-channel",
  "env_logger",
  "futures",
- "log",
  "notify",
  "notify-debouncer-mini",
  "pin-utils",
@@ -2265,6 +2271,8 @@ dependencies = [
  "tempfile",
  "time 0.3.9",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -3387,7 +3395,6 @@ dependencies = [
  "derivative",
  "env_logger",
  "futures",
- "log",
  "rocksdb",
  "serde",
  "slotmap",
@@ -3396,6 +3403,8 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-test",
+ "tracing",
+ "tracing-subscriber",
  "vec-collections",
 ]
 

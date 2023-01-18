@@ -39,6 +39,7 @@ use tokio::signal::*;
 use tokio::sync::Mutex;
 use tokio::time::sleep;
 use tokio::time::Duration;
+use tracing::{debug, error, info, trace, warn};
 
 #[cfg(feature = "dep_audit")]
 use crate::dep_audit;
