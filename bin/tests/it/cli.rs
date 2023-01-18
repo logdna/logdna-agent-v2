@@ -2376,6 +2376,7 @@ fn test_offset_stream_state_gc() {
 
     let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Could not create temp dir").into_path();
+    let db_dir = tempdir().expect("Could not create temp dir").into_path();
     let file_path = dir.join("file1.log");
 
     File::create(&file_path).expect("Could not create file");
@@ -2391,6 +2392,7 @@ fn test_offset_stream_state_gc() {
 
     let mut settings = AgentSettings::new(dir.to_str().unwrap());
     settings.clear_cache_interval = Some(3);
+    settings.state_db_dir = Some(db_dir.as_path());
 
     let mut agent_handle = common::spawn_agent(settings);
 
@@ -2398,12 +2400,12 @@ fn test_offset_stream_state_gc() {
 
     common::wait_for_file_event("initialize", &file_path, &mut stderr_reader);
 
-    debug!("waiting for restarting");
-    common::wait_for_event("restarting stream, interval=3", &mut stderr_reader);
-    debug!("got restarting");
+    common::append_to_file(&file_path, 15, 5).expect("Could not append");
+    thread::sleep(std::time::Duration::from_millis(5000));
+    common::append_to_file(&file_path, 15, 5).expect("Could not append");
 
-    debug!("waiting for GC event with specific inode to retain");
     let msg = format!("GarbageCollect: [FileId({inode})]");
+    debug!("waiting for GC event with specific inode to retain: '{msg}'");
     common::wait_for_event(msg.as_str(), &mut stderr_reader);
     debug!("got GC event");
 
