@@ -2380,15 +2380,7 @@ fn test_offset_stream_state_gc() {
     let file_path = dir.join("file1.log");
 
     File::create(&file_path).expect("Could not create file");
-    #[cfg(unix)]
     let inode = get_inode(file_path.as_path(), None).expect("Failed to get inode");
-    #[cfg(windows)]
-    let inode = {
-        let file = std::fs::OpenOptions::new()
-            .read(true)
-            .open(file_path.into())?;
-        get_inode(path, Some(&file))?
-    };
 
     let mut settings = AgentSettings::new(dir.to_str().unwrap());
     settings.clear_cache_interval = Some(3);

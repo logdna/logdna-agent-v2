@@ -142,7 +142,7 @@ pub fn get_inode(path: &Path, _file: Option<&std::fs::File>) -> std::io::Result<
 }
 
 #[cfg(windows)]
-pub(crate) fn get_inode(_path: &Path, file: Option<&std::fs::File>) -> std::io::Result<u64> {
+pub fn get_inode(_path: &Path, file: Option<&std::fs::File>) -> std::io::Result<u64> {
     use winapi_util::AsHandleRef;
 
     file.ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "expected a file handle"))
