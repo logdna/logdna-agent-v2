@@ -14,11 +14,11 @@ use std::time::Duration;
 use tempfile::tempdir;
 use tracing::debug;
 
+use test_log::test;
+
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_command_line_arguments_help() {
-    let _ = env_logger::Builder::from_default_env().try_init();
-
     let mut cmd = get_bin_command();
     let output: Output = cmd.env_clear().arg("--help").unwrap();
     assert!(output.status.success());
@@ -76,7 +76,6 @@ fn test_command_line_arguments_help() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_version_is_included() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let mut cmd = get_bin_command();
     let output = cmd.env_clear().arg("--version").unwrap();
     assert!(output.status.success());
@@ -90,7 +89,6 @@ fn test_version_is_included() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_list_config_from_conf() -> io::Result<()> {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let config_dir = tempdir()?;
     let config_file_path = config_dir.path().join("sample.conf");
     let mut file = File::create(&config_file_path)?;
@@ -125,7 +123,6 @@ fn test_list_config_from_conf() -> io::Result<()> {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_legacy_and_new_confs_merge() -> io::Result<()> {
-    let _ = env_logger::Builder::from_default_env().try_init();
     // Setting up an automatic finalizer for the test case that deletes the conf
     // files created in this test from their global directories. If they remain,
     // other integration tests may fail.
@@ -182,7 +179,6 @@ startup: {{}}
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_ibm_legacy_host_env_var() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let mut cmd = get_bin_command();
     let output: Output = cmd
         .env_clear()
@@ -199,7 +195,6 @@ fn test_ibm_legacy_host_env_var() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_list_config_from_env() -> io::Result<()> {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let mut cmd = get_bin_command();
     let output: Output = cmd
         .env_clear()
@@ -219,7 +214,6 @@ fn test_list_config_from_env() -> io::Result<()> {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_list_config_no_options() -> io::Result<()> {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let mut cmd = get_bin_command();
     let output: Output = cmd.env_clear().arg("-l").unwrap();
     assert!(output.status.success());
@@ -232,7 +226,6 @@ fn test_list_config_no_options() -> io::Result<()> {
 #[test]
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 fn test_list_default_conf() -> io::Result<()> {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let file_path = Path::new("/etc/logdna.conf");
     fs::write(file_path, "key = 1234\ntags = sample_tag_on_conf")?;
 
@@ -254,7 +247,6 @@ fn test_list_default_conf() -> io::Result<()> {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_command_line_arguments_should_set_config() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     test_command(
         |cmd| {
             cmd.args(["-k", "my_secret"])
@@ -661,7 +653,6 @@ hostname = some-linux-instance"
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_properties_config_common() -> io::Result<()> {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let config_dir = tempdir()?;
     let config_file_path = config_dir.path().join("sample.conf");
     let mut file = File::create(&config_file_path)?;
@@ -699,7 +690,6 @@ line_exclusion_regex = (?i:debug),(?i:trace)"
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_properties_default_conf() -> io::Result<()> {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let data = "key = 1234\ntags = sample_tag";
     let file_path = Path::new("/etc/logdna.conf");
     let mut conf_file = File::create(file_path)?;
@@ -723,7 +713,6 @@ fn test_properties_default_conf() -> io::Result<()> {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
 fn test_properties_default_yaml() -> io::Result<()> {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = Path::new("/etc/logdna/");
     fs::create_dir_all(dir)?;
     let file_path = dir.join("config.yaml");
