@@ -31,10 +31,21 @@ fn main() -> anyhow::Result<()> {
 
     // TODO: see if this can be used to set Level from environment.
     //env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    let log_level = match std::env::var("RUST_LOG")
+        .unwrap_or_else(|_| "info".into())
+        .as_str()
+    {
+        "debug" => Level::DEBUG,
+        "error" => Level::ERROR,
+        "trace" => Level::TRACE,
+        "warn" => Level::ERROR,
+        _ => Level::INFO,
+    };
+
     let subscriber = FmtSubscriber::builder()
+        .with_max_level(log_level)
         .with_thread_names(true)
         .with_thread_ids(true)
-        .with_max_level(Level::INFO)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("failied to set subscriber");
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
