@@ -14,7 +14,7 @@ use http::types::serialize::{
     SerializeUtf8, SerializeValue,
 };
 
-use state::{GetOffset, SpanVec};
+use state::{FileId, GetOffset, SpanVec};
 
 use metrics::Metrics;
 
@@ -181,16 +181,13 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
         Ok(())
     }
     fn field_count(&self) -> usize {
-        3 + if Option::is_none(&self.annotations) {
-            0
-        } else {
-            1
-        } + if Option::is_none(&self.app) { 0 } else { 1 }
-            + if Option::is_none(&self.env) { 0 } else { 1 }
-            + if Option::is_none(&self.host) { 0 } else { 1 }
-            + if Option::is_none(&self.labels) { 0 } else { 1 }
-            + if Option::is_none(&self.level) { 0 } else { 1 }
-            + if Option::is_none(&self.meta) { 0 } else { 1 }
+        3 + usize::from(!Option::is_none(&self.annotations))
+            + usize::from(!Option::is_none(&self.app))
+            + usize::from(!Option::is_none(&self.env))
+            + usize::from(!Option::is_none(&self.host))
+            + usize::from(!Option::is_none(&self.labels))
+            + usize::from(!Option::is_none(&self.level))
+            + usize::from(!Option::is_none(&self.meta))
     }
 }
 
@@ -337,6 +334,13 @@ pub struct TailedFileInner {
     initial_offsets: SpanVec,
     offset: u64,
     inode: u64,
+    path: PathBuf,
+}
+
+impl TailedFileInner {
+    pub fn get_inode(&self) -> FileId {
+        self.inode.into()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -359,12 +363,17 @@ impl<T> TailedFile<T> {
                 reader: BufReader::new(tokio::fs::File::from_std(file)).compat(),
                 buf: Vec::new(),
                 offset: 0,
+                path: path.to_path_buf(),
                 initial_offsets,
                 inode,
             })),
             resume_events_sender,
             _phantom: std::marker::PhantomData::<T>,
         })
+    }
+
+    pub fn get_inner(&self) -> &Arc<Mutex<TailedFileInner>> {
+        &self.inner
     }
 }
 
@@ -652,7 +661,8 @@ impl TailedFile<LazyLineSerializer> {
                         ref mut reader,
                         ref mut buf,
                         ref mut offset,
-                        ref inode,
+                        ref mut inode,
+                        ref path,
                         ..
                     } = borrow.deref_mut();
 
@@ -724,6 +734,28 @@ impl TailedFile<LazyLineSerializer> {
                         // will implicitly retry
                         Err(e) => {
                             warn!("{}", e);
+                            if e.kind() == std::io::ErrorKind::NotFound {
+                                warn!("Attempting to reopen {:?}", path);
+                                match OpenOptions::new().read(true).open(path).and_then(|file| {
+                                    get_inode(path, Some(&file)).map(|inode| (file, inode))
+                                }) {
+                                    Ok((file, new_inode)) => {
+                                        let reader_bufreader = pinned_reader.get_mut().get_mut();
+                                        *reader_bufreader = tokio::io::BufReader::new(
+                                            tokio::fs::File::from_std(file),
+                                        );
+                                        *inode = new_inode;
+                                        *offset = 0;
+                                        if !buf.is_empty() {
+                                            warn!("Dropping trailing data from unreachable file");
+                                        }
+                                        buf.clear();
+                                    }
+                                    e => {
+                                        warn!("Error attempting to reopen {:?}", e);
+                                    }
+                                }
+                            };
                             Some((Err(e), lazy_lines))
                         }
                     }
@@ -806,6 +838,7 @@ mod tests {
             offset: 0,
             initial_offsets: SpanVec::new(),
             inode: 0,
+            path: file_path,
         }));
         LazyLineSerializer::new(file_inner, "file/path.log".to_owned(), (0, 0, 0))
     }

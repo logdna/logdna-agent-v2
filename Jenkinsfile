@@ -65,30 +65,28 @@ pipeline {
         }
         stage('Lint and Unit Test') {
             parallel {
-                stage('Lint'){
+                stage('Lint') {
                     steps {
-                        withCredentials([[
-                                           $class: 'AmazonWebServicesCredentialsBinding',
-                                           credentialsId: 'aws',
-                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                         ]]){
-                            sh """
-                              make lint
-                            """
-                        }
+                        sh '''
+                            make lint
+                        '''
                     }
                 }
                 stage('Unit Tests'){
+                    when {
+                        not {
+                            triggeredBy 'ParameterizedTimerTriggerCause'
+                        }
+                    }
                     steps {
                         withCredentials([[
-                                           $class: 'AmazonWebServicesCredentialsBinding',
-                                           credentialsId: 'aws',
-                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                         ]]){
+                                            $class: 'AmazonWebServicesCredentialsBinding',
+                                            credentialsId: 'aws',
+                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                            ]]){
                             sh """
-                              make -j2 test
+                                make -j2 test
                             """
                         }
                     }
@@ -96,6 +94,11 @@ pipeline {
             }
         }
         stage('Test') {
+            when {
+                not {
+                    triggeredBy 'ParameterizedTimerTriggerCause'
+                }
+            }
             environment {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
