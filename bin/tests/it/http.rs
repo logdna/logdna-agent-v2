@@ -5,10 +5,11 @@ use std::io::Write;
 use std::sync::{Arc, Mutex};
 use tempfile::tempdir;
 
-#[tokio::test]
+use test_log::test;
+
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_http_buffer_size() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().unwrap().into_path();
     let file_path = dir.join("test.log");
     let mut file = File::create(&file_path).expect("Couldn't create temp log file...");

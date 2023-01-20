@@ -1,8 +1,8 @@
 use config::{self, Config};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, info, trace, warn, Level};
-use tracing_subscriber::FmtSubscriber;
+use tracing::{debug, info, trace, warn};
+use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 mod _main;
 #[cfg(feature = "dep_audit")]
@@ -29,25 +29,14 @@ fn main() -> anyhow::Result<()> {
     // covert logdna env vars to mezmo ones
     Config::process_logdna_env_vars();
 
-    // TODO: see if this can be used to set Level from environment.
-    //env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
-    let log_level = match std::env::var("RUST_LOG")
-        .unwrap_or_else(|_| "info".into())
-        .as_str()
-    {
-        "debug" => Level::DEBUG,
-        "error" => Level::ERROR,
-        "trace" => Level::TRACE,
-        "warn" => Level::ERROR,
-        _ => Level::INFO,
-    };
-
     let subscriber = FmtSubscriber::builder()
-        .with_max_level(log_level)
-        .with_thread_names(true)
-        .with_thread_ids(true)
+        .with_env_filter(EnvFilter::from_default_env())
+        .without_time()
+        .with_writer(std::io::stderr)
         .finish();
+
     tracing::subscriber::set_global_default(subscriber).expect("failied to set subscriber");
+
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
 
     // must be done at the very beginning and before other threads started

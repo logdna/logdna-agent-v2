@@ -427,7 +427,7 @@ pub fn start_http_ingester() -> (
     )
 }
 
-pub fn consume_output(stderr_handle: std::process::ChildStderr) {
+pub fn consume_output<T: std::io::Read + std::marker::Send + 'static>(stderr_handle: T) {
     let stderr_reader = std::io::BufReader::new(stderr_handle);
     std::thread::spawn(move || {
         for line in stderr_reader.lines() {

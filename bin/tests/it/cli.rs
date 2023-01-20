@@ -20,6 +20,8 @@ use tokio::io::BufWriter;
 use tokio::task;
 use tracing::{debug, info};
 
+use test_log::test;
+
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn api_key_missing() {
@@ -36,7 +38,6 @@ fn api_key_missing() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn api_key_present() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Couldn't create temp dir...");
 
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
@@ -123,7 +124,6 @@ fn api_key_present() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_append_and_delete() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file_path = dir.join("file1.log");
     File::create(&file_path).expect("Could not create file");
@@ -155,7 +155,6 @@ fn test_append_and_delete() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_file_added_after_initialization() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Could not create temp dir").into_path();
 
     let mut agent_handle = common::spawn_agent(AgentSettings::new(dir.to_str().unwrap()));
@@ -177,7 +176,6 @@ fn test_file_added_after_initialization() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_delete_does_not_leave_file_descriptor() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file_path = dir.join("file1.log");
     File::create(&file_path).expect("Could not create file");
@@ -219,7 +217,6 @@ fn test_delete_does_not_leave_file_descriptor() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(unix)]
 fn test_send_sigterm_does_not_leave_file_descriptor() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     // k8s uses SIGTERM
     test_signals(nix::sys::signal::Signal::SIGTERM);
 }
@@ -228,7 +225,6 @@ fn test_send_sigterm_does_not_leave_file_descriptor() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(unix)]
 fn test_send_sigint_does_not_leave_file_descriptor() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     // k8s uses SIGTERM
     test_signals(nix::sys::signal::Signal::SIGINT);
 }
@@ -310,7 +306,6 @@ fn test_append_and_move() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_truncate_file() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     // K8s uses copytruncate, see https://github.com/kubernetes/kubernetes/issues/38495
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file_path = dir.join("file1.log");
@@ -340,7 +335,6 @@ fn test_truncate_file() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_exclusion_rules() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let included_file = dir.join("file1.log");
     let excluded_file = dir.join("file2.log");
@@ -382,7 +376,6 @@ fn test_exclusion_rules() {
 #[test]
 // #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_include_only_rules() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().unwrap().into_path();
     let included = dir.join("my_app.log");
     let excluded1 = dir.join("other_file.log");
@@ -428,7 +421,6 @@ fn test_include_only_rules() {
 #[allow(clippy::needless_late_init)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_files_other_than_dot_log_should_be_not_included_by_default() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let included_file = dir.join("file1.log");
     let not_included_files = vec![
@@ -477,7 +469,6 @@ fn test_files_other_than_dot_log_should_be_not_included_by_default() {
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 fn test_dangling_symlinks() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
     let log_sub_dir = log_dir.join("sub");
     fs::create_dir(&log_sub_dir).unwrap();
@@ -517,7 +508,6 @@ fn test_dangling_symlinks() {
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 fn test_append_after_symlinks_delete() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
     let data_dir = tempdir().expect("Could not create temp dir").into_path();
     let file_path = data_dir.join("file1.log");
@@ -555,7 +545,6 @@ fn test_directory_symlinks_delete() {
         }
     }
 
-    let _ = env_logger::Builder::from_default_env().try_init();
     let log_dir = tempdir().expect("Could not create temp dir").into_path();
     let data_dir = tempdir().expect("Could not create temp dir").into_path();
 
@@ -600,7 +589,6 @@ fn test_directory_symlinks_delete() {
 #[tokio::test]
 #[cfg(all(target_os = "linux", feature = "integration_tests"))]
 async fn test_z_journald_support() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     tokio::time::sleep(Duration::from_millis(500)).await;
     let dir = "/var/log/journal";
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
@@ -643,7 +631,6 @@ async fn test_z_journald_support() {
 #[tokio::test]
 #[cfg(all(target_os = "linux", feature = "integration_tests"))]
 async fn test_z_journald_support_no_flag() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     tokio::time::sleep(Duration::from_millis(500)).await;
     let dir = "/var/log/journal";
     let (server, _received, shutdown_handle, addr) = common::start_http_ingester();
@@ -669,7 +656,6 @@ async fn test_z_journald_support_no_flag() {
 #[tokio::test]
 #[cfg(all(target_os = "linux", feature = "integration_tests"))]
 async fn test_z_journalctl_support_true_flag_no_path() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     tokio::time::sleep(Duration::from_millis(500)).await;
     let (server, _received, shutdown_handle, addr) = common::start_http_ingester();
     let mut settings = AgentSettings::with_mock_ingester("/var/log/journal", &addr);
@@ -694,7 +680,6 @@ async fn test_z_journalctl_support_true_flag_no_path() {
 #[tokio::test]
 #[cfg(all(target_os = "linux", feature = "integration_tests"))]
 async fn test_journalctl_support() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     assert_eq!(systemd::journal::print(6, "Sample info"), 0);
     tokio::time::sleep(Duration::from_millis(1000)).await;
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
@@ -745,7 +730,6 @@ proptest! {
     #[test]
     #[cfg_attr(not(feature = "integration_tests"), ignore)]
     fn lookback_start_lines_are_delivered(log_lines in random_line_string_vec(150, 2000)) {
-        let _ = env_logger::Builder::from_default_env().try_init();
         let dir = tempdir().expect("Couldn't create temp dir...");
 
         let dir_path = format!("{}/", dir.path().to_str().unwrap());
@@ -834,8 +818,6 @@ proptest! {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn lookback_none_lines_are_delivered() {
-    let _ = env_logger::Builder::from_default_env().try_init();
-
     let dir = tempdir().expect("Couldn't create temp dir...");
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
 
@@ -920,8 +902,6 @@ fn lookback_none_lines_are_delivered() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn lookback_tail_lines_file_created_after_agent_start_at_beg() {
-    let _ = env_logger::Builder::from_default_env().try_init();
-
     let dir = tempdir().expect("Couldn't create temp dir...");
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
 
@@ -994,8 +974,6 @@ fn lookback_tail_lines_file_created_after_agent_start_at_beg() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn lookback_tail_lines_file_created_before_agent_start_at_end() {
-    let _ = env_logger::Builder::from_default_env().try_init();
-
     let dir = tempdir().expect("Couldn't create temp dir...");
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
 
@@ -1126,7 +1104,6 @@ async fn test_partial_fsynced_lines() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(unix)]
 async fn test_transient_access_denied() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
@@ -1198,7 +1175,6 @@ async fn test_transient_access_denied() {
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_tags() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
 
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
@@ -1253,8 +1229,6 @@ async fn test_tags() {
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_lookback_restarting_agent() {
-    let _ = env_logger::Builder::from_default_env().try_init();
-
     let line_count = Arc::new(AtomicUsize::new(0));
 
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
@@ -1359,7 +1333,6 @@ async fn test_lookback_restarting_agent() {
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 async fn test_symlink_initialization_both_included() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let file_path = log_dir.join("test.log");
@@ -1517,7 +1490,6 @@ async fn test_symlink_to_symlink_initialization_excluded_file() {
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 async fn test_symlink_to_dir_initialization_excluded_file() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let test_dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let excluded_dir = test_dir.join("excluded");
@@ -1585,8 +1557,6 @@ async fn test_symlink_to_dir_initialization_excluded_file() {
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 async fn test_symlink_to_hardlink_initialization_excluded_file() {
-    let _ = env_logger::Builder::from_default_env().try_init();
-
     let db_dir = tempdir().expect("Couldn't create temp dir...");
     let db_dir_path = db_dir.path();
 
@@ -1918,7 +1888,6 @@ async fn test_line_redact() {
 #[cfg(unix)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_directory_created_after_initialization() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let future_dir = dir.join("inner");
 
@@ -1956,8 +1925,6 @@ async fn test_directory_created_after_initialization() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn lookback_stateful_lines_are_delivered() {
-    let _ = env_logger::Builder::from_default_env().try_init();
-
     let db_dir = tempdir().expect("Couldn't create temp dir...");
     let db_dir_path = db_dir.path();
     let dir = tempdir().expect("Couldn't create temp dir...");
@@ -2097,7 +2064,6 @@ fn lookback_stateful_lines_are_delivered() {
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_tight_writes() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
 
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
@@ -2154,7 +2120,6 @@ async fn test_tight_writes() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_tight_writes_with_slow_ingester() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
 
     let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester(
@@ -2237,7 +2202,6 @@ async fn test_tight_writes_with_slow_ingester() {
 #[cfg_attr(not(feature = "slow_tests"), ignore)]
 async fn test_endurance_writes() {
     use tokio::io::AsyncWriteExt;
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
 
     let line_count = Arc::new(AtomicUsize::new(0));
@@ -2329,7 +2293,6 @@ async fn test_endurance_writes() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_clear_cache() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file_path = dir.join("file1.log");
     File::create(&file_path).expect("Could not create file");
