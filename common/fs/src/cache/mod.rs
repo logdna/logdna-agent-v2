@@ -29,6 +29,8 @@ use thiserror::Error;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
 
+use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
+
 mod delayed_stream;
 pub mod dir_path;
 pub mod entry;
@@ -133,14 +135,14 @@ impl TryFrom<&Path> for FsEntry {
 type EventTimestamp = time::OffsetDateTime;
 
 #[cfg(unix)]
-pub(crate) fn get_inode(path: &Path, _file: Option<&std::fs::File>) -> std::io::Result<u64> {
+pub fn get_inode(path: &Path, _file: Option<&std::fs::File>) -> std::io::Result<u64> {
     use std::os::unix::fs::MetadataExt;
 
     Ok(path.metadata()?.ino())
 }
 
 #[cfg(windows)]
-pub(crate) fn get_inode(_path: &Path, file: Option<&std::fs::File>) -> std::io::Result<u64> {
+pub fn get_inode(_path: &Path, file: Option<&std::fs::File>) -> std::io::Result<u64> {
     use winapi_util::AsHandleRef;
 
     file.ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "expected a file handle"))
@@ -260,6 +262,8 @@ pub struct FileSystem {
 
     ignored_dirs: HashSet<PathBuf>,
 
+    fo_state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
+
     _c: countme::Count<Self>,
 }
 
@@ -293,6 +297,7 @@ impl FileSystem {
         lookback_config: Lookback,
         initial_offsets: HashMap<FileId, SpanVec>,
         rules: Rules,
+        fo_state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
     ) -> Self {
         let (resume_events_send, resume_events_recv) = async_channel::unbounded();
         let (retry_events_send, retry_events_recv) = async_channel::unbounded();
@@ -368,6 +373,7 @@ impl FileSystem {
             retry_events_recv,
             retry_events_send,
             ignored_dirs,
+            fo_state_handles,
             _c: countme::Count::new(),
         };
 
@@ -444,6 +450,25 @@ impl FileSystem {
             }
         }
 
+        // send event to FileOffsets state to cleanup unused inodes
+        let mut inodes: Vec<FileId> = Vec::new();
+        // TODO convert to call-chain
+        for entry in entries.values() {
+            if let Entry::File { data, .. } = entry {
+                let ino = data
+                    .borrow()
+                    .get_inner()
+                    .try_lock()
+                    .expect("Arc<Mutex<TailedFileInner>> clone detected!")
+                    .get_inode();
+                inodes.push(ino);
+            }
+        }
+        if let Some((_, state_flush)) = fs.fo_state_handles.clone() {
+            state_flush
+                .do_gc_blocking(inodes)
+                .expect("FileOffset state Garbage Collection failed")
+        }
         for event in initial_dir_events {
             match event {
                 Event::New(entry_key) => fs.initial_events.push(Event::Initialize(entry_key)),
@@ -1598,6 +1623,7 @@ mod tests {
             Lookback::Start,
             HashMap::new(),
             rules,
+            None,
         )
     }
 
