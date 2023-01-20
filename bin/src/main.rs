@@ -1,7 +1,7 @@
 use config::{self, Config};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, trace, warn, Level};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 mod _main;
@@ -30,7 +30,8 @@ fn main() -> anyhow::Result<()> {
     Config::process_logdna_env_vars();
 
     let subscriber = FmtSubscriber::builder()
-        .with_env_filter(EnvFilter::from_default_env())
+        //.with_env_filter(EnvFilter::from_default_env())
+        .with_max_level(Level::INFO)
         .without_time()
         .with_writer(std::io::stderr)
         .finish();
