@@ -89,6 +89,7 @@ impl From<DirPathBuf> for PathBuf {
 ///
 /// When a valid directory is found, it adds the missing piece of the directory
 /// path to `postfix` and returns the `DirPathBuf` result.
+#[cfg(unix)]
 fn find_valid_path(
     path: Option<PathBuf>,
     postfix: Option<PathBuf>,
@@ -126,6 +127,8 @@ fn find_valid_path(
     }
 }
 
+/// Given a path, returns an `Option<PathBuf>` of the parent directory.
+#[cfg(unix)]
 fn level_up(path: &Path) -> Option<PathBuf> {
     let mut parent_path = PathBuf::new();
     match path.parent() {
@@ -144,6 +147,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(unix)]
     fn test_level_up() {
         let mut expe_pathbuf = PathBuf::new();
         expe_pathbuf.push("/test-directory");
@@ -159,6 +163,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
@@ -180,6 +185,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_deep_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
@@ -201,6 +207,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_filename_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
@@ -222,6 +229,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_empty_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
@@ -232,6 +240,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_invalid_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
@@ -242,6 +251,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_root_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
@@ -252,6 +262,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(unix)]
     fn test_root_lvl_find_valid_path() {
         let mut test_path = PathBuf::new();
         let test_postfix = PathBuf::new();
