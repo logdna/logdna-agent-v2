@@ -2292,7 +2292,7 @@ async fn test_endurance_writes() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
-fn test_clear_cache() {
+fn test_clear_fs_cache() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file_path = dir.join("file1.log");
     File::create(&file_path).expect("Could not create file");
@@ -2324,6 +2324,45 @@ fn test_clear_cache() {
 
     debug!("waiting for watching");
     common::wait_for_file_event("watching", &file_path, &mut stderr_reader);
+
+    consume_output(stderr_reader.into_inner());
+
+    common::assert_agent_running(&mut agent_handle);
+
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+fn test_offset_stream_state_gc() {
+    use ::fs::cache::get_inode;
+
+    let _ = env_logger::Builder::from_default_env().try_init();
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let db_dir = tempdir().expect("Could not create temp dir").into_path();
+    let file_path = dir.join("file1.log");
+
+    File::create(&file_path).expect("Could not create file");
+    let inode = get_inode(file_path.as_path(), None).expect("Failed to get inode");
+
+    let mut settings = AgentSettings::new(dir.to_str().unwrap());
+    settings.clear_cache_interval = Some(3);
+    settings.state_db_dir = Some(db_dir.as_path());
+
+    let mut agent_handle = common::spawn_agent(settings);
+
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
+
+    common::wait_for_file_event("initialize", &file_path, &mut stderr_reader);
+
+    common::append_to_file(&file_path, 15, 5).expect("Could not append");
+    thread::sleep(std::time::Duration::from_millis(5000));
+    common::append_to_file(&file_path, 15, 5).expect("Could not append");
+
+    let msg = format!("GarbageCollect: [FileId({inode})]");
+    debug!("waiting for GC event with specific inode to retain: '{msg}'");
+    common::wait_for_event(msg.as_str(), &mut stderr_reader);
+    debug!("got GC event");
 
     consume_output(stderr_reader.into_inner());
 

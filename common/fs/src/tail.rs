@@ -23,6 +23,8 @@ use pin_project_lite::pin_project;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
+
 type SyncHashMap<K, V> = Arc<Mutex<HashMap<K, V>>>;
 
 /// Tails files on a filesystem by inheriting events from a Watcher
@@ -256,6 +258,7 @@ impl Tailer {
         rules: Rules,
         lookback_config: Lookback,
         initial_offsets: Option<HashMap<FileId, SpanVec>>,
+        fo_state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
     ) -> Self {
         Self {
             fs_cache: Arc::new(Mutex::new(FileSystem::new(
@@ -263,6 +266,7 @@ impl Tailer {
                 lookback_config,
                 initial_offsets.unwrap_or_default(),
                 rules,
+                fo_state_handles,
             ))),
             event_times: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -429,6 +433,7 @@ mod test {
                     rules,
                     Lookback::None,
                     None,
+                    None,
                 );
 
                 let stream = process(tailer).expect("failed to read events");
@@ -474,6 +479,7 @@ mod test {
                         .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
                     rules,
                     Lookback::SmallFiles,
+                    None,
                     None,
                 );
 
@@ -522,6 +528,7 @@ mod test {
                         .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
                     rules,
                     Lookback::Start,
+                    None,
                     None,
                 );
 

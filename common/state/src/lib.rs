@@ -9,6 +9,7 @@ use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use slotmap::{DefaultKey, SlotMap};
 
+use async_channel::SendError;
 use std::collections::HashMap;
 use std::convert::{AsRef, Into, TryInto};
 use std::path::{Path, PathBuf};
@@ -199,6 +200,7 @@ pub enum FileOffsetEvent {
     Update(FileOffsetUpdate),
     Clear,
     Flush(Option<DefaultKey>),
+    GarbageCollect { retained_files: Vec<FileId> },
 }
 
 #[derive(Clone)]
@@ -232,6 +234,7 @@ impl FileOffsetWriteHandle {
     }
 }
 
+#[derive(Clone)]
 pub struct FileOffsetFlushHandle {
     tx: async_channel::Sender<FileOffsetEvent>,
 }
@@ -244,8 +247,17 @@ impl FileOffsetFlushHandle {
     pub async fn clear(&self) -> Result<(), FileOffsetStateError> {
         Ok(self.tx.send(FileOffsetEvent::Clear).await?)
     }
+
+    pub fn do_gc_blocking(
+        &self,
+        retained_files: Vec<FileId>,
+    ) -> Result<(), SendError<FileOffsetEvent>> {
+        self.tx
+            .send_blocking(FileOffsetEvent::GarbageCollect { retained_files })
+    }
 }
 
+#[derive(Clone)]
 pub struct FileOffsetShutdownHandle {
     tx: async_channel::Sender<FileOffsetEvent>,
 }
@@ -507,6 +519,16 @@ fn handle_file_offset_event(
         },
         (_, FileOffsetEvent::Clear) => {
             pending.clear();
+            Ok(EventAction::Nop((
+                None,
+                (state, pending, span_buf, bytes_buf),
+            )))
+        }
+        (_, FileOffsetEvent::GarbageCollect { retained_files, .. }) => {
+            pending.clear();
+            debug!("GarbageCollect: {:?}", retained_files);
+            // remove all except retained_files
+            state.retain(|inode, _| retained_files.contains(inode));
             Ok(EventAction::Nop((
                 None,
                 (state, pending, span_buf, bytes_buf),
