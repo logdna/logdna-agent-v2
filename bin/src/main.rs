@@ -2,7 +2,7 @@ use config::{self, Config};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info, trace, warn, Level};
-use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use tracing_subscriber::FmtSubscriber;
 
 mod _main;
 #[cfg(feature = "dep_audit")]
