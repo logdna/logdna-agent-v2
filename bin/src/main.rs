@@ -1,7 +1,7 @@
 use config::{self, Config};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, info, trace, warn, Level};
+use tracing::{debug, info, trace, warn};
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 mod _main;
