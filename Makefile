@@ -208,6 +208,10 @@ test: unit-test test-journald ## Run unit tests
 unit-test:
 	$(RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run $(TESTS) --no-fail-fast --nocapture"
 
+.PHONY:unit-test-coverage
+unit-code-coverage: ## Run code coverage report and output to HTML
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo llvm-cov --ignore-filename-regex=vendor/* --html --output-dir=target/llvm-cov"
+
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools
 	$(eval FEATURES := $(FEATURES) integration_tests)

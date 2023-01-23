@@ -21,7 +21,12 @@ install:
   - del rustup-init.exe
   - rustc -vV
   - cargo -vV
+  - rustup component add llvm-tools-preview --toolchain stable-x86_64-pc-windows-msvc
+  - cargo install cargo-llvm-cov
 
 test_script:
-  - cargo test
+  - cargo llvm-cov --html
 
+artifacts:
+  - path: target/llvm-cov/html/index.html
+    name: Code Coverage Report
