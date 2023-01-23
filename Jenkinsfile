@@ -91,6 +91,34 @@ pipeline {
                         }
                     }
                 }
+                stage('Code Coverage'){
+                    steps {
+                        withCredentials([[
+                                           $class: 'AmazonWebServicesCredentialsBinding',
+                                           credentialsId: 'aws',
+                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                         ]]){
+                            sh """
+                              make unit-code-coverage
+                            """
+                        }
+                    }
+                    post {
+                        // Publish HTML code coverage report
+                        success {
+                            publishHTML (target: [
+                                allowMissing: false,
+                                alwaysLinkToLastBuild: true,
+                                keepAll: true,
+                                reportDir: "target/llvm-cov/html",
+                                reportFiles: 'index.html',
+                                reportName: 'Code Coverage Report',
+                                reportTitles: 'Mezmo Agent Code Coverage'
+                            ])
+                        }
+                    }
+                }
             }
         }
         stage('Test') {
