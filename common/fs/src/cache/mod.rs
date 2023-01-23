@@ -151,7 +151,6 @@ pub fn get_inode(_path: &Path, file: Option<&std::fs::File>) -> std::io::Result<
 }
 
 /// Turns an inotify event into an event stream
-#[tracing::instrument]
 fn as_event_stream(
     fs: Arc<Mutex<FileSystem>>,
     event_result: &WatchEvent,
