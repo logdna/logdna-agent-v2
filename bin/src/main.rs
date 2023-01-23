@@ -31,7 +31,7 @@ fn main() -> anyhow::Result<()> {
 
     let subscriber = FmtSubscriber::builder()
         //.with_env_filter(EnvFilter::from_default_env())
-        .with_max_level(Level::INFO)
+        .with_max_level(Level::DEBUG)
         .without_time()
         .with_writer(std::io::stderr)
         .finish();
