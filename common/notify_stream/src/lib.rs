@@ -1,13 +1,12 @@
 extern crate notify;
 
 use futures::{stream, Stream};
-use log::debug;
 use notify::event::{CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode};
 use notify::{Config, ErrorKind, EventKind, Watcher as NotifyWatcher};
 use std::path::Path;
 use std::rc::Rc;
 use time::OffsetDateTime;
-use tracing::{info, trace};
+use tracing::{debug, info, trace};
 
 type PathId = std::path::PathBuf;
 
@@ -156,7 +155,7 @@ impl Watcher {
                     .await
                     .expect("channel closed unexpectedly")
                     .unwrap();
-                log::trace!("received raw notify event: {:?}", received);
+                trace!("received raw notify event: {:?}", received);
                 if let Some(mapped_event) = match received.kind {
                     EventKind::Remove(RemoveKind::File) => {
                         Some(Event::Remove(received.paths.first().unwrap().clone()))
