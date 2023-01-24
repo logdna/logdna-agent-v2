@@ -1,6 +1,7 @@
 extern crate notify;
 
 use futures::{stream, Stream};
+use log::debug;
 use notify::event::{CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode};
 use notify::{Config, ErrorKind, EventKind, Watcher as NotifyWatcher};
 use std::path::Path;
@@ -97,7 +98,7 @@ impl Watcher {
         let (watcher_tx, blocking_rx) = std::sync::mpsc::channel();
 
         let watcher = OsWatcher::new(watcher_tx, Config::default()).unwrap();
-        let (async_tx, rx) = async_channel::unbounded();
+        let (async_tx, async_rx) = async_channel::unbounded();
         tokio::task::spawn_blocking(move || {
             while let Ok(event) = blocking_rx.recv() {
                 log::trace!("received {:#?} from blocking_rx", event);
@@ -110,7 +111,7 @@ impl Watcher {
 
         Self {
             watcher,
-            rx: Rc::new(rx),
+            rx: Rc::new(async_rx),
         }
     }
 
@@ -146,7 +147,11 @@ impl Watcher {
         let rx = Rc::clone(&self.rx);
         Box::pin(stream::unfold(rx, |rx| async move {
             loop {
-                let received = rx.recv().await.expect("channel can not be closed").unwrap();
+                let received = rx
+                    .recv()
+                    .await
+                    .expect("channel closed unexpectedly")
+                    .unwrap();
                 log::trace!("received raw notify event: {:?}", received);
                 if let Some(mapped_event) = match received.kind {
                     EventKind::Remove(RemoveKind::File) => {
@@ -179,7 +184,11 @@ impl Watcher {
                     EventKind::Modify(ModifyKind::Name(RenameMode::From)) => received
                         .paths
                         .first()
-                        .map(|path| Event::Remove(path.clone())),
+                        .map(|path| Event::Remove(path.clone()))
+                        .or_else(|| {
+                            debug!("ignoring raw notify event with None path: {:?}", received);
+                            None // this is rare event that periodic FS rescans will rectify
+                        }),
                     EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
                         Some(Event::Create(received.paths.first().unwrap().clone()))
                     }
