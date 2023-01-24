@@ -1,6 +1,7 @@
 extern crate notify;
 
 use futures::{stream, Stream};
+use log::debug;
 use notify::event::{CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode};
 use notify::{Config, ErrorKind, EventKind, Watcher as NotifyWatcher};
 use std::path::Path;
@@ -91,14 +92,21 @@ pub enum RecursiveMode {
 pub struct Watcher {
     watcher: OsWatcher,
     rx: Rc<async_channel::Receiver<Result<notify::Event, notify::Error>>>,
+    #[cfg(test)]
+    tx: Rc<async_channel::Sender<Result<notify::Event, notify::Error>>>,
 }
 
 impl Watcher {
     pub fn new() -> Self {
         let (watcher_tx, blocking_rx) = std::sync::mpsc::channel();
-
         let watcher = OsWatcher::new(watcher_tx, Config::default()).unwrap();
-        let (async_tx, rx) = async_channel::unbounded();
+        let (async_tx, async_rx) = async_channel::unbounded();
+        let watcher = Self {
+            watcher,
+            rx: Rc::new(async_rx),
+            #[cfg(test)]
+            tx: Rc::new(async_tx.clone()),
+        };
         tokio::task::spawn_blocking(move || {
             while let Ok(event) = blocking_rx.recv() {
                 trace!("received {:#?} from blocking_rx", event);
@@ -108,11 +116,7 @@ impl Watcher {
             }
             info!("Shutting down watcher");
         });
-
-        Self {
-            watcher,
-            rx: Rc::new(rx),
-        }
+        watcher
     }
 
     /// Adds a new directory or file to watch
@@ -147,8 +151,12 @@ impl Watcher {
         let rx = Rc::clone(&self.rx);
         Box::pin(stream::unfold(rx, |rx| async move {
             loop {
-                let received = rx.recv().await.expect("channel can not be closed").unwrap();
-                trace!("received raw notify event: {:?}", received);
+                let received = rx
+                    .recv()
+                    .await
+                    .expect("channel closed unexpectedly")
+                    .unwrap();
+                log::trace!("received raw notify event: {:?}", received);
                 if let Some(mapped_event) = match received.kind {
                     EventKind::Remove(RemoveKind::File) => {
                         Some(Event::Remove(received.paths.first().unwrap().clone()))
@@ -177,9 +185,14 @@ impl Watcher {
                     EventKind::Modify(ModifyKind::Data(DataChange::Any)) => {
                         Some(Event::Write(received.paths.first().unwrap().clone()))
                     }
-                    EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
-                        Some(Event::Remove(received.paths.first().unwrap().clone()))
-                    }
+                    EventKind::Modify(ModifyKind::Name(RenameMode::From)) => received
+                        .paths
+                        .first()
+                        .map(|path| Event::Remove(path.clone()))
+                        .or_else(|| {
+                            debug!("raw notify event with None path: {:?}", received);
+                            Some(Event::Rescan) // trigger FS rescan
+                        }),
                     EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
                         Some(Event::Create(received.paths.first().unwrap().clone()))
                     }
@@ -202,6 +215,11 @@ impl Watcher {
                 }
             }
         }))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn inject(&self, event: Result<notify::Event, notify::Error>) {
+        self.tx.send_blocking(event).unwrap();
     }
 }
 
@@ -921,6 +939,34 @@ mod tests {
 
         // linux will NOT follow hardlinks
         assert_eq!(items.len(), 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_none_path_in_rename_from_event() -> io::Result<()> {
+        let w = Watcher::new();
+        let stream = w.receive();
+        pin_mut!(stream);
+
+        // inject Rename event with None path
+        let evt = notify::event::Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::From)));
+        w.inject(Ok(evt));
+        let mut items = Vec::new();
+        take!(stream, items);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0], Event::Rescan);
+
+        // inject Rename event with Some path
+        let mut evt =
+            notify::event::Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::From)));
+        let the_path = tempdir()?.into_path();
+        evt.paths.push(the_path.clone());
+        w.inject(Ok(evt));
+        let mut items = Vec::new();
+        take!(stream, items);
+        assert_eq!(items.len(), 1);
+        is_match!(&items[0], Remove, the_path);
+
         Ok(())
     }
 }
