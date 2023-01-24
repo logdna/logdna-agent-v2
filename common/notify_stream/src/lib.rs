@@ -4,7 +4,6 @@ use futures::{stream, Stream};
 use log::debug;
 use notify::event::{CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode};
 use notify::{Config, ErrorKind, EventKind, Watcher as NotifyWatcher};
-use std::ops::Deref;
 use std::path::Path;
 use std::rc::Rc;
 use time::OffsetDateTime;
@@ -92,6 +91,7 @@ pub enum RecursiveMode {
 pub struct Watcher {
     watcher: OsWatcher,
     rx: Rc<async_channel::Receiver<Result<notify::Event, notify::Error>>>,
+    #[cfg(test)]
     tx: Rc<async_channel::Sender<Result<notify::Event, notify::Error>>>,
 }
 
@@ -100,22 +100,22 @@ impl Watcher {
         let (watcher_tx, blocking_rx) = std::sync::mpsc::channel();
         let watcher = OsWatcher::new(watcher_tx, Config::default()).unwrap();
         let (async_tx, async_rx) = async_channel::unbounded();
-        let tx = async_tx.clone();
+        let watcher = Self {
+            watcher,
+            rx: Rc::new(async_rx),
+            #[cfg(test)]
+            tx: Rc::new(async_tx.clone()),
+        };
         tokio::task::spawn_blocking(move || {
             while let Ok(event) = blocking_rx.recv() {
                 log::trace!("received {:#?} from blocking_rx", event);
                 // Safely ignore closed error as it's caused by the runtime being dropped
                 // It can't result in a `TrySendError::Full` as it's an unbounded channel
-                let _ = tx.try_send(event);
+                let _ = async_tx.try_send(event);
             }
             log::info!("Shutting down watcher");
         });
-
-        Self {
-            watcher,
-            rx: Rc::new(async_rx),
-            tx: Rc::new(async_tx),
-        }
+        watcher
     }
 
     /// Adds a new directory or file to watch
@@ -216,10 +216,9 @@ impl Watcher {
         }))
     }
 
-    // used in unit tests
+    #[cfg(test)]
     pub(crate) fn inject(&self, event: Result<notify::Event, notify::Error>) {
-        let tx = self.tx.deref();
-        tx.send_blocking(event).unwrap();
+        self.tx.send_blocking(event).unwrap();
     }
 }
 
@@ -962,7 +961,6 @@ mod tests {
         evt.paths.push(the_path.clone());
         w.inject(Ok(evt));
         take!(stream, items);
-        print!("{:?}", items);
         assert_eq!(items.len(), 1);
         is_match!(&items[0], Remove, the_path);
 
