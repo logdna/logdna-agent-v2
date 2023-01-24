@@ -189,8 +189,8 @@ impl Watcher {
                         .first()
                         .map(|path| Event::Remove(path.clone()))
                         .or_else(|| {
-                            debug!("ignoring raw notify event with None path: {:?}", received);
-                            None // this is rare event that periodic FS rescans will rectify
+                            debug!("raw notify event with None path: {:?}", received);
+                            Some(Event::Rescan) // trigger FS rescan
                         }),
                     EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
                         Some(Event::Create(received.paths.first().unwrap().clone()))
@@ -952,7 +952,8 @@ mod tests {
         w.inject(Ok(evt));
         let mut items = Vec::new();
         take!(stream, items);
-        assert_eq!(items.len(), 0); // no events - event ignored & no panic
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0], Event::Rescan);
 
         // inject Rename event with Some path
         let mut evt =
@@ -960,6 +961,7 @@ mod tests {
         let the_path = tempdir()?.into_path();
         evt.paths.push(the_path.clone());
         w.inject(Ok(evt));
+        let mut items = Vec::new();
         take!(stream, items);
         assert_eq!(items.len(), 1);
         is_match!(&items[0], Remove, the_path);
