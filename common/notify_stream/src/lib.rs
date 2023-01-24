@@ -4,6 +4,7 @@ use futures::{stream, Stream};
 use log::debug;
 use notify::event::{CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode};
 use notify::{Config, ErrorKind, EventKind, Watcher as NotifyWatcher};
+use std::ops::Deref;
 use std::path::Path;
 use std::rc::Rc;
 use time::OffsetDateTime;
@@ -91,20 +92,21 @@ pub enum RecursiveMode {
 pub struct Watcher {
     watcher: OsWatcher,
     rx: Rc<async_channel::Receiver<Result<notify::Event, notify::Error>>>,
+    tx: Rc<async_channel::Sender<Result<notify::Event, notify::Error>>>,
 }
 
 impl Watcher {
     pub fn new() -> Self {
         let (watcher_tx, blocking_rx) = std::sync::mpsc::channel();
-
         let watcher = OsWatcher::new(watcher_tx, Config::default()).unwrap();
         let (async_tx, async_rx) = async_channel::unbounded();
+        let tx = async_tx.clone();
         tokio::task::spawn_blocking(move || {
             while let Ok(event) = blocking_rx.recv() {
                 log::trace!("received {:#?} from blocking_rx", event);
                 // Safely ignore closed error as it's caused by the runtime being dropped
                 // It can't result in a `TrySendError::Full` as it's an unbounded channel
-                let _ = async_tx.try_send(event);
+                let _ = tx.try_send(event);
             }
             log::info!("Shutting down watcher");
         });
@@ -112,6 +114,7 @@ impl Watcher {
         Self {
             watcher,
             rx: Rc::new(async_rx),
+            tx: Rc::new(async_tx),
         }
     }
 
@@ -211,6 +214,12 @@ impl Watcher {
                 }
             }
         }))
+    }
+
+    // used in unit tests
+    pub(crate) fn inject(&self, event: Result<notify::Event, notify::Error>) {
+        let tx = self.tx.deref();
+        tx.send_blocking(event).unwrap();
     }
 }
 
@@ -930,6 +939,33 @@ mod tests {
 
         // linux will NOT follow hardlinks
         assert_eq!(items.len(), 0);
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_none_path_in_rename_from_event() -> io::Result<()> {
+        let w = Watcher::new();
+        let stream = w.receive();
+        pin_mut!(stream);
+
+        // inject Rename event with None path
+        let evt = notify::event::Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::From)));
+        w.inject(Ok(evt));
+        let mut items = Vec::new();
+        take!(stream, items);
+        assert_eq!(items.len(), 0); // no events - event ignored & no panic
+
+        // inject Rename event with Some path
+        let mut evt =
+            notify::event::Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::From)));
+        let the_path = tempdir()?.into_path();
+        evt.paths.push(the_path.clone());
+        w.inject(Ok(evt));
+        take!(stream, items);
+        print!("{:?}", items);
+        assert_eq!(items.len(), 1);
+        is_match!(&items[0], Remove, the_path);
+
         Ok(())
     }
 }
