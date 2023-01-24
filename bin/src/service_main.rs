@@ -4,8 +4,6 @@
 compile_error!("Can be compiled for Windows target only!");
 
 #[macro_use]
-extern crate log;
-#[macro_use]
 extern crate winservice;
 
 use std::env;
@@ -17,6 +15,7 @@ use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming,
 use flexi_logger::{DeferredNow, Record, TS_DASHES_BLANK_COLONS_DOT_BLANK};
 use tokio::sync::Mutex;
 use tokio::time::Duration;
+use tracing::info;
 
 use config::{self, Config};
 

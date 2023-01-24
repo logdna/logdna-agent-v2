@@ -2,7 +2,7 @@ use config::{self, Config};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info, trace, warn};
-use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use tracing_subscriber::{filter::LevelFilter, EnvFilter, FmtSubscriber};
 
 mod _main;
 #[cfg(feature = "dep_audit")]
@@ -29,9 +29,11 @@ fn main() -> anyhow::Result<()> {
     // covert logdna env vars to mezmo ones
     Config::process_logdna_env_vars();
 
+    let log_level_env_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env_lossy();
     let subscriber = FmtSubscriber::builder()
-        .with_env_filter(EnvFilter::from_default_env())
-        //.with_max_level(Level::INFO)
+        .with_env_filter(log_level_env_filter)
         .without_time()
         .with_writer(std::io::stderr)
         .finish();
