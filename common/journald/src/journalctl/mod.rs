@@ -19,8 +19,8 @@ use combine::{
 };
 
 use futures::{Stream, StreamExt};
-use log::{info, trace, warn};
 use tokio_util::codec::{Decoder, FramedRead};
+use tracing::{info, trace, warn};
 
 use std::convert::TryInto;
 use std::process::Stdio;

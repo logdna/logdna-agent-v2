@@ -12,7 +12,8 @@ futures = "0.3"
 rocksdb = "0.19"
 async-channel = "1.6"
 thiserror = "1.0"
-log = "0.4"
+tracing = "0.1"
+tracing-subscriber = "0.3"
 serde = { version = "1", features = ["derive", "rc"] }
 slotmap = "1"
 smallvec = { version = "1", features = ["serde"] }

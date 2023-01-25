@@ -1,3 +1,5 @@
+use tracing::error;
+
 pub fn convert_cpu_usage_to_milli(cpu: &str) -> Option<u32> {
     if cpu.is_empty() {
         return None;

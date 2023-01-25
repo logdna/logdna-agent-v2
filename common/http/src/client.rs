@@ -11,6 +11,7 @@ use crate::types::response::Response;
 
 use metrics::Metrics;
 use state::{FileOffsetFlushHandle, FileOffsetWriteHandle, OffsetMap};
+use tracing::{debug, error, warn};
 
 /// Http(s) client used to send logs to the Ingest API
 pub struct Client {

@@ -9,8 +9,6 @@ use futures::stream::StreamExt;
 use serde::{Deserialize, Serialize};
 use slotmap::{DefaultKey, SlotMap};
 
-use log::{debug, error, info, warn};
-
 use async_channel::SendError;
 use std::collections::HashMap;
 use std::convert::{AsRef, Into, TryInto};
@@ -18,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use thiserror::Error;
+use tracing::{debug, error, info, warn};
 
 mod offsets;
 mod span;

@@ -464,7 +464,6 @@ dependencies = [
  "humanize-rs",
  "java-properties",
  "lazy_static",
- "log",
  "scopeguard",
  "serde",
  "serde_yaml",
@@ -474,6 +473,8 @@ dependencies = [
  "sysinfo",
  "tempfile",
  "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1038,7 +1039,6 @@ dependencies = [
  "glob",
  "http 0.1.0",
  "lazy_static",
- "log",
  "memchr",
  "metrics",
  "middleware",
@@ -1058,6 +1058,8 @@ dependencies = [
  "tokio-stream",
  "tokio-test",
  "tokio-util",
+ "tracing",
+ "tracing-subscriber",
  "walkdir",
  "winapi-util",
 ]
@@ -1281,7 +1283,6 @@ dependencies = [
  "futures",
  "futures-timer",
  "hyper",
- "log",
  "logdna-client",
  "metrics",
  "num_cpus",
@@ -1296,6 +1297,8 @@ dependencies = [
  "time 0.3.9",
  "tokio",
  "tokio-test",
+ "tracing",
+ "tracing-subscriber",
  "types",
  "uuid",
 ]
@@ -1592,7 +1595,6 @@ dependencies = [
  "env_logger",
  "futures",
  "http 0.1.0",
- "log",
  "metrics",
  "partial-io",
  "serial_test",
@@ -1601,6 +1603,8 @@ dependencies = [
  "tokio",
  "tokio-test",
  "tokio-util",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1659,7 +1663,6 @@ dependencies = [
  "kube",
  "kube-derive",
  "lazy_static",
- "log",
  "metrics",
  "middleware",
  "parking_lot",
@@ -1675,6 +1678,8 @@ dependencies = [
  "tokio",
  "tower",
  "tower-http",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -1946,7 +1951,6 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "kube-runtime",
- "log",
  "logdna-metrics-recorder",
  "logdna-mock-ingester",
  "metrics",
@@ -1972,11 +1976,14 @@ dependencies = [
  "state",
  "systemd",
  "tempfile",
+ "test-log",
  "tikv-jemallocator",
  "time 0.3.9",
  "tokio",
  "tokio-stream",
  "tokio-test",
+ "tracing",
+ "tracing-subscriber",
  "types",
  "wait-timeout",
  "winservice",
@@ -2034,7 +2041,6 @@ dependencies = [
  "futures",
  "hyper",
  "hyper-rustls",
- "log",
  "rcgen",
  "rustls",
  "rustls-pemfile 1.0.2",
@@ -2045,6 +2051,8 @@ dependencies = [
  "tokio-rustls",
  "tokio-stream",
  "tokio-util",
+ "tracing",
+ "tracing-subscriber",
  "url",
 ]
 
@@ -2062,6 +2070,15 @@ name = "match_cfg"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ffbee8634e0d45d258acb448e7eaab3fce7a0a467395d4d9f228e3c1f01fb2e4"
+
+[[package]]
+name = "matchers"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8263075bb86c5a1b1427b5ae862e8889656f126e9f77c484496e8b47cf5c5558"
+dependencies = [
+ "regex-automata",
+]
 
 [[package]]
 name = "matches"
@@ -2099,11 +2116,12 @@ version = "0.1.0"
 dependencies = [
  "json",
  "lazy_static",
- "log",
  "num",
  "prometheus",
  "tikv-jemalloc-ctl",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2113,12 +2131,13 @@ dependencies = [
  "config",
  "http 0.1.0",
  "lazy_static",
- "log",
  "memoffset 0.6.5",
  "multimap",
  "regex",
  "serde_json",
  "thiserror",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2255,7 +2274,6 @@ dependencies = [
  "async-channel",
  "env_logger",
  "futures",
- "log",
  "notify",
  "notify-debouncer-mini",
  "pin-utils",
@@ -2263,6 +2281,8 @@ dependencies = [
  "tempfile",
  "time 0.3.9",
  "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -2271,6 +2291,16 @@ version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c28774a7fd2fbb4f0babd8237ce554b73af68021b5f695a3cebd6c59bac0980f"
 dependencies = [
+ "winapi",
+]
+
+[[package]]
+name = "nu-ansi-term"
+version = "0.46.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77a8165726e8236064dbb45459242600304b42a5ea24ee2948e18e023bf7ba84"
+dependencies = [
+ "overload",
  "winapi",
 ]
 
@@ -2416,6 +2446,12 @@ checksum = "9b7820b9daea5457c9f21c69448905d723fbd21136ccf521748f23fd49e723ee"
 dependencies = [
  "memchr",
 ]
+
+[[package]]
+name = "overload"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
 name = "parking_lot"
@@ -2922,6 +2958,9 @@ name = "regex-automata"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c230d73fb8d8c1b9c0b3135c5142a8acee3a0558fb8db5cf1cb65f8d7862132"
+dependencies = [
+ "regex-syntax",
+]
 
 [[package]]
 name = "regex-syntax"
@@ -3289,6 +3328,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sharded-slab"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "900fba806f70c630b0a382d0d825e17a0f19fcd059a2ade1ff237bcddf446b31"
+dependencies = [
+ "lazy_static",
+]
+
+[[package]]
 name = "shlex"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3360,7 +3408,6 @@ dependencies = [
  "derivative",
  "env_logger",
  "futures",
- "log",
  "rocksdb",
  "serde",
  "slotmap",
@@ -3369,6 +3416,8 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-test",
+ "tracing",
+ "tracing-subscriber",
  "vec-collections",
 ]
 
@@ -3506,6 +3555,17 @@ name = "termtree"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95059e91184749cb66be6dc994f67f182b6d897cb3df74a5bf66b5e709295fd8"
+
+[[package]]
+name = "test-log"
+version = "0.2.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38f0c854faeb68a048f0f2dc410c5ddae3bf83854ef0e4977d58306a5edef50e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "textwrap"
@@ -3802,6 +3862,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "24eb03ba0eab1fd845050058ce5e616558e8f8d8fca633e6b163fe25c797213a"
 dependencies = [
  "once_cell",
+ "valuable",
+]
+
+[[package]]
+name = "tracing-log"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78ddad33d2d10b1ed7eb9d1f518a5674713876e97e5bb9b7345a7984fbb4f922"
+dependencies = [
+ "lazy_static",
+ "log",
+ "tracing-core",
+]
+
+[[package]]
+name = "tracing-subscriber"
+version = "0.3.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6176eae26dd70d0c919749377897b54a9276bd7061339665dd68777926b5a70"
+dependencies = [
+ "matchers",
+ "nu-ansi-term",
+ "once_cell",
+ "regex",
+ "sharded-slab",
+ "smallvec",
+ "thread_local",
+ "tracing",
+ "tracing-core",
+ "tracing-log",
 ]
 
 [[package]]
@@ -3948,6 +4038,12 @@ checksum = "422ee0de9031b5b948b97a8fc04e3aa35230001a722ddd27943e0be31564ce4c"
 dependencies = [
  "getrandom",
 ]
+
+[[package]]
+name = "valuable"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "830b7e5d4d90034032940e4ace0d9a9a057e7a45cd94e6c007832e39edb82f6d"
 
 [[package]]
 name = "vcpkg"

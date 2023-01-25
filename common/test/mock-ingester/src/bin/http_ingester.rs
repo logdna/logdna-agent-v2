@@ -1,7 +1,5 @@
-#[macro_use]
-extern crate log;
-
 use logdna_mock_ingester::http_ingester;
+use tracing::info;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

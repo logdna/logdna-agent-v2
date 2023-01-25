@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate log;
-
 pub mod batch;
 pub mod client;
 pub mod limit;

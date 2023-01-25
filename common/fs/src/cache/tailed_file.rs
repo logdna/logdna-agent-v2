@@ -32,6 +32,7 @@ use serde_json::Value;
 use time::OffsetDateTime;
 use tokio::io::{AsyncSeekExt, BufReader, SeekFrom};
 use tokio_util::compat::{Compat, TokioAsyncReadCompatExt};
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug)]
 pub struct LazyLineSerializer {

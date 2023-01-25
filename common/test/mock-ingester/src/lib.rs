@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate log;
-
 use futures::{future, Stream, StreamExt, TryFutureExt, TryStreamExt};
 use hyper::service::Service;
 use hyper::{Body, Request, Response};
@@ -16,6 +13,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::server::TlsStream;
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::wrappers::TcpListenerStream;
+use tracing::{debug, error, info};
 
 use std::collections::HashMap;
 use std::convert::From;

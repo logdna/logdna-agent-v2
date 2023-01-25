@@ -1,6 +1,5 @@
 use json::object;
 use lazy_static::lazy_static;
-use log::{info, warn};
 use num::traits::FromPrimitive;
 use prometheus::{
     exponential_buckets, register_histogram, register_histogram_vec, register_int_counter,
@@ -15,6 +14,7 @@ use tikv_jemalloc_ctl::stats::{
 #[cfg(all(unix, feature = "jemalloc"))]
 use tikv_jemalloc_ctl::{epoch, epoch_mib};
 use tokio::time::sleep;
+use tracing::{info, warn};
 
 lazy_static! {
     static ref METRICS: Metrics = Metrics::new();

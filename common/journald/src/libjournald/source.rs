@@ -1,8 +1,8 @@
 use crate::libjournald::stream::{Path, Stream};
 use futures::stream::{select_all, SelectAll, Stream as FutureStream};
 use http::types::body::LineBuilder;
-use log::{debug, info, warn};
 use std::path::PathBuf;
+use tracing::{debug, info, warn};
 
 pub fn create_source(paths: &[PathBuf]) -> impl FutureStream<Item = LineBuilder> {
     let mut journal_files: Vec<PathBuf> = Vec::new();

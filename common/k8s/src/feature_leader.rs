@@ -1,7 +1,7 @@
 use chrono::{Duration, Utc};
 use k8s_openapi::api::coordination::v1::{Lease, LeaseSpec};
 use kube::{Api, Error};
-use log::info;
+use tracing::{debug, info};
 
 use crate::lease::{self, get_lease};
 
