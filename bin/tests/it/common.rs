@@ -13,11 +13,11 @@ use std::thread;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener};
 
 use futures::Future;
-use log::debug;
 use logdna_mock_ingester::{
     http_ingester, http_ingester_with_processors, https_ingester_with_processors, FileLineCounter,
     IngestError, ProcessFn, ReqFn,
 };
+use tracing::debug;
 
 pub use logdna_mock_ingester::HttpVersion;
 
@@ -427,7 +427,7 @@ pub fn start_http_ingester() -> (
     )
 }
 
-pub fn consume_output(stderr_handle: std::process::ChildStderr) {
+pub fn consume_output<T: std::io::Read + std::marker::Send + 'static>(stderr_handle: T) {
     let stderr_reader = std::io::BufReader::new(stderr_handle);
     std::thread::spawn(move || {
         for line in stderr_reader.lines() {

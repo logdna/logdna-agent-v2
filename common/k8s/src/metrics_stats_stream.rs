@@ -14,6 +14,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::time::Duration;
 use tokio::time::sleep;
+use tracing::{debug, error, info, trace};
 
 use crate::{
     feature_leader::FeatureLeader,
@@ -83,7 +84,7 @@ impl MetricsStatsStream {
 async fn process_reporter_info(
     client: Client,
 ) -> anyhow::Result<(Vec<String>, Vec<String>, String)> {
-    log::trace!("Generating metrics report...");
+    trace!("Generating metrics report...");
     let pods = self::get_all_pods(client.clone()).await?;
     let nodes = self::get_all_nodes(client.clone()).await?;
     let pod_metrics = self::call_metric_api("PodMetrics", client.clone()).await?;
@@ -237,7 +238,7 @@ fn format_pod_str(
             serde_json::to_string(&translated_pod_container).unwrap_or_else(|_| String::from(""))
         );
 
-        log::trace!("{}", pod_str);
+        trace!("{}", pod_str);
         pod_strings.push(pod_str)
     }
     pod_strings
@@ -251,7 +252,7 @@ fn format_node_str(nodes: &Vec<NodeStats>) -> Vec<String> {
             serde_json::to_string(&node).unwrap_or_else(|_| String::from(""))
         );
 
-        log::trace!("{}", node_str);
+        trace!("{}", node_str);
         node_strings.push(node_str);
     }
 
@@ -264,7 +265,7 @@ fn format_cluster_str(cluster_stats: &ClusterStats) -> String {
         serde_json::to_string(&cluster_stats).unwrap_or_else(|_| String::from(""))
     );
 
-    log::trace!("{}", cluster_str);
+    trace!("{}", cluster_str);
     cluster_str
 }
 

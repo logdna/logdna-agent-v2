@@ -10,6 +10,7 @@ use metrics::Metrics;
 use state::{FileId, SpanVec};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
+use tracing::{debug, info, warn};
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -411,7 +412,7 @@ mod test {
                 rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
 
                 let log_lines = "This is a test log line";
-                debug!("{}", log_lines.as_bytes().len());
+                tracing::debug!("{}", log_lines.as_bytes().len());
                 let dir = tempdir().expect("Couldn't create temp dir...");
 
                 let file_path = dir.path().join("test.log");
@@ -458,7 +459,7 @@ mod test {
                 rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
 
                 let log_lines1 = "This is a test log line";
-                debug!("{}", log_lines1.as_bytes().len());
+                tracing::debug!("{}", log_lines1.as_bytes().len());
                 let dir = tempdir().expect("Couldn't create temp dir...");
 
                 let file_path = dir.path().join("test.log");

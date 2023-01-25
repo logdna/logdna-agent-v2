@@ -8,6 +8,8 @@ use tempfile::tempdir;
 use crate::common::{self, start_ingester, AgentSettings};
 use logdna_metrics_recorder::*;
 
+use test_log::test;
+
 fn check_fs_bytes(samples: &[Sample]) {
     let fs_bytes = samples
         .iter()
@@ -233,10 +235,9 @@ fn check_ingest_req_duration(samples: &[Sample]) {
     );
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_metrics_endpoint() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let included_file = dir.join("file1.log");
     let metrics_port = 9881;

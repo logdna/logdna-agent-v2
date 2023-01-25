@@ -12,6 +12,9 @@ use k8s_openapi::api::core::v1::{Endpoints, Namespace, Pod, Service, ServiceAcco
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBinding};
 use kube::api::{Api, ListParams, LogParams, PostParams, WatchEvent};
 use kube::{Client, ResourceExt};
+use tracing::{debug, info};
+
+use test_log::test;
 
 // workaround for unused functions in different features: https://github.com/rust-lang/rust/issues/46379
 use crate::common;
@@ -36,9 +39,9 @@ async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
                     .unwrap()
                     .boxed();
 
-                log::debug!("Logging agent pod {}", p.name());
+                debug!("Logging agent pod {}", p.name());
                 while let Some(line) = logs.next().await {
-                    log::debug!(
+                    debug!(
                         "LOG [{:?}] {:?}",
                         p.name(),
                         String::from_utf8_lossy(&line.unwrap())
@@ -964,7 +967,7 @@ async fn create_agent_feature_lease(
         .unwrap();
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_k8s_connection() {
     let client = Client::try_default().await.unwrap();
@@ -974,10 +977,9 @@ async fn test_k8s_connection() {
     assert!(pod_list.iter().count() > 0);
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_k8s_enrichment() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();
 
     tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
@@ -1124,11 +1126,9 @@ struct EventLine {
     // message: String
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_k8s_events_logged() {
-    let _ = env_logger::Builder::from_default_env().try_init();
-
     let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();
 
     let client = Client::try_default().await.unwrap();
@@ -1212,7 +1212,7 @@ async fn test_k8s_events_logged() {
     server_result.unwrap();
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_k8s_startup_lease_functions() {
     let lease_name = "agent-startup-lease";
@@ -1245,11 +1245,9 @@ async fn test_k8s_startup_lease_functions() {
     assert_eq!(available_lease.as_ref().unwrap(), "agent-startup-lease-1");
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_k8s_startup_leases_always_start() {
-    let _ = env_logger::Builder::from_default_env().try_init();
-
     let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
@@ -1348,7 +1346,7 @@ async fn test_k8s_startup_leases_always_start() {
         drop(map);
 
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
-        log::info!("RELEASE AGENT STARTUP LEASE...");
+        info!("RELEASE AGENT STARTUP LEASE...");
         k8s::lease::release_lease("agent-startup-lease-1", &agent_lease_api).await;
         let available_lease =
             k8s::lease::get_available_lease(agent_lease_label, &agent_lease_api).await;
@@ -1375,11 +1373,9 @@ async fn test_k8s_startup_leases_always_start() {
     server_result.unwrap();
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_k8s_startup_leases_never_start() {
-    let _ = env_logger::Builder::from_default_env().try_init();
-
     let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
@@ -1470,11 +1466,9 @@ async fn test_k8s_startup_leases_never_start() {
     server_result.unwrap();
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_metric_stats_aggregator_enabled() {
-    let _ = env_logger::Builder::from_default_env().try_init();
-
     let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
@@ -1562,11 +1556,9 @@ async fn test_metric_stats_aggregator_enabled() {
     server_result.unwrap();
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_metric_stats_aggregator_disabled() {
-    let _ = env_logger::Builder::from_default_env().try_init();
-
     let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
@@ -1654,11 +1646,9 @@ async fn test_metric_stats_aggregator_disabled() {
     server_result.unwrap();
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_feature_leader_grabbing_lease() {
-    let _ = env_logger::Builder::from_default_env().try_init();
-
     let (server, _received, shutdown_handle, _ingester_addr) = common::start_http_ingester();
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 

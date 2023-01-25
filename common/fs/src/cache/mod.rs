@@ -28,6 +28,7 @@ use smallvec::SmallVec;
 use thiserror::Error;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
+use tracing::{debug, error, info, trace, warn};
 
 use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
 
@@ -867,7 +868,7 @@ impl FileSystem {
 
                 let smallfiles_offset = if should_lookback {
                     if file_len > TAIL_WARN_THRESHOLD_B {
-                        log::warn!("lookback ocurred on larger file {:?}", path);
+                        warn!("lookback ocurred on larger file {:?}", path);
                     }
 
                     SpanVec::new()
@@ -2286,7 +2287,7 @@ mod tests {
         assert!(lookup!(fs, sym_path).is_none());
         assert!(lookup!(fs, hard_path).is_none());
 
-        debug!(
+        tracing::debug!(
             "new dir contents: {:#?}",
             fs::read_dir(&new_dir_path).unwrap().collect::<Vec<_>>()
         );

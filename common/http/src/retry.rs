@@ -24,6 +24,7 @@ use async_compression::tokio::write::GzipEncoder;
 use async_compression::Level;
 use tokio::fs::{metadata, read_dir, remove_file, rename, File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter};
+use tracing::{debug, warn};
 
 use uuid::Uuid;
 

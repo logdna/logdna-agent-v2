@@ -9,6 +9,7 @@ use std::fs::File;
 use std::io::{ErrorKind, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::vec::Vec;
+use tracing::{debug, error};
 
 pub fn filesize_deser<'de, D>(d: D) -> Result<Option<u64>, D::Error>
 where

@@ -1,5 +1,3 @@
-#[macro_use]
-extern crate log;
 extern crate humanize_rs;
 
 use std::convert::{TryFrom, TryInto};
@@ -11,6 +9,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use strum_macros::{Display, EnumString};
 use sysinfo::{RefreshKind, System, SystemExt};
+use tracing::{debug, info, warn};
 
 use async_compression::Level;
 

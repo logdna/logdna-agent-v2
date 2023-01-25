@@ -10,11 +10,13 @@ use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::tempdir;
+use tracing::debug;
 
-#[tokio::test]
+use test_log::test;
+
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_retry_disk_limit() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let timeout = 200;
     let base_delay_ms = 2000; // set high to cause retries to pile up
     let step_delay_ms = 500;
@@ -82,10 +84,9 @@ async fn test_retry_disk_limit() {
     agent_handle.kill().unwrap();
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_retry_location() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let timeout = 150;
     let base_delay_ms = 600;
     let step_delay_ms = 100;
@@ -139,7 +140,7 @@ async fn test_retry_location() {
 
         // Check that a retry file was created in the retry dir
         let matches = std::fs::read_dir(retry_dir).unwrap().filter(|r| {
-            log::debug!("{:?}", r);
+            debug!("{:?}", r);
             !matches!(r, Ok(path) if path.file_name().to_string_lossy().ends_with("\\.retry"))
         });
         assert!(matches.count() > 0);
@@ -151,10 +152,9 @@ async fn test_retry_location() {
     agent_handle.kill().unwrap();
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_retry_after_timeout() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let timeout = 200;
     let base_delay_ms = 300;
     let step_delay_ms = 100;
@@ -236,10 +236,9 @@ async fn test_retry_after_timeout() {
     agent_handle.kill().unwrap();
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_retry_is_not_made_before_retry_base_delay_ms() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     // Use a large base delay
     let base_delay_ms = 300_000;
     let timeout = 200;
@@ -313,10 +312,9 @@ async fn gen_log_data(file: &mut File) {
     tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 async fn test_retry_metrics_emitted() {
-    let _ = env_logger::Builder::from_default_env().try_init();
     let timeout = 200;
     let base_delay_ms = 50;
     let step_delay_ms = 50;

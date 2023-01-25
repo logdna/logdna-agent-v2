@@ -5,6 +5,7 @@ use kube::api::{Api, ListParams, ObjectMeta, Patch, PatchParams, PostParams};
 use kube::core::ObjectList;
 use kube::{Client, Error};
 use serde::{Deserialize, Serialize};
+use tracing::{error, info};
 
 pub const K8S_STARTUP_LEASE_LABEL: &str = "process=logdna-agent-startup";
 pub const K8S_STARTUP_LEASE_RETRY_ATTEMPTS: i32 = 3;

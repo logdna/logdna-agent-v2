@@ -9,6 +9,7 @@ use std::env::var as env_var;
 use std::ffi::OsString;
 use std::path::PathBuf;
 use structopt::StructOpt;
+use tracing::{info, warn};
 
 // Symbol that will be populated in the main.rs file
 extern "Rust" {

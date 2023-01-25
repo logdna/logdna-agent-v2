@@ -7,6 +7,7 @@ use hyper::{
 use prometheus::{Encoder, TextEncoder};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use thiserror::Error;
+use tracing::info;
 
 #[derive(Debug, Error)]
 pub enum Error {

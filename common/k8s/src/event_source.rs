@@ -25,6 +25,7 @@ use std::convert::{Into, TryFrom};
 use std::num::NonZeroI64;
 use std::sync::Arc;
 use tokio::time::sleep;
+use tracing::{debug, info, warn};
 
 pub static K8S_EVENTS_LEASE_NAME: &str = "logdna-agent-k8-events-lease";
 
