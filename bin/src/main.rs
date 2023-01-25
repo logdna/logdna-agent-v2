@@ -34,7 +34,6 @@ fn main() -> anyhow::Result<()> {
         .from_env_lossy();
     let subscriber = FmtSubscriber::builder()
         .with_env_filter(log_level_env_filter)
-        .without_time()
         .with_writer(std::io::stderr)
         .finish();
 
