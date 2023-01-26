@@ -28,7 +28,7 @@ use smallvec::SmallVec;
 use thiserror::Error;
 use time::OffsetDateTime;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, info, instrument, trace, warn};
 
 use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
 
@@ -219,6 +219,7 @@ fn get_resume_events(
         .filter_map(|e| async { e })
 }
 
+#[instrument(level = "debug", skip_all)]
 fn get_retry_events(
     fs: &Arc<Mutex<FileSystem>>,
     retry_delay: Duration,
@@ -293,6 +294,7 @@ fn add_initial_dir_rules(rules: &mut Rules, path: &DirPathBuf) {
 }
 
 impl FileSystem {
+    #[instrument(level = "debug", skip_all)]
     pub fn new(
         initial_dirs: Vec<DirPathBuf>,
         lookback_config: Lookback,
@@ -480,6 +482,7 @@ impl FileSystem {
     }
 
     // Stream events
+    #[instrument(level = "debug", skip_all)]
     pub fn stream_events(
         fs: Arc<Mutex<FileSystem>>,
     ) -> Result<impl Stream<Item = (Result<Event, Error>, EventTimestamp)>, std::io::Error> {
@@ -620,6 +623,7 @@ impl FileSystem {
     }
 
     /// Handles inotify events and may produce Event(s) that are returned upstream through sender
+    #[instrument(level = "debug", skip_all)]
     fn process(&mut self, watch_event: &WatchEvent) -> FsResult<Vec<Event>> {
         let _entries = self.entries.clone();
         let mut _entries = _entries.borrow_mut();
@@ -720,6 +724,7 @@ impl FileSystem {
         }
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn is_reachable(
         &self,
         cuts: &mut Vec<PathBuf>,
@@ -800,6 +805,7 @@ impl FileSystem {
         referring
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn process_delete(
         &mut self,
         watch_descriptor: &Path,
@@ -934,6 +940,7 @@ impl FileSystem {
     /// When the path doesn't pass the rules or the path is invalid, it returns `Ok(None)`.
     /// When the file watcher can't be added or the parent dir can not be created, it
     /// returns an `Err`.
+    #[instrument(level = "trace", skip_all)]
     fn insert(
         &mut self,
         path: &Path,
@@ -1124,6 +1131,7 @@ impl FileSystem {
     }
 
     /// Removes the entry reference from watch_descriptors and symlinks
+    #[instrument(level = "debug", skip_all)]
     fn unregister(&mut self, entry_key: EntryKey, _entries: &mut EntryMap) {
         let entry = match _entries.get(entry_key) {
             Some(v) => v,
@@ -1174,6 +1182,7 @@ impl FileSystem {
     }
 
     // FIXME: We should not remove dangling symlinks nor the parent dir of the missing target
+    #[instrument(level = "trace", skip_all)]
     fn remove(
         &mut self,
         path: &Path,
@@ -1213,6 +1222,7 @@ impl FileSystem {
 
     /// Emits `Delete` events, entry and its children from
     /// watch descriptors and symlinks.
+    #[instrument(level = "trace", skip_all)]
     fn drop_entry(
         &mut self,
         entry_key: EntryKey,
@@ -1362,6 +1372,7 @@ impl FileSystem {
     }
 
     /// Inserts the entry, registers it, looks up for the parent and set itself as a children.
+    #[instrument(level = "trace", skip_all)]
     fn register_as_child(
         &mut self,
         new_entry: Entry,
@@ -1406,6 +1417,7 @@ impl FileSystem {
         self.watch_descriptors.get(path).map(|entries| entries[0])
     }
 
+    #[instrument(level = "trace", skip_all)]
     fn is_symlink_target(&self, path: &Path, _entries: &EntryMap) -> bool {
         for (_, symlink_ptrs) in self.symlinks.iter() {
             for symlink_ptr in symlink_ptrs.iter() {
@@ -1447,6 +1459,7 @@ impl FileSystem {
 
     /// Determines whether the path is within the initial dir
     /// and either passes the master rules (e.g. "*.log") or it's a directory
+    #[instrument(level = "debug", skip_all)]
     pub(crate) fn is_initial_dir_target(&self, path: &Path) -> bool {
         // Must be within the initial dir
         if self.initial_dir_rules.passes(path) != Status::Ok {

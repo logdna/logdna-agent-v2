@@ -6,7 +6,7 @@ use notify::{Config, ErrorKind, EventKind, Watcher as NotifyWatcher};
 use std::path::Path;
 use std::rc::Rc;
 use time::OffsetDateTime;
-use tracing::{debug, info, trace};
+use tracing::{debug, info, instrument, trace};
 
 type PathId = std::path::PathBuf;
 
@@ -83,11 +83,13 @@ pub enum Error {
     MaxFilesWatch,
 }
 
+#[derive(Debug)]
 pub enum RecursiveMode {
     Recursive,
     NonRecursive,
 }
 
+#[derive(Debug)]
 pub struct Watcher {
     watcher: OsWatcher,
     rx: Rc<async_channel::Receiver<Result<notify::Event, notify::Error>>>,
@@ -96,6 +98,7 @@ pub struct Watcher {
 }
 
 impl Watcher {
+    #[instrument(level = "trace", skip_all)]
     pub fn new() -> Self {
         let (watcher_tx, blocking_rx) = std::sync::mpsc::channel();
         let watcher = OsWatcher::new(watcher_tx, Config::default()).unwrap();
@@ -119,11 +122,13 @@ impl Watcher {
     }
 
     /// Adds a new directory or file to watch
+    #[instrument(level = "trace")]
     pub fn watch(&mut self, path: &Path, mode: RecursiveMode) -> Result<(), Error> {
         trace!("watching {:?}", path);
         self.watcher.watch(path, mode.into()).map_err(|e| e.into())
     }
 
+    #[instrument(level = "trace")]
     /// Removes a file or directory
     pub fn unwatch(&mut self, path: &Path) -> Result<(), Error> {
         trace!("unwatching {:?}", path);
@@ -133,6 +138,7 @@ impl Watcher {
     /// Removes a file or directory, ignoring watch not found errors.
     ///
     /// Returns Ok(true) when watch was found and removed.
+    #[instrument(level = "trace")]
     pub fn unwatch_if_exists(&mut self, path: &Path) -> Result<bool, Error> {
         trace!("unwatching {:?} if it exists", path);
         match self.watcher.unwatch(path).map_err(|e| e.into()) {
@@ -146,6 +152,7 @@ impl Watcher {
     }
 
     /// Starts receiving the watcher events
+    #[instrument(level = "trace")]
     pub fn receive(&self) -> impl Stream<Item = (Event, OffsetDateTime)> + Unpin {
         let rx = Rc::clone(&self.rx);
         Box::pin(stream::unfold(rx, |rx| async move {
