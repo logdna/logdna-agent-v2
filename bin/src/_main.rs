@@ -17,6 +17,9 @@ use journald::libjournald::source::create_source;
 #[cfg(target_os = "linux")]
 use journald::journalctl::create_journalctl_source;
 
+#[cfg(target_os = "windows")]
+use api::tailer::create_tailer_source;
+
 use k8s::errors::K8sError;
 use k8s::event_source::K8sEventStream;
 use k8s::lease::{get_available_lease, K8S_STARTUP_LEASE_LABEL, K8S_STARTUP_LEASE_RETRY_ATTEMPTS};
@@ -325,6 +328,9 @@ pub async fn _main(
             .ok(),
         false => None,
     };
+
+    let _ts = create_tailer_source();
+
 
     debug!("Initialising offset state");
     let fo_state_handles = offset_state

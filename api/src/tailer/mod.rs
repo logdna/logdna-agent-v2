@@ -1,4 +1,5 @@
 mod error;
+
 use crate::tailer::error::TailerError;
 use bytes::{Buf, BytesMut};
 
@@ -24,17 +25,20 @@ use tokio_util::codec::{Decoder, FramedRead};
 
 use std::convert::TryInto;
 use std::process::Stdio;
+use tokio::process::Child;
+use win32job::Job;
 
-const TAILER_CMD: &str = "xxxxxxx";
+const TAILER_CMD: &str = "C:\\Program Files\\Mezmo\\winevt-tailer.exe";
 const KEY_MESSAGE: &str = "MESSAGE";
 const KEY_SYSTEMD_UNIT: &str = "_SYSTEMD_UNIT";
 const KEY_SYSLOG_IDENTIFIER: &str = "SYSLOG_IDENTIFIER";
 const KEY_CONTAINER_NAME: &str = "CONTAINER_NAME";
 const DEFAULT_APP: &str = "UNKNOWN_SYSTEMD_APP";
 
-#[derive(Default)]
-pub struct JournaldExportDecoder {
+pub struct TailerApiDecoder {
     state: AnyPartialState,
+    child: Child,
+    _job: Job,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -52,31 +56,18 @@ impl FieldValue {
     }
 }
 
-type JournalRecord = std::collections::HashMap<String, FieldValue>;
+type TailerRecord = std::collections::HashMap<String, FieldValue>;
 
-// The actual parser for the journald export format
-fn decode_parser<'a, Input>(
-) -> impl Parser<Input, Output = JournalRecord, PartialState = AnyPartialState> + 'a
-where
-    Input: RangeStream<Token = u8, Range = &'a [u8]> + 'a,
+// The actual parser for the Tailer API format
+fn decode_parser<'a, Input>() -> impl Parser<Input, Output=TailerRecord, PartialState=AnyPartialState> + 'a
+    where
+        Input: RangeStream<Token=u8, Range=&'a [u8]> + 'a,
     // Necessary due to rust-lang/rust#24159
-    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+        Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     /*
-    Two journal entries that follow each other are separated by a double newline.
-
-     Journal fields consisting only of valid non-control UTF-8 codepoints are serialized as they are:
-         field name, followed by '=', followed by field data, followed by a newline as separator to the next field.
-     Other journal fields are serialized in a special binary safe way:
-         field name, followed by newline, followed by a binary 64bit little endian size value, followed by the binary field data,
-         followed by a newline as separator to the next field.
-     Entry metadata that is not actually a field is serialized like it was a field, but beginning with two underscores.
-     More specifically, __CURSOR=, __REALTIME_TIMESTAMP=, __MONOTONIC_TIMESTAMP= are introduced this way.
-     The order in which fields appear in an entry is undefined and might be different for each entry that is serialized.
-
-     And that's it.
-     */
-
+    Tailer API log lines are 'etf-8' encoded and separated by a single newline.
+    */
     any_partial_state(
         (
             many1::<std::collections::HashMap<_, _>, _, _>(
@@ -123,34 +114,32 @@ where
     )
 }
 
-// The actual parser for the journald export format
-fn find_next_record<'a, Input>(
-) -> impl Parser<Input, Output = (), PartialState = AnyPartialState> + 'a
-where
-    Input: RangeStream<Token = u8, Range = &'a [u8]> + 'a,
+// tokenizer
+fn find_next_record<'a, Input>() -> impl Parser<Input, Output=(), PartialState=AnyPartialState> + 'a
+    where
+        Input: RangeStream<Token=u8, Range=&'a [u8]> + 'a,
     // Necessary due to rust-lang/rust#24159
-    Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
+        Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     any_partial_state(
         (
             skip_many(none_of(b"\n".iter().copied())),
             // entries are line separated
             token(b'\n'),
-            token(b'\n'),
         )
             .map(|_| ()),
     )
 }
 
-impl JournaldExportDecoder {
+impl TailerApiDecoder {
     fn process_default_record(
-        record: &JournalRecord,
+        record: &TailerRecord,
     ) -> Result<Option<LineBuilder>, TailerError> {
         let message = match record.get(KEY_MESSAGE) {
             Some(message) => message,
             None => {
                 warn!("unable to get message of journald record");
-                return Err(TailerError::RecordMissingField(KEY_MESSAGE.into()));
+                return Err(TailerError::InvalidJSON(KEY_MESSAGE.into()));
             }
         };
 
@@ -177,8 +166,8 @@ impl JournaldExportDecoder {
     }
 }
 
-impl Decoder for JournaldExportDecoder {
-    type Item = JournalRecord;
+impl Decoder for TailerApiDecoder {
+    type Item = TailerRecord;
     type Error = Box<dyn std::error::Error + Send + Sync>;
 
     fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
@@ -250,21 +239,28 @@ impl Decoder for JournaldExportDecoder {
     }
 }
 
-pub fn create_tailer_source() -> Result<impl Stream<Item = LineBuilder>, std::io::Error> {
-    let mut tailer_process = tokio::process::Command::new(TAILER_CMD)
-        // The current boot
-        .arg("-b")
-        // follow
-        .arg("-f")
-        // set export format
-        .arg("-o")
-        .arg("export")
+pub fn create_tailer_source() -> Result<impl Stream<Item=LineBuilder>, std::io::Error> {
+    let tailer_job = Job::create().unwrap();
+    let mut info = tailer_job.query_extended_limit_info().unwrap();
+    info.limit_kill_on_job_close();
+    tailer_job.set_extended_limit_info(&mut info).unwrap();
+
+    let tailer_process = tokio::process::Command::new(TAILER_CMD)
+        .arg("-f")// follow
+        .arg("-b")// lookback
+        .arg("10")
         .stdout(Stdio::piped())
         .spawn()?;
 
-    let decoder = JournaldExportDecoder::default();
+    tailer_job.assign_process(tailer_process.raw_handle().unwrap()).unwrap();
 
-    let tailer_stdout = tailer_process.stdout.take().ok_or_else(|| {
+    let mut decoder = TailerApiDecoder {
+        state: AnyPartialState::default(),
+        child: tailer_process,
+        _job: tailer_job,
+    };
+
+    let tailer_stdout = decoder.child.stdout.take().ok_or_else(|| {
         std::io::Error::new(
             std::io::ErrorKind::Other,
             "cannot get tailer stdout handle",
@@ -275,7 +271,7 @@ pub fn create_tailer_source() -> Result<impl Stream<Item = LineBuilder>, std::io
     Ok(
         FramedRead::new(tailer_stdout, decoder).filter_map(|r| async move {
             match r {
-                Ok(record) => match JournaldExportDecoder::process_default_record(&record) {
+                Ok(record) => match TailerApiDecoder::process_default_record(&record) {
                     Ok(r) => {
                         trace!("received a record from tailer");
                         r
@@ -296,7 +292,7 @@ pub fn create_tailer_source() -> Result<impl Stream<Item = LineBuilder>, std::io
 
 #[cfg(test)]
 mod test {
-    use super::JournaldExportDecoder;
+    use super::TailerApiDecoder;
     use futures::prelude::*;
     use partial_io::{PartialAsyncRead, PartialOp};
     use std::io::Cursor;
@@ -465,7 +461,7 @@ _SOURCE_REALTIME_TIMESTAMP=1623323451155218
         // Using the `partial_io` crate we emulate the partial reads
         let partial_reader = PartialAsyncRead::new(reader, seq);
 
-        let decoder = JournaldExportDecoder::default();
+        let decoder = TailerApiDecoder::default();
 
         let result = FramedRead::new(partial_reader, decoder).try_collect().await;
 
@@ -488,7 +484,6 @@ _SOURCE_REALTIME_TIMESTAMP=1623323451155218
         );
     }
 
-    #[cfg(feature = "libjournald")]
     #[tokio::test]
     async fn stream_gets_new_logs() {
         use super::create_tailer_source;
