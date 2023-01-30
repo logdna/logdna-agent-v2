@@ -12,11 +12,11 @@ futures = "0.3"
 log = "0.4"
 time = "0.3"
 
-# journalctl
+# tailer
 combine = { package = "combine", version = "4" }
 bytes = { package = "bytes", version = "1" }
+win32job = "1"
 tokio_util = { package = "tokio-util", version = "0.7", features = ["codec"] }
-
 # tests
 serial_test = { version = "0.8", optional = true }
 
