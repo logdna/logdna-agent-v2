@@ -35,8 +35,10 @@ use middleware::Executor;
 
 use pin_utils::pin_mut;
 use rand::Rng;
+use shell_words;
 use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::signal::*;
 use tokio::sync::Mutex;
@@ -329,14 +331,31 @@ pub async fn _main(
         false => None,
     };
 
-    let _tailer_cmd = "C:\\Program Files\\Mezmo\\winevt-tailer.exe";
-    let _tailer_args = vec!["-f", "-b", "10"];
-    #[cfg(target_os = "windows")]
-    let tailer_source = create_tailer_source(_tailer_cmd, _tailer_args)
-        .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
-        .map_err(|e| warn!("Error initializing tailer source: {}", e))
-        .ok();
-    debug!("Initialised api tailer source");
+    let tailer_source = match (config.log.tailer_cmd, config.log.tailer_args) {
+        (Some(cmd), Some(args)) => {
+            let tailer_cmd = cmd.as_str();
+            if !(Path::new(tailer_cmd).is_file()) {
+                warn!(
+                    "Error initializing tailer source: log.tailer_cmd file [{}] does not exist",
+                    tailer_cmd
+                );
+                None
+            } else {
+                let tailer_args: Vec<String> = shell_words::split(args.as_str())
+                    .expect(format!("Invalid log.tailer_args config option: '{}'", args).as_str());
+                let src = create_tailer_source(
+                    tailer_cmd,
+                    tailer_args.iter().map(|s| s.as_ref()).collect(),
+                )
+                .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
+                .map_err(|e| warn!("Error initializing tailer source: {}", e))
+                .ok();
+                debug!("Initialised api tailer source");
+                src
+            }
+        }
+        (_, _) => None,
+    };
 
     debug!("Initialising offset state");
     let fo_state_handles = offset_state

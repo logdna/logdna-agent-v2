@@ -124,6 +124,8 @@ pub struct LogConfig {
     pub k8s_metadata_exclude: Vec<String>,
     pub log_metric_server_stats: K8sTrackingConf,
     pub clear_cache_interval: Duration,
+    pub tailer_cmd: Option<String>,
+    pub tailer_args: Option<String>,
 }
 
 #[derive(Debug)]
@@ -389,6 +391,8 @@ impl TryFrom<RawConfig> for Config {
                         .unwrap_or_default()
                 },
             ) as u64),
+            tailer_cmd: raw.log.tailer_cmd,
+            tailer_args: raw.log.tailer_args,
         };
 
         if log.use_k8s_enrichment == K8sTrackingConf::Never

@@ -303,6 +303,10 @@ pub struct LogConfig {
     pub log_metric_server_stats: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub clear_cache_interval: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tailer_cmd: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tailer_args: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
@@ -464,6 +468,8 @@ impl Default for LogConfig {
             k8s_metadata_exclude: None,
             log_metric_server_stats: None,
             clear_cache_interval: Some(3600 * 6), // 6 hours
+            tailer_cmd: None,
+            tailer_args: None,
         }
     }
 }
