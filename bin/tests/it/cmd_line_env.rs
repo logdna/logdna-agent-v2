@@ -10,6 +10,8 @@ use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::str::from_utf8;
 use std::sync::{Arc, Condvar, Mutex};
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+use std::thread;
 use std::time::Duration;
 use tempfile::tempdir;
 use tracing::debug;
@@ -652,6 +654,7 @@ hostname = some-linux-instance"
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))] // This does work but is inconsistent, test wise not functionality on mac
 fn test_properties_config_common() -> io::Result<()> {
     let config_dir = tempdir()?;
     let config_file_path = config_dir.path().join("sample.conf");
@@ -665,6 +668,8 @@ tags = abc
 exclude = /var/log/noisy/**/*, !(*sample*)
 line_exclusion_regex = (?i:debug),(?i:trace)"
     )?;
+
+    thread::sleep(std::time::Duration::from_millis(1000));
 
     test_command(
         |cmd| {

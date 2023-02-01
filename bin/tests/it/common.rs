@@ -45,7 +45,7 @@ pub fn append_to_file(file_path: &Path, lines: i32, sync_every: i32) -> Result<(
 
         if i % sync_every == 0 {
             file.sync_all()?;
-            thread::sleep(time::Duration::from_millis(5));
+            thread::sleep(time::Duration::from_millis(50));
         }
     }
     file.sync_all()?;
@@ -59,6 +59,7 @@ pub async fn force_client_to_flush(dir_path: &Path) {
     append_to_file(&dir_path.join("force_flush.log"), 1, 1).unwrap();
 }
 
+#[cfg(all(target_os = "linux"))]
 pub fn truncate_file(file_path: &Path) -> Result<(), std::io::Error> {
     OpenOptions::new()
         .read(true)
@@ -165,7 +166,8 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
     let ingestion_key = if let Some(key) = settings.ingester_key {
         key.to_string()
     } else {
-        std::env::var("LOGDNA_INGESTION_KEY").unwrap()
+        std::env::var("LOGDNA_INGESTION_KEY")
+            .unwrap_or_else(|_| std::env::var("MZ_INGESTION_KEY").unwrap())
     };
 
     assert_ne!(ingestion_key, "", "Ingestion key not set. Set LOGDNA_INGESTION_KEY in your local env or update the test to use a mock ingestor.");
@@ -294,11 +296,13 @@ where
     let instant = std::time::Instant::now();
 
     debug!("event info: {:?}", event_info);
+    debug!("event info: {:?}", event_info);
     for _safeguard in 0..100_000 {
         assert!(
             instant.elapsed() < delay.unwrap_or(std::time::Duration::from_secs(20)),
             "Timed out waiting for condition"
         );
+
         reader.read_line(&mut line).unwrap();
         if line.is_empty() {
             continue;
@@ -326,6 +330,7 @@ pub fn assert_agent_running(agent_handle: &mut Child) {
     }
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 pub fn open_files_include(id: u32, file: &Path) -> Option<String> {
     let child = Command::new("lsof")
         .args(["-l", "-p", &id.to_string()])

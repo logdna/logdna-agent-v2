@@ -13,6 +13,7 @@ pub enum Event {
 }
 
 #[cfg(test)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 impl Event {
     pub(crate) fn key(&self) -> EntryKey {
         *match self {

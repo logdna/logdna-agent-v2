@@ -1,0 +1,40 @@
+[env]
+CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
+CARGO_MANIFEST_DIR = "bin/Cargo.toml"
+
+[tasks.clean]
+args = ["clean"]
+command = "cargo"
+
+[tasks.build]
+args = ["build"]
+command = "cargo"
+
+[tasks.build-release-arm]
+args = ["build", "--release"]
+command = "cargo"
+
+[tasks.build-release-x86_64]
+args = ["build", "--release", "--target", "x86_64-apple-darwin"]
+command = "cargo"
+
+[tasks.clean-build]
+args = ["build"]
+command = "cargo"
+dependencies = ["clean"]
+
+[tasks.int-tests]
+args = ["test","-p", "logdna-agent", "--features", "integration_tests"]
+command = "cargo"
+env = {TMPDIR="/tmp", RUST_BACKTRACE="full"}
+
+[tasks.unit-tests]
+args = ["test", "--no-fail-fast"]
+command = "cargo"
+dependencies = ["clean-build"]
+env = {RUST_BACKTRACE="full"}
+
+[tasks.run] 
+args = ["run", "--bin=logdna-agent"]
+command = "cargo"
+dependencies = ["clean-build"]

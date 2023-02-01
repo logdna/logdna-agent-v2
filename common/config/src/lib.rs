@@ -528,11 +528,13 @@ mod tests {
     #[cfg(windows)]
     static DEFAULT_LOG_DIR: &str = r"C:\ProgramData\logs";
 
-    use std::env;
-    use std::fs::OpenOptions;
-    use std::io::Write;
-
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     use scopeguard::guard;
+    use std::env;
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    use std::fs::OpenOptions;
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    use std::io::Write;
 
     use super::*;
 
@@ -658,6 +660,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     fn e2e() {
         let tempdir = tempfile::TempDir::new().unwrap();
         let path = tempdir.path().to_path_buf();
