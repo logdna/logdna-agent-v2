@@ -2,14 +2,19 @@
 extern crate lazy_static;
 
 use std::env;
+use std::time::Duration;
 
 use errors::K8sError;
 use hyper::{client::HttpConnector, Body};
+use hyper::{Request, Response};
 use hyper_timeout::TimeoutConnector;
 use kube::client::ConfigExt;
 use kube::{config::Config, Client};
 use tower::ServiceBuilder;
 use tower_http::set_header::SetRequestHeaderLayer;
+use tower_http::trace::TraceLayer;
+
+use tracing::{instrument, trace, trace_span, Span};
 
 use hyper::http::header;
 
@@ -23,6 +28,7 @@ pub mod middleware;
 pub mod restarting_stream;
 
 /// Manually create the k8s http client so that we can add a user-agent header
+#[instrument(level = "trace")]
 fn create_k8s_client(
     user_agent: hyper::http::header::HeaderValue,
     config: Config,
@@ -65,10 +71,36 @@ fn create_k8s_client(
         .layer(stack)
         .option_layer(config.auth_layer()?)
         .layer(config.extra_headers_layer()?)
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|request: &hyper::Request<Body>| {
+                    trace_span!(
+                        "HYPER-HTTP",
+                        hyper_http.method = ?request.method(),
+                        hyper_http.url = ?request.uri(),
+                        hyper_http.status_code = tracing::field::Empty,
+                        otel.name = "NEW NAME",
+                    )
+                })
+                .on_request(|request: &Request<Body>, _span: &Span| {
+                    trace!(
+                        "*** TEST payload: {:?} headers: {:?}",
+                        request.body(),
+                        request.headers()
+                    )
+                })
+                .on_response(
+                    |response: &Response<Body>, latency: Duration, span: &Span| {
+                        span.record("status", "value");
+                        trace!("*** TEST {:?} {:?}", response.body(), latency)
+                    },
+                ),
+        )
         .service(client);
     Ok(Client::new(service, default_ns))
 }
 
+#[instrument(level = "trace")]
 pub fn create_k8s_client_default_from_env(
     user_agent: hyper::http::header::HeaderValue,
 ) -> Result<Client, errors::K8sError> {
@@ -76,6 +108,8 @@ pub fn create_k8s_client_default_from_env(
         return Err(K8sError::K8sNotInClusterError());
     }
 
+    let span = trace_span!("k8s-client-span");
+    let _enter = span.enter();
     let config = Config::from_cluster_env()?;
     Ok(create_k8s_client(user_agent, config)?)
 }
