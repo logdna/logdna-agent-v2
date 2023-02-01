@@ -2,11 +2,13 @@ use crate::error::ConfigError;
 use crate::{argv, properties};
 use http::types::params::ParamsBuilder;
 use humanize_rs::bytes::Bytes;
+use path_slash::PathExt as _;
 use serde::de::{Deserializer, Error, Unexpected, Visitor};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
-use std::io::{ErrorKind, Seek, SeekFrom};
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::vec::Vec;
 use tracing::{debug, error};
@@ -93,15 +95,18 @@ fn try_load_confs<'a>(
     paths: &'a [&Path],
 ) -> impl Iterator<Item = Result<Config, ConfigError>> + 'a {
     paths.iter().map(|path| {
-        let mut conf_file = File::open(path)?;
+        let conf_file = File::open(path)?;
         if let Ok(legacy_conf) = properties::read_file(&conf_file) {
             debug!("loading {} as a properties file", path.display());
             return Ok(legacy_conf);
         }
-
         debug!("loading {} as a yaml file", path.display());
-        conf_file.seek(SeekFrom::Start(0))?;
-        Ok(serde_yaml::from_reader(&conf_file)?)
+        let config_path = path.to_slash_lossy();
+        let subst_vars = [("THIS_CONFIG_FILE".to_string(), config_path.to_string())];
+        let content = std::fs::read_to_string(path)?;
+        // substitute ${VARS}
+        let content = crate::substitute(content.as_str(), &HashMap::from(subst_vars));
+        Ok(serde_yaml::from_str(&content)?)
     })
 }
 

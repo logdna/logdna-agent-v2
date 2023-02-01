@@ -14,9 +14,9 @@ use combine::{
     Parser,
 };
 use futures::{Stream, StreamExt};
-use log::{info, trace, warn};
 use tokio::process::{ChildStderr, ChildStdin};
 use tokio_util::codec::{Decoder, FramedRead};
+use tracing::{info, trace, warn};
 use win32job::Job;
 
 use http::types::body::LineBuilder;
@@ -155,6 +155,8 @@ pub fn create_tailer_source(
     info.limit_kill_on_job_close();
     tailer_job.set_extended_limit_info(&mut info).unwrap();
 
+    info!("Starting Tailer: [{}] {:?}", exe_path, args);
+
     let mut tailer_process = tokio::process::Command::new(exe_path)
         .args(args)
         .stdin(Stdio::piped())
@@ -247,7 +249,7 @@ mod test {
                 panic!("unable to grab first batch of lines from stream: {:?}", e);
             }
             Ok(None) => {
-                panic!("expected to get a line from journald stream");
+                panic!("expected to get a line from Tailer stream");
             }
             Ok(Some(batch)) => batch,
         };

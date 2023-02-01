@@ -1,5 +1,8 @@
 extern crate humanize_rs;
 
+use lazy_static::lazy_static;
+use regex::Regex;
+use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::ffi::OsString;
 use std::fs::File;
@@ -517,6 +520,63 @@ where
     }
 }
 
+lazy_static! {
+    static ref REGEX_VAR: Regex = Regex::new(r"(?P<var>\$\{(?P<key>[^|}]+?)})").unwrap();
+    static ref REGEX_VAR_DEFAULT: Regex =
+        Regex::new(r"(?P<var>\$\{(?P<key>[^|}]+?)\|(?P<default>[^|}]*?)})").unwrap();
+}
+
+/// Var expansion with default value support.
+/// Supported cases:
+///   1. ${VarName}             - simple substitute using vars dictionary,
+///                               expended to empty string if var not found
+///   2. ${VarName|DefaultVal}  - first try to expand as ${VarName} then
+///                               use DefaultVal if var not found  
+///   3. ${VarName|${VarName2}} - ${VarName2} is expanded first then case #2
+///   4. ${VarName|}            - empty default, equivalent to "var not found" in case #1
+///
+pub fn substitute(template: &str, variables: &HashMap<String, String>) -> String {
+    // handle case #1
+    let mut output = String::from(template);
+    for cap in REGEX_VAR.captures_iter(template) {
+        cap.name("key").map(|key| {
+            let k = key.as_str();
+            if let Some(v) = variables.get(k) {
+                cap.name("var").map(|var| {
+                    output = output.replace(var.as_str(), v);
+                    Some(var)
+                });
+            }
+            Some(k)
+        });
+    }
+    // handle cases #2,3,4
+    for cap in REGEX_VAR_DEFAULT.captures_iter(template) {
+        cap.name("key").map(|key| {
+            let k = key.as_str();
+            match variables.get(k) {
+                Some(v) => {
+                    cap.name("var").map(|var| {
+                        output = output.replace(var.as_str(), v);
+                        Some(var)
+                    });
+                }
+                None => {
+                    cap.name("default").map(|default| {
+                        cap.name("var").map(|var| {
+                            output = output.replace(var.as_str(), default.as_str());
+                            Some(var)
+                        });
+                        Some(default)
+                    });
+                }
+            }
+            Some(k)
+        });
+    }
+    output
+}
+
 #[cfg(test)]
 mod tests {
 
@@ -723,5 +783,20 @@ mod tests {
         assert_eq!(env::var("MZ_TEST").unwrap(), "LOGDNA_TEST");
         assert_eq!(env::var("MZ_").unwrap(), "LOGDNA_");
         assert_eq!(env::var("MZ_SOME").unwrap(), "MZ_SOME");
+    }
+
+    #[test]
+    fn test_substitute() {
+        use std::collections::HashMap;
+        let vals = HashMap::from([
+            ("val1".to_string(), "1".to_string()),
+            ("val2".to_string(), "2".to_string()),
+            ("val3".to_string(), "3".to_string()),
+            ("val4".to_string(), "".to_string()),
+        ]);
+        let templ =
+            r#"{"key1":"${val1}", "key2":"${val2}", "key3":"${val3|3}", "key4":"${val4|}"}"#;
+        let res = substitute(templ, &vals);
+        assert_eq!(res, r#"{"key1":"1", "key2":"2", "key3":"3", "key4":""}"#);
     }
 }

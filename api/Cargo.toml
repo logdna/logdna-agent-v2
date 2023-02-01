@@ -11,6 +11,7 @@ tokio = { package = "tokio", version = "1", features = ["macros", "process", "rt
 futures = "0.3"
 log = "0.4"
 time = "0.3"
+tracing = "0.1"
 
 # tailer
 combine = { package = "combine", version = "4" }
