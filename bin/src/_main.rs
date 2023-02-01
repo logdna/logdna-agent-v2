@@ -34,7 +34,6 @@ use middleware::Executor;
 
 use pin_utils::pin_mut;
 use rand::Rng;
-use shell_words;
 use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
 use std::path::Path;
@@ -340,8 +339,10 @@ pub async fn _main(
                 );
                 None
             } else {
-                let tailer_args: Vec<String> = shell_words::split(args.as_str())
-                    .expect(format!("Invalid log.tailer_args config option: '{}'", args).as_str());
+                let tailer_args: Vec<String> =
+                    shell_words::split(args.as_str()).unwrap_or_else(|_| {
+                        panic!("Invalid log.tailer_args config option: '{}'", args)
+                    });
                 let src = create_tailer_source(
                     tailer_cmd,
                     tailer_args.iter().map(|s| s.as_ref()).collect(),

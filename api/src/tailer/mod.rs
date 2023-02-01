@@ -153,12 +153,13 @@ pub fn create_tailer_source(
     args: Vec<&str>,
 ) -> Result<impl Stream<Item = LineBuilder>, std::io::Error> {
     #[cfg(windows)]
-    {
-        let tailer_job = Job::create().unwrap();
-        let mut info = tailer_job.query_extended_limit_info().unwrap();
+    let tailer_job = {
+        let job = Job::create().unwrap();
+        let mut info = job.query_extended_limit_info().unwrap();
         info.limit_kill_on_job_close();
-        tailer_job.set_extended_limit_info(&mut info).unwrap();
-    }
+        job.set_extended_limit_info(&mut info).unwrap();
+        job
+    };
 
     info!("Starting Tailer: [{}] {:?}", exe_path, args);
 
