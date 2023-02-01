@@ -237,8 +237,11 @@ mod test {
 
         let _ = env_logger::Builder::from_default_env().try_init();
 
-        let tailer_cmd = "cmd";
-        let tailer_args = vec!["/C", "echo line1 && echo line2 && pause"];
+        let (tailer_cmd, tailer_args) = if cfg!(windows) {
+            ("cmd", vec!["/C", "echo line1 && echo line2 && pause"])
+        } else {
+            ("cmd", vec!["-c", "echo line1 && echo line2 && pause"])
+        };
 
         let mut stream = Box::pin(create_tailer_source(tailer_cmd, tailer_args).unwrap());
 
