@@ -148,8 +148,10 @@ fn level_up(path: &Path) -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use std::env::temp_dir;
 
+    #[cfg(unix)]
     use super::*;
 
     #[test]

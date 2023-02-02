@@ -1540,6 +1540,7 @@ mod tests {
     use pin_utils::pin_mut;
     use std::convert::TryInto;
     use std::fs::{copy, create_dir, hard_link, remove_dir_all, remove_file, rename, File};
+    #[cfg(unix)]
     use std::io::Write;
     use std::{io, panic};
     use tempfile::{tempdir, TempDir};
