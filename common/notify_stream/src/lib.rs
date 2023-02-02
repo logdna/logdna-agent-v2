@@ -271,9 +271,6 @@ mod tests {
     #[cfg(windows)]
     use std::sync::mpsc;
 
-    #[cfg(windows)]
-    use std::thread;
-
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     use predicates::prelude::*;
 
@@ -319,6 +316,7 @@ mod tests {
         };
     }
 
+    #[cfg(unix)]
     macro_rules! wait_and_append {
         ($file: ident) => {
             tokio::time::sleep(DELAY * 3).await;
