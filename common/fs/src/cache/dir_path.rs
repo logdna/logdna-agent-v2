@@ -1,7 +1,12 @@
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
+
+#[cfg(unix)]
 use tracing::{error, warn};
+
+#[cfg(windows)]
+use tracing::error;
 
 #[derive(Error, std::fmt::Debug)]
 pub enum DirPathBufError {
