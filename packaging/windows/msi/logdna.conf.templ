@@ -19,5 +19,51 @@ log:
     regex: []
   use_k8s_enrichment: ~
   log_k8s_events: ~
+  tailer_cmd: "C:/Program Files/Mezmo/winevt-tailer.exe"
+  tailer_args: "-f -b 10 -c ${THIS_CONFIG_FILE}"
 journald: {}
 startup: {}
+
+
+winevt-tailer:
+    logging:
+        disable_existing_loggers: true
+        formatters:
+            msg_only:
+                format: '%(message)s'
+            simple:
+                format: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        handlers:
+            stderr:
+                class: logging.StreamHandler
+                formatter: msg_only
+                level: INFO
+                stream: ext://sys.stderr
+            stdout:
+                class: logging.StreamHandler
+                formatter: msg_only
+                level: INFO
+                stream: ext://sys.stdout
+        loggers:
+            tail_out:
+                handlers:
+                - stdout
+                level: INFO
+        root:
+            handlers:
+            - stderr
+            level: WARNING
+        version: 1
+    tail1:
+        bookmarks_dir: .
+        channels:
+        -   name: Application
+            query: '*'
+        -   name: System
+            query: '*'
+        transforms:
+        - winevt_tailer.transforms.xml_remove_binary
+        - winevt_tailer.transforms.xml_render_message
+        - winevt_tailer.transforms.xml_remove_eventdata
+        - winevt_tailer.transforms.xml_to_json
+        transforms_path: "C:\\Program Files\\Mezmo"
