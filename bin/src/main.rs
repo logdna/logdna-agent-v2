@@ -2,6 +2,8 @@ use config::{self, Config};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, info, trace, warn};
+use tracing_error::ErrorLayer;
+use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{filter::LevelFilter, EnvFilter, FmtSubscriber};
 
 mod _main;
@@ -37,7 +39,8 @@ fn main() -> anyhow::Result<()> {
         .with_writer(std::io::stderr)
         .finish();
 
-    tracing::subscriber::set_global_default(subscriber).expect("failied to set subscriber");
+    tracing::subscriber::set_global_default(subscriber.with(ErrorLayer::default()))
+        .expect("failied to set subscriber");
 
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
 
