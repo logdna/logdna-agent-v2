@@ -481,6 +481,7 @@ build-rpm: build-release
 		chmod +x "logdna-agent"; \
 		fpm \
 				-a "${ARCH}" \
+				--rpm-digest sha256 \
 				--verbose \
 				--input-type dir \
 				--output-type rpm \
