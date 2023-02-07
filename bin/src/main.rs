@@ -4,8 +4,6 @@ use tokio::sync::Mutex;
 use tracing::info;
 #[cfg(not(windows))]
 use tracing::{debug, trace, warn};
-#[cfg(windows)]
-use tracing::info;
 
 use tracing_subscriber::{filter::LevelFilter, EnvFilter, FmtSubscriber};
 

@@ -5,9 +5,6 @@ use tracing::error;
 #[cfg(not(windows))]
 use tracing::warn;
 
-#[cfg(windows)]
-use tracing::error;
-
 #[derive(Error, std::fmt::Debug)]
 pub enum DirPathBufError {
     #[error("{0:?} is not a directory")]
