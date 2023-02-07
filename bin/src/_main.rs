@@ -329,7 +329,9 @@ pub async fn _main(
         false => None,
     };
 
+    #[cfg(all(target_os = "windows"))]
     let _ts = create_tailer_source();
+    debug!("Initialised api tailer source");
 
 
     debug!("Initialising offset state");

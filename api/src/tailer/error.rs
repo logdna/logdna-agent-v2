@@ -14,3 +14,10 @@ impl Display for TailerError {
         }
     }
 }
+
+
+#[test]
+fn test_root_lvl_find_valid_path() {
+    let ex = TailerError::InvalidJSON("abc".into());
+    assert!(ex.to_string().contains("Invalid JSON:"))
+}

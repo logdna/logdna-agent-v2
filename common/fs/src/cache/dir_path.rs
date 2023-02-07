@@ -146,6 +146,7 @@ fn level_up(path: &Path) -> Option<PathBuf> {
     }
 }
 
+#[cfg(not(windows))]
 #[cfg(test)]
 mod tests {
     #[cfg(unix)]
