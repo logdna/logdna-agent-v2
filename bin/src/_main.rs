@@ -17,7 +17,6 @@ use journald::libjournald::source::create_source;
 #[cfg(target_os = "linux")]
 use journald::journalctl::create_journalctl_source;
 
-#[cfg(target_os = "windows")]
 use api::tailer::create_tailer_source;
 
 use k8s::errors::K8sError;
@@ -335,7 +334,7 @@ pub async fn _main(
         (Some(cmd), Some(args)) => {
             let tailer_cmd = cmd.as_str();
             if !(Path::new(tailer_cmd).is_file()) {
-                warn!(
+                error!(
                     "Error initializing tailer source: log.tailer_cmd file [{}] does not exist",
                     tailer_cmd
                 );
@@ -348,7 +347,7 @@ pub async fn _main(
                     tailer_args.iter().map(|s| s.as_ref()).collect(),
                 )
                 .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
-                .map_err(|e| warn!("Error initializing tailer source: {}", e))
+                .map_err(|e| error!("Error initializing tailer source: {}", e))
                 .ok();
                 debug!("Initialised api tailer source");
                 src
@@ -466,7 +465,6 @@ pub async fn _main(
     #[cfg(target_os = "linux")]
     pin_mut!(journalctl_source);
 
-    #[cfg(target_os = "windows")]
     pin_mut!(tailer_source);
 
     #[cfg(all(feature = "libjournald", target_os = "linux"))]
@@ -481,7 +479,6 @@ pub async fn _main(
     #[cfg(all(feature = "libjournald", target_os = "linux"))]
     let mut journald_source: Option<std::pin::Pin<&mut _>> = journald_source.as_pin_mut();
 
-    #[cfg(target_os = "windows")]
     let mut tailer_source: Option<std::pin::Pin<&mut _>> = tailer_source.as_pin_mut();
 
     let mut metric_server_source: Option<std::pin::Pin<&mut _>> = metric_stats_source.as_pin_mut();
@@ -505,7 +502,7 @@ pub async fn _main(
         info!("Enabling journalctl event source");
         sources.push(s)
     }
-    #[cfg(target_os = "windows")]
+
     if let Some(s) = tailer_source.as_mut() {
         info!("Enabling tailer event source");
         sources.push(s)

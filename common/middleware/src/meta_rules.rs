@@ -3,7 +3,6 @@ use config::env_vars;
 use http::types::body::{KeyValueMap, LineBufferMut};
 use lazy_static::lazy_static;
 use regex::bytes::Regex as RegexB;
-use regex::Regex;
 use std::collections::HashMap;
 use std::ops::Deref;
 use tracing::error;
@@ -15,9 +14,6 @@ static MAP_PREFIX_ANN: &str = "annot.";
 static MAP_PREFIX_LAB: &str = "label.";
 
 lazy_static! {
-    static ref REGEX_VAR: Regex = Regex::new(r"(?P<var>\$\{(?P<key>[^|}]+?)})").unwrap();
-    static ref REGEX_VAR_DEFAULT: Regex =
-        Regex::new(r"(?P<var>\$\{(?P<key>[^|}]+?)\|(?P<default>[^|}]*?)})").unwrap();
     static ref REGEX_CRIO_LOG: RegexB =
         RegexB::new(r"([0-9]{4}(?:-[0-9]{2}){2}T(?:[0-9]{2}:){2}[0-9]{2}.[0-9]{1,9}(?:[+-][0-9]{2}:[0-9]{2}|Z)) (stdout|stderr) ([PF]) (?P<line>.*)").unwrap();
 }
@@ -178,7 +174,7 @@ impl MetaRules {
                 Some(kvm)
             });
             for (k, v) in over_annotations.iter() {
-                let v = substitute(v, &meta_map);
+                let v = config::substitute(v, &meta_map);
                 meta_map.insert(MAP_PREFIX_ANN.to_string() + k, v.clone()); // insert "with override"
                 if v.is_empty() {
                     new_annotations = new_annotations.remove(&k.clone());
@@ -198,7 +194,7 @@ impl MetaRules {
                 Some(kvm)
             });
             for (k, v) in over_labels.iter() {
-                let v = substitute(v, &meta_map);
+                let v = config::substitute(v, &meta_map);
                 meta_map.insert(MAP_PREFIX_LAB.to_string() + k, v.clone());
                 if v.is_empty() {
                     new_labels = new_labels.remove(&k.clone());
@@ -213,23 +209,23 @@ impl MetaRules {
         // TODO: add rate limited err log for setters
         //
         if let Some(over_app) = &self.over_app {
-            let app = substitute(over_app.deref(), &meta_map);
+            let app = config::substitute(over_app.deref(), &meta_map);
             if line.set_app(app).is_err() {}
         }
         if let Some(over_host) = &self.over_host {
-            let host = substitute(over_host.deref(), &meta_map);
+            let host = config::substitute(over_host.deref(), &meta_map);
             if line.set_host(host).is_err() {}
         }
         if let Some(over_env) = &self.over_env {
-            let env = substitute(over_env.deref(), &meta_map);
+            let env = config::substitute(over_env.deref(), &meta_map);
             if line.set_env(env).is_err() {}
         }
         if let Some(over_file) = &self.over_file {
-            let file = substitute(over_file.deref(), &meta_map);
+            let file = config::substitute(over_file.deref(), &meta_map);
             if line.set_file(file).is_err() {}
         }
         if let (Some(over_k8s_file), true) = (&self.over_k8s_file, is_k8s_line) {
-            let file = substitute(over_k8s_file.deref(), &meta_map);
+            let file = config::substitute(over_k8s_file.deref(), &meta_map);
             if line.set_file(file).is_err() {}
             // overriding "file" will disable server side CRIO log line parsing,
             // so we remove CRIO log prefix from line here to make regular line parser happy
@@ -247,7 +243,7 @@ impl MetaRules {
             }
         }
         if let Some(over_meta) = &self.over_meta {
-            let meta = substitute(over_meta.deref(), &meta_map);
+            let meta = config::substitute(over_meta.deref(), &meta_map);
             match serde_json::from_str(&meta) {
                 Ok(val) => if line.set_meta(val).is_err() {},
                 Err(err) => panic!("Invalid MZ_META_JSON value: '{}', err: {}", meta, err),
@@ -275,62 +271,11 @@ fn os_env_hashmap() -> HashMap<String, String> {
     map
 }
 
-/// Var expansion with default value support.
-/// Supported cases:
-///   1. ${VarName}             - simple substitute using vars dictionary,
-///                               expended to empty string if var not found
-///   2. ${VarName|DefaultVal}  - first try to expand as ${VarName} then
-///                               use DefaultVal if var not found  
-///   3. ${VarName|${VarName2}} - ${VarName2} is expanded first then case #2
-///   4. ${VarName|}            - empty default, equivalent to "var not found" in case #1
-///
-pub fn substitute(template: &str, variables: &HashMap<String, String>) -> String {
-    // handle case #1
-    let mut output = String::from(template);
-    for cap in REGEX_VAR.captures_iter(template) {
-        cap.name("key").map(|key| {
-            let k = key.as_str();
-            if let Some(v) = variables.get(k) {
-                cap.name("var").map(|var| {
-                    output = output.replace(var.as_str(), v);
-                    Some(var)
-                });
-            }
-            Some(k)
-        });
-    }
-    // handle cases #2,3,4
-    for cap in REGEX_VAR_DEFAULT.captures_iter(template) {
-        cap.name("key").map(|key| {
-            let k = key.as_str();
-            match variables.get(k) {
-                Some(v) => {
-                    cap.name("var").map(|var| {
-                        output = output.replace(var.as_str(), v);
-                        Some(var)
-                    });
-                }
-                None => {
-                    cap.name("default").map(|default| {
-                        cap.name("var").map(|var| {
-                            output = output.replace(var.as_str(), default.as_str());
-                            Some(var)
-                        });
-                        Some(default)
-                    });
-                }
-            }
-            Some(k)
-        });
-    }
-    output
-}
-
 //################################################################################## Tests
 
 #[cfg(test)]
 mod tests {
-    use crate::meta_rules::{os_env_hashmap, substitute};
+    use crate::meta_rules::os_env_hashmap;
     use config::env_vars;
 
     #[test]
@@ -357,7 +302,7 @@ mod tests {
         let vars = os_env_hashmap();
         #[cfg(unix)]
         {
-            let path = vars.get("PATH");
+            let path = env::vars.get("PATH");
             assert!(path.unwrap().contains("/usr/bin"));
         }
         #[cfg(windows)]
@@ -365,21 +310,6 @@ mod tests {
             let path = vars.get("OS");
             assert!(path.unwrap().contains("Windows_NT"));
         }
-    }
-
-    #[test]
-    fn test_substitute() {
-        use std::collections::HashMap;
-        let vals = HashMap::from([
-            ("val1".to_string(), "1".to_string()),
-            ("val2".to_string(), "2".to_string()),
-            ("val3".to_string(), "3".to_string()),
-            ("val4".to_string(), "".to_string()),
-        ]);
-        let templ =
-            r#"{"key1":"${val1}", "key2":"${val2}", "key3":"${val3|3}", "key4":"${val4|}"}"#;
-        let res = substitute(templ, &vals);
-        assert_eq!(res, r#"{"key1":"1", "key2":"2", "key3":"3", "key4":""}"#);
     }
 
     use super::*;

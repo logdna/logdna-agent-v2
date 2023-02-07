@@ -1,9 +1,9 @@
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
-
-#[cfg(unix)]
-use tracing::{error, warn};
+use tracing::error;
+#[cfg(not(windows))]
+use tracing::warn;
 
 #[cfg(windows)]
 use tracing::error;
