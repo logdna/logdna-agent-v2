@@ -339,7 +339,7 @@ pipeline {
                         }
                     }
                 }                
-                stage('Build Mac OSX release binary X86_64') {
+                stage('Build and Publish Mac OSX release binary X86_64') {
                     agent {
                         node {
                             label "osx-node"
@@ -353,20 +353,19 @@ pipeline {
                             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                         ]]) {
-                            sh """
+                            sh '''
                                 source $HOME/.cargo/env
                                 source ~/.bash_profile
                                 echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_x86_64
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
                                 cargo build --release --target x86_64-apple-darwin
-                                aws s3 cp --acl public-read target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${env.BUILD_TAG}/aarch64-apple-darwin/logdna-agent
                                 rm ${WORKSPACE}/.aws_creds_mac_static_x86_64
-                            """
+                            '''
                         }
                     }
                 }
-                stage('Build Mac OSX release binary ARM64') {
+                stage('Build and Publish Mac OSX release binary ARM64') {
                     agent {
                         node {
                             label "osx-node"
@@ -380,16 +379,15 @@ pipeline {
                             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                         ]]) {
-                            sh """
+                            sh '''
                                 source $HOME/.cargo/env
                                 source ~/.bash_profile
                                 echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 cargo build --release
-                                aws s3 cp --acl public-read target/release/logdna-agent s3://logdna-agent-build-bin/${env.BUILD_TAG}/arm64/logdna-agent
                                 rm ${WORKSPACE}/.aws_creds_mac_static_arm64
-                            """
+                            '''
                         }
                     }
                 }
@@ -397,6 +395,12 @@ pipeline {
         }
         stage('Check Publish Images') {
             stages {
+                agent {
+                    node {
+                        label "rust-x86_64"
+                        customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                    }
+                }
                 stage('Scanning Images') {
                     steps {
                         sh 'ARCH=x86_64 make sysdig_secure_images'
@@ -405,7 +409,7 @@ pipeline {
                         sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
                     }
                 }
-                stage('Publish binaries to S3') {
+                stage('Publish Linux and Windows binaries to S3') {
                     when {
                         anyOf {
                             branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
@@ -440,7 +444,46 @@ pipeline {
                         }
                     }
                 }
+                stage('Publish MAC binaries to S3') {
+                    when {
+                        anyOf {
+                            branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
+                            environment name: 'PUBLISH_BINARIES', value: 'true'
+                        }
+                    }
+                    agent {
+                        node {
+                            label "osx-node"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh """
+                                source $HOME/.cargo/env
+                                source ~/.bash_profile
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                aws s3 cp --acl public-read target/release/logdna-agent s3://logdna-agent-build-bin/${env.BUILD_TAG}/arm64/logdna-agent
+                                aws s3 cp --acl public-read target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${env.BUILD_TAG}/aarch64-apple-darwin/logdna-agent
+                                rm ${WORKSPACE}/.aws_creds_mac_static_arm64
+                            """
+                        }
+                    }
+                }
                 stage('Publish Installers') {
+                    agent {
+                        node {
+                            label "rust-x86_64"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
                     environment {
                         CHOCO_API_KEY = credentials('chocolatey-api-token')
                     }
