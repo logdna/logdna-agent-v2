@@ -334,21 +334,26 @@ pub async fn _main(
             let tailer_cmd = cmd.as_str();
             if !(Path::new(tailer_cmd).is_file()) {
                 error!(
-                    "Error initializing tailer source: log.tailer_cmd file [{}] does not exist",
+                    "Error initializing api tailer source: 'log.tailer_cmd' file [{}] does not exist",
                     tailer_cmd
                 );
-                None
+                std::process::exit(1);
             } else {
                 let tailer_args: Vec<String> =
                     shell_words::split(args.as_str()).unwrap_or_else(|_| {
-                        panic!("Invalid log.tailer_args config option: '{}'", args)
+                        error!("Malformed 'log.tailer_args' config option: '{}'", args);
+                        std::process::exit(1);
                     });
                 let src = create_tailer_source(
                     tailer_cmd,
                     tailer_args.iter().map(|s| s.as_ref()).collect(),
+                    shutdown_tx.clone(),
                 )
                 .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
-                .map_err(|e| error!("Error initializing tailer source: {}", e))
+                .map_err(|e| {
+                    error!("Error initializing api tailer source: {}", e);
+                    std::process::exit(1);
+                })
                 .ok();
                 debug!("Initialised api tailer source");
                 src

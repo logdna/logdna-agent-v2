@@ -1,4 +1,5 @@
 use std::process::Stdio;
+use std::sync::Arc;
 
 use bytes::{Buf, BytesMut};
 use combine::parser::byte::crlf;
@@ -14,9 +15,11 @@ use combine::{
     Parser,
 };
 use futures::{Stream, StreamExt};
-use tokio::process::{ChildStderr, ChildStdin};
+use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::process::ChildStdin;
+use tokio::sync::Mutex;
 use tokio_util::codec::{Decoder, FramedRead};
-use tracing::{info, trace, warn};
+use tracing::{error, info, trace, warn};
 #[cfg(windows)]
 use win32job::Job;
 
@@ -29,7 +32,6 @@ mod error;
 pub struct TailerApiDecoder {
     state: AnyPartialState,
     _stdin: ChildStdin,
-    _stderr: ChildStderr,
     #[cfg(windows)]
     _job: Job,
 }
@@ -151,6 +153,7 @@ impl Decoder for TailerApiDecoder {
 pub fn create_tailer_source(
     exe_path: &str,
     args: Vec<&str>,
+    shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
 ) -> Result<impl Stream<Item = LineBuilder>, std::io::Error> {
     #[cfg(windows)]
     let tailer_job = {
@@ -161,9 +164,10 @@ pub fn create_tailer_source(
         job
     };
 
-    info!("Starting Tailer: [{}] {:?}", exe_path, args);
+    info!("Starting API Tailer: [{}] {:?}", exe_path, args);
 
-    let mut tailer_process = tokio::process::Command::new(exe_path)
+    let exe_path_str = exe_path.to_string();
+    let mut tailer_process = tokio::process::Command::new(exe_path_str.clone())
         .args(args)
         .stdin(Stdio::piped())
         .stderr(Stdio::piped())
@@ -176,21 +180,37 @@ pub fn create_tailer_source(
         .expect("Failed to assign tailer process to job.");
 
     let tailer_stdout = tailer_process.stdout.take().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::Other, "cannot get tailer stdout handle")
+        std::io::Error::new(std::io::ErrorKind::Other, "Can't get tailer stdout handle")
     })?;
 
     let tailer_stderr = tailer_process.stderr.take().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::Other, "cannot get tailer stderr handle")
+        std::io::Error::new(std::io::ErrorKind::Other, "Can't get tailer stderr handle")
     })?;
 
     let tailer_stdin = tailer_process.stdin.take().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::Other, "cannot get tailer stdin handle")
+        std::io::Error::new(std::io::ErrorKind::Other, "Can't get tailer stdin handle")
     })?;
+
+    tokio::spawn(async move {
+        let status = tailer_process
+            .wait()
+            .await
+            .expect("Failed to wait for tailer process");
+        error!(
+            "api tailer source process [{}] exited with status: {}",
+            exe_path_str, status
+        );
+        let mut reader = BufReader::new(tailer_stderr).lines();
+        while let Some(line) = reader.next_line().await.unwrap_or(None) {
+            error!("api tailer source: {}", line);
+        }
+        error!("Exiting agent...");
+        shutdown_tx.lock().await.take().unwrap().send(()).unwrap();
+    });
 
     let decoder = TailerApiDecoder {
         state: AnyPartialState::default(),
         _stdin: tailer_stdin,
-        _stderr: tailer_stderr,
         #[cfg(windows)]
         _job: tailer_job,
     };
@@ -224,6 +244,10 @@ mod test {
     use combine::{none_of, parser::range::recognize, skip_many1, Parser};
     #[cfg(windows)]
     use futures::StreamExt;
+    #[cfg(windows)]
+    use std::sync::Arc;
+    #[cfg(windows)]
+    use tokio::sync::Mutex;
 
     #[tokio::test]
     async fn test_my_parse() {
@@ -256,7 +280,10 @@ mod test {
             )
         };
 
-        let mut stream = Box::pin(create_tailer_source(tailer_cmd, tailer_args).unwrap());
+        let (shutdown_tx, _shutdown_rx) = tokio::sync::oneshot::channel();
+        let shutdown_tx = Arc::new(Mutex::new(Some(shutdown_tx)));
+        let mut stream =
+            Box::pin(create_tailer_source(tailer_cmd, tailer_args, shutdown_tx).unwrap());
 
         sleep(Duration::from_millis(50)).await;
 
