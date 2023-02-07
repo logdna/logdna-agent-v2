@@ -72,6 +72,32 @@ pipeline {
                         '''
                     }
                 }
+                stage('Mac OSX Unit Tests'){
+                    when {
+                        not {
+                            triggeredBy 'ParameterizedTimerTriggerCause'
+                        }
+                    }
+                    agent {
+                        node {
+                            label "osx-node"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
+                    steps {
+                        withCredentials([[
+                                            $class: 'AmazonWebServicesCredentialsBinding',
+                                            credentialsId: 'aws',
+                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                            ]]){
+                            sh """
+                                 source $HOME/.cargo/env
+                                 cargo make unit-tests 
+                            """
+                        }
+                    }
+                }
                 stage('Unit Tests'){
                     when {
                         not {
@@ -150,6 +176,35 @@ pipeline {
                                          ]]){
                             sh """
                               TEST_THREADS="${TEST_THREADS}" make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
+                            """
+                        }
+                    }
+                }
+                stage('Mac OSX Integration Tests'){
+                    agent {
+                        node {
+                            label "osx-node"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
+                    environment {
+                        CREDS_FILE = credentials('pipeline-e2e-creds')
+                        LOGDNA_HOST = "logs.use.stage.logdna.net"
+                    }
+                    steps {
+                        script {
+                            def creds = readJSON file: CREDS_FILE
+                            LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
+                        }
+                        withCredentials([[
+                                           $class: 'AmazonWebServicesCredentialsBinding',
+                                           credentialsId: 'aws',
+                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                         ]]){
+                            sh """
+                                source $HOME/.cargo/env
+                                cargo make int-tests
                             """
                         }
                     }
@@ -280,6 +335,60 @@ pipeline {
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_win_static_x86_64
                                 ARCH=x86_64 WINDOWS=1 FEATURES=windows_service make build-release AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_win_static_x86_64
                                 rm ${WORKSPACE}/.aws_creds_win_static_x86_64
+                            '''
+                        }
+                    }
+                }                
+                stage('Build Mac OSX release binary X86_64') {
+                    agent {
+                        node {
+                            label "osx-node"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh '''
+                                source $HOME/.cargo/env
+                                source ~/.bash_profile
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_x86_64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
+                                cargo build --release --target x86_64-apple-darwin
+                                aws s3 cp --acl public-read target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${env.BUILD_TAG}/aarch64-apple-darwin/logdna-agent
+                                rm ${WORKSPACE}/.aws_creds_mac_static_x86_64
+                            '''
+                        }
+                    }
+                }
+                stage('Build Mac OSX release binary ARM64') {
+                    agent {
+                        node {
+                            label "osx-node"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh '''
+                                source $HOME/.cargo/env
+                                source ~/.bash_profile
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                cargo build --release
+                                aws s3 cp --acl public-read target/release/logdna-agent s3://logdna-agent-build-bin/${env.BUILD_TAG}/arm64/logdna-agent
+                                rm ${WORKSPACE}/.aws_creds_mac_static_arm64
                             '''
                         }
                     }
