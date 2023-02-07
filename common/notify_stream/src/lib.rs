@@ -316,7 +316,7 @@ mod tests {
         };
     }
 
-    #[cfg(unix)]
+    #[cfg(not(windows))]
     macro_rules! wait_and_append {
         ($file: ident) => {
             tokio::time::sleep(DELAY * 3).await;
