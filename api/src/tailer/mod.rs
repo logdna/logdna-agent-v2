@@ -17,6 +17,7 @@ use futures::{Stream, StreamExt};
 use tokio::process::{ChildStderr, ChildStdin};
 use tokio_util::codec::{Decoder, FramedRead};
 use tracing::{info, trace, warn};
+#[cfg(windows)]
 use win32job::Job;
 
 use http::types::body::LineBuilder;
@@ -29,6 +30,7 @@ pub struct TailerApiDecoder {
     state: AnyPartialState,
     _stdin: ChildStdin,
     _stderr: ChildStderr,
+    #[cfg(windows)]
     _job: Job,
 }
 
@@ -150,10 +152,13 @@ pub fn create_tailer_source(
     exe_path: &str,
     args: Vec<&str>,
 ) -> Result<impl Stream<Item = LineBuilder>, std::io::Error> {
-    let tailer_job = Job::create().unwrap();
-    let mut info = tailer_job.query_extended_limit_info().unwrap();
-    info.limit_kill_on_job_close();
-    tailer_job.set_extended_limit_info(&mut info).unwrap();
+    #[cfg(windows)]
+    {
+        let tailer_job = Job::create().unwrap();
+        let mut info = tailer_job.query_extended_limit_info().unwrap();
+        info.limit_kill_on_job_close();
+        tailer_job.set_extended_limit_info(&mut info).unwrap();
+    }
 
     info!("Starting Tailer: [{}] {:?}", exe_path, args);
 
@@ -164,6 +169,7 @@ pub fn create_tailer_source(
         .stdout(Stdio::piped())
         .spawn()?;
 
+    #[cfg(windows)]
     tailer_job
         .assign_process(tailer_process.raw_handle().unwrap())
         .expect("Failed to assign tailer process to job.");
@@ -184,6 +190,7 @@ pub fn create_tailer_source(
         state: AnyPartialState::default(),
         _stdin: tailer_stdin,
         _stderr: tailer_stderr,
+        #[cfg(windows)]
         _job: tailer_job,
     };
 
@@ -214,6 +221,7 @@ pub fn create_tailer_source(
 mod test {
     use combine::stream::position;
     use combine::{none_of, parser::range::recognize, skip_many1, Parser};
+    #[cfg(windows)]
     use futures::StreamExt;
 
     #[tokio::test]
@@ -229,6 +237,7 @@ mod test {
         );
     }
 
+    #[cfg(windows)]
     #[tokio::test]
     async fn stream_gets_some_logs() {
         use super::create_tailer_source;
@@ -240,7 +249,10 @@ mod test {
         let (tailer_cmd, tailer_args) = if cfg!(windows) {
             ("cmd", vec!["/C", "echo line1 && echo line2 && pause"])
         } else {
-            ("cmd", vec!["-c", "echo line1 && echo line2 && pause"])
+            (
+                "/usr/bin/env",
+                vec!["bash", "-c", "echo line1 && echo line2 && sleep 1000"],
+            )
         };
 
         let mut stream = Box::pin(create_tailer_source(tailer_cmd, tailer_args).unwrap());

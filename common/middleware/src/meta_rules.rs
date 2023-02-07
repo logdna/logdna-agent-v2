@@ -300,15 +300,12 @@ mod tests {
     #[test]
     fn test_os_env_hashmap() {
         let vars = os_env_hashmap();
-        #[cfg(unix)]
-        {
-            let path = env::vars.get("PATH");
-            assert!(path.unwrap().contains("/usr/bin"));
-        }
-        #[cfg(windows)]
-        {
+        if cfg!(windows) {
             let path = vars.get("OS");
             assert!(path.unwrap().contains("Windows_NT"));
+        } else {
+            let path = vars.get("PATH");
+            assert!(path.unwrap().contains("/usr/bin"));
         }
     }
 

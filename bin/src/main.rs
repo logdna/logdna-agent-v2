@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
 #[cfg(not(windows))]
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, trace, warn};
 
 #[cfg(windows)]
 use tracing::info;
