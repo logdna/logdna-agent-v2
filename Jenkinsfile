@@ -68,106 +68,7 @@ pipeline {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
             }
-            parallel {
-                stage('Build Release Image x86_64') {
-                    steps {
-                        sh "make init-qemu"
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]){
-                            sh """
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_x86_64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_x86_64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_x86_64
-                                ARCH=x86_64 make build-image AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_x86_64
-                            """
-                        }
-                    }
-                    post {
-                        always {
-                            sh "rm ${WORKSPACE}/.aws_creds_x86_64"
-                        }
-                    }
-                }
-                stage('Build Release Image aarch64') {
-                    steps {
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]){
-                            sh """
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_aarch64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_aarch64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_aarch64
-                                ARCH=aarch64 make build-image AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_aarch64
-                            """
-                        }
-                    }
-                    post {
-                        always {
-                            sh "rm ${WORKSPACE}/.aws_creds_aarch64"
-                        }
-                    }
-                }
-                stage('Build static release binary x86_64') {
-                    steps {
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]) {
-                            sh '''
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_static_x86_64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_static_x86_64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static_x86_64
-                                ARCH=x86_64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static_x86_64
-                                rm ${WORKSPACE}/.aws_creds_static_x86_64
-                            '''
-                        }
-                    }
-                }
-                stage('Build static release binary aarch64') {
-                    steps {
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]) {
-                            sh '''
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_static_aarch64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_static_aarch64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static_aarch64
-                                ARCH=aarch64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static_aarch64
-                                rm ${WORKSPACE}/.aws_creds_static_aarch64
-                            '''
-                        }
-                    }
-                }
-                stage('Build Windows release binary x86_64') {
-                    steps {
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]) {
-                            sh '''
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_win_static_x86_64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_win_static_x86_64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_win_static_x86_64
-                                ARCH=x86_64 WINDOWS=1 FEATURES=windows_service make build-release AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_win_static_x86_64
-                                rm ${WORKSPACE}/.aws_creds_win_static_x86_64
-                            '''
-                        }
-                    }
-                }                
+            parallel {              
                 stage('Build Mac OSX release binary X86_64') {
                     agent {
                         node {
@@ -182,20 +83,37 @@ pipeline {
                             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                         ]]) {
-                            sh """
+                            sh '''
                                 source $HOME/.cargo/env
                                 source ~/.bash_profile
                                 echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_x86_64
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
                                 cargo build --release --target x86_64-apple-darwin
-                                aws s3 cp --acl public-read target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${env.BUILD_TAG}/aarch64-apple-darwin/logdna-agent
                                 rm ${WORKSPACE}/.aws_creds_mac_static_x86_64
-                            """
+                            '''
                         }
                     }
                 }
-                stage('Build Mac OSX release binary ARM64') {
+            }
+        }
+        stage('Check Publish Images') {
+            stages {
+                stage('Scanning Images') {
+                    steps {
+                        sh 'ARCH=x86_64 make sysdig_secure_images'
+                        sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
+                        sh 'ARCH=aarch64 make sysdig_secure_images'
+                        sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
+                    }
+                }
+                stage('Publish MAC binaries to S3') {
+                    when {
+                        anyOf {
+                            branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
+                            environment name: 'PUBLISH_BINARIES', value: 'true'
+                        }
+                    }
                     agent {
                         node {
                             label "osx-node"
@@ -215,57 +133,10 @@ pipeline {
                                 echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
-                                cargo build --release
                                 aws s3 cp --acl public-read target/release/logdna-agent s3://logdna-agent-build-bin/${env.BUILD_TAG}/arm64/logdna-agent
+                                aws s3 cp --acl public-read target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${env.BUILD_TAG}/aarch64-apple-darwin/logdna-agent
                                 rm ${WORKSPACE}/.aws_creds_mac_static_arm64
                             """
-                        }
-                    }
-                }
-            }
-        }
-        stage('Check Publish Images') {
-            stages {
-                stage('Scanning Images') {
-                    steps {
-                        sh 'ARCH=x86_64 make sysdig_secure_images'
-                        sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
-                        sh 'ARCH=aarch64 make sysdig_secure_images'
-                        sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
-                    }
-                }
-                stage('Publish Linux and Windows binaries to S3') {
-                    when {
-                        anyOf {
-                            branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
-                            environment name: 'PUBLISH_BINARIES', value: 'true'
-                        }
-                    }
-                    environment {
-                        CSC_PASS = credentials('chocolatey-api-token')
-                    }
-                    steps {
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]) {
-                            sh '''
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_static
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_static
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static
-                                STATIC=1 make publish-s3-binary
-                                WINDOWS=1 make publish-s3-binary
-                                WINDOWS=1 make msi-release
-                                WINDOWS=1 make test-msi-release
-                                WINDOWS=1 make publish-s3-binary-signed-release
-                                WINDOWS=1 make choco-release
-                                WINDOWS=1 make publish-s3-choco-release
-                                ARCH=x86_64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
-                                ARCH=aarch64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
-                                rm ${WORKSPACE}/.aws_creds_static
-                            '''
                         }
                     }
                 }
