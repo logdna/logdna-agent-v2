@@ -394,13 +394,13 @@ pipeline {
             }
         }
         stage('Check Publish Images') {
-            stages {
-                agent {
-                    node {
-                        label "rust-x86_64"
-                        customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                    }
+            agent {
+                node {
+                    label "rust-x86_64"
+                    customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
                 }
+            }
+            stages {
                 stage('Scanning Images') {
                     steps {
                         sh 'ARCH=x86_64 make sysdig_secure_images'
