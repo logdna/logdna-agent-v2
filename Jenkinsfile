@@ -109,7 +109,7 @@ pipeline {
                     agent {
                         node {
                             label "osx-node"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                            //customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
                         }
                     }
                     steps {
