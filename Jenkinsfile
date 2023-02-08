@@ -339,7 +339,7 @@ pipeline {
                         }
                     }
                 }                
-                stage('Build and Publish Mac OSX release binary X86_64') {
+                stage('Build Mac OSX release binary X86_64') {
                     agent {
                         node {
                             label "osx-node"
@@ -365,7 +365,7 @@ pipeline {
                         }
                     }
                 }
-                stage('Build and Publish Mac OSX release binary ARM64') {
+                stage('Build Mac OSX release binary ARM64') {
                     agent {
                         node {
                             label "osx-node"
