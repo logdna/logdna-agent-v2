@@ -487,54 +487,58 @@ fn handle_file_offset_event(
     stream_state: OffsetStreamState,
 ) -> Result<EventAction, (FileOffsetStateError, OffsetStreamState)> {
     let (wb, (mut state, mut pending, span_buf, bytes_buf)) = stream_state;
-    match (wb, event) {
-        (wb, FileOffsetEvent::Flush(key)) => Ok(EventAction::Write(handle_file_offset_flush(
-            key,
-            cf_handle,
-            (wb, (state, pending, span_buf, bytes_buf)),
-        ))),
-        (wb, FileOffsetEvent::Update(e)) => match e {
-            FileOffsetUpdate::Update(offsets, tx) => {
-                let key = pending.insert(offsets);
-                match tx.send(key) {
-                    Ok(_) => Ok(EventAction::Nop((
-                        wb,
-                        (state, pending, span_buf, bytes_buf),
-                    ))),
-                    Err(_) => Err((
-                        FileOffsetStateError::StageUpdateFail,
-                        (wb, (state, pending, span_buf, bytes_buf)),
-                    )),
-                }
-            }
-            FileOffsetUpdate::Delete(key) => {
-                let mut wb = wb.unwrap_or_default();
-                state.remove(&key);
-                wb.delete_cf(cf_handle, u64::to_be_bytes(key.0));
-                Ok(EventAction::Nop((
-                    Some(wb),
-                    (state, pending, span_buf, bytes_buf),
-                )))
-            }
-        },
-        (_, FileOffsetEvent::Clear) => {
-            pending.clear();
-            Ok(EventAction::Nop((
-                None,
-                (state, pending, span_buf, bytes_buf),
-            )))
-        }
-        (_, FileOffsetEvent::GarbageCollect { retained_files, .. }) => {
-            pending.clear();
-            debug!("GarbageCollect: {:?}", retained_files);
-            // remove all except retained_files
-            state.retain(|inode, _| retained_files.contains(inode));
-            Ok(EventAction::Nop((
-                None,
-                (state, pending, span_buf, bytes_buf),
-            )))
-        }
-    }
+    Ok(EventAction::Nop((
+        wb,
+        (state, pending, span_buf, bytes_buf),
+    )))
+    // match (wb, event) {
+    // (wb, FileOffsetEvent::Flush(key)) => Ok(EventAction::Write(handle_file_offset_flush(
+    //     key,
+    //     cf_handle,
+    //     (wb, (state, pending, span_buf, bytes_buf)),
+    // ))),
+    // (wb, FileOffsetEvent::Update(e)) => match e {
+    //     FileOffsetUpdate::Update(offsets, tx) => {
+    //         let key = pending.insert(offsets);
+    //         match tx.send(key) {
+    //             Ok(_) => Ok(EventAction::Nop((
+    //                 wb,
+    //                 (state, pending, span_buf, bytes_buf),
+    //             ))),
+    //             Err(_) => Err((
+    //                 FileOffsetStateError::StageUpdateFail,
+    //                 (wb, (state, pending, span_buf, bytes_buf)),
+    //             )),
+    //         }
+    //     }
+    //     FileOffsetUpdate::Delete(key) => {
+    //         let mut wb = wb.unwrap_or_default();
+    //         state.remove(&key);
+    //         wb.delete_cf(cf_handle, u64::to_be_bytes(key.0));
+    //         Ok(EventAction::Nop((
+    //             Some(wb),
+    //             (state, pending, span_buf, bytes_buf),
+    //         )))
+    //     }
+    // },
+    // (_, FileOffsetEvent::Clear) => {
+    //     pending.clear();
+    //     Ok(EventAction::Nop((
+    //         None,
+    //         (state, pending, span_buf, bytes_buf),
+    //     )))
+    // }
+    // (_, FileOffsetEvent::GarbageCollect { retained_files, .. }) => {
+    //     pending.clear();
+    //     debug!("GarbageCollect: {:?}", retained_files);
+    //     // remove all except retained_files
+    //     state.retain(|inode, _| retained_files.contains(inode));
+    //     Ok(EventAction::Nop((
+    //         None,
+    //         (state, pending, span_buf, bytes_buf),
+    //     )))
+    // }
+    // }
 }
 
 pub trait GetOffset {
