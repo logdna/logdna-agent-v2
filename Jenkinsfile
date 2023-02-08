@@ -339,7 +339,7 @@ pipeline {
                         }
                     }
                 }                
-                stage('Build and Publish Mac OSX release binary X86_64') {
+                stage('Build Mac OSX release binary X86_64') {
                     agent {
                         node {
                             label "osx-node"
@@ -365,7 +365,7 @@ pipeline {
                         }
                     }
                 }
-                stage('Build and Publish Mac OSX release binary ARM64') {
+                stage('Build Mac OSX release binary ARM64') {
                     agent {
                         node {
                             label "osx-node"
@@ -394,12 +394,6 @@ pipeline {
             }
         }
         stage('Check Publish Images') {
-            agent {
-                node {
-                    label "rust-x86_64"
-                    customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                }
-            }
             stages {
                 stage('Scanning Images') {
                     steps {
@@ -478,12 +472,6 @@ pipeline {
                     }
                 }
                 stage('Publish Installers') {
-                    agent {
-                        node {
-                            label "rust-x86_64"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
                     environment {
                         CHOCO_API_KEY = credentials('chocolatey-api-token')
                     }
