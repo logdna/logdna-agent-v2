@@ -182,7 +182,7 @@ pipeline {
                             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                         ]]) {
-                            sh '''
+                            sh """
                                 source $HOME/.cargo/env
                                 source ~/.bash_profile
                                 echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_x86_64
@@ -191,7 +191,7 @@ pipeline {
                                 cargo build --release --target x86_64-apple-darwin
                                 aws s3 cp --acl public-read target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${env.BUILD_TAG}/aarch64-apple-darwin/logdna-agent
                                 rm ${WORKSPACE}/.aws_creds_mac_static_x86_64
-                            '''
+                            """
                         }
                     }
                 }
@@ -209,7 +209,7 @@ pipeline {
                             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                         ]]) {
-                            sh '''
+                            sh """
                                 source $HOME/.cargo/env
                                 source ~/.bash_profile
                                 echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_arm64
@@ -218,7 +218,7 @@ pipeline {
                                 cargo build --release
                                 aws s3 cp --acl public-read target/release/logdna-agent s3://logdna-agent-build-bin/${env.BUILD_TAG}/arm64/logdna-agent
                                 rm ${WORKSPACE}/.aws_creds_mac_static_arm64
-                            '''
+                            """
                         }
                     }
                 }
