@@ -410,6 +410,12 @@ pipeline {
                     }
                 }
                 stage('Publish Linux and Windows binaries to S3') {
+                    agent {
+                        node {
+                            label "rust-x86_64"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
                     when {
                         anyOf {
                             branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
