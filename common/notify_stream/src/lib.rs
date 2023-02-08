@@ -191,6 +191,9 @@ impl Watcher {
                     EventKind::Modify(ModifyKind::Data(DataChange::Any)) => {
                         Some(Event::Write(received.paths.first().unwrap().clone()))
                     }
+                    EventKind::Modify(ModifyKind::Data(DataChange::Content)) => {
+                        Some(Event::Write(received.paths.first().unwrap().clone()))
+                    }
                     EventKind::Modify(ModifyKind::Name(RenameMode::From)) => received
                         .paths
                         .first()
