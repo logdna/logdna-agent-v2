@@ -202,7 +202,7 @@ pub fn create_tailer_source(
         );
         let mut reader = BufReader::new(tailer_stderr).lines();
         while let Some(line) = reader.next_line().await.unwrap_or(None) {
-            error!("api tailer source: {}", line);
+            error!("api tailer source [stderr]: {}", line); // print lines from stderr to agent log
         }
         error!("Exiting agent...");
         shutdown_tx.lock().await.take().unwrap().send(()).unwrap();
@@ -215,7 +215,7 @@ pub fn create_tailer_source(
         _job: tailer_job,
     };
 
-    info!("Listening to Tailer");
+    info!("Listening to API Tailer");
     Ok(
         FramedRead::new(tailer_stdout, decoder).filter_map(|r| async move {
             match r {
@@ -248,6 +248,8 @@ mod test {
     use std::sync::Arc;
     #[cfg(windows)]
     use tokio::sync::Mutex;
+    #[cfg(windows)]
+    use tracing_test::traced_test;
 
     #[tokio::test]
     async fn test_my_parse() {
@@ -264,12 +266,11 @@ mod test {
 
     #[cfg(windows)]
     #[tokio::test]
+    #[traced_test]
     async fn stream_gets_some_logs() {
         use super::create_tailer_source;
         use std::time::Duration;
         use tokio::time::{sleep, timeout};
-
-        let _ = env_logger::Builder::from_default_env().try_init();
 
         let (tailer_cmd, tailer_args) = if cfg!(windows) {
             ("cmd", vec!["/C", "echo line1 && echo line2 && pause"])
@@ -297,5 +298,50 @@ mod test {
             Ok(Some(batch)) => batch,
         };
         assert!(first_line.line.is_some());
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    #[traced_test]
+    async fn capture_stderr_from_tailer_on_exit() {
+        use super::create_tailer_source;
+        use std::time::Duration;
+        use tokio::time::{sleep, timeout};
+
+        let (tailer_cmd, tailer_args) = if cfg!(windows) {
+            (
+                "cmd",
+                vec![
+                    "/c",
+                    "echo line1 && echo ===error message=== 1>&2 && waitfor /t 1 test && exit 1",
+                ],
+            )
+        } else {
+            (
+                "/usr/bin/env",
+                vec![
+                    "bash",
+                    "-c",
+                    "echo line1 && echo ===error message=== 1>&2 && sleep 1 && exit 1",
+                ],
+            )
+        };
+
+        let (shutdown_tx, _shutdown_rx) = tokio::sync::oneshot::channel();
+        let shutdown_tx = Arc::new(Mutex::new(Some(shutdown_tx)));
+        let mut stream =
+            Box::pin(create_tailer_source(tailer_cmd, tailer_args, shutdown_tx).unwrap());
+
+        sleep(Duration::from_millis(3000)).await;
+
+        match timeout(Duration::from_millis(500), stream.next()).await {
+            Err(_) => {}
+            Ok(None) => {}
+            Ok(Some(_)) => {}
+        };
+        assert!(logs_contain("api::tailer: Exiting agent..."));
+        assert!(logs_contain(
+            "api tailer source [stderr]: ===error message==="
+        ));
     }
 }
