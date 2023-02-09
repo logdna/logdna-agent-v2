@@ -63,12 +63,282 @@ pipeline {
                 """
             }
         }
+        stage('Lint and Unit Test') {
+            parallel {
+                stage('Lint') {
+                    steps {
+                        sh '''
+                            make lint
+                        '''
+                    }
+                }
+                stage('Mac OSX Unit Tests'){
+                    when {
+                        not {
+                            triggeredBy 'ParameterizedTimerTriggerCause'
+                        }
+                    }
+                    agent {
+                        node {
+                            label "osx-node"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
+                    steps {
+                        withCredentials([[
+                                            $class: 'AmazonWebServicesCredentialsBinding',
+                                            credentialsId: 'aws',
+                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                            ]]){
+                            sh """
+                                 source $HOME/.cargo/env
+                                 cargo make unit-tests 
+                            """
+                        }
+                    }
+                }
+                stage('Unit Tests'){
+                    when {
+                        not {
+                            triggeredBy 'ParameterizedTimerTriggerCause'
+                        }
+                    }
+                    steps {
+                        withCredentials([[
+                                            $class: 'AmazonWebServicesCredentialsBinding',
+                                            credentialsId: 'aws',
+                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                            ]]){
+                            sh """
+                                make -j2 test
+                            """
+                        }
+                    }
+                }
+                stage('Code Coverage'){
+                    steps {
+                        withCredentials([[
+                                           $class: 'AmazonWebServicesCredentialsBinding',
+                                           credentialsId: 'aws',
+                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                         ]]){
+                            sh """
+                              make unit-code-coverage
+                            """
+                        }
+                    }
+                    post {
+                        // Publish HTML code coverage report
+                        success {
+                            publishHTML (target: [
+                                allowMissing: false,
+                                alwaysLinkToLastBuild: true,
+                                keepAll: true,
+                                reportDir: "target/llvm-cov/html",
+                                reportFiles: 'index.html',
+                                reportName: 'Code Coverage Report',
+                                reportTitles: 'Mezmo Agent Code Coverage'
+                            ])
+                        }
+                    }
+                }
+            }
+        }
+        stage('Test') {
+            when {
+                not {
+                    triggeredBy 'ParameterizedTimerTriggerCause'
+                }
+            }
+            environment {
+                CREDS_FILE = credentials('pipeline-e2e-creds')
+                LOGDNA_HOST = "logs.use.stage.logdna.net"
+            }
+            parallel {
+                stage('Integration Tests'){
+                    steps {
+                        script {
+                            def creds = readJSON file: CREDS_FILE
+                            // Assumes the pipeline-e2e-creds format remains the same. Chase
+                            // refer to the e2e tests's README's authorization docs for the
+                            // current structure
+                            LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
+                            TEST_THREADS = sh (script: 'threads=$(echo $(nproc)/4 | bc); echo $(( threads > 1 ? threads: 1))', returnStdout: true).trim()
+                        }
+                        withCredentials([[
+                                           $class: 'AmazonWebServicesCredentialsBinding',
+                                           credentialsId: 'aws',
+                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                         ]]){
+                            sh """
+                              TEST_THREADS="${TEST_THREADS}" make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
+                            """
+                        }
+                    }
+                }
+                stage('Mac OSX Integration Tests'){
+                    agent {
+                        node {
+                            label "osx-node"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
+                    environment {
+                        CREDS_FILE = credentials('pipeline-e2e-creds')
+                        LOGDNA_HOST = "logs.use.stage.logdna.net"
+                    }
+                    steps {
+                        script {
+                            def creds = readJSON file: CREDS_FILE
+                            LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
+                        }
+                        withCredentials([[
+                                           $class: 'AmazonWebServicesCredentialsBinding',
+                                           credentialsId: 'aws',
+                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                         ]]){
+                            sh """
+                                source $HOME/.cargo/env
+                                cargo make int-tests
+                            """
+                        }
+                    }
+                }
+                stage('Run K8s Integration Tests') {
+                    steps {
+                        withCredentials([[
+                                            $class: 'AmazonWebServicesCredentialsBinding',
+                                            credentialsId: 'aws',
+                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                            ]]) {
+                            sh """
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_k8s-test
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_k8s-test
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_k8s-test
+                                make k8s-test AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_k8s-test
+                            """
+                        }
+                    }
+                }
+            }
+            post {
+                always {
+                    sh "make clean"
+                    sh "rm -f ${WORKSPACE}/.aws_creds_k8s-test"
+                }
+            }
+        }
         stage('Build Release Binaries') {
             environment {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
             }
-            parallel {     
+            parallel {
+                stage('Build Release Image x86_64') {
+                    steps {
+                        sh "make init-qemu"
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]){
+                            sh """
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_x86_64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_x86_64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_x86_64
+                                ARCH=x86_64 make build-image AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_x86_64
+                            """
+                        }
+                    }
+                    post {
+                        always {
+                            sh "rm ${WORKSPACE}/.aws_creds_x86_64"
+                        }
+                    }
+                }
+                stage('Build Release Image aarch64') {
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]){
+                            sh """
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_aarch64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_aarch64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_aarch64
+                                ARCH=aarch64 make build-image AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_aarch64
+                            """
+                        }
+                    }
+                    post {
+                        always {
+                            sh "rm ${WORKSPACE}/.aws_creds_aarch64"
+                        }
+                    }
+                }
+                stage('Build static release binary x86_64') {
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh '''
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_static_x86_64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_static_x86_64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static_x86_64
+                                ARCH=x86_64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static_x86_64
+                                rm ${WORKSPACE}/.aws_creds_static_x86_64
+                            '''
+                        }
+                    }
+                }
+                stage('Build static release binary aarch64') {
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh '''
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_static_aarch64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_static_aarch64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static_aarch64
+                                ARCH=aarch64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static_aarch64
+                                rm ${WORKSPACE}/.aws_creds_static_aarch64
+                            '''
+                        }
+                    }
+                }
+                stage('Build Windows release binary x86_64') {
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh '''
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_win_static_x86_64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_win_static_x86_64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_win_static_x86_64
+                                ARCH=x86_64 WINDOWS=1 FEATURES=windows_service make build-release AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_win_static_x86_64
+                                rm ${WORKSPACE}/.aws_creds_win_static_x86_64
+                            '''
+                        }
+                    }
+                }                
                 stage('Build Mac OSX release binary X86_64') {
                     agent {
                         node {
@@ -95,6 +365,32 @@ pipeline {
                         }
                     }
                 }
+                stage('Build Mac OSX release binary ARM64') {
+                    agent {
+                        node {
+                            label "osx-node"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh '''
+                                source $HOME/.cargo/env
+                                source ~/.bash_profile
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                cargo build --release
+                                rm ${WORKSPACE}/.aws_creds_mac_static_arm64
+                            '''
+                        }
+                    }
+                }
             }
         }
         stage('Check Publish Images') {
@@ -111,6 +407,47 @@ pipeline {
                         sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
                         sh 'ARCH=aarch64 make sysdig_secure_images'
                         sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
+                    }
+                }
+                stage('Publish Linux and Windows binaries to S3') {
+                    agent {
+                        node {
+                            label "rust-x86_64"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                    }
+                    }
+                    when {
+                        anyOf {
+                            branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
+                            environment name: 'PUBLISH_BINARIES', value: 'true'
+                        }
+                    }
+                    environment {
+                        CSC_PASS = credentials('chocolatey-api-token')
+                    }
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh '''
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_static
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_static
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static
+                                STATIC=1 make publish-s3-binary
+                                WINDOWS=1 make publish-s3-binary
+                                WINDOWS=1 make msi-release
+                                WINDOWS=1 make test-msi-release
+                                WINDOWS=1 make publish-s3-binary-signed-release
+                                WINDOWS=1 make choco-release
+                                WINDOWS=1 make publish-s3-choco-release
+                                ARCH=x86_64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
+                                ARCH=aarch64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
+                                rm ${WORKSPACE}/.aws_creds_static
+                            '''
+                        }
                     }
                 }
                 stage('Publish MAC binaries to S3') {
