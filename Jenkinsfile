@@ -210,12 +210,6 @@ pipeline {
                     }
                 }
                 stage('Run K8s Integration Tests') {
-                    agent {
-                        node {
-                            label "rust-x86_64"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
                     steps {
                         withCredentials([[
                                             $class: 'AmazonWebServicesCredentialsBinding',
@@ -530,7 +524,6 @@ pipeline {
             post {
                 always {
                     sh 'ARCH=x86_64 make clean-all'
-                    sh 'echo hey'
                     sh 'ARCH=aarch64 make clean-all'
                 }
             }
