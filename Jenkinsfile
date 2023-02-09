@@ -188,7 +188,7 @@ pipeline {
                                 echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_x86_64
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
-                                cargo make build-release-x86_64
+                                cargo build --release --target x86_64-apple-darwin
                                 rm ${WORKSPACE}/.aws_creds_mac_static_x86_64
                             '''
                         }
@@ -214,7 +214,7 @@ pipeline {
                                 echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
-                                cargo make build-release-arm
+                                cargo build --release
                                 rm ${WORKSPACE}/.aws_creds_mac_static_arm64
                             '''
                         }

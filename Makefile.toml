@@ -1,7 +1,7 @@
 [env]
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 CARGO_MANIFEST_DIR = "bin/Cargo.toml"
-CARGO_TARGET_DIR= "../build-output"
+CARGO_TARGET_DIR= "../target"
 
 [tasks.build-release-arm]
 args = ["build", "--release"]
