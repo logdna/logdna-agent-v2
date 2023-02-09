@@ -63,183 +63,6 @@ pipeline {
                 """
             }
         }
-        stage('Lint and Unit Test') {
-            parallel {
-                stage('Lint') {
-                    steps {
-                        sh '''
-                            make lint
-                        '''
-                    }
-                }
-                stage('Mac OSX Unit Tests'){
-                    when {
-                        not {
-                            triggeredBy 'ParameterizedTimerTriggerCause'
-                        }
-                    }
-                    agent {
-                        node {
-                            label "osx-node"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
-                    steps {
-                        withCredentials([[
-                                            $class: 'AmazonWebServicesCredentialsBinding',
-                                            credentialsId: 'aws',
-                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                            ]]){
-                            sh """
-                                 source $HOME/.cargo/env
-                                 cargo make unit-tests 
-                            """
-                        }
-                    }
-                }
-                stage('Unit Tests'){
-                    when {
-                        not {
-                            triggeredBy 'ParameterizedTimerTriggerCause'
-                        }
-                    }
-                    steps {
-                        withCredentials([[
-                                            $class: 'AmazonWebServicesCredentialsBinding',
-                                            credentialsId: 'aws',
-                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                            ]]){
-                            sh """
-                                make -j2 test
-                            """
-                        }
-                    }
-                }
-                stage('Code Coverage'){
-                    steps {
-                        withCredentials([[
-                                           $class: 'AmazonWebServicesCredentialsBinding',
-                                           credentialsId: 'aws',
-                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                         ]]){
-                            sh """
-                              make unit-code-coverage
-                            """
-                        }
-                    }
-                    post {
-                        // Publish HTML code coverage report
-                        success {
-                            publishHTML (target: [
-                                allowMissing: false,
-                                alwaysLinkToLastBuild: true,
-                                keepAll: true,
-                                reportDir: "target/llvm-cov/html",
-                                reportFiles: 'index.html',
-                                reportName: 'Code Coverage Report',
-                                reportTitles: 'Mezmo Agent Code Coverage'
-                            ])
-                        }
-                    }
-                }
-            }
-        }
-        stage('Test') {
-            when {
-                not {
-                    triggeredBy 'ParameterizedTimerTriggerCause'
-                }
-            }
-            environment {
-                CREDS_FILE = credentials('pipeline-e2e-creds')
-                LOGDNA_HOST = "logs.use.stage.logdna.net"
-            }
-            parallel {
-                stage('Integration Tests'){
-                    steps {
-                        script {
-                            def creds = readJSON file: CREDS_FILE
-                            // Assumes the pipeline-e2e-creds format remains the same. Chase
-                            // refer to the e2e tests's README's authorization docs for the
-                            // current structure
-                            LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
-                            TEST_THREADS = sh (script: 'threads=$(echo $(nproc)/4 | bc); echo $(( threads > 1 ? threads: 1))', returnStdout: true).trim()
-                        }
-                        withCredentials([[
-                                           $class: 'AmazonWebServicesCredentialsBinding',
-                                           credentialsId: 'aws',
-                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                         ]]){
-                            sh """
-                              TEST_THREADS="${TEST_THREADS}" make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
-                            """
-                        }
-                    }
-                }
-                stage('Mac OSX Integration Tests'){
-                    agent {
-                        node {
-                            label "osx-node"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
-                    environment {
-                        CREDS_FILE = credentials('pipeline-e2e-creds')
-                        LOGDNA_HOST = "logs.use.stage.logdna.net"
-                    }
-                    steps {
-                        script {
-                            def creds = readJSON file: CREDS_FILE
-                            LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
-                        }
-                        withCredentials([[
-                                           $class: 'AmazonWebServicesCredentialsBinding',
-                                           credentialsId: 'aws',
-                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                         ]]){
-                            sh """
-                                source $HOME/.cargo/env
-                                cargo make int-tests
-                            """
-                        }
-                    }
-                }
-                stage('Run K8s Integration Tests') {
-                    agent {
-                        node {
-                            label "rust-x86_64"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
-                    steps {
-                        withCredentials([[
-                                            $class: 'AmazonWebServicesCredentialsBinding',
-                                            credentialsId: 'aws',
-                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                            ]]) {
-                            sh """
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_k8s-test
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_k8s-test
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_k8s-test
-                                make k8s-test AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_k8s-test
-                            """
-                        }
-                    }
-                }
-            }
-            post {
-                always {
-                    sh "make clean"
-                    sh "rm -f ${WORKSPACE}/.aws_creds_k8s-test"
-                }
-            }
-        }
         stage('Build Release Binaries') {
             environment {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
@@ -247,12 +70,6 @@ pipeline {
             }
             parallel {
                 stage('Build Release Image x86_64') {
-                    agent {
-                        node {
-                            label "rust-x86_64"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
                     steps {
                         sh "make init-qemu"
                         withCredentials([[
@@ -276,12 +93,6 @@ pipeline {
                     }
                 }
                 stage('Build Release Image aarch64') {
-                     agent {
-                        node {
-                            label "rust-x86_64"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
                     steps {
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
@@ -328,12 +139,6 @@ pipeline {
                     }
                 }
                 stage('Build static release binary aarch64') {
-                    agent {
-                        node {
-                            label "rust-x86_64"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
                     steps {
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
@@ -352,12 +157,6 @@ pipeline {
                     }
                 }
                 stage('Build Windows release binary x86_64') {
-                    agent {
-                        node {
-                            label "rust-x86_64"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
                     steps {
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
@@ -446,16 +245,16 @@ pipeline {
                     }
                 }
                 stage('Publish Linux and Windows binaries to S3') {
-                    agent {
-                        node {
-                            label "rust-x86_64"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
                     when {
                         anyOf {
                             branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
                             environment name: 'PUBLISH_BINARIES', value: 'true'
+                        }
+                    }
+                    agent {
+                        node {
+                            label "rust-x86_64"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
                         }
                     }
                     environment {
