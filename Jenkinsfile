@@ -115,12 +115,6 @@ pipeline {
                     }
                 }
                 stage('Build static release binary x86_64') {
-                    agent {
-                        node {
-                            label "rust-x86_64"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
                     steps {
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
@@ -229,24 +223,20 @@ pipeline {
             }
         }
         stage('Check Publish Images') {
-            agent {
-                node {
-                    label "rust-x86_64"
-                    customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                }
-            }
             stages {
+                stage('Scanning Images') {
+                    steps {
+                        sh 'ARCH=x86_64 make sysdig_secure_images'
+                        sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
+                        sh 'ARCH=aarch64 make sysdig_secure_images'
+                        sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
+                    }
+                }
                 stage('Publish Linux and Windows binaries to S3') {
                     when {
                         anyOf {
                             branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
                             environment name: 'PUBLISH_BINARIES', value: 'true'
-                        }
-                    }
-                    agent {
-                        node {
-                            label "rust-x86_64"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
                         }
                     }
                     environment {
@@ -311,12 +301,6 @@ pipeline {
                     }
                 }
                 stage('Publish Installers') {
-                    agent {
-                        node {
-                            label "rust-x86_64"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
                     environment {
                         CHOCO_API_KEY = credentials('chocolatey-api-token')
                     }
@@ -328,12 +312,6 @@ pipeline {
                     }
                 }
                 stage('Publish GCR images') {
-                    agent {
-                        node {
-                            label "rust-x86_64"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }   
                     when {
                         environment name: 'PUBLISH_GCR_IMAGE', value: 'true'
                     }
@@ -345,12 +323,6 @@ pipeline {
                     }
                 }
                 stage('Publish Dockerhub and ICR images') {
-                    agent {
-                        node {
-                            label "rust-x86_64"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
                     when {
                         environment name: 'PUBLISH_ICR_IMAGE', value: 'true'
                     }
