@@ -210,6 +210,12 @@ pipeline {
                     }
                 }
                 stage('Run K8s Integration Tests') {
+                    agent {
+                        node {
+                            label "rust-x86_64"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
                     steps {
                         withCredentials([[
                                             $class: 'AmazonWebServicesCredentialsBinding',
@@ -235,6 +241,12 @@ pipeline {
             }
         }
         stage('Build Release Binaries') {
+            agent {
+                node {
+                    label "rust-x86_64"
+                    customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                }
+            }
             environment {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
@@ -414,7 +426,7 @@ pipeline {
                         node {
                             label "rust-x86_64"
                             customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                    }
+                        }
                     }
                     when {
                         anyOf {
