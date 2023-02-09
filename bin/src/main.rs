@@ -4,7 +4,8 @@ use tokio::sync::Mutex;
 use tracing::{debug, info, trace, warn};
 use tracing_error::ErrorLayer;
 use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::{filter::LevelFilter, EnvFilter, FmtSubscriber};
+use tracing_subscriber::Registry;
+use tracing_subscriber::{filter::LevelFilter, EnvFilter};
 
 mod _main;
 #[cfg(feature = "dep_audit")]
@@ -34,13 +35,13 @@ fn main() -> anyhow::Result<()> {
     let log_level_env_filter = EnvFilter::builder()
         .with_default_directive(LevelFilter::INFO.into())
         .from_env_lossy();
-    let subscriber = FmtSubscriber::builder()
-        .with_env_filter(log_level_env_filter)
-        .with_writer(std::io::stderr)
-        .finish();
+    let log_level_layer = tracing_subscriber::fmt::layer().with_writer(std::io::stderr);
+    let subscriber = Registry::default()
+        .with(log_level_env_filter)
+        .with(log_level_layer)
+        .with(ErrorLayer::default());
 
-    tracing::subscriber::set_global_default(subscriber.with(ErrorLayer::default()))
-        .expect("failied to set subscriber");
+    tracing::subscriber::set_global_default(subscriber).expect("failied to set subscriber");
 
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
 

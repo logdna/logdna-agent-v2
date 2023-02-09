@@ -6,7 +6,7 @@ use notify::{Config, ErrorKind, EventKind, Watcher as NotifyWatcher};
 use std::path::Path;
 use std::rc::Rc;
 use time::OffsetDateTime;
-use tracing::{debug, info, instrument, trace};
+use tracing::{debug, info, instrument, trace, trace_span};
 use tracing_error::SpanTrace;
 
 type PathId = std::path::PathBuf;
@@ -279,6 +279,17 @@ impl From<RecursiveMode> for notify::RecursiveMode {
     }
 }
 
+#[instrument(level = "trace")]
+fn test_these_span_traces(input: &str) -> Result<(), ContextError> {
+    let span = trace_span!("test-span");
+    let _guard = span.enter();
+    trace!("I am tracing");
+    Err(ContextError {
+        error: Error::Generic(input.to_string()),
+        context: SpanTrace::capture(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -289,6 +300,7 @@ mod tests {
     use std::io::{self, Write};
     use std::time::Duration;
     use tempfile::tempdir;
+    use tracing::{instrument, span, Level};
 
     #[cfg(windows)]
     use std::sync::mpsc;
@@ -346,6 +358,23 @@ mod tests {
             tokio::time::sleep(DELAY * 3).await;
             append!($file);
         };
+    }
+
+    #[tokio::test]
+    #[instrument]
+    async fn test_context_error_type() {
+        let span = span!(Level::TRACE, "test-span");
+        let _guard = span.enter();
+        let error = test_these_span_traces("test-trace");
+        trace!("test tracing: {:?}", error);
+
+        //let bt = SpanTrace::capture();
+        let context_error = error.err().unwrap();
+        println!("ERROR: {:?}", context_error.context.status());
+        assert_eq!(
+            context_error.error,
+            Error::Generic(String::from("test-trace"))
+        );
     }
 
     #[tokio::test]
