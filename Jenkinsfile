@@ -68,7 +68,7 @@ pipeline {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
             }
-            parallel {å         
+            parallel {     
                 stage('Build Mac OSX release binary X86_64') {
                     agent {
                         node {
