@@ -241,17 +241,17 @@ pipeline {
             }
         }
         stage('Build Release Binaries') {
+            agent {
+                node {
+                    label "rust-x86_64"
+                    customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                }
+            }
             environment {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
             }
             parallel {
-                agent {
-                    node {
-                        label "rust-x86_64"
-                        customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                    }
-                }
                 stage('Build Release Image x86_64') {
                     steps {
                         sh "make init-qemu"
