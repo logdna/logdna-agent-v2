@@ -236,9 +236,6 @@ pipeline {
                 }
             }
             stages {
-                stage('Scanning Images') {
-   
-                }
                 stage('Publish Linux and Windows binaries to S3') {
                     when {
                         anyOf {
