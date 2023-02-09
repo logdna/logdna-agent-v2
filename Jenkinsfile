@@ -172,7 +172,7 @@ pipeline {
                     agent {
                         node {
                             label "osx-node"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}/x86")
                         }
                     }
                     steps {
@@ -188,7 +188,7 @@ pipeline {
                                 echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_x86_64
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
-                                cargo build --release --target x86_64-apple-darwin --target-dir x86-target
+                                cargo build --release --target=x86_64-apple-darwin --target-dir x86-target
                                 rm ${WORKSPACE}/.aws_creds_mac_static_x86_64
                             '''
                         }
@@ -198,7 +198,7 @@ pipeline {
                     agent {
                         node {
                             label "osx-node"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}/arm")
                         }
                     }
                     steps {
@@ -277,7 +277,7 @@ pipeline {
                     agent {
                         node {
                             label "osx-node"
-                            //customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
                         }
                     }
                     steps {
