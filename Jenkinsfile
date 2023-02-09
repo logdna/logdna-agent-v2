@@ -94,7 +94,7 @@ pipeline {
                             '''
                         }
                     }
-                }å
+                }
             }
         }
         stage('Check Publish Images') {
