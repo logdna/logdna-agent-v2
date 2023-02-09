@@ -353,6 +353,7 @@ pipeline {
             post {
                 always {
                     sh 'ARCH=x86_64 make clean-all'
+                    sh 'echo hey'
                     sh 'ARCH=aarch64 make clean-all'
                 }
             }
