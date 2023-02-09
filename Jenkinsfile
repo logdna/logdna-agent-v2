@@ -253,6 +253,12 @@ pipeline {
             }
             parallel {
                 stage('Build Release Image x86_64') {
+                    agent {
+                        node {
+                            label "rust-x86_64"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
                     steps {
                         sh "make init-qemu"
                         withCredentials([[
@@ -276,6 +282,12 @@ pipeline {
                     }
                 }
                 stage('Build Release Image aarch64') {
+                     agent {
+                        node {
+                            label "rust-x86_64"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
                     steps {
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
@@ -298,6 +310,12 @@ pipeline {
                     }
                 }
                 stage('Build static release binary x86_64') {
+                    agent {
+                        node {
+                            label "rust-x86_64"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
                     steps {
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
@@ -316,6 +334,12 @@ pipeline {
                     }
                 }
                 stage('Build static release binary aarch64') {
+                    agent {
+                        node {
+                            label "rust-x86_64"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
                     steps {
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
@@ -334,6 +358,12 @@ pipeline {
                     }
                 }
                 stage('Build Windows release binary x86_64') {
+                    agent {
+                        node {
+                            label "rust-x86_64"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
                     steps {
                         withCredentials([[
                             $class: 'AmazonWebServicesCredentialsBinding',
@@ -496,6 +526,12 @@ pipeline {
                     }
                 }
                 stage('Publish Installers') {
+                    agent {
+                        node {
+                            label "rust-x86_64"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
                     environment {
                         CHOCO_API_KEY = credentials('chocolatey-api-token')
                     }
@@ -507,6 +543,12 @@ pipeline {
                     }
                 }
                 stage('Publish GCR images') {
+                    ßagent {
+                        node {
+                            label "rust-x86_64"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }   
                     when {
                         environment name: 'PUBLISH_GCR_IMAGE', value: 'true'
                     }
@@ -518,6 +560,12 @@ pipeline {
                     }
                 }
                 stage('Publish Dockerhub and ICR images') {
+                    agent {
+                        node {
+                            label "rust-x86_64"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
                     when {
                         environment name: 'PUBLISH_ICR_IMAGE', value: 'true'
                     }
