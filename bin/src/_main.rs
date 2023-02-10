@@ -17,6 +17,8 @@ use journald::libjournald::source::create_source;
 #[cfg(target_os = "linux")]
 use journald::journalctl::create_journalctl_source;
 
+use api::tailer::create_tailer_source;
+
 use k8s::errors::K8sError;
 use k8s::event_source::K8sEventStream;
 use k8s::lease::{get_available_lease, K8S_STARTUP_LEASE_LABEL, K8S_STARTUP_LEASE_RETRY_ATTEMPTS};
@@ -34,6 +36,7 @@ use pin_utils::pin_mut;
 use rand::Rng;
 use state::{AgentState, FileId, SpanVec};
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::Arc;
 use tokio::signal::*;
 use tokio::sync::Mutex;
@@ -326,6 +329,39 @@ pub async fn _main(
         false => None,
     };
 
+    let tailer_source = match (config.log.tailer_cmd, config.log.tailer_args) {
+        (Some(cmd), Some(args)) => {
+            let tailer_cmd = cmd.as_str();
+            if !(Path::new(tailer_cmd).is_file()) {
+                error!(
+                    "Error initializing api tailer source: 'log.tailer_cmd' file [{}] does not exist",
+                    tailer_cmd
+                );
+                std::process::exit(1);
+            } else {
+                let tailer_args: Vec<String> =
+                    shell_words::split(args.as_str()).unwrap_or_else(|_| {
+                        error!("Malformed 'log.tailer_args' config option: '{}'", args);
+                        std::process::exit(1);
+                    });
+                let src = create_tailer_source(
+                    tailer_cmd,
+                    tailer_args.iter().map(|s| s.as_ref()).collect(),
+                    shutdown_tx.clone(),
+                )
+                .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
+                .map_err(|e| {
+                    error!("Error initializing api tailer source: {}", e);
+                    std::process::exit(1);
+                })
+                .ok();
+                debug!("Initialised api tailer source");
+                src
+            }
+        }
+        (_, _) => None,
+    };
+
     debug!("Initialising offset state");
     let fo_state_handles = offset_state
         .as_ref()
@@ -435,6 +471,8 @@ pub async fn _main(
     #[cfg(target_os = "linux")]
     pin_mut!(journalctl_source);
 
+    pin_mut!(tailer_source);
+
     #[cfg(all(feature = "libjournald", target_os = "linux"))]
     pin_mut!(journald_source);
 
@@ -446,6 +484,8 @@ pub async fn _main(
 
     #[cfg(all(feature = "libjournald", target_os = "linux"))]
     let mut journald_source: Option<std::pin::Pin<&mut _>> = journald_source.as_pin_mut();
+
+    let mut tailer_source: Option<std::pin::Pin<&mut _>> = tailer_source.as_pin_mut();
 
     let mut metric_server_source: Option<std::pin::Pin<&mut _>> = metric_stats_source.as_pin_mut();
 
@@ -466,6 +506,11 @@ pub async fn _main(
     #[cfg(all(not(feature = "libjournald"), target_os = "linux"))]
     if let Some(s) = journalctl_source.as_mut() {
         info!("Enabling journalctl event source");
+        sources.push(s)
+    }
+
+    if let Some(s) = tailer_source.as_mut() {
+        info!("Enabling tailer event source");
         sources.push(s)
     }
 

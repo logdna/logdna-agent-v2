@@ -1,7 +1,9 @@
 use config::{self, Config};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, info, trace, warn};
+use tracing::info;
+#[cfg(not(windows))]
+use tracing::{debug, trace, warn};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
