@@ -206,7 +206,7 @@ test: unit-test test-journald ## Run unit tests
 
 .PHONY:unit-test
 unit-test:
-	$(RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run test_context_error_type --no-fail-fast --nocapture"
+	$(RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run $(TESTS) --no-fail-fast --nocapture"
 
 .PHONY:unit-test-coverage
 unit-code-coverage: ## Run code coverage report and output to HTML

@@ -29,7 +29,6 @@ walkdir = "2"
 #logging
 lazy_static = "1"
 tracing = "0.1"
-tracing-error = { version = "0.2", feature = ["traced-error"] }
 tracing-subscriber = "0.3"
 
 #async
