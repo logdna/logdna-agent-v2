@@ -464,8 +464,7 @@ pipeline {
                                 echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
-                                aws s3 cp --acl public-read arm/arm-target/release/logdna-agent s3://logdna-agent-build-bin/${env.BUILD_TAG}/arm64/logdna-agent
-                                aws s3 cp --acl public-read x86/x86-target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${env.BUILD_TAG}/aarch64-apple-darwin/logdna-agent
+                                MACOS=1 make publish-s3-binary
                                 rm ${WORKSPACE}/.aws_creds_mac_static_arm64
                             """
                         }
