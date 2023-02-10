@@ -13,7 +13,6 @@ async-channel = "1.6"
 tokio = { package = "tokio", version = "1", features = ["rt-multi-thread"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
-tracing-error = { version = "0.2", feature = ["traced-error"] }
 
 [dev-dependencies]
 env_logger = "0.9"
