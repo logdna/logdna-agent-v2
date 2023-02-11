@@ -46,7 +46,7 @@ where
     Input::Error: ParseError<Input::Token, Input::Range, Input::Position>,
 {
     /*
-    Tailer API log lines are 'etf-8' encoded and separated by a single newline.
+    Tailer API log lines are 'utf-8' encoded and separated by a single newline.
     */
     any_partial_state(
         recognize((skip_many(none_of(b"\r\n".iter().copied())), crlf())).and_then(

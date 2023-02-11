@@ -269,27 +269,33 @@ pub struct FileSystem {
     _c: countme::Count<Self>,
 }
 
-#[cfg(unix)]
 fn add_initial_dir_rules(rules: &mut Rules, path: &DirPathBuf) {
     // Include one for self and the rest of its children
-    rules.add_inclusion(
-        RuleDef::glob_rule(path.join(r"**").to_str().expect("invalid unicode in path"))
-            .expect("invalid glob rule format"),
+    #[cfg(windows)]
+    let path_rest = format!(
+        "{}*",
+        path.to_str()
+            .expect("invalid unicode in path")
+            .trim_end_matches(std::path::is_separator)
     );
+    #[cfg(not(windows))]
+    let path_rest = format!(
+        "{}*",
+        path.to_str()
+            .expect("invalid unicode in path")
+            .trim_end_matches(std::path::is_separator)
+    );
+    rules.add_inclusion(RuleDef::glob_rule(path_rest.as_str()).expect("invalid glob rule format"));
+    let path_rest = format!(
+        "{}*",
+        path.to_str()
+            .expect("invalid unicode in path")
+            .trim_end_matches(std::path::is_separator)
+    );
+    rules.add_inclusion(RuleDef::glob_rule(path_rest.as_ref()).expect("invalid glob rule format"));
     rules.add_inclusion(
         RuleDef::glob_rule(path.to_str().expect("invalid unicode in path"))
             .expect("invalid glob rule format"),
-    );
-}
-
-#[cfg(windows)]
-fn add_initial_dir_rules(rules: &mut Rules, path: &DirPathBuf) {
-    // Include one for self and the rest of its children
-    rules.add_inclusion(
-        RuleDef::glob_rule(
-            format!("{}*", path.to_str().expect("invalid unicode in path")).as_str(),
-        )
-        .expect("invalid glob rule format"),
     );
 }
 
@@ -323,35 +329,27 @@ impl FileSystem {
 
         // Adds initial directories and constructs missing directory
         // vector and adds prefix path to the missing directory watcher
-        for path in initial_dirs.iter() {
-            if path.postfix.is_none() {
-                add_initial_dir_rules(&mut initial_dir_rules, path);
-            } else {
-                let mut full_missing_path = PathBuf::new();
-                let root_pathbuf = Path::new("/");
-                let mut format_postfix =
-                    String::from(path.postfix.as_ref().unwrap().to_str().unwrap());
-                if format_postfix.ends_with('/') {
-                    format_postfix.pop();
+        for dir_path in initial_dirs.iter() {
+            match &dir_path.postfix {
+                None => {
+                    add_initial_dir_rules(&mut initial_dir_rules, dir_path);
                 }
-                if path.inner == root_pathbuf {
-                    full_missing_path.push(format!("{}{}", &path.inner.display(), format_postfix));
-                } else {
-                    full_missing_path.push(format!("{}/{}", &path.inner.display(), format_postfix));
+                Some(postfix) => {
+                    let mut full_missing_path = PathBuf::new();
+                    full_missing_path.push(&dir_path.inner);
+                    full_missing_path.push(postfix);
+                    let full_missing_dirpathbuff = DirPathBuf {
+                        inner: full_missing_path.clone(),
+                        postfix: None,
+                    };
+                    // Add missing directory to Rules
+                    add_initial_dir_rules(&mut initial_dir_rules, &full_missing_dirpathbuff);
+                    info!("adding {:?} to missing directory watcher", &dir_path.inner);
+                    missing_dirs.push(full_missing_path);
+                    missing_dir_watcher
+                        .watch(&dir_path.inner, RecursiveMode::NonRecursive)
+                        .expect("Could not add path to missing directory watcher");
                 }
-                let full_missing_dirpathbuff = DirPathBuf {
-                    inner: full_missing_path.clone(),
-                    postfix: None,
-                };
-
-                // Add missing directory to Rules
-                add_initial_dir_rules(&mut initial_dir_rules, &full_missing_dirpathbuff);
-
-                info!("adding {:?} to missing directory watcher", path.inner);
-                missing_dirs.push(full_missing_path);
-                missing_dir_watcher
-                    .watch(&path.inner, RecursiveMode::NonRecursive)
-                    .expect("Could not add path to missing directory watcher");
             }
         }
         debug!("initial directory rules: {:?}\n", initial_dir_rules);

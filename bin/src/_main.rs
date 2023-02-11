@@ -510,7 +510,7 @@ pub async fn _main(
     }
 
     if let Some(s) = tailer_source.as_mut() {
-        info!("Enabling tailer event source");
+        info!("Enabling api tailer source");
         sources.push(s)
     }
 
