@@ -348,6 +348,7 @@ impl TryFrom<RawConfig> for Config {
             dirs: raw
                 .log
                 .dirs
+                .clone()
                 .into_iter()
                 // Find valid directory paths and keep track of missing paths
                 .filter_map(|d| {
@@ -650,6 +651,10 @@ mod tests {
 
     #[test]
     fn test_default_parsed() {
+        assert_eq!(
+            raw::default_log_dirs(),
+            vec![PathBuf::from(DEFAULT_LOG_DIR)]
+        );
         let config = get_default_config();
         assert_eq!(config.log.use_k8s_enrichment, K8sTrackingConf::Always);
         assert_eq!(config.log.log_k8s_events, K8sTrackingConf::Never);
@@ -660,9 +665,9 @@ mod tests {
                 .log
                 .dirs
                 .iter()
-                .map(|p| p.to_str().unwrap())
+                .map(|p| p.to_path_buf())
                 .collect::<Vec<_>>(),
-            vec![DEFAULT_LOG_DIR]
+            vec![PathBuf::from(DEFAULT_LOG_DIR)]
         );
         assert_eq!(config.startup, K8sLeaseConf::Never);
     }
