@@ -660,14 +660,10 @@ mod tests {
         assert_eq!(config.log.log_k8s_events, K8sTrackingConf::Never);
         assert_eq!(config.log.log_metric_server_stats, K8sTrackingConf::Never);
         assert_eq!(config.log.lookback, Lookback::None);
+        let def_pathbuf = PathBuf::from(DEFAULT_LOG_DIR);
         assert_eq!(
-            config
-                .log
-                .dirs
-                .iter()
-                .map(|p| p.to_path_buf())
-                .collect::<Vec<_>>(),
-            vec![PathBuf::from(DEFAULT_LOG_DIR)]
+            config.log.dirs,
+            vec![DirPathBuf::try_from(def_pathbuf).unwrap()]
         );
         assert_eq!(config.startup, K8sLeaseConf::Never);
     }
