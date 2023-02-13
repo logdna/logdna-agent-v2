@@ -6,7 +6,7 @@ use crate::lookback::Lookback;
 use crate::rule::{RuleDef, Rules, Status};
 
 use metrics::Metrics;
-use notify_stream::{Event as WatchEvent, RecursiveMode, Watcher};
+use notify_stream::{ContextError, Event as WatchEvent, RecursiveMode, Watcher};
 use state::{FileId, Span, SpanVec};
 
 use std::borrow::Cow;
@@ -57,7 +57,7 @@ const TAIL_WARN_THRESHOLD_B: u64 = 3000000;
 #[derive(Debug, Error)]
 pub enum Error {
     #[error("error watching: {0:?} {1:?}")]
-    Watch(Option<PathBuf>, notify_stream::Error),
+    Watch(Option<PathBuf>, ContextError),
     #[error("error need to rescan")]
     Rescan,
     #[error("got event for untracked watch descriptor: {0:?}")]
@@ -669,7 +669,7 @@ impl FileSystem {
                     "There was an error mapping a file change: {:?} ({:?})",
                     e, p
                 );
-                Err(Error::Watch(p.clone(), e.clone()))
+                Err(Error::Watch(p.clone(), ContextError::new(e.clone())))
             }
             WatchEvent::Rescan => Err(Error::Rescan),
         };

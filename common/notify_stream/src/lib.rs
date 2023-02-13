@@ -3,6 +3,7 @@ extern crate notify;
 use futures::{stream, Stream};
 use notify::event::{CreateKind, DataChange, ModifyKind, RemoveKind, RenameMode};
 use notify::{Config, ErrorKind, EventKind, Watcher as NotifyWatcher};
+use std::backtrace::Backtrace;
 use std::path::Path;
 use std::rc::Rc;
 use time::OffsetDateTime;
@@ -84,6 +85,22 @@ pub enum Error {
 }
 
 #[derive(Debug)]
+pub struct ContextError {
+    error: Error,
+    #[allow(dead_code)]
+    context: Backtrace,
+}
+
+impl ContextError {
+    pub fn new(error: Error) -> Self {
+        Self {
+            error,
+            context: Backtrace::capture(),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum RecursiveMode {
     Recursive,
     NonRecursive,
@@ -123,14 +140,14 @@ impl Watcher {
 
     /// Adds a new directory or file to watch
     #[instrument(level = "trace")]
-    pub fn watch(&mut self, path: &Path, mode: RecursiveMode) -> Result<(), Error> {
+    pub fn watch(&mut self, path: &Path, mode: RecursiveMode) -> Result<(), ContextError> {
         trace!("watching {:?}", path);
         self.watcher.watch(path, mode.into()).map_err(|e| e.into())
     }
 
     #[instrument(level = "trace")]
     /// Removes a file or directory
-    pub fn unwatch(&mut self, path: &Path) -> Result<(), Error> {
+    pub fn unwatch(&mut self, path: &Path) -> Result<(), ContextError> {
         trace!("unwatching {:?}", path);
         self.watcher.unwatch(path).map_err(|e| e.into())
     }
@@ -139,11 +156,16 @@ impl Watcher {
     ///
     /// Returns Ok(true) when watch was found and removed.
     #[instrument(level = "trace")]
-    pub fn unwatch_if_exists(&mut self, path: &Path) -> Result<bool, Error> {
+    pub fn unwatch_if_exists(&mut self, path: &Path) -> Result<bool, ContextError> {
         trace!("unwatching {:?} if it exists", path);
-        match self.watcher.unwatch(path).map_err(|e| e.into()) {
+        #[allow(clippy::redundant_closure)]
+        match self
+            .watcher
+            .unwatch(path)
+            .map_err(|e| <notify::Error as Into<ContextError>>::into(e))
+        {
             Ok(_) => Ok(true),
-            Err(e) => match e {
+            Err(e) => match e.error {
                 // Ignore watch not found
                 Error::WatchNotFound => Ok(false),
                 _ => Err(e),
@@ -235,15 +257,15 @@ impl Default for Watcher {
     }
 }
 
-impl From<notify::Error> for Error {
-    fn from(e: notify::Error) -> Error {
+impl From<notify::Error> for ContextError {
+    fn from(e: notify::Error) -> ContextError {
         match e.kind {
-            ErrorKind::Generic(s) => Error::Generic(s),
-            ErrorKind::Io(err) => Error::Io(format!("{}", err)),
-            ErrorKind::PathNotFound => Error::PathNotFound,
-            ErrorKind::WatchNotFound => Error::WatchNotFound,
-            ErrorKind::InvalidConfig(c) => Error::InvalidConfig(c),
-            ErrorKind::MaxFilesWatch => Error::MaxFilesWatch,
+            ErrorKind::Generic(s) => ContextError::new(Error::Generic(s)),
+            ErrorKind::Io(err) => ContextError::new(Error::Io(format!("{}", err))),
+            ErrorKind::PathNotFound => ContextError::new(Error::PathNotFound),
+            ErrorKind::WatchNotFound => ContextError::new(Error::WatchNotFound),
+            ErrorKind::InvalidConfig(c) => ContextError::new(Error::InvalidConfig(c)),
+            ErrorKind::MaxFilesWatch => ContextError::new(Error::MaxFilesWatch),
         }
     }
 }
@@ -263,6 +285,7 @@ mod tests {
 
     use futures::StreamExt;
     use pin_utils::pin_mut;
+    use std::backtrace::BacktraceStatus;
     use std::fs::{self, File};
     use std::io::{self, Write};
     use std::time::Duration;
@@ -322,6 +345,16 @@ mod tests {
             tokio::time::sleep(DELAY * 3).await;
             append!($file);
         };
+    }
+
+    #[tokio::test]
+    async fn test_context_error_type() {
+        let context_error = ContextError::new(Error::Generic("test-trace".to_string()));
+        assert_eq!(context_error.context.status(), BacktraceStatus::Captured);
+        assert_eq!(
+            context_error.error,
+            Error::Generic(String::from("test-trace"))
+        );
     }
 
     #[tokio::test]
