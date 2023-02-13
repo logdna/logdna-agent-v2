@@ -105,7 +105,7 @@ fn find_valid_path(
                         if REGEX_FS_ROOT
                             .is_match(some_parent.to_str().expect("invalid unicode path").as_ref())
                         {
-                            warn!("root level directory was missing, as a result configured directory recursed to the root level!");
+                            warn!("{:?} does not exist up to the root level!", some_path);
                         }
                         some_parent
                     }
