@@ -1070,6 +1070,7 @@ dependencies = [
  "pcre2",
  "pin-project-lite",
  "pin-utils",
+ "regex",
  "serde_json",
  "slotmap",
  "smallvec",

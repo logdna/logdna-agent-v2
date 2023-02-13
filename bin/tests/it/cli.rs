@@ -1894,11 +1894,11 @@ async fn test_directory_created_after_initialization() {
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let settings = AgentSettings::with_mock_ingester(future_dir.to_str().unwrap(), &addr);
     let mut agent_handle = common::spawn_agent(settings);
-    let mut stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
-    common::wait_for_event("Enabling filesystem", &mut stderr_reader);
-    consume_output(stderr_reader.into_inner());
-
     let (server_result, _) = tokio::join!(server, async {
+        let mut stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
+        common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+        consume_output(stderr_reader.into_inner());
+
         let file_path = future_dir.join("test.log");
         std::fs::create_dir(&future_dir).unwrap();
         File::create(&file_path).unwrap();
@@ -1917,7 +1917,6 @@ async fn test_directory_created_after_initialization() {
         assert_eq!(file_info.lines, 10);
         shutdown_handle();
     });
-
     server_result.unwrap();
     agent_handle.kill().expect("Could not kill process");
 }
