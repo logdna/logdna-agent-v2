@@ -277,6 +277,7 @@ pipeline {
                     agent {
                         node {
                             label "osx-node"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
                         }
                     }
                     steps {
@@ -289,11 +290,11 @@ pipeline {
                             sh """
                                 source $HOME/.cargo/env
                                 source ~/.bash_profile
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_arm64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static
                                 MACOS=1 make publish-s3-binary
-                                rm ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                rm ${WORKSPACE}/.aws_creds_mac_static
                             """
                         }
                     }
