@@ -24,6 +24,10 @@ osslsigncode sign \
     -t http://timestamp.comodoca.com/authenticode \
     -in "$SRC_ROOT/$BUILD_DIR/logdna-agent.exe" \
     -out "$SRC_ROOT/$BUILD_DIR/signed/logdna-agent.exe"
+
+# fetch prebuilt signed Winevt Tailer
+WINEVT_TAILER_VERSION=0.3.4
+wget -t 5 -O "$SRC_ROOT/$BUILD_DIR/signed/winevt-tailer.exe" "https://github.com/logdna/winevt-tailer/releases/download/$WINEVT_TAILER_VERSION/winevt-tailer.exe"
 #
 # Create msi
 #

@@ -48,6 +48,7 @@
             <Component Id="ProductComponent" Win64="$(var.Win64)" Guid="56CD2588-B976-4198-B815-FAB7E1E57CD7">
                 <File Id="AgentSvc" Name="logdna-agent-svc.exe" DiskId="1" Source="$(env.AGENT_EXE_DIR)/logdna-agent-svc.exe" KeyPath="yes" />
                 <File Id="AgentCLI" Name="logdna-agent.exe" DiskId="1" Source="$(env.AGENT_EXE_DIR)/logdna-agent.exe" />
+                <File Id="WinEvtTailer" Name="winevt-tailer.exe" DiskId="1" Source="$(env.AGENT_EXE_DIR)/winevt-tailer.exe" />
                 <File Id="Readme" Name="README.md" DiskId="1" Source="$(env.AGENT_SRC_ROOT)/docs/WINDOWS.md" />
                 <File Id="PostInstallScript" Name="post_install.ps1" DiskId="1" Source="$(env.AGENT_SRC_ROOT)/packaging/windows/msi/post_install.ps1" />
                 <File Id="CfgFile" Name="logdna.conf.templ" DiskId="1" Source="$(env.AGENT_SRC_ROOT)/packaging/windows/msi/logdna.conf.templ" />

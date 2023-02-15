@@ -16,10 +16,13 @@ if (-not(Test-Path -Path "$DATAFOLDER\logdna.conf" -PathType Leaf)) {
   New-Item -Force -Type Directory -Path "$DATAFOLDER"
   (Get-Content -Path "$INSTALLFOLDER\logdna.conf.templ") -Replace "<YOUR_INGESTION_KEY>", "$INGESTION_KEY" | Set-Content -Path "$DATAFOLDER\logdna.conf"
 } else {
-  # read config
+  # backup config
+  $TS = Get-Date -format "yyyy_MM_dd_hh_mm_ss"
+  copy-item "$DATAFOLDER\logdna.conf" -destination "$DATAFOLDER\logdna.conf.$TS"
+  # read config template
   # replace key
   # save config back
-  (Get-Content -Path "$DATAFOLDER\logdna.conf") -Replace "<YOUR_INGESTION_KEY>", "$INGESTION_KEY" | Set-Content -Path "$DATAFOLDER\logdna.conf"
+  (Get-Content -Path "$INSTALLFOLDER\logdna.conf.templ") -Replace "<YOUR_INGESTION_KEY>", "$INGESTION_KEY" | Set-Content -Path "$DATAFOLDER\logdna.conf"
 }
 Remove-Item  "$INSTALLFOLDER\logdna.conf.templ" -Force -Confirm:$false
 # prefetch Mezmo CA cert
