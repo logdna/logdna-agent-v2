@@ -1,14 +1,7 @@
 [env]
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 CARGO_MANIFEST_DIR = "bin/Cargo.toml"
-
-[tasks.clean]
-args = ["clean"]
-command = "cargo"
-
-[tasks.build]
-args = ["build"]
-command = "cargo"
+CARGO_TARGET_DIR= "../target"
 
 [tasks.build-release-arm]
 args = ["build", "--release"]
@@ -18,23 +11,21 @@ command = "cargo"
 args = ["build", "--release", "--target", "x86_64-apple-darwin"]
 command = "cargo"
 
-[tasks.clean-build]
-args = ["build"]
-command = "cargo"
-dependencies = ["clean"]
-
 [tasks.int-tests]
-args = ["test","-p", "logdna-agent", "--features", "integration_tests"]
+args = ["test", "-p", "logdna-agent", "--features", "integration_tests"]
 command = "cargo"
 env = {TMPDIR="/tmp", RUST_BACKTRACE="full"}
 
 [tasks.unit-tests]
 args = ["test", "--no-fail-fast"]
 command = "cargo"
-dependencies = ["clean-build"]
 env = {RUST_BACKTRACE="full"}
 
 [tasks.run] 
 args = ["run", "--bin=logdna-agent"]
 command = "cargo"
 dependencies = ["clean-build"]
+
+[tasks.publish-s3-x86_64]
+script = "aws s3 cp --acl public-read ../target/aarch64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/3.9.0-dev/aarch64-apple-darwin/logdna-agent;"
+env = {RUST_BACKTRACE="full"}
