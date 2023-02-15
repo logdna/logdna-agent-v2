@@ -26,6 +26,8 @@ strum = "0.24"
 strum_macros = "0.24"
 java-properties = "1"
 humanize-rs = "0.1"
+regex = "1"
+path-slash = "0.2"
 
 [dev-dependencies]
 scopeguard = "1.0"

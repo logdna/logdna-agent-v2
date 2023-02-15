@@ -19,5 +19,8 @@ log:
     regex: []
   use_k8s_enrichment: ~
   log_k8s_events: ~
+  tailer_cmd: "C:/Program Files/Mezmo/winevt-tailer.exe"
+  tailer_args: "-f -b 10 -c ${THIS_CONFIG_FILE}"
 journald: {}
 startup: {}
+

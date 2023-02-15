@@ -11,7 +11,7 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 
-use flexi_logger::{Age, Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
+use flexi_logger::{Cleanup, Criterion, Duplicate, FileSpec, Logger, Naming, WriteMode};
 use flexi_logger::{DeferredNow, Record, TS_DASHES_BLANK_COLONS_DOT_BLANK};
 use tokio::sync::Mutex;
 use tokio::time::Duration;
@@ -90,8 +90,10 @@ fn service_main(_args: Vec<String>, svc_shutdown_rx: Receiver<()>) -> u32 {
     });
 
     // block on agent main loop
-    runtime.block_on(_main(shutdown_tx, shutdown_rx));
-    0
+    match runtime.block_on(_main(shutdown_tx, shutdown_rx)) {
+        Err(_) => 1,
+        Ok(_) => 0,
+    }
 }
 
 fn log_format(
