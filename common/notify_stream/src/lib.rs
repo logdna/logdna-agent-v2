@@ -275,7 +275,7 @@ mod tests {
     #[cfg(windows)]
     use std::sync::mpsc;
 
-    #[cfg(windows)]
+    #[cfg(linux)]
     use std::thread;
 
     #[cfg(any(target_os = "macos", target_os = "linux"))]
