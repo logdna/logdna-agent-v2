@@ -146,7 +146,7 @@ pipeline {
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 rm ${WORKSPACE}/.aws_creds_mac_static_arm64
-                                rm -r ${WORSKPACE}
+                                rm -r ${WORSKPACE} *
                             """
                         }
                     }
