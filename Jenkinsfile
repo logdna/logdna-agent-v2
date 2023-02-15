@@ -295,7 +295,6 @@ pipeline {
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 MACOS=1 make publish-s3-binary
                                 rm ${WORKSPACE}/.aws_creds_mac_static_arm64
-                                rm -r ${WORKSPACE}
                             """
                         }
                     }
