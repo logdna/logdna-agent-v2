@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["CJP10 <connor.peticca@logdna.com>"]
 edition = "2018"
 
+[features]
+integration_tests = []
+
 [dependencies]
 #local
 http = { package = "http", path = "../http" }

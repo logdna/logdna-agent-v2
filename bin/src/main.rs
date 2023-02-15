@@ -2,9 +2,8 @@ use config::{self, Config};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 use tracing::{debug, trace, warn};
-
 use tracing_subscriber::{filter::LevelFilter, EnvFilter, FmtSubscriber};
 
 mod _main;

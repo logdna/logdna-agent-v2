@@ -959,6 +959,7 @@ impl FileSystem {
 
         // If we already know about it warn and return
         if self.watch_descriptors.get(path).is_some() {
+            #[cfg(any(target_os = "windows", target_os = "linux"))] // bug in notify-rs where there is always a create event before most other events, just ignore.
             warn!("watch descriptor for {} already exists...", path.display());
             return Ok(None);
         }
@@ -1532,6 +1533,7 @@ fn into_components(path: &Path) -> Vec<OsString> {
 }
 
 #[cfg(test)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 mod tests {
     use super::*;
     use crate::rule::{RuleDef, Rules};
@@ -1662,6 +1664,7 @@ mod tests {
 
     // Simulates the `create_move` log rotation strategy
     #[tokio::test]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     async fn filesystem_rotate_create_move() {
         let temp_dir = tempdir().unwrap();
         let path = temp_dir.path();
@@ -1894,7 +1897,7 @@ mod tests {
 
     // Deletes a directory
     #[tokio::test]
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     async fn filesystem_delete_filled_dir() -> io::Result<()> {
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
@@ -2272,7 +2275,7 @@ mod tests {
     ///
     /// Only run on unix-like systems as moving a directory on Windows with file handles open is
     /// not supported.
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn filesystem_move_dir_internal() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
@@ -2345,7 +2348,7 @@ mod tests {
     ///
     /// Only run on unix-like systems as moving a directory on Windows with file handles open is
     /// not supported.
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn filesystem_move_dir_out() -> io::Result<()> {
         let tempdir = TempDir::new()?;
@@ -2377,7 +2380,7 @@ mod tests {
     ///
     /// Only run on unix-like systems as moving a directory on Windows with file handles open is
     /// not supported.
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn filesystem_move_dir_in() -> io::Result<()> {
         let old_tempdir = TempDir::new()?;
@@ -2447,6 +2450,7 @@ mod tests {
 
     // Moves a file within the watched directory
     #[tokio::test]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     async fn filesystem_move_file_internal() -> io::Result<()> {
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
@@ -2477,6 +2481,7 @@ mod tests {
 
     // Moves a file out of the watched directory
     #[tokio::test]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     async fn filesystem_move_file_out() -> io::Result<()> {
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
@@ -2506,6 +2511,7 @@ mod tests {
 
     // Moves a file into the watched directory
     #[tokio::test]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     async fn filesystem_move_file_in() -> io::Result<()> {
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
@@ -2623,7 +2629,7 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "linux")]
     #[tokio::test]
     async fn filesystem_test_basic_ops_per_platform() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();

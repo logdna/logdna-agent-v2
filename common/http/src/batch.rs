@@ -211,11 +211,16 @@ mod tests {
 
     use std::collections::HashMap;
     use std::io::Read;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
+
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    use std::time::Instant;
 
     use futures::stream;
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     use futures::FutureExt;
 
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     use futures_timer::Delay;
 
     use proptest::prelude::*;
@@ -318,6 +323,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     async fn message_timeout() {
         let input0 = vec![
             OffsetLine::new(Line::builder().line("0".to_string()).build().unwrap(), None),

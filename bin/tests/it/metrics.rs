@@ -1,15 +1,24 @@
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::io::BufReader;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::time::Duration;
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use float_cmp::approx_eq;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use prometheus_parse::{Sample, Value};
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use tempfile::tempdir;
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use crate::common::{self, start_ingester, AgentSettings};
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use logdna_metrics_recorder::*;
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use test_log::test;
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn check_fs_bytes(samples: &[Sample]) {
     let fs_bytes = samples
         .iter()
@@ -35,6 +44,7 @@ fn check_fs_bytes(samples: &[Sample]) {
     );
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn check_fs_lines(samples: &[Sample]) {
     let fs_lines = samples
         .iter()
@@ -60,6 +70,7 @@ fn check_fs_lines(samples: &[Sample]) {
     );
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn check_fs_events(samples: &[Sample]) {
     // logdna_agent_fs_events
     let fs_events = samples
@@ -102,6 +113,7 @@ fn check_fs_events(samples: &[Sample]) {
     );
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn check_fs_files(samples: &[Sample]) {
     // logdna_agent_fs_files
     let fs_files = samples
@@ -128,6 +140,7 @@ fn check_fs_files(samples: &[Sample]) {
     );
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn check_ingest_req_size(samples: &[Sample]) {
     let expected_bucket_boundaries = vec![
         500.0,
@@ -174,6 +187,7 @@ fn check_ingest_req_size(samples: &[Sample]) {
         .any(|count| count.iter().any(|value| *value > 0.0)));
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn data_pair_for(name: &str) -> impl Fn(&Sample) -> Option<(i64, f64)> + '_ {
     move |s: &Sample| match (&s.value, &s.labels.get("outcome")) {
         (Value::Untyped(raw), Some("success")) if s.metric.as_str() == name => {
@@ -183,6 +197,7 @@ fn data_pair_for(name: &str) -> impl Fn(&Sample) -> Option<(i64, f64)> + '_ {
     }
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn check_ingest_req_duration(samples: &[Sample]) {
     let counts = samples
         .iter()
@@ -237,6 +252,7 @@ fn check_ingest_req_duration(samples: &[Sample]) {
 
 #[test(tokio::test)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_metrics_endpoint() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let included_file = dir.join("file1.log");

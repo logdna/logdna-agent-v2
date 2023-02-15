@@ -34,3 +34,4 @@ tokio-test = "0.4"
 default = []
 libjournald = ["systemd"]
 journald_tests = ["libjournald", "serial_test"]
+integration_tests = []

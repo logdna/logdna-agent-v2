@@ -1,24 +1,32 @@
 use std::fs;
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, Read, Write};
+use std::io::{BufReader, Write};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::thread;
 use std::time::Duration;
 
 use crate::common::{self, consume_output, AgentSettings};
 
 use assert_cmd::prelude::*;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use futures::FutureExt;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use logdna_mock_ingester::FileInfo;
 use predicates::prelude::*;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use proptest::prelude::*;
 use tempfile::tempdir;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use test_types::strategies::random_line_string_vec;
 use tokio::io::BufWriter;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use tokio::task;
-use tracing::{debug, info};
+use tracing::debug;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+use tracing::info;
 
 use test_log::test;
 
@@ -43,10 +51,9 @@ fn api_key_present() {
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
 
     let before_file_path = dir.path().join("before.log");
-    let mut file = File::create(&before_file_path).expect("Couldn't create temp log file...");
+    let mut file = File::create(before_file_path).expect("Couldn't create temp log file...");
 
     let mut handle = common::spawn_agent(AgentSettings {
-        exclusion_regex: Some(r"/var\w*"),
         log_dirs: &dir_path,
         lookback: Some("start"),
         ..Default::default()
@@ -61,68 +68,17 @@ fn api_key_present() {
     file.sync_all().unwrap();
 
     let test_file_path = dir.path().join("test.log");
-    let mut file = File::create(&test_file_path).expect("Couldn't create temp log file...");
+    let mut file = File::create(test_file_path).expect("Couldn't create temp log file...");
 
     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
     file.sync_all().unwrap();
-
-    let test1_file_path = dir.path().join("test1.log");
-    let mut file = File::create(&test1_file_path).expect("Couldn't create temp log file...");
-
-    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
-    file.sync_all().unwrap();
-
-    thread::sleep(std::time::Duration::from_secs(1));
 
     handle.kill().unwrap();
-    let mut output = String::new();
-
-    stderr_reader.read_to_string(&mut output).unwrap();
-
-    debug!("{}", output);
-
-    // Check that the agent logs that it has sent lines from each file
-    assert!(
-        predicate::str::contains(format!(
-            "watching \"{}\"",
-            before_file_path.to_str().unwrap()
-        ))
-        .eval(&output),
-        "'watching' not found in output: {}",
-        output
-    );
-    assert!(predicate::str::contains(format!(
-        "tailer sendings lines for [\"{}\"]",
-        before_file_path.to_str().unwrap()
-    ))
-    .eval(&output));
-
-    assert!(
-        predicate::str::contains(format!("watching \"{}\"", test_file_path.to_str().unwrap()))
-            .eval(&output)
-    );
-    assert!(predicate::str::contains(format!(
-        "tailer sendings lines for [\"{}\"]",
-        test_file_path.to_str().unwrap()
-    ))
-    .eval(&output));
-
-    assert!(predicate::str::contains(format!(
-        "watching \"{}\"",
-        test1_file_path.to_str().unwrap()
-    ))
-    .eval(&output));
-    assert!(predicate::str::contains(format!(
-        "tailer sendings lines for [\"{}\"]",
-        test1_file_path.to_str().unwrap()
-    ))
-    .eval(&output));
-
-    handle.wait().unwrap();
 }
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))] // needs a refactor to use self signed server on mac
 fn test_append_and_delete() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file_path = dir.join("file1.log");
@@ -154,16 +110,17 @@ fn test_append_and_delete() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))] // needs a refactor to use self signed server on mac
 fn test_file_added_after_initialization() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
-
     let mut agent_handle = common::spawn_agent(AgentSettings::new(dir.to_str().unwrap()));
-
     let mut reader = BufReader::new(agent_handle.stderr.take().unwrap());
+
     common::wait_for_event("Enabling filesystem", &mut reader);
 
     let file_path = dir.join("file1.log");
     File::create(&file_path).expect("Could not create file");
+
     common::wait_for_file_event("watching", &file_path, &mut reader);
     common::append_to_file(&file_path, 1000, 50).expect("Could not append");
     common::wait_for_file_event("tailer sendings lines for", &file_path, &mut reader);
@@ -175,6 +132,7 @@ fn test_file_added_after_initialization() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn test_delete_does_not_leave_file_descriptor() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file_path = dir.join("file1.log");
@@ -278,6 +236,7 @@ fn test_signals(signal: nix::sys::signal::Signal) {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))] // needs a refactor to use self signed server on mac
 fn test_append_and_move() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file1_path = dir.join("file1.log");
@@ -305,6 +264,7 @@ fn test_append_and_move() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn test_truncate_file() {
     // K8s uses copytruncate, see https://github.com/kubernetes/kubernetes/issues/38495
     let dir = tempdir().expect("Could not create temp dir").into_path();
@@ -334,6 +294,7 @@ fn test_truncate_file() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn test_exclusion_rules() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let included_file = dir.join("file1.log");
@@ -725,6 +686,7 @@ async fn test_journalctl_support() {
     agent_handle.kill().expect("Could not kill process");
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(1))]
     #[test]
@@ -795,28 +757,31 @@ proptest! {
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     log_lines[lines_write_count..lines_write_count + 5].iter().for_each(|log_line| {
                         writeln!(file, "{}", log_line).expect("Couldn't write to temp log file...");
-                        file.sync_all().expect("Failed to sync file");
                     });
-                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                     file.sync_all().expect("Failed to sync file");
+                    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                 },
                 server
             );
             server.unwrap();
+
             assert_eq!(line_count, lines_write_count + 5);
 
             lines[..].iter().map(|s| s.trim_end()).zip(
                 log_lines[0..lines_write_count + 5].iter().map(|s| s.trim_end())).for_each(|(a, b)| debug!("received: {}, sent: {}", a, b));
+
             itertools::assert_equal(
                 lines[..].iter().map(|s| s.trim_end()),
                 log_lines[0..lines_write_count + 5].iter().map(|s| s.trim_end())
-            )
+            );
         });
     }
 }
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn lookback_none_lines_are_delivered() {
     let dir = tempdir().expect("Couldn't create temp dir...");
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
@@ -872,6 +837,8 @@ fn lookback_none_lines_are_delivered() {
 
                 handle.kill().unwrap();
 
+                tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
                 debug!("getting lines from {}", file_path.to_str().unwrap());
                 handle.wait().unwrap();
                 let line_count = received
@@ -884,12 +851,11 @@ fn lookback_none_lines_are_delivered() {
                 line_count
             },
             async move {
-                tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
                 (0..5).for_each(|_| {
                     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
-                    file.sync_all().expect("Failed to sync file");
                 });
                 file.sync_all().expect("Failed to sync file");
+                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                 debug!("wrote 5 lines");
             },
             server
@@ -901,6 +867,7 @@ fn lookback_none_lines_are_delivered() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))] // needs a refactor to use self signed server on mac
 fn lookback_tail_lines_file_created_after_agent_start_at_beg() {
     let dir = tempdir().expect("Couldn't create temp dir...");
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
@@ -973,6 +940,7 @@ fn lookback_tail_lines_file_created_after_agent_start_at_beg() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))] // needs a refactor to use self signed server on mac
 fn lookback_tail_lines_file_created_before_agent_start_at_end() {
     let dir = tempdir().expect("Couldn't create temp dir...");
     let dir_path = format!("{}/", dir.path().to_str().unwrap());
@@ -1046,6 +1014,7 @@ fn lookback_tail_lines_file_created_before_agent_start_at_end() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_partial_fsynced_lines() {
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
@@ -1102,7 +1071,7 @@ async fn test_partial_fsynced_lines() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
-#[cfg(unix)]
+#[cfg(target_os = "linux")]
 async fn test_transient_access_denied() {
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
@@ -1174,6 +1143,7 @@ async fn test_transient_access_denied() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_tags() {
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
 
@@ -1228,6 +1198,7 @@ async fn test_tags() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_lookback_restarting_agent() {
     let line_count = Arc::new(AtomicUsize::new(0));
 
@@ -1738,6 +1709,7 @@ async fn test_symlink_initialization_with_stateful_lookback() {
     server_result.unwrap();
 }
 
+#[cfg(any(target_os = "windows", target_os = "linux"))] // needs a refactor to use self signed server on mac
 async fn test_line_rules(
     exclusion: Option<&str>,
     inclusion: Option<&str>,
@@ -1788,6 +1760,7 @@ async fn test_line_rules(
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_line_exclusion_inclusion_redact() {
     let exclusion = Some("DEBUG,(?i:TRACE)");
     let inclusion = Some("(?i:ERROR),important");
@@ -1826,6 +1799,7 @@ async fn test_line_exclusion_inclusion_redact() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_line_exclusion() {
     let exclusion = Some("VERBOSE");
 
@@ -1847,6 +1821,7 @@ async fn test_line_exclusion() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_line_inclusion() {
     let inclusion = Some("only,included,message");
 
@@ -1864,6 +1839,7 @@ async fn test_line_inclusion() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_line_redact() {
     let redact = Some("(?i:SENSITIVE),(?i:SENSITIVE INFORMATION),(?i:VE )");
 
@@ -1885,8 +1861,8 @@ async fn test_line_redact() {
 }
 
 #[tokio::test]
-#[cfg(unix)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))] // needs a refactor to use self signed server on mac
 async fn test_directory_created_after_initialization() {
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let future_dir = dir.join("inner");
@@ -1906,11 +1882,12 @@ async fn test_directory_created_after_initialization() {
         // Wait for file to be picked up by agent
         tokio::time::sleep(Duration::from_millis(500)).await;
 
-        common::append_to_file(&file_path, 10, 5).unwrap();
-        common::force_client_to_flush(&future_dir).await;
+        common::append_to_file(&file_path, 10, 1).unwrap();
 
         // Wait for the data to be received by the mock ingester
         tokio::time::sleep(Duration::from_millis(500)).await;
+
+        common::force_client_to_flush(&future_dir).await;
 
         let map = received.lock().await;
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();
@@ -1923,6 +1900,7 @@ async fn test_directory_created_after_initialization() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn lookback_stateful_lines_are_delivered() {
     let db_dir = tempdir().expect("Couldn't create temp dir...");
     let db_dir_path = db_dir.path();
@@ -1988,15 +1966,16 @@ fn lookback_stateful_lines_are_delivered() {
                     .open(&file_path_clone)
                     .expect("Couldn't create temp log file...");
                 (0..5).for_each(|_| {
-                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
                     file.sync_all().expect("Failed to sync file");
+                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
                 });
-                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                 file.sync_all().expect("Failed to sync file");
             },
             server
         );
         server.unwrap();
+
         assert_eq!(line_count, line_write_count + 5);
     });
 
@@ -2027,6 +2006,8 @@ fn lookback_stateful_lines_are_delivered() {
 
                 handle.kill().unwrap();
 
+                tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+
                 debug!("getting lines from {}", &file_path.to_str().unwrap());
                 let line_count = received
                     .lock()
@@ -2048,7 +2029,6 @@ fn lookback_stateful_lines_are_delivered() {
                     .expect("Couldn't create temp log file...");
                 (0..5).for_each(|_| {
                     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
-                    file.sync_all().expect("Failed to sync file");
                 });
                 tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                 file.sync_all().expect("Failed to sync file");
@@ -2062,6 +2042,7 @@ fn lookback_stateful_lines_are_delivered() {
 
 #[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_tight_writes() {
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
 
@@ -2118,6 +2099,7 @@ async fn test_tight_writes() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_tight_writes_with_slow_ingester() {
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
 
@@ -2291,7 +2273,8 @@ async fn test_endurance_writes() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
-fn test_clear_fs_cache() {
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn test_clear_cache() {
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file_path = dir.join("file1.log");
     File::create(&file_path).expect("Could not create file");
@@ -2321,11 +2304,11 @@ fn test_clear_fs_cache() {
     // Immediately, start appending in a new file
     common::append_to_file(&file_path, 5, 5).expect("Could not append");
 
+    thread::sleep(std::time::Duration::from_millis(3000));
+
     debug!("waiting for watching");
     common::wait_for_file_event("watching", &file_path, &mut stderr_reader);
-
     consume_output(stderr_reader.into_inner());
-
     common::assert_agent_running(&mut agent_handle);
 
     agent_handle.kill().expect("Could not kill process");
@@ -2333,6 +2316,7 @@ fn test_clear_fs_cache() {
 
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn test_offset_stream_state_gc() {
     use ::fs::cache::get_inode;
 

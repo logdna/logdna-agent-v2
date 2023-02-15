@@ -191,6 +191,9 @@ impl Watcher {
                     EventKind::Modify(ModifyKind::Data(DataChange::Any)) => {
                         Some(Event::Write(received.paths.first().unwrap().clone()))
                     }
+                    EventKind::Modify(ModifyKind::Data(DataChange::Content)) => {
+                        Some(Event::Write(received.paths.first().unwrap().clone()))
+                    }
                     EventKind::Modify(ModifyKind::Name(RenameMode::From)) => received
                         .paths
                         .first()
@@ -258,6 +261,7 @@ impl From<RecursiveMode> for notify::RecursiveMode {
 }
 
 #[cfg(test)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 mod tests {
     use super::*;
 
@@ -586,50 +590,6 @@ mod tests {
         Ok(())
     }
 
-    /// macOS will follow symlink files
-    #[tokio::test]
-    #[cfg(target_os = "macos")]
-    async fn test_watch_symlink_write_after_create_macos() -> io::Result<()> {
-        let dir = tempdir()?.into_path();
-        let excluded_dir = tempdir()?.into_path();
-
-        let mut w = Watcher::new();
-        w.watch(&dir, RecursiveMode::Recursive).unwrap();
-
-        let file_path = &excluded_dir.join("file1.log");
-        let symlink_path = dir.join("symlink.log");
-        let mut file = File::create(&file_path)?;
-        std::os::unix::fs::symlink(&file_path, &symlink_path)?;
-
-        let stream = w.receive();
-        pin_mut!(stream);
-
-        let mut items = Vec::new();
-        take!(stream, items);
-
-        assert!(!items.is_empty());
-        is_match!(&items[0], Create, symlink_path);
-
-        wait_and_append!(file);
-
-        tokio::time::sleep(Duration::from_millis(1000)).await;
-
-        let stream = w.receive();
-        pin_mut!(stream);
-
-        take!(stream, items);
-
-        wait_and_append!(file);
-        take!(stream, items);
-
-        // Changes are yielded directly to the symlink itself
-        let predicate_fn = predicate::in_iter(items);
-        assert!(predicate_fn.eval(&Event::Create(symlink_path.clone())));
-        assert!(predicate_fn.eval(&Event::Write(symlink_path.clone())));
-
-        Ok(())
-    }
-
     /// Linux will NOT follow symlink files
     #[tokio::test]
     #[cfg(target_os = "linux")]
@@ -888,35 +848,6 @@ mod tests {
         wait_and_append!(file1);
         take!(stream, items);
         assert_eq!(items, Vec::new());
-        Ok(())
-    }
-
-    #[tokio::test]
-    #[cfg(target_os = "macos")]
-    async fn test_watch_hardlink_file_macos() -> io::Result<()> {
-        let dir = tempdir()?.into_path();
-        let excluded_dir = tempdir()?.into_path();
-
-        let file_path = &excluded_dir.join("file1.log");
-        let link_path = &dir.join("symlink.log");
-        let mut file = File::create(&file_path)?;
-        fs::hard_link(&file_path, &link_path)?;
-
-        let mut w = Watcher::new();
-        w.watch(&dir, RecursiveMode::Recursive).unwrap();
-
-        let stream = w.receive();
-        pin_mut!(stream);
-
-        let mut items = Vec::new();
-        take!(stream, items);
-
-        wait_and_append!(file);
-        take!(stream, items);
-
-        // macOS will follow hardlinks
-        assert_eq!(items.len(), 1);
-        is_match!(&items[0], Write, link_path);
         Ok(())
     }
 

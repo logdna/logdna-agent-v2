@@ -363,10 +363,13 @@ where
 mod test {
     use super::*;
     use crate::rule::{RuleDef, Rules};
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     use pin_utils::pin_mut;
     use std::cell::Cell;
     use std::convert::TryInto;
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     use std::fs::File;
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     use std::io::Write;
     use std::panic;
     use std::rc::Rc;
@@ -374,8 +377,10 @@ mod test {
     use tempfile::tempdir;
     use tokio_stream::StreamExt;
 
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     static DELAY: Duration = Duration::from_millis(200);
 
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     macro_rules! take_events {
         ($x: expr) => {{
             tokio::time::sleep(DELAY * 2).await;
@@ -395,6 +400,7 @@ mod test {
         }};
     }
 
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     fn run_test<T: FnOnce() + panic::UnwindSafe>(test: T) {
         let _ = env_logger::Builder::from_default_env().try_init();
         let result = panic::catch_unwind(|| {
@@ -405,6 +411,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     fn none_lookback() {
         run_test(|| {
             tokio_test::block_on(async {
@@ -452,6 +459,7 @@ mod test {
         });
     }
     #[test]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     fn smallfiles_lookback() {
         run_test(|| {
             tokio_test::block_on(async {
@@ -502,6 +510,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
     fn start_lookback() {
         run_test(|| {
             tokio_test::block_on(async {

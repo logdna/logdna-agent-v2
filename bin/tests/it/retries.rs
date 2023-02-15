@@ -1,12 +1,16 @@
 use crate::common::AgentSettings;
 use crate::common::{self, *};
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use logdna_metrics_recorder::*;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use prometheus_parse::Value;
 use rand::Rng;
 use std::fs::File;
 use std::io::{BufReader, Write};
 use std::path::PathBuf;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::sync::Arc;
 use std::time::Duration;
 use tempfile::tempdir;
@@ -154,6 +158,7 @@ async fn test_retry_location() {
 
 #[test(tokio::test)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))] // needs a refactor to use self signed server on mac
 async fn test_retry_after_timeout() {
     let timeout = 200;
     let base_delay_ms = 300;
@@ -238,6 +243,7 @@ async fn test_retry_after_timeout() {
 
 #[test(tokio::test)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_retry_is_not_made_before_retry_base_delay_ms() {
     // Use a large base delay
     let base_delay_ms = 300_000;
@@ -314,6 +320,7 @@ async fn gen_log_data(file: &mut File) {
 
 #[test(tokio::test)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_retry_metrics_emitted() {
     let timeout = 200;
     let base_delay_ms = 50;

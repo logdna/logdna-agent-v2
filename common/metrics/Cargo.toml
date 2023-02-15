@@ -18,3 +18,4 @@ tikv-jemalloc-ctl = { version = "0.5", optional = true }
 
 [features]
 jemalloc = ["tikv-jemalloc-ctl"]
+integration_tests = []
