@@ -68,7 +68,7 @@ pipeline {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
             }
-            parallel {          
+            parallel {           
                 stage('Build Mac OSX release binary X86_64') {
                     agent {
                         node {
@@ -123,6 +123,8 @@ pipeline {
                 }
             }
         }
+        stage('Check Publish Images') {
+            stages {
                 stage('Publish MAC binaries to S3') {
                     when {
                         anyOf {
@@ -151,7 +153,7 @@ pipeline {
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 MACOS=1 make publish-s3-binary
                                 rm ${WORKSPACE}/.aws_creds_mac_static_arm64
-                                rm ${WORKSPACE}
+                                rm -r ${WORSKPACE}
                             """
                         }
                     }
