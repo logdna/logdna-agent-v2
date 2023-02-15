@@ -959,10 +959,8 @@ impl FileSystem {
 
         // If we already know about it warn and return
         if self.watch_descriptors.get(path).is_some() {
-
             #[cfg(any(target_os = "windows", target_os = "linux"))] // bug in notify-rs where there is always a create event before most other events, just ignore.
             warn!("watch descriptor for {} already exists...", path.display());
-            
             return Ok(None);
         }
 
