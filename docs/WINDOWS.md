@@ -1,6 +1,6 @@
 # Mezmo Agent for Windows
 
-In addition to the standard log files tailing the agent on Windows supports streaming of Windows Event Logs which has the following features:
+In addition to the standard log files tailing, the agent on Windows supports streaming of Windows Event Logs which has the following features:
 * Live tail - following new events
 * Lookback
 * XPath queries
