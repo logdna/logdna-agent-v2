@@ -48,4 +48,3 @@ choco install mezmo-agent --version=3.8.0.31
 ### Advanced configuration
 
 The tailer's effective configuration is always printed at the beginning of the log when agent starts. It can be modified and appended to Agent configuration file logdna.conf [yaml]. For advanced configuration options please refer to [Windows Event Log Tailer](https://github.com/logdna/winevt-tailer).
-
