@@ -470,6 +470,11 @@ pipeline {
                         }
                     }
                 }
+                post {
+                    always {
+                        sh "rm ${WORKSPACE}"
+                    }
+                }
                 stage('Publish Installers') {
                     environment {
                         CHOCO_API_KEY = credentials('chocolatey-api-token')
