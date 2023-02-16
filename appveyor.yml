@@ -3,6 +3,8 @@ os: Visual Studio 2019
 # Disable msbuild
 build: false
 
+skip_branch_with_pr: true
+
 environment:
   PATH: c:\OpenSSL-v111-Win64\bin;%PATH%
   OPENSSL_ROOT_DIR: c:\OpenSSL-v111-Win64
