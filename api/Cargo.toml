@@ -33,4 +33,5 @@ tracing-test = "0.2"
 [features]
 default = []
 tailer = []
+integration_tests = []
 
