@@ -287,7 +287,7 @@ pipeline {
                             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                         ]]) {
-                            sh """
+                            sh '''
                                 source $HOME/.cargo/env
                                 source ~/.bash_profile
                                 echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static
@@ -295,7 +295,7 @@ pipeline {
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static
                                 MACOS=1 make publish-s3-binary
                                 rm ${WORKSPACE}/.aws_creds_mac_static
-                            """
+                            '''
                         }
                     }
                 }
