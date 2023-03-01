@@ -39,7 +39,7 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     sccache --show-stats
 
 # Use Debian as agent base image
-FROM debian:bullseye
+FROM debian:11
 
 ARG REPO
 ARG BUILD_TIMESTAMP
