@@ -1,10 +1,10 @@
 cask "mezmo-agent" do
     arch arm: "arm64", intel: "x86"
     version "3.9.0"
-    sha256  arm: "66cbfaee8d652fee09b83eef3fc14656336db235ee50bad7e436cf5c63cd5f2c",
-            intel: "e70b1373b87a445a2eb0211b58b770be55fb7619261bda534d5926e31834ac35"
+    sha256  arm: "8abcd3f4942fe9ca6ec8c1f5eb6d5cd12c927f1735aa90450d46894f73626318",
+            intel: "31f1f3fc276946b15cbdd487a9c0a974bb78336b534b2314cc5f60e5b661b741"
   
-    url "https://logdna-agent-build-bin.s3.amazonaws.com/logdna-agent-1.0-#{arch}.pkg"
+    url "https://logdna-agent-build-bin.s3.amazonaws.com/logdna-agent-3.9.0-#{arch}.pkg"
     name "Mezmo Agent"
     desc "Agent streams from log files to your Mezmo account"
     homepage "https://mezmo.com/"

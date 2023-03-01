@@ -6,7 +6,7 @@ LICENSE=MIT
 OSXPKG_IDENTIFIER_PREFIX=com.logdna
 OUTPUT_TYPE=osxpkg
 PACKAGE_NAME=logdna-agent
-VERSION=1.0
+VERSION=3.9.0
 # PAUSE FUNCTION
 function pause(){
 	read -s -n 1 -p "Press any key to continue . . ."
