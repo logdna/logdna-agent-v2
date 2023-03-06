@@ -5,7 +5,7 @@
 
 Mezmo, formerly LogDNA, enables enterprises to ingest all of their log data to a single platform, normalize it, and route it to the appropriate teams so that they can take meaningful action in real time. Join us at the Mezmo community [forum](https://community.logdna.com).
 
-The LogDNA agent is a resource-efficient log collection client that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters.
+The LogDNA agent is a resource-efficient log collection client that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters. Supported platforms include Linux, Windows and Mac.
 
 
 <table>
@@ -40,8 +40,9 @@ As part of the new company name change, we will be changing the name of our agen
     * [Using Helm](#using-helm)
   * [Installing on OpenShift](#installing-on-openshift)
   * [Installing on Linux](#installing-on-linux)
-  * [Running as Non-Root](#running-as-non-root)
-  * [Additional Installation Options](#additional-installation-options)
+    * [Running as Non-Root](#running-as-non-root)
+    * [Additional Installation Options](#additional-installation-options)
+  * [Installing on Windows](#installing-on-windows)
 * [Building](#building-the-logdna-agent)
   * [Building Docker image](#building-docker-image)
 * [Configuration](#configuration)
@@ -103,12 +104,16 @@ By default the agent will run as root. Below are environment-specific instructio
 
 If you configure the LogDNA Agent to run as non-root, review the [documentation about enabling "statefulness" for the agent](KUBERNETES.md#enabling-persistent-agent-state).
 
-### Additional Installation Options
+#### Additional Installation Options
 
 More information about managing your deployments is documented for [Kubernetes](KUBERNETES.md) or [OpenShift](OPENSHIFT.md). This includes topics such as
 
 * Version specific upgrade paths
 * Collecting system logs through Journald
+
+### Installing on Windows
+
+Refer to the documentation for [installing the agent on Windows](WINDOWS.md).
 
 ## Building the LogDNA Agent
 
