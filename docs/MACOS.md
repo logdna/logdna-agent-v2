@@ -4,7 +4,8 @@ The Mezmo Agent for mac collects log data from your mac environment. The agent i
 
 ## Installation (first-time installations)
 
-run brew install <> 
+run:
+brew install mezmo-agent
 
 The installation process will also configure launchctl so you can run the agent via 
 sudo launchctl load -w /Library/LaunchDaemons/com.logdna.logdna-agent.plist
