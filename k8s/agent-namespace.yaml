@@ -5,4 +5,4 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.0.10
+    app.kubernetes.io/version: 3.0.11
