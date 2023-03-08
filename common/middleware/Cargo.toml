@@ -9,7 +9,7 @@ integration_tests = []
 
 [dependencies]
 #local
-http = { package = "http", path = "../http" }
+http = { package = "mz-http", path = "../http" }
 config = { package = "config", path = "../config" }
 memoffset = "0.6"
 regex = "1"

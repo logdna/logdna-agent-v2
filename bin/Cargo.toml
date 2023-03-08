@@ -26,7 +26,7 @@ required-features = ['windows_service']
 
 [dependencies]
 #local
-http = { package = "http", path = "../common/http" }
+http = { package = "mz-http", path = "../common/http" }
 fs = { package = "fs", path = "../common/fs" }
 config = { package = "config", path = "../common/config" }
 middleware = { package = "middleware", path = "../common/middleware" }
