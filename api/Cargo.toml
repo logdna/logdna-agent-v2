@@ -5,7 +5,7 @@ authors = ["dkhokhlov <dkhokhlov@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-http = { package = "http", path = "../common/http" }
+http = { package = "mz-http", path = "../common/http" }
 
 tokio = { package = "tokio", version = "1", features = ["macros", "process", "rt-multi-thread", "time"] }
 futures = "0.3"
