@@ -1,4 +1,4 @@
-# Mezmo Agent on MACOS
+# Mezmo Agent on macOS
 
 The Mezmo Agent for mac collects log data from your mac environment. The agent is available on brew. 
 
@@ -14,4 +14,4 @@ Configuration can be done via /tc/lognda.config file or setting environment vari
 
 ## Upgrading (migrating from legacy mac agent)
 
-For a clean upgrade brew uninstall the old macos LogDNA and modify the /etc/logdna.config file's logdir from /var/log into /private/var/log
+For a clean upgrade brew uninstall the old macOS LogDNA and modify the /etc/logdna.config file's logdir from /var/log into /private/var/log
