@@ -72,6 +72,32 @@ pipeline {
                         '''
                     }
                 }
+                stage('Mac OSX Unit Tests'){
+                    when {
+                        not {
+                            triggeredBy 'ParameterizedTimerTriggerCause'
+                        }
+                    }
+                    agent {
+                        node {
+                            label "osx-node"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
+                    steps {
+                        withCredentials([[
+                                            $class: 'AmazonWebServicesCredentialsBinding',
+                                            credentialsId: 'aws',
+                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                            ]]){
+                            sh """
+                                 source $HOME/.cargo/env
+                                 cargo make unit-tests 
+                            """
+                        }
+                    }
+                }
                 stage('Unit Tests'){
                     when {
                         not {
@@ -150,6 +176,35 @@ pipeline {
                                          ]]){
                             sh """
                               TEST_THREADS="${TEST_THREADS}" make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
+                            """
+                        }
+                    }
+                }
+                stage('Mac OSX Integration Tests'){
+                    agent {
+                        node {
+                            label "osx-node"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
+                    environment {
+                        CREDS_FILE = credentials('pipeline-e2e-creds')
+                        LOGDNA_HOST = "logs.use.stage.logdna.net"
+                    }
+                    steps {
+                        script {
+                            def creds = readJSON file: CREDS_FILE
+                            LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
+                        }
+                        withCredentials([[
+                                           $class: 'AmazonWebServicesCredentialsBinding',
+                                           credentialsId: 'aws',
+                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                                         ]]){
+                            sh """
+                                source $HOME/.cargo/env
+                                cargo make int-tests
                             """
                         }
                     }
@@ -283,6 +338,58 @@ pipeline {
                             '''
                         }
                     }
+                }                
+                stage('Build Mac OSX release binary X86_64') {
+                    agent {
+                        node {
+                            label "osx-node"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}/x86")
+                        }
+                    }
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh '''
+                                source $HOME/.cargo/env
+                                source ~/.bash_profile
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_x86_64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
+                                cargo build --release --target=x86_64-apple-darwin --target-dir x86-target
+                                rm ${WORKSPACE}/.aws_creds_mac_static_x86_64
+                            '''
+                        }
+                    }
+                }
+                stage('Build Mac OSX release binary ARM64') {
+                    agent {
+                        node {
+                            label "osx-node"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}/arm")
+                        }
+                    }
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh '''
+                                source $HOME/.cargo/env
+                                source ~/.bash_profile
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                cargo build --release --target-dir arm-target
+                                rm ${WORKSPACE}/.aws_creds_mac_static_arm64
+                            '''
+                        }
+                    }
                 }
             }
         }
@@ -296,7 +403,7 @@ pipeline {
                         sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
                     }
                 }
-                stage('Publish binaries to S3') {
+                stage('Publish Linux and Windows binaries to S3') {
                     when {
                         anyOf {
                             branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
@@ -328,6 +435,38 @@ pipeline {
                                 ARCH=aarch64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
                                 rm ${WORKSPACE}/.aws_creds_static
                             '''
+                        }
+                    }
+                }
+                stage('Publish MAC binaries to S3') {
+                    when {
+                        anyOf {
+                            branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
+                            environment name: 'PUBLISH_BINARIES', value: 'true'
+                        }
+                    }
+                    agent {
+                        node {
+                            label "osx-node"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                        }
+                    }
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh """
+                                source $HOME/.cargo/env
+                                source ~/.bash_profile
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
+                                MACOS=1 make publish-s3-binary
+                                rm ${WORKSPACE}/.aws_creds_mac_static_arm64
+                            """
                         }
                     }
                 }
