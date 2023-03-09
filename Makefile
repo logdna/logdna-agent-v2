@@ -109,7 +109,7 @@ ifneq ($(WINDOWS),)
 	ARCH_TRIPLE?=$(ARCH)-windows-msvc
 	BINDGEN_EXTRA_CLANG_ARGS:=
 	RUSTFLAGS:=
-	RUSTFLAGS:=-C link-self-contained=yes -Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc
+	RUSTFLAGS:=-Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc
 	CARGO_COMMAND:=cargo xwin
 	BIN_SUFFIX=.exe
 else ifeq ($(STATIC), 1)
@@ -258,7 +258,7 @@ lint-clippy: ## Checks for code errors
 
 .PHONY:lint-audit
 lint-audit: ## Audits packages for issues
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2022-0040"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo audit --ignore RUSTSEC-2020-0071"
 
 .PHONY:lint-docker
 lint-docker: ## Lint the Dockerfile for issues
