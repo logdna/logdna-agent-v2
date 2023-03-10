@@ -14,6 +14,7 @@ use kube::{
     Api, Client,
 };
 use serde_json::json;
+use std::fmt;
 use std::pin::Pin;
 
 use backoff::ExponentialBackoff;
@@ -31,6 +32,23 @@ pub enum Error {
     Utf(#[from] std::string::FromUtf8Error),
     #[error(transparent)]
     K8s(#[from] kube::Error),
+}
+
+#[derive(Debug)]
+pub enum LogEvent {
+    New,
+    Update,
+    Delete,
+}
+
+impl fmt::Display for LogEvent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            LogEvent::New => write!(f, "registering new pod"),
+            LogEvent::Update => write!(f, "updating existing pod"),
+            LogEvent::Delete => write!(f, "deleting pod"),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -100,14 +118,20 @@ impl K8sMetadata {
                 let obj_ref = ObjectRef::from_obj(&pod);
                 if reader.get(&obj_ref).is_none() {
                     Metrics::k8s().increment_creates();
+                    log_watcher_pod(LogEvent::New, &pod)
+                } else {
+                    log_watcher_pod(LogEvent::Update, &pod)
                 }
             }
-            WatcherEvent::Deleted(_) => {
+            WatcherEvent::Deleted(pod) => {
                 Metrics::k8s().increment_deletes();
+                log_watcher_pod(LogEvent::Delete, &pod)
             }
             WatcherEvent::Restarted(pods) => {
-                for _ in pods {
+                trace!("registering all pods...");
+                for pod in pods {
                     Metrics::k8s().increment_creates();
+                    log_watcher_pod(LogEvent::New, &pod)
                 }
             }
         }
@@ -189,6 +213,28 @@ fn extract_image_name_and_tag(container_name: String, pod: &Pod) -> Option<MetaO
     }
 
     None
+}
+
+fn log_watcher_pod(log_event: LogEvent, pod: &Pod) {
+    trace!(
+        "{} \"{}\" in namespace \"{}\"",
+        log_event,
+        pod.metadata.name.clone().unwrap_or("UNKNOWN POD".into()),
+        pod.metadata
+            .namespace
+            .clone()
+            .unwrap_or("UNKNOWN NAMESPACE".into())
+    );
+    match log_event {
+        LogEvent::New | LogEvent::Update => {
+            trace!(
+                "\n\tlabels = {:?}\n\tannotations = {:?}",
+                pod.metadata.labels.clone().unwrap_or_default(),
+                pod.metadata.annotations.clone().unwrap_or_default()
+            )
+        }
+        _ => (),
+    }
 }
 
 #[cfg(test)]
