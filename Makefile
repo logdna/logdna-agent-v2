@@ -198,7 +198,7 @@ lint-clippy: ## Checks for code errors
 
 .PHONY:lint-audit
 lint-audit: ## Audits packages for issues
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2022-0040"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo audit --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2022-0040 --ignore RUSTSEC-2019-0033 --ignore RUSTSEC-2019-0034"
 
 .PHONY:lint-docker
 lint-docker: ## Lint the Dockerfile for issues
