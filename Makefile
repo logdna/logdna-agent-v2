@@ -106,7 +106,7 @@ ifneq ($(WINDOWS),)
 	ARCH_TRIPLE?=$(ARCH)-windows-msvc
 	BINDGEN_EXTRA_CLANG_ARGS:=
 	RUSTFLAGS:=
-	RUSTFLAGS:=-C link-self-contained=yes -Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc
+	RUSTFLAGS:=-Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc
 	CARGO_COMMAND:=cargo xwin
 	BIN_SUFFIX=.exe
 else ifeq ($(STATIC), 1)
