@@ -81,21 +81,20 @@ pipeline {
                     agent {
                         node {
                             label "osx-node"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+                            customWorkspace "logdna-agent-v2-${env.BUILD_TAG}"
                         }
                     }
                     steps {
-                        withCredentials([[
-                                            $class: 'AmazonWebServicesCredentialsBinding',
-                                            credentialsId: 'aws',
-                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                            ]]){
-                            sh """
-                                 source $HOME/.cargo/env
-                                 cargo make unit-tests 
-                            """
-                        }
+                        sh """
+                            source $HOME/.cargo/env
+                            cargo make unit-tests
+                        """
+                    }
+                    post {
+                      always {
+                        sh "cargo clean"
+                        sh "rm -f ${WORKSPACE}/.aws_creds_mac_static_arm64"
+                      }
                     }
                 }
                 stage('Unit Tests'){
@@ -196,18 +195,16 @@ pipeline {
                             def creds = readJSON file: CREDS_FILE
                             LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
                         }
-                        withCredentials([[
-                                           $class: 'AmazonWebServicesCredentialsBinding',
-                                           credentialsId: 'aws',
-                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                         ]]){
-                            sh """
-                                source $HOME/.cargo/env
-                                LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY} LOGDNA_HOST=${LOGDNA_HOST} cargo make int-tests
-                            """
-                        }
+                        sh """
+                            source $HOME/.cargo/env
+                            LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY} LOGDNA_HOST=${LOGDNA_HOST} cargo make int-tests
+                        """
                     }
+                    post {
+                      always {
+                        sh "cargo clean"
+                    }
+                  }
                 }
                 stage('Run K8s Integration Tests') {
                     steps {
@@ -360,9 +357,14 @@ pipeline {
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
                                 cargo build --release --target=x86_64-apple-darwin --target-dir x86-target
-                                rm ${WORKSPACE}/.aws_creds_mac_static_x86_64
                             '''
                         }
+                    }
+                    post {
+                      always {
+                        sh "cargo clean"
+                        sh "rm -f ${WORKSPACE}/.aws_creds_mac_static_x86_64"
+                      }
                     }
                 }
                 stage('Build Mac OSX release binary ARM64') {
@@ -386,9 +388,14 @@ pipeline {
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 cargo build --release --target-dir arm-target
-                                rm ${WORKSPACE}/.aws_creds_mac_static_arm64
                             '''
                         }
+                    }
+                    post {
+                      always {
+                        sh "cargo clean"
+                        sh "rm -f ${WORKSPACE}/.aws_creds_mac_static_arm64"
+                      }
                     }
                 }
             }
