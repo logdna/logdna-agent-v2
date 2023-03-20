@@ -42,7 +42,8 @@ child=$(docker run -d -w "$1" $extra_args -v "$2" $3 "$image")
 if [ "$HOST_MACHINE" = "Mac" ]; then
 	docker exec "$child" /bin/sh -c "$4"
 elif [ "$HOST_MACHINE" = "Linux" ]; then
-	docker exec -u "$(id -u)":"$(id -g)" "$child" /bin/sh -c "$4"
+# shellcheck disable=SC2154
+	docker exec -u "$(id -u)":"$(id -g)" "$child" /bin/sh -c "$start_sccache; $4"
 fi
 
 status=$?
