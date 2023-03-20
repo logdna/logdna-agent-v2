@@ -219,11 +219,14 @@ fn log_watcher_pod(log_event: LogEvent, pod: &Pod) {
     trace!(
         "{} \"{}\" in namespace \"{}\"",
         log_event,
-        pod.metadata.name.clone().unwrap_or("UNKNOWN POD".into()),
+        pod.metadata
+            .name
+            .clone()
+            .unwrap_or_else(|| "UNKNOWN POD".into()),
         pod.metadata
             .namespace
             .clone()
-            .unwrap_or("UNKNOWN NAMESPACE".into())
+            .unwrap_or_else(|| "UNKNOWN NAMESPACE".into())
     );
     match log_event {
         LogEvent::New | LogEvent::Update => {
