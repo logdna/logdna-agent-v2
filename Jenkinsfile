@@ -81,7 +81,7 @@ pipeline {
                     agent {
                         node {
                             label "osx-node"
-                            customWorkspace "logdna-agent-v2-${env.BUILD_TAG}"
+                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
                         }
                     }
                     steps {
@@ -335,7 +335,7 @@ pipeline {
                             '''
                         }
                     }
-                }                
+                }
                 stage('Build Mac OSX release binary X86_64') {
                     agent {
                         node {
