@@ -60,3 +60,6 @@ get_host_arch() {
 	fi
 	echo "$HOST_ARCH"
 }
+
+# shellcheck disable=SC2034
+start_sccache="if [ ! -z \${RUSTC_WRAPPER+x} ]; then while sccache --start-server > /dev/null 2>&1; do echo 'starting sccache server'; done; fi"
