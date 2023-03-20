@@ -3,6 +3,9 @@ CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 CARGO_MANIFEST_DIR = "bin/Cargo.toml"
 CARGO_TARGET_DIR= "../target"
 
+[config]
+default_to_workspace = false
+
 [tasks.build-release-arm]
 args = ["build", "--release"]
 command = "cargo"
@@ -21,7 +24,7 @@ args = ["test", "--no-fail-fast"]
 command = "cargo"
 env = {RUST_BACKTRACE="full"}
 
-[tasks.run] 
+[tasks.run]
 args = ["run", "--bin=logdna-agent"]
 command = "cargo"
 dependencies = ["clean-build"]
