@@ -274,6 +274,8 @@ pub struct FileSystem {
 
     fo_state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
 
+    deletion_ack_sender: async_channel::Sender<Vec<PathBuf>>,
+
     _c: countme::Count<Self>,
 }
 
@@ -315,6 +317,7 @@ impl FileSystem {
         initial_offsets: HashMap<FileId, SpanVec>,
         rules: Rules,
         fo_state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
+        deletion_ack_sender: async_channel::Sender<Vec<PathBuf>>,
     ) -> Self {
         let (resume_events_send, resume_events_recv) = async_channel::unbounded();
         let (retry_events_send, retry_events_recv) = async_channel::unbounded();
@@ -383,6 +386,7 @@ impl FileSystem {
             retry_events_send,
             ignored_dirs,
             fo_state_handles,
+            deletion_ack_sender,
             _c: countme::Count::new(),
         };
 
@@ -1201,7 +1205,11 @@ impl FileSystem {
                 self.symlinks.remove(link);
             }
         }
+
         info!("unwatching {:?}", path);
+        if let Err(e) = self.deletion_ack_sender.try_send(vec![path.clone()]) {
+            warn!("unable to notify about deleted path \"{:?}\": {}", &path, e);
+        }
     }
 
     // FIXME: We should not remove dangling symlinks nor the parent dir of the missing target
@@ -1660,6 +1668,7 @@ mod tests {
             HashMap::new(),
             rules,
             None,
+            async_channel::unbounded().0,
         )
     }
 
