@@ -2,6 +2,7 @@ use crate::{
     create_k8s_client_default_from_env,
     middleware::{K8sMetadata, StoreSwapIntent},
 };
+use async_channel::Receiver;
 use futures::StreamExt;
 use hyper::http::header::HeaderValue;
 use middleware::Executor;
@@ -72,7 +73,9 @@ async fn step_trampoline<'a>(
                 trace!("delaying k8s metadata watcher rotation so new store can populate...");
                 sleep(SWAP_DELAY).await;
             }
-            swap_intent.swap();
+            if let Err(e) = swap_intent.swap() {
+                error!("k8s metadata watcher store swap failed: {}", e);
+            };
             trace!("k8s metadata watcher store swapped!");
             State::Running(attempts, thread_handle)
         }
@@ -121,11 +124,12 @@ async fn trampoline<'a>(
 }
 
 pub fn metadata_runner(
+    deletion_ack_receiver: Receiver<Vec<std::path::PathBuf>>,
     user_agent: HeaderValue,
     node_name: Option<String>,
     executor: &mut Executor,
 ) {
-    let middleware = Arc::new(K8sMetadata::default());
+    let middleware = Arc::new(K8sMetadata::new(deletion_ack_receiver));
     executor.register(middleware.clone());
 
     tokio::spawn(async move {

@@ -154,7 +154,8 @@ async fn handle_event(
                         }
                     }
                     if let Entry::File { data, .. } = entry {
-                        data.borrow_mut().deref_mut().tail(paths).await
+                        let mut tailed_file = data.borrow_mut();
+                        tailed_file.deref_mut().tail(paths).await
                     } else {
                         None
                     }
@@ -259,6 +260,7 @@ impl Tailer {
         lookback_config: Lookback,
         initial_offsets: Option<HashMap<FileId, SpanVec>>,
         fo_state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
+        deletion_ack_sender: async_channel::Sender<Vec<std::path::PathBuf>>,
     ) -> Self {
         Self {
             fs_cache: Arc::new(Mutex::new(FileSystem::new(
@@ -267,6 +269,7 @@ impl Tailer {
                 initial_offsets.unwrap_or_default(),
                 rules,
                 fo_state_handles,
+                deletion_ack_sender,
             ))),
             event_times: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -434,6 +437,7 @@ mod test {
                     Lookback::None,
                     None,
                     None,
+                    async_channel::unbounded().0,
                 );
 
                 let stream = process(tailer).expect("failed to read events");
@@ -481,6 +485,7 @@ mod test {
                     Lookback::SmallFiles,
                     None,
                     None,
+                    async_channel::unbounded().0,
                 );
 
                 let stream = process(tailer).expect("failed to read events");
@@ -530,6 +535,7 @@ mod test {
                     Lookback::Start,
                     None,
                     None,
+                    async_channel::unbounded().0,
                 );
 
                 let stream = process(tailer).expect("failed to read events");

@@ -37,6 +37,8 @@ serde_with = "1.3.1"
 pin-utils = "0.1"
 pin-project-lite = "0.2"
 rand = "0.8.5"
+arc-interner = "0.7.0"
+async-channel = "1.8"
 
 [dev-dependencies]
 hyper_http = { package = "http", version = "0.2" }
