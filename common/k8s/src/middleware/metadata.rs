@@ -1,7 +1,19 @@
 use crate::errors::K8sError;
-use crate::middleware::parse_container_path;
-use futures::StreamExt;
-use futures::TryStreamExt;
+use crate::middleware::{parse_container_path, ParseResult};
+
+use std::{
+    collections::HashMap,
+    fmt,
+    ops::DerefMut,
+    sync::{Arc, Mutex},
+};
+
+use arc_interner::ArcIntern;
+use async_channel::Receiver;
+use futures::{
+    stream::{self, select},
+    StreamExt, TryStreamExt,
+};
 use http::types::body::{KeyValueMap, LineBufferMut};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
@@ -15,7 +27,6 @@ use kube::{
     Api, Client, ResourceExt,
 };
 use serde_json::json;
-use std::{fmt, sync::Mutex};
 
 use backoff::ExponentialBackoff;
 use metrics::Metrics;
@@ -32,6 +43,8 @@ pub enum Error {
     Utf(#[from] std::string::FromUtf8Error),
     #[error(transparent)]
     K8s(#[from] kube::Error),
+    #[error("Failed to lock state")]
+    K8sMiddlewareState,
 }
 
 #[derive(Debug)]
@@ -71,17 +84,131 @@ impl<'a> StoreSwapIntent<'a> {
         StoreSwapIntent { parent, store }
     }
 
-    pub fn swap(self) {
-        *self.parent.store.lock().unwrap() = Some(self.store);
+    pub fn swap(self) -> Result<(), Error> {
+        self.parent
+            .state
+            .lock()
+            .as_mut()
+            .map(|state| {
+                state.store = Some(self.store);
+            })
+            .map_err(|_| Error::K8sMiddlewareState)
+    }
+}
+
+#[derive(Eq, Hash, PartialEq, Clone, Debug)]
+pub struct ContainerIdent {
+    name: ArcIntern<String>,
+}
+
+#[derive(Eq, Hash, PartialEq, Clone, Debug)]
+pub struct PodIdent {
+    name: ArcIntern<String>,
+}
+
+#[derive(Eq, Hash, PartialEq, Clone, Debug)]
+struct PodContainers {
+    pod_ident: PodIdent,
+    containers: Vec<ContainerIdent>,
+}
+
+impl From<&ParseResult> for ContainerIdent {
+    fn from(parse_result: &ParseResult) -> Self {
+        ContainerIdent {
+            name: ArcIntern::new(parse_result.container_name.clone()),
+        }
+    }
+}
+
+impl From<&ParseResult> for PodIdent {
+    fn from(parse_result: &ParseResult) -> Self {
+        let mut pod_namespace = parse_result.pod_namespace.clone();
+        let pod_name = parse_result.pod_name.clone();
+        pod_namespace.push('-');
+        pod_namespace.push_str(&pod_name);
+        PodIdent {
+            name: ArcIntern::new(pod_namespace),
+        }
+    }
+}
+
+impl From<(&str, &str)> for PodIdent {
+    fn from((pod_namespace, pod_name): (&str, &str)) -> Self {
+        let mut buf = pod_namespace.to_string();
+        buf.push('-');
+        buf.push_str(pod_name);
+        PodIdent {
+            name: ArcIntern::new(buf),
+        }
+    }
+}
+
+impl From<&Pod> for PodContainers {
+    fn from(pod: &Pod) -> Self {
+        let pod_ident: PodIdent = pod
+            .metadata
+            .namespace
+            .as_deref()
+            .zip(pod.metadata.name.as_deref())
+            .map(|pair| pair.into())
+            .unwrap();
+        Self {
+            pod_ident,
+            containers: pod
+                .spec
+                .as_ref()
+                .map(|spec| {
+                    spec.containers
+                        .iter()
+                        .map(|container| ContainerIdent {
+                            name: ArcIntern::new(container.name.clone()),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+        }
     }
 }
 
 #[derive(Default)]
+struct DeletionState {
+    pending_deletions: HashMap<PodIdent, WatcherEvent<Pod>>,
+    pod_lookup: HashMap<PodIdent, PodContainers>,
+}
+
+#[derive(Default)]
+struct K8sMetadataState {
+    store: Option<reflector::Store<Pod>>,
+    deletion_state: Arc<tokio::sync::Mutex<DeletionState>>,
+}
+
 pub struct K8sMetadata {
-    store: Mutex<Option<reflector::Store<Pod>>>,
+    state: Mutex<K8sMetadataState>,
+    deletion_ack_recv: Arc<Receiver<Vec<std::path::PathBuf>>>,
 }
 
 impl K8sMetadata {
+    pub fn new(deletion_ack_recv: Receiver<Vec<std::path::PathBuf>>) -> Self {
+        Self {
+            state: Mutex::new(K8sMetadataState::default()),
+            deletion_ack_recv: Arc::new(deletion_ack_recv),
+        }
+    }
+
+    #[cfg(test)]
+    pub fn with_store(
+        deletion_ack_recv: Receiver<Vec<std::path::PathBuf>>,
+        store: reflector::Store<Pod>,
+    ) -> Self {
+        Self {
+            state: Mutex::new(K8sMetadataState {
+                store: Some(store),
+                ..Default::default()
+            }),
+            deletion_ack_recv: Arc::new(deletion_ack_recv),
+        }
+    }
+
     pub fn kick_over(
         &self,
         client: Client,
@@ -104,11 +231,130 @@ impl K8sMetadata {
             ListParams::default()
         };
 
-        let watched = StreamBackoff::new(watcher(api, params), ExponentialBackoff::default());
+        let watcher = Box::pin(StreamBackoff::new(
+            watcher(api, params),
+            ExponentialBackoff::default(),
+        ));
+
+        let (deletion_ack_recv, deletion_state) = {
+            let state = self.state.lock().map_err(|_| Error::K8sMiddlewareState)?;
+            // Take the deletion ack stream, copy the deletion state stream
+            (self.deletion_ack_recv.clone(), state.deletion_state.clone())
+        };
+
+        let delete_stream = stream::unfold(
+            (deletion_state.clone(), deletion_ack_recv),
+            move |(deletion_state, deletion_ack_recv)| async move {
+                let next_event = loop {
+                    if let Ok(Some((deleted_container, deleted_container_pod))) = deletion_ack_recv
+                        .recv()
+                        .await
+                        .map(|deleted_container_paths| {
+                            deleted_container_paths
+                                .into_iter()
+                                .filter_map(|path| {
+                                    path.into_os_string()
+                                        .into_string()
+                                        .ok()
+                                        .as_deref()
+                                        .and_then(parse_container_path)
+                                })
+                                .next()
+                                .map(|parse_result| {
+                                    (
+                                        <&ParseResult as Into<ContainerIdent>>::into(&parse_result),
+                                        <&ParseResult as Into<PodIdent>>::into(&parse_result),
+                                    )
+                                })
+                        })
+                    {
+                        let mut lock_guard = deletion_state.lock().await;
+                        let DeletionState {
+                            ref mut pod_lookup,
+                            ref mut pending_deletions,
+                        } = lock_guard.deref_mut();
+                        if let std::collections::hash_map::Entry::Occupied(pod_containers_entry) =
+                            pod_lookup
+                                .entry(deleted_container_pod.clone())
+                                .and_modify(|pod| {
+                                    pod.containers.retain(|container| {
+                                        container.name != deleted_container.name
+                                    });
+                                })
+                        {
+                            let pod_containers = pod_containers_entry.get();
+                            break match Ok(pod_containers
+                                .containers
+                                .is_empty()
+                                .then(|| pending_deletions.remove(&deleted_container_pod))
+                                .flatten())
+                            .transpose()
+                            {
+                                Some(event) => {
+                                    pod_containers_entry.remove();
+                                    Some(event)
+                                }
+                                _ => continue,
+                            };
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    }
+                };
+                next_event
+                    .map(move |next_event| (Some(next_event), (deletion_state, deletion_ack_recv)))
+            },
+        );
+
+        let watch_stream = stream::unfold(
+            (watcher, deletion_state),
+            move |(mut watcher, deletion_state)| async move {
+                // Check if we have a delete acknowledgement
+                let next_event = loop {
+                    let next_event = {
+                        // No deletes to process, just read from the watcher
+                        let next_event = watcher.next().await;
+                        if let Some(Ok(event)) = next_event {
+                            let pod_container: Option<PodContainers> =
+                                if let WatcherEvent::Deleted(ref pod) = event {
+                                    Some(pod.into())
+                                } else {
+                                    None
+                                };
+
+                            if let Some(pod_container) = pod_container {
+                                let mut lock_guard = deletion_state.lock().await;
+                                let DeletionState {
+                                    ref mut pod_lookup,
+                                    ref mut pending_deletions,
+                                } = lock_guard.deref_mut();
+
+                                pod_lookup
+                                    .insert(pod_container.pod_ident.clone(), pod_container.clone());
+                                pending_deletions.insert(pod_container.pod_ident, event);
+                                continue;
+                            } else {
+                                Some(Ok(event))
+                            }
+                        } else {
+                            next_event
+                        }
+                    };
+
+                    break next_event;
+                };
+                next_event.map(move |next_event| (Some(next_event), (watcher, deletion_state)))
+            },
+        );
+
+        let stream = select(delete_stream, watch_stream).filter_map(std::future::ready);
+
         let swap_intent = StoreSwapIntent::new(self, store.clone());
 
         Ok((
-            reflector(store_writer, watched)
+            reflector(store_writer, stream)
                 .map_ok(|event| {
                     event.modify(|pod| {
                         pod.managed_fields_mut().clear();
@@ -166,7 +412,7 @@ impl Middleware for K8sMetadata {
             if let Some(parse_result) = parse_container_path(file_name) {
                 let obj_ref =
                     ObjectRef::new(&parse_result.pod_name).within(&parse_result.pod_namespace);
-                if let Some(ref store) = *self.store.lock().unwrap() {
+                if let Some(ref store) = self.state.lock().unwrap().store {
                     if let Some(pod) = store.get(&obj_ref) {
                         let meta_object =
                             extract_image_name_and_tag(parse_result.container_name, pod.as_ref());
@@ -426,9 +672,7 @@ mod tests {
             };
             store_w.apply_watcher_event(&WatcherEvent::Applied(pod));
         }
-        K8sMetadata {
-            store: Mutex::new(Some(store_w.as_reader())),
-        }
+        K8sMetadata::with_store(async_channel::unbounded().1, store_w.as_reader())
     }
 
     fn get_pod_metadata(name: impl Into<String>, namespace: impl Into<String>) -> PodMetadata {

@@ -2,8 +2,7 @@ use futures::Stream;
 
 use config::{self, Config, DbPath, K8sLeaseConf, K8sTrackingConf};
 use fs::tail;
-use futures::stream;
-use futures::StreamExt;
+use futures::{stream, StreamExt};
 use http::batch::TimedRequestBatcherStreamExt;
 use http::client::{Client, ClientError, SendStatus};
 use http::retry::{retry, RetryItem};
@@ -139,6 +138,7 @@ pub async fn _main(
     let mut k8s_claimed_lease: Option<String> = None;
     let mut metrics_stream_feature_meta: Option<FeatureLeaderMeta> = None;
 
+    let (deletion_ack_sender, deletion_ack_receiver) = async_channel::unbounded();
     let (k8s_event_stream, metric_stats_stream) =
         match create_k8s_client_default_from_env(user_agent.clone()) {
             Ok(k8s_client) => {
@@ -154,7 +154,7 @@ pub async fn _main(
                     && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
                 {
                     let node_name = std::env::var("NODE_NAME").ok();
-                    metadata_runner(user_agent, node_name, &mut executor);
+                    metadata_runner(deletion_ack_receiver, user_agent, node_name, &mut executor);
                 }
 
                 let pod_name = std::env::var("POD_NAME").ok();
@@ -386,6 +386,7 @@ pub async fn _main(
                 lookback.clone(),
                 initial_offsets,
                 fo_state_handles.clone(),
+                deletion_ack_sender.clone(),
             );
             async move { tail::process(tailer).expect("except Failed to create FS Tailer") }
         },
