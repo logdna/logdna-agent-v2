@@ -15,7 +15,7 @@ use futures::{
     StreamExt, TryStreamExt,
 };
 use http::types::body::{KeyValueMap, LineBufferMut};
-use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::api::core::v1::{Container, Pod, PodSpec};
 use kube::{
     api::ListParams,
     runtime::{
@@ -231,10 +231,31 @@ impl K8sMetadata {
             ListParams::default()
         };
 
-        let watcher = Box::pin(StreamBackoff::new(
-            watcher(api, params),
-            ExponentialBackoff::default(),
-        ));
+        let watcher = watcher(api, params).map_ok(|ev| {
+            ev.modify(|pod| {
+                pod.managed_fields_mut().clear();
+                pod.status = None;
+
+                if let Some(pod_spec) = pod.spec.as_mut() {
+                    let orig = std::mem::take(pod_spec);
+                    let filtered_pod_spec = PodSpec {
+                        containers: orig
+                            .containers
+                            .into_iter()
+                            .map(|container| Container {
+                                name: container.name,
+                                image: container.image,
+                                ..Default::default()
+                            })
+                            .collect(),
+                        ..Default::default()
+                    };
+                    *pod_spec = filtered_pod_spec;
+                }
+            })
+        });
+
+        let watcher = StreamBackoff::new(watcher, ExponentialBackoff::default());
 
         let (deletion_ack_recv, deletion_state) = {
             let state = self.state.lock().map_err(|_| Error::K8sMiddlewareState)?;
@@ -513,7 +534,7 @@ fn log_watcher_pod(log_event: LogEvent, pod: &Pod) {
 mod tests {
     use super::*;
     use http::types::body::{LineBuilder, LineMeta};
-    use k8s_openapi::api::core::v1::{Container, PodSpec};
+    use k8s_openapi::api::core::v1::Container;
     use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
     use std::collections::BTreeMap;
     use std::convert::TryFrom;
