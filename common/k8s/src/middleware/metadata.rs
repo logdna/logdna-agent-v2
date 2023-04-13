@@ -333,7 +333,7 @@ impl K8sMetadata {
         );
 
         let watch_stream = stream::unfold(
-            (watcher, deletion_state),
+            (Box::pin(watcher), deletion_state),
             move |(mut watcher, deletion_state)| async move {
                 // Check if we have a delete acknowledgement
                 let next_event = loop {
@@ -379,11 +379,6 @@ impl K8sMetadata {
 
         Ok((
             reflector(store_writer, stream)
-                .map_ok(|event| {
-                    event.modify(|pod| {
-                        pod.managed_fields_mut().clear();
-                    })
-                })
                 .inspect(move |event| match event {
                     Ok(p) => {
                         K8sMetadata::handle_pod(&store, p)
