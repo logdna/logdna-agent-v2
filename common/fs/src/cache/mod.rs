@@ -1607,10 +1607,7 @@ mod tests {
         symlink_file(original, link)
     }
 
-    fn new_fs<T: Default + Clone + std::fmt::Debug>(
-        path: PathBuf,
-        rules: Option<Rules>,
-    ) -> FileSystem {
+    fn new_fs(path: PathBuf, rules: Option<Rules>) -> FileSystem {
         let rules = rules.unwrap_or_else(|| {
             let mut rules = Rules::new();
             rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
@@ -1629,7 +1626,7 @@ mod tests {
     }
 
     fn create_fs(path: &Path) -> Arc<Mutex<FileSystem>> {
-        Arc::new(Mutex::new(new_fs::<()>(path.to_path_buf(), None)))
+        Arc::new(Mutex::new(new_fs(path.to_path_buf(), None)))
     }
 
     #[tokio::test]
@@ -2349,7 +2346,7 @@ mod tests {
         symlink_file(&file_path, &sym_path)?;
         hard_link(&file_path, &hard_path)?;
 
-        let fs = Arc::new(Mutex::new(new_fs::<()>(old_dir_path.clone(), None)));
+        let fs = Arc::new(Mutex::new(new_fs(old_dir_path.clone(), None)));
 
         rename(&old_dir_path, &new_dir_path)?;
         take_events!(fs);
@@ -2384,7 +2381,7 @@ mod tests {
         symlink_file(&file_path, &sym_path)?;
         hard_link(&file_path, &hard_path)?;
 
-        let fs = Arc::new(Mutex::new(new_fs::<()>(new_path, None)));
+        let fs = Arc::new(Mutex::new(new_fs(new_path, None)));
 
         assert!(lookup!(fs, old_dir_path).is_none());
         assert!(lookup!(fs, new_dir_path).is_none());
@@ -2439,7 +2436,7 @@ mod tests {
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
 
-        let fs = Arc::new(Mutex::new(new_fs::<()>(path.clone(), None)));
+        let fs = Arc::new(Mutex::new(new_fs(path.clone(), None)));
 
         let file_path = path.join("insert.log");
         let new_path = path.join("new.log");
@@ -2478,7 +2475,7 @@ mod tests {
         let move_path = other_path.join("outside.log");
         File::create(file_path.clone())?;
 
-        let fs = Arc::new(Mutex::new(new_fs::<()>(watch_path, None)));
+        let fs = Arc::new(Mutex::new(new_fs(watch_path, None)));
 
         rename(&file_path, &move_path)?;
 
@@ -2507,7 +2504,7 @@ mod tests {
         let move_path = watch_path.join("outside.log");
         File::create(file_path.clone())?;
 
-        let fs = Arc::new(Mutex::new(new_fs::<()>(watch_path, None)));
+        let fs = Arc::new(Mutex::new(new_fs(watch_path, None)));
 
         rename(&file_path, &move_path)?;
         File::create(file_path.clone())?;
@@ -2552,7 +2549,7 @@ mod tests {
         File::create(file_path.clone())?;
         symlink_file(&file_path, &sym_path)?;
 
-        let fs = Arc::new(Mutex::new(new_fs::<()>(watch_path, None)));
+        let fs = Arc::new(Mutex::new(new_fs(watch_path, None)));
 
         take_events!(fs);
 
@@ -2598,7 +2595,7 @@ mod tests {
         let sym_path = path.join("test.log");
         File::create(file_path.clone())?;
 
-        let fs = Arc::new(Mutex::new(new_fs::<()>(path, Some(rules))));
+        let fs = Arc::new(Mutex::new(new_fs(path, Some(rules))));
 
         let entry = lookup!(fs, file_path);
         assert!(entry.is_none());
@@ -2631,7 +2628,7 @@ mod tests {
         let mut file3 = File::create(&sub_dir_file_path)?;
         symlink_file(&file1_path, &sym_path)?;
 
-        let fs = Arc::new(Mutex::new(new_fs::<()>(path, None)));
+        let fs = Arc::new(Mutex::new(new_fs(path, None)));
 
         let entry = lookup!(fs, file1_path);
         assert!(entry.is_some());

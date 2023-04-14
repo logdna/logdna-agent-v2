@@ -92,22 +92,13 @@ pub async fn _main(
 
     let mut _agent_state = None;
     let mut offset_state = None;
-    let mut initial_offsets: Option<HashMap<FileId, SpanVec>> = None;
 
     if let DbPath::Path(db_path) = &config.log.db_path {
         match AgentState::new(db_path) {
             Ok(agent_state) => {
                 let _offset_state = agent_state.get_offset_state();
-                let offsets = _offset_state.offsets();
                 _agent_state = Some(agent_state);
                 offset_state = Some(_offset_state);
-                match offsets {
-                    Ok(os) => {
-                        initial_offsets =
-                            Some(os.into_iter().map(|fo| (fo.key, fo.offsets)).collect());
-                    }
-                    Err(e) => warn!("couldn't retrieve offsets from agent state, {:?}", e),
-                }
             }
             Err(e) => {
                 error!("Failed to open agent state db {}", e);
@@ -330,7 +321,7 @@ pub async fn _main(
     let fo_state_handles = offset_state
         .as_ref()
         .map(|os| (os.write_handle(), os.flush_handle()));
-    if let Some(offset_state) = offset_state {
+    if let Some(offset_state) = offset_state.clone() {
         tokio::spawn(offset_state.run().unwrap());
     }
     debug!("Initialised offset state");
@@ -339,7 +330,7 @@ pub async fn _main(
         config.log.dirs.clone(),
         config.log.rules.clone(),
         config.log.lookback.clone(),
-        initial_offsets.clone(),
+        offset_state,
         fo_state_handles,
     );
 
@@ -354,12 +345,24 @@ pub async fn _main(
             }
             _ => false,
         },
-        |(watched_dirs, rules, lookback, offsets, fo_state_handles)| {
+        |(watched_dirs, rules, lookback, offset_state, fo_state_handles)| {
+            let mut initial_offsets: Option<HashMap<FileId, SpanVec>> = None;
+
+            if let Some(offset_state) = offset_state {
+                match offset_state.offsets() {
+                    Ok(offsets) => {
+                        initial_offsets =
+                            Some(offsets.into_iter().map(|fo| (fo.key, fo.offsets)).collect());
+                    }
+                    Err(e) => warn!("couldn't retrieve offsets from agent state, {:?}", e),
+                }
+            }
+
             let tailer = tail::Tailer::new(
                 watched_dirs.clone(),
                 rules.clone(),
                 lookback.clone(),
-                offsets.clone(),
+                initial_offsets,
                 fo_state_handles.clone(),
             );
             async move { tail::process(tailer).expect("except Failed to create FS Tailer") }
