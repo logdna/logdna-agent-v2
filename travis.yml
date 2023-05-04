@@ -1,0 +1,127 @@
+language: go
+
+go:
+  - 1.18.9
+  # - tip
+
+env:
+  global:
+    - IMAGE="armada-master/storage-file-plugin"
+    - REPO_SOURCE_URL="https://github.ibm.com/${TRAVIS_REPO_SLUG}/commit/${TRAVIS_COMMIT}"
+    - BUILD_URL="https://travis.ibm.com/${TRAVIS_REPO_SLUG}/builds/${TRAVIS_BUILD_ID}"
+    - GHE_TOKEN="${ALL_GLOBAL_STORAGE_CONTSTO2_GHE_TOKEN_20220329}"
+    - registry_iam_api_key="${PROD_GLOBAL_STORAGE_ARMADA_MASTER_REGISTRY_IAM_APIKEY}"
+    - IKS_PIPELINE_IAM_APIKEY="${PROD_GLOBAL_STORAGE_IKS_PIPELINE_IAM_APIKEY}"
+    - DOCKER_CLI_EXPERIMENTAL=enabled
+
+  # matrix:
+  #   - MAKE_TASK="vet"
+  #   - MAKE_TASK=fmt
+  #   - MAKE_TASK=test
+  #   - MAKE_TASK=lint
+  #   - MAKE_TASK=coverage
+  #   - MAKE_TASK=container
+  #   - MAKE_TASK="imagevulnscan"
+
+# group: bluezone
+
+# matrix:
+#   fast_finish: true
+#   allow_failures:
+#   - go: tip
+
+# cache:
+#   bundler: true
+
+sudo: true
+
+services:
+  - docker
+
+addons:
+  apt:
+    packages:
+      - bc
+
+before_install:
+  - mkdir -p $HOME/.docker
+  - |
+    echo '{
+      "experimental": "enabled"
+    }' | tee $HOME/.docker/config.json
+  - sudo systemctl restart docker
+  - docker --version
+  - curl -s https://s3.us.cloud-object-storage.appdomain.cloud/armada-build-tools-prod-us-geo/build-tools/build-tools.tar.gz |tar -xvz
+  - ./build-tools/install.sh
+  - sudo pip --quiet install yamllint
+  - export ARTIFACTORY_API_KEY=$(./build-tools/key-protect/get-key-data.sh --bluemix-api-key "${IKS_PIPELINE_IAM_APIKEY}" --keyprotect-instance-id "${IKS_PIPELINE_KEYPROTECT_INSTANCE_ID}" --keyprotect-root-key-name icdevops-artifactory-api-key --keyprotect-host "us-south.kms.cloud.ibm.com" | base64 -d)
+  - DOCKER_BUILDKIT=1 docker build --help
+  - mkdir -p ~/.docker/cli-plugins
+  - wget https://github.com/docker/buildx/releases/download/v0.9.1/buildx-v0.9.1.linux-amd64
+  - chmod a+x buildx-v0.9.1.linux-amd64
+  - mv buildx-v0.9.1.linux-amd64 ~/.docker/cli-plugins/docker-buildx
+  - docker buildx ls
+  - docker buildx create --use --name multi-builder --platform linux/amd64,linux/s390x
+  - curl -s https://s3.us.cloud-object-storage.appdomain.cloud/armada-build-tools-prod-us-geo/build-tools/build-tools.tar.gz |tar -xvz
+  - ./build-tools/install.sh
+  - sudo pip --quiet install yamllint
+  - export ARTIFACTORY_API_KEY=$(./build-tools/key-protect/get-key-data.sh --bluemix-api-key "${IKS_PIPELINE_IAM_APIKEY}" --keyprotect-instance-id "${IKS_PIPELINE_KEYPROTECT_INSTANCE_ID}" --keyprotect-root-key-name icdevops-artifactory-api-key --keyprotect-host "us-south.kms.cloud.ibm.com" | base64 -d)
+  - docker login wcp-alchemy-containers-team-icr-docker-remote.artifactory.swg-devops.com --username "$ARTIFACTORY_USER" --password-stdin <<< "${ARTIFACTORY_API_KEY}";
+  # do the docker login for golang image download
+  - PROXY_ADDRESS_DOCKERHUB="wcp-alchemy-containers-team-dockerhub-docker-remote.artifactory.swg-devops.com"
+  - docker login $PROXY_ADDRESS_DOCKERHUB --username "$ARTIFACTORY_USER" --password-stdin <<< "${ARTIFACTORY_API_KEY}"
+  - export GOPROXY=https://"${ARTIFACTORY_USER}":${ARTIFACTORY_API_KEY}@na.artifactory.swg-devops.com/artifactory/api/go/wcp-alchemy-containers-team-go-virtual
+
+
+before_script:
+  - git config --global url."https://$GHE_TOKEN@github.ibm.com/".insteadOf "https://github.ibm.com/"
+  - make deps
+  - go get github.com/pierrre/gotestcover
+  - if [[ "$MAKE_TASK" == "imagevulnscan" ]]; then
+      echo "TRAVIS_EVENT [$TRAVIS_EVENT_TYPE]";
+      curl -sL https://ibm.biz/idt-installer | bash;
+      ibmcloud config --check-version false;
+      ibmcloud config --usage-stats-collect false;
+      ibmcloud --version;
+    fi
+
+# script:
+#   - make $MAKE_TASK
+
+# after_success:
+#     - ./scripts/calculateCoverage.sh
+#     - ./scripts/publishCoverage.sh
+
+# after_failure:
+#     - ./scripts/handleFailure.sh
+
+# deploy:
+#   - provider: script
+#     script: ./scripts/pushImage.sh ${IMAGE} ${TRAVIS_TAG}
+#     skip_cleanup: true
+#     on:
+#       branch: master
+#       tags: true
+#       go: '1.18.9'
+#       condition: ${MAKE_TASK} = container && ($TRAVIS_TAG == [0-9]*)
+#   - provider: script
+#     script: ./scripts/pushImage.sh ${IMAGE} ${TRAVIS_TAG}
+#     skip_cleanup: true
+#     on:
+#       tags: true
+#       condition: '$MAKE_TASK == container && ${TRAVIS_TAG} == dev-*'
+#       go: '1.18.9'
+#   - provider: script
+#     script: bash scripts/scanImages.sh
+#     skip_cleanup: true
+#     on:
+#       branch: master
+#       condition: ($MAKE_TASK = "imagevulnscan") && ($TRAVIS_EVENT_TYPE = "cron")
+#       go: '1.18.9'
+jobs:
+  include:
+  - stage: build & push
+    os: linux # https://github.ibm.com/Whitewater/TravisCI/wiki/Multi-Arch-Builds
+    script:
+    - make build-image
+    # - ./push-image.sh
