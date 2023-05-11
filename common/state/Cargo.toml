@@ -12,7 +12,7 @@ integration_tests = []
 [dependencies]
 derivative = "2.2"
 futures = "0.3"
-rocksdb = "0.19"
+rocksdb = "0.21"
 async-channel = "1.6"
 thiserror = "1.0"
 tracing = "0.1"
