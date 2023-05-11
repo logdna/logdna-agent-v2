@@ -57,7 +57,7 @@ fn _construct_agent_state(path: &Path) -> Result<AgentState, StateError> {
 
     let cache = Cache::new_lru_cache(ROCKSDB_CACHE_SIZE);
     let mut block_options = BlockBasedOptions::default();
-    block_options.set_block_cache(&cache?);
+    block_options.set_block_cache(&cache);
 
     let mut db_opts = Options::default();
     db_opts.create_missing_column_families(true);
