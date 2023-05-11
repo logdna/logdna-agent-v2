@@ -138,7 +138,7 @@ impl TryFrom<&(u64, u64)> for Span {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(transparent)]
 pub struct SpanVec {
-    spans: SmallVec<[Span; 4]>,
+    spans: SmallVec<[Span; 12]>,
 }
 
 impl SpanVec {
@@ -205,7 +205,7 @@ impl SpanVec {
         // Utility funciton to actuall merge in changes
         // Returns Some((rightmost_changed_idx, Span)) when the merge results in a modification
         fn merge_in_span(
-            spans: &mut SmallVec<[Span; 4]>,
+            spans: &mut SmallVec<[Span; 12]>,
             elem: Span,
             insert_idx: usize,
         ) -> Option<(usize, Span)> {
