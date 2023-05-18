@@ -1076,6 +1076,7 @@ dependencies = [
  "middleware",
  "mz-http",
  "notify_stream",
+ "once_cell",
  "os_str_bytes",
  "pcre2",
  "pin-project-lite",
