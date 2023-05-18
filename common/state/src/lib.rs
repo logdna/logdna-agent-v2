@@ -59,6 +59,7 @@ fn _construct_agent_state(path: &Path) -> Result<AgentState, StateError> {
 
     let cache = Cache::new_lru_cache(ROCKSDB_CACHE_SIZE);
     let mut block_options = BlockBasedOptions::default();
+    block_options.set_cache_index_and_filter_blocks(true);
     block_options.set_block_cache(&cache?);
 
     let mut db_opts = Options::default();
