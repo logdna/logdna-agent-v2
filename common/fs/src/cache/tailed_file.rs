@@ -380,7 +380,7 @@ impl<T> TailedFile<T> {
 
 impl TailedFile<LineBuilder> {
     // tail a file for new line(s)
-    pub async fn tail(&mut self, paths: Vec<PathBuf>) -> Option<impl Stream<Item = LineBuilder>> {
+    pub async fn tail(&mut self, paths: &[PathBuf]) -> Option<impl Stream<Item = LineBuilder>> {
         // get the file len
         {
             let mut inner = self.inner.lock().await;
@@ -485,7 +485,7 @@ impl TailedFile<LineBuilder> {
                 }
             })
             .filter_map({
-                let paths = paths.clone();
+                let paths: Vec<_> = paths.to_vec();
                 move |line_res| {
                     let paths = paths.clone();
                     async move {
@@ -569,7 +569,7 @@ impl TailedFile<LazyLineSerializer> {
     // tail a file for new line(s)
     pub(crate) async fn tail(
         &mut self,
-        paths: Vec<PathBuf>,
+        paths: &[PathBuf],
     ) -> Option<impl Stream<Item = LazyLineSerializer>> {
         let target_read = {
             let mut inner = self.inner.lock().await;
@@ -638,7 +638,7 @@ impl TailedFile<LazyLineSerializer> {
                 LazyLines::new(
                     self.inner.clone(),
                     paths
-                        .into_iter()
+                        .iter()
                         .map(|path| path.to_string_lossy().into())
                         .collect(),
                     target_read,

@@ -65,7 +65,7 @@ async fn handle_event(
                     // If the file's passes the rules tail it
                     info!("initialize event for file {}", path_display);
                     if fs.is_initial_dir_target(entry.path()) {
-                        return data.borrow_mut().tail(paths).await;
+                        return data.borrow_mut().tail(&paths).await;
                     }
                 }
                 Entry::Symlink { link, path } => {
@@ -93,7 +93,7 @@ async fn handle_event(
                                 final_target
                             );
                             let mut data = data.borrow_mut();
-                            return data.tail(paths).await;
+                            return data.tail(&paths).await;
                         }
                     }
                 }
@@ -112,7 +112,7 @@ async fn handle_event(
             }
             if let Entry::File { data, .. } = entry {
                 info!("added {:?}", paths[0]);
-                return data.borrow_mut().tail(paths).await;
+                return data.borrow_mut().tail(&paths).await;
             }
         }
         Event::Write(entry_ptr) => {
@@ -127,7 +127,7 @@ async fn handle_event(
             }
 
             if let Entry::File { data, .. } = entry {
-                return data.borrow_mut().deref_mut().tail(paths).await;
+                return data.borrow_mut().deref_mut().tail(&paths).await;
             }
         }
         Event::Delete(entry_ptr) => {
@@ -154,7 +154,7 @@ async fn handle_event(
                         }
                     }
                     if let Entry::File { data, .. } = entry {
-                        data.borrow_mut().deref_mut().tail(paths).await
+                        data.borrow_mut().deref_mut().tail(&paths).await
                     } else {
                         None
                     }
