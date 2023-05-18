@@ -163,58 +163,57 @@ impl Watcher {
                     .expect("channel closed unexpectedly")
                     .unwrap();
                 trace!("received raw notify event: {:?}", received);
-                if let Some(mapped_event) = match received.kind {
+                let notify::Event { kind, paths, attrs } = received;
+                let mut paths = paths.into_iter();
+                if let Some(mapped_event) = match kind {
                     EventKind::Remove(RemoveKind::File) => {
-                        Some(Event::Remove(received.paths.first().unwrap().clone()))
+                        Some(Event::Remove(paths.next().unwrap()))
                     }
                     EventKind::Remove(RemoveKind::Folder) => {
-                        Some(Event::Remove(received.paths.first().unwrap().clone()))
+                        Some(Event::Remove(paths.next().unwrap()))
                     }
                     EventKind::Remove(RemoveKind::Other) => {
-                        Some(Event::Remove(received.paths.first().unwrap().clone()))
+                        Some(Event::Remove(paths.next().unwrap()))
                     }
                     EventKind::Remove(RemoveKind::Any) => {
-                        Some(Event::Remove(received.paths.first().unwrap().clone()))
+                        Some(Event::Remove(paths.next().unwrap()))
                     }
                     EventKind::Create(CreateKind::File) => {
-                        Some(Event::Create(received.paths.first().unwrap().clone()))
+                        Some(Event::Create(paths.next().unwrap()))
                     }
                     EventKind::Create(CreateKind::Folder) => {
-                        Some(Event::Create(received.paths.first().unwrap().clone()))
+                        Some(Event::Create(paths.next().unwrap()))
                     }
                     EventKind::Create(CreateKind::Other) => {
-                        Some(Event::Create(received.paths.first().unwrap().clone()))
+                        Some(Event::Create(paths.next().unwrap()))
                     }
                     EventKind::Create(CreateKind::Any) => {
-                        Some(Event::Create(received.paths.first().unwrap().clone()))
+                        Some(Event::Create(paths.next().unwrap()))
                     }
                     EventKind::Modify(ModifyKind::Data(DataChange::Any)) => {
-                        Some(Event::Write(received.paths.first().unwrap().clone()))
+                        Some(Event::Write(paths.next().unwrap()))
                     }
                     EventKind::Modify(ModifyKind::Data(DataChange::Content)) => {
-                        Some(Event::Write(received.paths.first().unwrap().clone()))
+                        Some(Event::Write(paths.next().unwrap()))
                     }
-                    EventKind::Modify(ModifyKind::Name(RenameMode::From)) => received
-                        .paths
-                        .first()
-                        .map(|path| Event::Remove(path.clone()))
+                    EventKind::Modify(ModifyKind::Name(RenameMode::From)) => {
+                        paths.next()
+                        .map(Event::Remove)
                         .or_else(|| {
-                            debug!("raw notify event with None path: {:?}", received);
+                            debug!("raw notify event with None path Event {{ kind: {:?}, attrs: {:?} }}", kind, attrs);
                             Some(Event::Rescan) // trigger FS rescan
-                        }),
+                        })
+                    }
                     EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
-                        Some(Event::Create(received.paths.first().unwrap().clone()))
+                        Some(Event::Create(paths.next().unwrap()))
                     }
-                    EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => Some(Event::Rename(
-                        received.paths.first().unwrap().clone(),
-                        received.paths.last().unwrap().clone(),
-                    )),
+                    EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => {
+                        Some(Event::Rename(paths.next().unwrap(), paths.last().unwrap()))
+                    }
                     EventKind::Modify(ModifyKind::Other) => {
-                        Some(Event::Write(received.paths.first().unwrap().clone()))
+                        Some(Event::Write(paths.next().unwrap()))
                     }
-                    EventKind::Modify(ModifyKind::Any) => {
-                        Some(Event::Write(received.paths.first().unwrap().clone()))
-                    }
+                    EventKind::Modify(ModifyKind::Any) => Some(Event::Write(paths.next().unwrap())),
                     EventKind::Modify(ModifyKind::Metadata(_)) => None,
                     EventKind::Access(_) => None,
                     _ => None,

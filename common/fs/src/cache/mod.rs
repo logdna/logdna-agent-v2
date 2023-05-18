@@ -621,7 +621,7 @@ impl FileSystem {
 
     /// Handles inotify events and may produce Event(s) that are returned upstream through sender
     #[instrument(level = "debug", skip_all)]
-    fn process(&mut self, watch_event: &WatchEvent) -> FsResult<SmallVec<[Event;2]>> {
+    fn process(&mut self, watch_event: &WatchEvent) -> FsResult<SmallVec<[Event; 2]>> {
         let _entries = self.entries.clone();
         let mut _entries = _entries.borrow_mut();
 
@@ -693,7 +693,7 @@ impl FileSystem {
         &mut self,
         watch_descriptor: &Path,
         _entries: &mut EntryMap,
-    ) -> FsResult<SmallVec<[Event;2]>> {
+    ) -> FsResult<SmallVec<[Event; 2]>> {
         let path = &watch_descriptor;
 
         let mut events = SmallVec::new();
@@ -702,7 +702,7 @@ impl FileSystem {
         Ok(events)
     }
 
-    fn process_modify(&mut self, watch_descriptor: &Path) -> FsResult<SmallVec<[Event;2]>> {
+    fn process_modify(&mut self, watch_descriptor: &Path) -> FsResult<SmallVec<[Event; 2]>> {
         if let Some(entries) = self.watch_descriptors.get_mut(watch_descriptor) {
             Ok(entries
                 .iter()
@@ -804,7 +804,7 @@ impl FileSystem {
         &mut self,
         watch_descriptor: &Path,
         _entries: &mut EntryMap,
-    ) -> FsResult<SmallVec<[Event;2]>> {
+    ) -> FsResult<SmallVec<[Event; 2]>> {
         let mut events = SmallVec::new();
         if let Some(entry_key) = self.get_first_entry(watch_descriptor) {
             let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
@@ -881,7 +881,7 @@ impl FileSystem {
         }
     }
 
-    pub fn resolve_valid_paths(&self, entry: &Entry, entries: &EntryMap) -> SmallVec<[PathBuf;4]> {
+    pub fn resolve_valid_paths(&self, entry: &Entry, entries: &EntryMap) -> SmallVec<[PathBuf; 4]> {
         // TODO: extract these Vecs or replace with SmallVec
         let mut paths = Vec::new();
         let mut current_path_buf: PathBuf = PathBuf::with_capacity(entry.path().as_os_str().len());
@@ -950,7 +950,7 @@ impl FileSystem {
     fn insert(
         &mut self,
         path: &Path,
-        events: &mut SmallVec<[Event;2]>,
+        events: &mut SmallVec<[Event; 2]>,
         _entries: &mut EntryMap,
     ) -> FsResult<Option<EntryKey>> {
         // Filter to make sure it passes the rules
@@ -1193,7 +1193,7 @@ impl FileSystem {
     fn remove(
         &mut self,
         path: &Path,
-        events: &mut SmallVec<[Event;2]>,
+        events: &mut SmallVec<[Event; 2]>,
         _entries: &mut EntryMap,
     ) -> FsResult<()> {
         trace!("removing {:#?}", path);
@@ -1233,7 +1233,7 @@ impl FileSystem {
     fn drop_entry(
         &mut self,
         entry_key: EntryKey,
-        events: &mut SmallVec<[Event;2]>,
+        events: &mut SmallVec<[Event; 2]>,
         _entries: &mut EntryMap,
     ) {
         if let Some(entry) = _entries.get(entry_key) {
@@ -1324,7 +1324,7 @@ impl FileSystem {
         from_path: &Path,
         to_path: &Path,
         _entries: &mut EntryMap,
-    ) -> FsResult<SmallVec<[Event;2]>> {
+    ) -> FsResult<SmallVec<[Event; 2]>> {
         let new_parent = to_path.parent().and_then(|p| self.lookup(p, _entries));
 
         let mut events = SmallVec::new();
