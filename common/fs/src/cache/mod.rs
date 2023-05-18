@@ -393,7 +393,7 @@ impl FileSystem {
         let mut entries = entries.borrow_mut();
 
         // Initial dirs
-        let mut initial_dir_events = Vec::new();
+        let mut initial_dir_events = SmallVec::new();
         for dir in initial_dirs
             .into_iter()
             .map(|path| -> PathBuf { path.into() })
@@ -637,7 +637,7 @@ impl FileSystem {
 
     /// Handles inotify events and may produce Event(s) that are returned upstream through sender
     #[instrument(level = "debug", skip_all)]
-    fn process(&mut self, watch_event: &WatchEvent) -> FsResult<Vec<Event>> {
+    fn process(&mut self, watch_event: &WatchEvent) -> FsResult<SmallVec<[Event; 2]>> {
         let _entries = self.entries.clone();
         let mut _entries = _entries.borrow_mut();
 
@@ -676,7 +676,7 @@ impl FileSystem {
                     // Most likely parent was removed, dropping all child watch descriptors
                     // and we've got the child watch event already queued up
                     debug!("Move event received from targets that are not watched anymore");
-                    Ok(Vec::new())
+                    Ok(SmallVec::new())
                 }
             }
             WatchEvent::Error(e, p) => {
@@ -719,29 +719,21 @@ impl FileSystem {
         &mut self,
         watch_descriptor: &Path,
         _entries: &mut EntryMap,
-    ) -> FsResult<Vec<Event>> {
+    ) -> FsResult<SmallVec<[Event; 2]>> {
         let path = &watch_descriptor;
 
-        let mut events = Vec::new();
+        let mut events = SmallVec::new();
         //TODO: Check duplicates
         self.insert(path, &mut events, _entries)?;
         Ok(events)
     }
 
-    fn process_modify(&mut self, watch_descriptor: &Path) -> FsResult<Vec<Event>> {
-        let mut entry_ptrs_opt = None;
+    fn process_modify(&mut self, watch_descriptor: &Path) -> FsResult<SmallVec<[Event; 2]>> {
         if let Some(entries) = self.watch_descriptors.get_mut(watch_descriptor) {
-            entry_ptrs_opt = Some(entries.clone())
-        }
-
-        // TODO: If symlink => revisit target
-        if let Some(mut entry_ptrs) = entry_ptrs_opt {
-            let mut events = Vec::new();
-            for entry_ptr in entry_ptrs.iter_mut() {
-                events.push(Event::Write(*entry_ptr));
-            }
-
-            Ok(events)
+            Ok(entries
+                .iter()
+                .map(|entry_ptr| Event::Write(*entry_ptr))
+                .collect())
         } else {
             Err(Error::WatchEvent(watch_descriptor.to_owned()))
         }
@@ -838,9 +830,9 @@ impl FileSystem {
         &mut self,
         watch_descriptor: &Path,
         _entries: &mut EntryMap,
-    ) -> FsResult<Vec<Event>> {
-        let mut events = Vec::new();
-        if let Ok(entry_key) = self.get_first_entry(watch_descriptor) {
+    ) -> FsResult<SmallVec<[Event; 2]>> {
+        let mut events = SmallVec::new();
+        if let Some(entry_key) = self.get_first_entry(watch_descriptor) {
             let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
             let path = entry.path().to_path_buf();
             if !self.initial_dirs.iter().any(|dir| dir.as_ref() == path) {
@@ -915,7 +907,7 @@ impl FileSystem {
         }
     }
 
-    pub fn resolve_valid_paths(&self, entry: &Entry, entries: &EntryMap) -> SmallVec<[PathBuf;4]> {
+    pub fn resolve_valid_paths(&self, entry: &Entry, entries: &EntryMap) -> SmallVec<[PathBuf; 4]> {
         // TODO: extract these Vecs or replace with SmallVec
         let mut paths = Vec::new();
         let mut current_path_buf: PathBuf = PathBuf::with_capacity(entry.path().as_os_str().len());
@@ -984,7 +976,7 @@ impl FileSystem {
     fn insert(
         &mut self,
         path: &Path,
-        events: &mut Vec<Event>,
+        events: &mut SmallVec<[Event; 2]>,
         _entries: &mut EntryMap,
     ) -> FsResult<Option<EntryKey>> {
         // Filter to make sure it passes the rules
@@ -1247,7 +1239,7 @@ impl FileSystem {
     fn remove(
         &mut self,
         path: &Path,
-        events: &mut Vec<Event>,
+        events: &mut SmallVec<[Event; 2]>,
         _entries: &mut EntryMap,
     ) -> FsResult<()> {
         trace!("removing {:#?}", path);
@@ -1287,7 +1279,7 @@ impl FileSystem {
     fn drop_entry(
         &mut self,
         entry_key: EntryKey,
-        events: &mut Vec<Event>,
+        events: &mut SmallVec<[Event; 2]>,
         _entries: &mut EntryMap,
     ) {
         if let Some(entry) = _entries.get(entry_key) {
@@ -1378,10 +1370,10 @@ impl FileSystem {
         from_path: &Path,
         to_path: &Path,
         _entries: &mut EntryMap,
-    ) -> FsResult<Vec<Event>> {
+    ) -> FsResult<SmallVec<[Event; 2]>> {
         let new_parent = to_path.parent().and_then(|p| self.lookup(p, _entries));
 
-        let mut events = Vec::new();
+        let mut events = SmallVec::new();
         match self.lookup(from_path, _entries) {
             Some(entry_key) => {
                 let entry = _entries.get_mut(entry_key).ok_or(Error::Lookup)?;
@@ -1556,16 +1548,13 @@ impl FileSystem {
     }
 
     /// Returns the first entry based on the `WatchDescriptor`, returning an `Err` when not found.
-    fn get_first_entry(&self, wd: &Path) -> FsResult<EntryKey> {
-        let entries = self
-            .watch_descriptors
-            .get(wd)
-            .ok_or_else(|| Error::WatchEvent(wd.to_owned()))?;
+    fn get_first_entry(&self, wd: &Path) -> Option<EntryKey> {
+        let entries = self.watch_descriptors.get(wd)?;
 
         if !entries.is_empty() {
-            Ok(entries[0])
+            Some(entries[0])
         } else {
-            Err(Error::WatchEvent(wd.to_owned()))
+            None
         }
     }
 }
