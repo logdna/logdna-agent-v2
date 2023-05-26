@@ -1,5 +1,6 @@
 use rocksdb::{
-    BlockBasedOptions, Cache, ColumnFamilyDescriptor, IteratorMode, Options, WriteBatch, DB,
+    BlockBasedOptions, Cache, ColumnFamilyDescriptor, DBCompactionStyle, IteratorMode, Options,
+    WriteBatch, DB,
 };
 
 use derivative::Derivative;
@@ -64,6 +65,9 @@ fn _construct_agent_state(path: &Path) -> Result<AgentState, StateError> {
     let mut db_opts = Options::default();
     db_opts.create_missing_column_families(true);
     db_opts.create_if_missing(true);
+    db_opts.set_disable_auto_compactions(false);
+    db_opts.set_compaction_style(DBCompactionStyle::Universal);
+    db_opts.optimize_universal_style_compaction(ROCKSDB_CACHE_SIZE);
     db_opts.set_block_based_table_factory(&block_options);
 
     let offset_cf_opt = Options::default();
