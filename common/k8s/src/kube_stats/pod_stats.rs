@@ -259,6 +259,7 @@ mod tests {
             tolerations: None,
             topology_spread_constraints: None,
             volumes: None,
+            set_hostname_as_fqdn: None,
         }
     }
 

@@ -1,6 +1,7 @@
 use crate::errors::K8sError;
 use crate::middleware::parse_container_path;
 use futures::StreamExt;
+use futures::TryStreamExt;
 use http::types::body::{KeyValueMap, LineBufferMut};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
@@ -11,18 +12,17 @@ use kube::{
         utils::StreamBackoff,
         watcher::{watcher, Event as WatcherEvent},
     },
-    Api, Client,
+    Api, Client, ResourceExt,
 };
 use serde_json::json;
-use std::fmt;
-use std::pin::Pin;
+use std::{fmt, sync::Mutex};
 
 use backoff::ExponentialBackoff;
 use metrics::Metrics;
 use middleware::{Middleware, Status};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{trace, warn};
+use tracing::{error, trace, warn};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -61,15 +61,38 @@ pub struct MetaObject {
     pub tag: Option<String>,
 }
 
-pub struct K8sMetadata {
+pub struct StoreSwapIntent<'a> {
+    parent: &'a K8sMetadata,
     store: reflector::Store<Pod>,
 }
 
+impl<'a> StoreSwapIntent<'a> {
+    fn new(parent: &'a K8sMetadata, store: reflector::Store<Pod>) -> StoreSwapIntent<'a> {
+        StoreSwapIntent { parent, store }
+    }
+
+    pub fn swap(self) {
+        *self.parent.store.lock().unwrap() = Some(self.store);
+    }
+}
+
+#[derive(Default)]
+pub struct K8sMetadata {
+    store: Mutex<Option<reflector::Store<Pod>>>,
+}
+
 impl K8sMetadata {
-    pub async fn new(
+    pub fn kick_over(
+        &self,
         client: Client,
         node_name: Option<&str>,
-    ) -> Result<(Pin<Box<dyn futures::Future<Output = ()> + Send>>, Self), Error> {
+    ) -> Result<
+        (
+            impl futures::StreamExt<Item = WatcherEvent<Pod>>,
+            StoreSwapIntent,
+        ),
+        Error,
+    > {
         let api = Api::<Pod>::all(client);
 
         let store_writer = reflector::store::Writer::default();
@@ -82,56 +105,51 @@ impl K8sMetadata {
         };
 
         let watched = StreamBackoff::new(watcher(api, params), ExponentialBackoff::default());
+        let swap_intent = StoreSwapIntent::new(self, store.clone());
 
-        let reflector = reflector(store_writer, watched);
-
-        let driver = {
-            let store = store.clone();
-            async move {
-                reflector
-                    .filter_map(|r| async {
-                        match r {
-                            Ok(event) => Some(event),
-                            Err(e) => {
-                                warn!("k8s watch stream error: {}", e);
-                                None
-                            }
-                        }
+        Ok((
+            reflector(store_writer, watched)
+                .map_ok(|event| {
+                    event.modify(|pod| {
+                        pod.managed_fields_mut().clear();
                     })
-                    .for_each(|p| async {
+                })
+                .inspect(move |event| match event {
+                    Ok(p) => {
                         K8sMetadata::handle_pod(&store, p)
                             .unwrap_or_else(|e| warn!("unable to process pod event: {}", e));
-                    })
-                    .await
-            }
-        };
-
-        Ok((Box::pin(driver), K8sMetadata { store }))
+                    }
+                    Err(e) => warn!("k8s watch stream error: {}", e),
+                })
+                .take_while(|x| std::future::ready(x.is_ok()))
+                .map(Result::unwrap),
+            swap_intent,
+        ))
     }
 
     fn handle_pod(
         reader: &reflector::Store<Pod>,
-        event: WatcherEvent<Pod>,
+        event: &WatcherEvent<Pod>,
     ) -> Result<(), K8sError> {
         match event {
             WatcherEvent::Applied(pod) => {
-                let obj_ref = ObjectRef::from_obj(&pod);
+                let obj_ref = ObjectRef::from_obj(pod);
                 if reader.get(&obj_ref).is_none() {
                     Metrics::k8s().increment_creates();
-                    log_watcher_pod(LogEvent::New, &pod)
+                    log_watcher_pod(LogEvent::New, pod)
                 } else {
-                    log_watcher_pod(LogEvent::Update, &pod)
+                    log_watcher_pod(LogEvent::Update, pod)
                 }
             }
             WatcherEvent::Deleted(pod) => {
                 Metrics::k8s().increment_deletes();
-                log_watcher_pod(LogEvent::Delete, &pod)
+                log_watcher_pod(LogEvent::Delete, pod)
             }
             WatcherEvent::Restarted(pods) => {
                 trace!("registering all pods...");
                 for pod in pods {
                     Metrics::k8s().increment_creates();
-                    log_watcher_pod(LogEvent::New, &pod)
+                    log_watcher_pod(LogEvent::New, pod)
                 }
             }
         }
@@ -148,38 +166,40 @@ impl Middleware for K8sMetadata {
             if let Some(parse_result) = parse_container_path(file_name) {
                 let obj_ref =
                     ObjectRef::new(&parse_result.pod_name).within(&parse_result.pod_namespace);
-                if let Some(pod) = self.store.get(&obj_ref) {
-                    let meta_object =
-                        extract_image_name_and_tag(parse_result.container_name, pod.as_ref());
-                    if meta_object.is_some() && line.set_meta(json!(meta_object)).is_err() {
-                        trace!("Unable to set meta object{:?}", meta_object);
-                        return Status::Skip;
-                    }
-
-                    if let Some(ref annotations) = pod.metadata.annotations {
-                        if line
-                            .set_annotations(
-                                annotations
-                                    .iter()
-                                    .fold(KeyValueMap::new(), |acc, (k, v)| acc.add(k, v)),
-                            )
-                            .is_err()
-                        {
+                if let Some(ref store) = *self.store.lock().unwrap() {
+                    if let Some(pod) = store.get(&obj_ref) {
+                        let meta_object =
+                            extract_image_name_and_tag(parse_result.container_name, pod.as_ref());
+                        if meta_object.is_some() && line.set_meta(json!(meta_object)).is_err() {
+                            trace!("Unable to set meta object{:?}", meta_object);
                             return Status::Skip;
-                        };
-                    }
+                        }
 
-                    if let Some(ref labels) = pod.metadata.labels {
-                        if line
-                            .set_labels(
-                                labels
-                                    .iter()
-                                    .fold(KeyValueMap::new(), |acc, (k, v)| acc.add(k, v)),
-                            )
-                            .is_err()
-                        {
-                            return Status::Skip;
-                        };
+                        if let Some(ref annotations) = pod.metadata.annotations {
+                            if line
+                                .set_annotations(
+                                    annotations
+                                        .iter()
+                                        .fold(KeyValueMap::new(), |acc, (k, v)| acc.add(k, v)),
+                                )
+                                .is_err()
+                            {
+                                return Status::Skip;
+                            };
+                        }
+
+                        if let Some(ref labels) = pod.metadata.labels {
+                            if line
+                                .set_labels(
+                                    labels
+                                        .iter()
+                                        .fold(KeyValueMap::new(), |acc, (k, v)| acc.add(k, v)),
+                                )
+                                .is_err()
+                            {
+                                return Status::Skip;
+                            };
+                        }
                     }
                 }
             }
@@ -407,7 +427,7 @@ mod tests {
             store_w.apply_watcher_event(&WatcherEvent::Applied(pod));
         }
         K8sMetadata {
-            store: store_w.as_reader(),
+            store: Mutex::new(Some(store_w.as_reader())),
         }
     }
 

@@ -22,7 +22,7 @@ use k8s::event_source::K8sEventStream;
 use k8s::lease::{get_available_lease, K8S_STARTUP_LEASE_LABEL, K8S_STARTUP_LEASE_RETRY_ATTEMPTS};
 
 use k8s::create_k8s_client_default_from_env;
-use k8s::middleware::K8sMetadata;
+use k8s::middleware::metadata_runner;
 use kube::Client as Kube_Client;
 use metrics::Metrics;
 use middleware::k8s_line_rules::K8sLineFilter;
@@ -151,21 +151,7 @@ pub async fn _main(
                     && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
                 {
                     let node_name = std::env::var("NODE_NAME").ok();
-                    match K8sMetadata::new(k8s_client.clone(), node_name.as_deref()).await {
-                        Ok((driver, v)) => {
-                            tokio::spawn(driver);
-                            executor.register(v);
-                            info!("Registered k8s metadata middleware");
-                        }
-                        Err(e) => {
-                            let message = format!(
-                                "The agent could not access k8s api after several attempts: {}",
-                                e
-                            );
-                            error!("{}", message);
-                            panic!("{}", message);
-                        }
-                    };
+                    metadata_runner(user_agent, node_name, &mut executor);
                 }
 
                 let pod_name = std::env::var("POD_NAME").ok();
