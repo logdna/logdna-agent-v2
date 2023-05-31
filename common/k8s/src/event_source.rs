@@ -298,25 +298,27 @@ impl K8sEventStream {
                         .map({
                             move |e| match e {
                                 Ok(watcher::Event::Deleted(e)) => {
-                                    info!("Agent Down {}", e.name());
+                                    if let Some(name) = e.metadata.name {
+                                        info!("Agent Down {}", name);
 
-                                    futures::executor::block_on(check_for_leader(
-                                        leader_meta.clone(),
-                                        e.name(),
-                                    ));
+                                        futures::executor::block_on(check_for_leader(
+                                            leader_meta.clone(),
+                                            name,
+                                        ));
 
-                                    delete_time.store(
-                                        e.metadata
-                                            .deletion_timestamp
-                                            .map(|t| {
-                                                info!(
-                                                    "Ignoring k8s events before {}",
-                                                    t.0 - chrono::Duration::seconds(2)
-                                                );
-                                                NonZeroI64::new(t.0.timestamp() - 2)
-                                            })
-                                            .flatten(),
-                                    );
+                                        delete_time.store(
+                                            e.metadata
+                                                .deletion_timestamp
+                                                .map(|t| {
+                                                    info!(
+                                                        "Ignoring k8s events before {}",
+                                                        t.0 - chrono::Duration::seconds(2)
+                                                    );
+                                                    NonZeroI64::new(t.0.timestamp() - 2)
+                                                })
+                                                .flatten(),
+                                        );
+                                    }
                                     Cont::Break
                                 }
                                 _ => Cont::Cont,

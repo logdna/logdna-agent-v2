@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use http::types::body::LineBufferMut;
-use std::thread::spawn;
+use std::{ops::Deref, thread::spawn};
 
 pub mod k8s_line_rules;
 pub mod line_rules;
@@ -17,6 +17,46 @@ pub trait Middleware: Send + Sync + 'static {
     fn process<'a>(&self, lines: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut>;
 }
 
+impl<T, U> Middleware for T
+where
+    T: Deref<Target = U> + Send + Sync + 'static,
+    U: Middleware,
+{
+    fn run(&self) {
+        self.deref().run()
+    }
+
+    fn process<'a>(&self, lines: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
+        self.deref().process(lines)
+    }
+}
+
+pub struct ArcMiddleware<T>(Arc<T>);
+
+impl<T> ArcMiddleware<T> {
+    fn into_inner(self) -> Arc<T> {
+        self.0
+    }
+}
+
+impl<T> From<Arc<T>> for ArcMiddleware<T>
+where
+    T: Middleware,
+{
+    fn from(middleware: Arc<T>) -> ArcMiddleware<T> {
+        Self(middleware)
+    }
+}
+
+impl<T> From<T> for ArcMiddleware<T>
+where
+    T: Middleware,
+{
+    fn from(middleware: T) -> ArcMiddleware<T> {
+        Self(Arc::new(middleware))
+    }
+}
+
 #[derive(Default)]
 pub struct Executor {
     middlewares: Vec<Arc<dyn Middleware>>,
@@ -30,7 +70,8 @@ impl Executor {
     }
 
     pub fn register<T: Middleware>(&mut self, middleware: T) {
-        self.middlewares.push(Arc::new(middleware))
+        self.middlewares
+            .push(ArcMiddleware::from(middleware).into_inner())
     }
 
     pub fn init(&self) {

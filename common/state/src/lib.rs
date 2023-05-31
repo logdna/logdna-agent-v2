@@ -8,7 +8,7 @@ pub use offsets::{Offset, OffsetMap};
 pub use span::{Span, SpanError, SpanVec};
 
 #[cfg(feature = "state")]
-pub use state::{AgentState, StateError};
+pub use crate::state::{AgentState, StateError};
 
 use async_channel::SendError;
 use futures::channel::oneshot;

@@ -27,7 +27,6 @@ fn create_k8s_client(
     user_agent: hyper::http::header::HeaderValue,
     config: Config,
 ) -> Result<Client, kube::Error> {
-    let timeout = config.timeout;
     let default_ns = config.default_namespace.clone();
 
     let client: hyper::Client<_, Body> = {
@@ -40,8 +39,8 @@ fn create_k8s_client(
         ));
 
         let mut connector = TimeoutConnector::new(connector);
-        connector.set_connect_timeout(timeout);
-        connector.set_read_timeout(timeout);
+        connector.set_connect_timeout(config.connect_timeout);
+        connector.set_read_timeout(config.read_timeout);
 
         hyper::Client::builder().build(connector)
     };
@@ -76,7 +75,8 @@ pub fn create_k8s_client_default_from_env(
         return Err(K8sError::K8sNotInClusterError());
     }
 
-    let config = Config::from_cluster_env()?;
+    let config = Config::incluster_dns()?;
+
     Ok(create_k8s_client(user_agent, config)?)
 }
 
