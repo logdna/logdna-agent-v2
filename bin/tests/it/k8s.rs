@@ -11,7 +11,7 @@ use k8s_openapi::api::coordination::v1::Lease;
 use k8s_openapi::api::core::v1::{Endpoints, Namespace, Pod, Service, ServiceAccount};
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBinding};
 use kube::api::{Api, ListParams, LogParams, PostParams, WatchEvent};
-use kube::{Client, ResourceExt};
+use kube::Client;
 use tracing::{debug, info};
 
 use test_log::test;
@@ -28,7 +28,7 @@ async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
             async move {
                 let mut logs = pods
                     .log_stream(
-                        &p.name(),
+                        &p.metadata.name.clone().unwrap(),
                         &LogParams {
                             follow: true,
                             tail_lines: None,
@@ -39,11 +39,11 @@ async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
                     .unwrap()
                     .boxed();
 
-                debug!("Logging agent pod {}", p.name());
+                debug!("Logging agent pod {:?}", p.metadata.name);
                 while let Some(line) = logs.next().await {
                     debug!(
                         "LOG [{:?}] {:?}",
-                        p.name(),
+                        p.metadata.name,
                         String::from_utf8_lossy(&line.unwrap())
                     );
                 }

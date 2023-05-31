@@ -17,6 +17,41 @@ pub trait Middleware: Send + Sync + 'static {
     fn process<'a>(&self, lines: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut>;
 }
 
+pub enum MixedMiddleware<T: Middleware> {
+    DirectMiddleware(T),
+    ArcMiddleware(Arc<T>),
+}
+
+impl<T> MixedMiddleware<T>
+where
+    T: Middleware,
+{
+    fn take(self) -> Arc<T> {
+        match self {
+            MixedMiddleware::DirectMiddleware(middleware) => Arc::new(middleware),
+            MixedMiddleware::ArcMiddleware(middleware) => middleware,
+        }
+    }
+}
+
+impl<T> From<Arc<T>> for MixedMiddleware<T>
+where
+    T: Middleware,
+{
+    fn from(middleware: Arc<T>) -> MixedMiddleware<T> {
+        MixedMiddleware::ArcMiddleware(middleware)
+    }
+}
+
+impl<T> From<T> for MixedMiddleware<T>
+where
+    T: Middleware,
+{
+    fn from(middleware: T) -> MixedMiddleware<T> {
+        MixedMiddleware::DirectMiddleware(middleware)
+    }
+}
+
 #[derive(Default)]
 pub struct Executor {
     middlewares: Vec<Arc<dyn Middleware>>,
@@ -29,8 +64,8 @@ impl Executor {
         }
     }
 
-    pub fn register<T: Middleware>(&mut self, middleware: T) {
-        self.middlewares.push(Arc::new(middleware))
+    pub fn register<T: Into<MixedMiddleware<Z>>, Z: Middleware>(&mut self, mixed_middleware: T) {
+        self.middlewares.push(mixed_middleware.into().take())
     }
 
     pub fn init(&self) {
