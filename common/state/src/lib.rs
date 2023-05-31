@@ -481,6 +481,8 @@ fn handle_file_offset_flush(
                 }
             }
         };
+        // Batch has been processed, remove it from the slotmap
+        pending.remove(key);
     };
     (Some(wb), (state, pending, span_buf, bytes_buf))
 }
