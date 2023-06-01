@@ -6,7 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.5.4
+    app.kubernetes.io/version: 3.5.5
 ---
 apiVersion: v1
 kind: ServiceAccount
@@ -16,7 +16,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.5.4
+    app.kubernetes.io/version: 3.5.5
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -26,7 +26,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.5.4
+    app.kubernetes.io/version: 3.5.5
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
@@ -40,7 +40,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.5.4
+    app.kubernetes.io/version: 3.5.5
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -57,7 +57,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.5.4
+    app.kubernetes.io/version: 3.5.5
 rules:
   - apiGroups: [""]
     resources: ["events"]
@@ -73,7 +73,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.5.4
+    app.kubernetes.io/version: 3.5.5
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -91,7 +91,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.5.4
+    app.kubernetes.io/version: 3.5.5
 spec:
   updateStrategy:
     type: RollingUpdate
@@ -106,12 +106,12 @@ spec:
         app: logdna-agent
         app.kubernetes.io/name: logdna-agent
         app.kubernetes.io/instance: logdna-agent
-        app.kubernetes.io/version: 3.5.4
+        app.kubernetes.io/version: 3.5.5
     spec:
       serviceAccountName: logdna-agent
       containers:
         - name: logdna-agent
-          image: logdna/logdna-agent:3.5.4
+          image: logdna/logdna-agent:3.5.5
           imagePullPolicy: Always
           env:
             - name: LOGDNA_INGESTION_KEY
