@@ -29,6 +29,7 @@ pin-project-lite = "0.2"
 glob = "0.3"
 walkdir = "2"
 regex = "1"
+path_abs = "0.5"
 
 #logging
 lazy_static = "1"
