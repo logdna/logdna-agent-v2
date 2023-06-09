@@ -599,15 +599,20 @@ impl FileSystem {
                                     Ok(_) => Some((e, event_time)),
                                     Err(e) => {
                                         match e {
-                                            Error::File(_) | Error::DirectoryListNotValid(_, _) => {
-                                                retry_event_sender
-                                                    .send((
-                                                        event.unwrap(),
-                                                        event_time,
-                                                        retries.unwrap_or(0),
-                                                    ))
-                                                    .await
-                                                    .unwrap();
+                                            Error::File(io_err)
+                                            | Error::DirectoryListNotValid(io_err, _) => {
+                                                if io_err.kind() == io::ErrorKind::NotFound {
+                                                    {}
+                                                } else {
+                                                    retry_event_sender
+                                                        .send((
+                                                            event.unwrap(),
+                                                            event_time,
+                                                            retries.unwrap_or(0),
+                                                        ))
+                                                        .await
+                                                        .unwrap();
+                                                }
                                             }
                                             _ => {}
                                         }
