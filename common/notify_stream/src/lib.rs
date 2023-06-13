@@ -219,8 +219,8 @@ impl Watcher {
                     // something we didn't expect happened, log and move on
                     ((from_path, to_path), kind) => {
                         warn!(
-                            "unexpected event, kind: {:?}, from_path: {:?}, to_path: {:?}",
-                            kind, from_path, to_path
+                            "unexpected event, kind: {:?}, from_path: {:?}, to_path: {:?}, attrs: {:?}",
+                            kind, from_path, to_path, attrs
                         );
                         None
                     }
