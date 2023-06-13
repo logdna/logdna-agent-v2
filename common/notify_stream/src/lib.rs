@@ -6,7 +6,7 @@ use notify::{Config, ErrorKind, EventKind, Watcher as NotifyWatcher};
 use std::path::Path;
 use std::rc::Rc;
 use time::OffsetDateTime;
-use tracing::{debug, info, instrument, trace};
+use tracing::{info, instrument, trace, warn};
 
 type PathId = std::path::PathBuf;
 
@@ -163,63 +163,69 @@ impl Watcher {
                     .expect("channel closed unexpectedly")
                     .unwrap();
                 trace!("received raw notify event: {:?}", received);
-                if let Some(mapped_event) = match received.kind {
-                    EventKind::Remove(RemoveKind::File) => {
-                        Some(Event::Remove(received.paths.first().unwrap().clone()))
+                let notify::Event { kind, paths, attrs } = received;
+                let mut paths = paths.into_iter();
+                if let Some(mapped_event) = match ((paths.next(), paths.last()), kind) {
+                    // looks like something removed a file
+                    (
+                        (Some(from_path), None),
+                        EventKind::Remove(
+                            RemoveKind::File
+                            | RemoveKind::Folder
+                            | RemoveKind::Other
+                            | RemoveKind::Any,
+                        ),
+                    ) => Some(Event::Remove(from_path)),
+                    // looks like something created a file
+                    (
+                        (Some(from_path), None),
+                        EventKind::Create(
+                            CreateKind::File
+                            | CreateKind::Folder
+                            | CreateKind::Other
+                            | CreateKind::Any,
+                        )
+                        | EventKind::Modify(ModifyKind::Name(RenameMode::To)),
+                    ) => Some(Event::Create(from_path)),
+                    // looks like something modified the contents of the file
+                    (
+                        (Some(from_path), None),
+                        EventKind::Modify(
+                            ModifyKind::Data(DataChange::Any | DataChange::Content)
+                            | ModifyKind::Other
+                            | ModifyKind::Any,
+                        ),
+                    ) => Some(Event::Write(from_path)), // looks like a rename
+                    (
+                        (Some(from_path), Some(to_path)),
+                        EventKind::Modify(ModifyKind::Name(RenameMode::Both)),
+                    ) => Some(Event::Rename(from_path, to_path)),
+                    // looks like something moved a file but we don't know where to
+                    // if we know where it was moved from we can treat it as a delete
+                    // if we don't even know that we need to rescan
+                    (
+                        (from_path, None),
+                        kind @ EventKind::Modify(ModifyKind::Name(RenameMode::From)),
+                    ) => {
+                        from_path
+                            .map(Event::Remove)
+                            .or_else(|| {
+                                warn!("raw notify event with None path Event {{ kind: {:?}, attrs: {:?} }}", kind, attrs);
+                                Some(Event::Rescan) // trigger FS rescan
+                            })
                     }
-                    EventKind::Remove(RemoveKind::Folder) => {
-                        Some(Event::Remove(received.paths.first().unwrap().clone()))
+                    // looks like the file metadata was modified by the contents weren't changed
+                    (_, EventKind::Modify(ModifyKind::Metadata(_)) | EventKind::Access(_)) => None,
+                    // something we didn't expect happened, log and move on
+                    ((from_path, to_path), kind) => {
+                        warn!(
+                            "unexpected event, kind: {:?}, from_path: {:?}, to_path: {:?}, attrs: {:?}",
+                            kind, from_path, to_path, attrs
+                        );
+                        None
                     }
-                    EventKind::Remove(RemoveKind::Other) => {
-                        Some(Event::Remove(received.paths.first().unwrap().clone()))
-                    }
-                    EventKind::Remove(RemoveKind::Any) => {
-                        Some(Event::Remove(received.paths.first().unwrap().clone()))
-                    }
-                    EventKind::Create(CreateKind::File) => {
-                        Some(Event::Create(received.paths.first().unwrap().clone()))
-                    }
-                    EventKind::Create(CreateKind::Folder) => {
-                        Some(Event::Create(received.paths.first().unwrap().clone()))
-                    }
-                    EventKind::Create(CreateKind::Other) => {
-                        Some(Event::Create(received.paths.first().unwrap().clone()))
-                    }
-                    EventKind::Create(CreateKind::Any) => {
-                        Some(Event::Create(received.paths.first().unwrap().clone()))
-                    }
-                    EventKind::Modify(ModifyKind::Data(DataChange::Any)) => {
-                        Some(Event::Write(received.paths.first().unwrap().clone()))
-                    }
-                    EventKind::Modify(ModifyKind::Data(DataChange::Content)) => {
-                        Some(Event::Write(received.paths.first().unwrap().clone()))
-                    }
-                    EventKind::Modify(ModifyKind::Name(RenameMode::From)) => received
-                        .paths
-                        .first()
-                        .map(|path| Event::Remove(path.clone()))
-                        .or_else(|| {
-                            debug!("raw notify event with None path: {:?}", received);
-                            Some(Event::Rescan) // trigger FS rescan
-                        }),
-                    EventKind::Modify(ModifyKind::Name(RenameMode::To)) => {
-                        Some(Event::Create(received.paths.first().unwrap().clone()))
-                    }
-                    EventKind::Modify(ModifyKind::Name(RenameMode::Both)) => Some(Event::Rename(
-                        received.paths.first().unwrap().clone(),
-                        received.paths.last().unwrap().clone(),
-                    )),
-                    EventKind::Modify(ModifyKind::Other) => {
-                        Some(Event::Write(received.paths.first().unwrap().clone()))
-                    }
-                    EventKind::Modify(ModifyKind::Any) => {
-                        Some(Event::Write(received.paths.first().unwrap().clone()))
-                    }
-                    EventKind::Modify(ModifyKind::Metadata(_)) => None,
-                    EventKind::Access(_) => None,
-                    _ => None,
                 } {
-                    trace!("mapped event: {:?}\n", mapped_event);
+                    trace!("mapped event: {:?}", mapped_event);
                     return Some(((mapped_event, OffsetDateTime::now_utc()), rx));
                 }
             }

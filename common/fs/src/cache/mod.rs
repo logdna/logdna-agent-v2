@@ -500,9 +500,8 @@ impl FileSystem {
             watcher.receive()
         };
 
-        let mfs = fs.clone(); // clone fs for missing files
         let (missing_dirs, missing_dir_watcher, missing_dir_event_stream, retry_event_sender) = {
-            let mut _mfs = mfs.try_lock().expect("could not lock filesystem cache");
+            let mut _mfs = fs.try_lock().expect("could not lock filesystem cache");
 
             let missing_dirs = _mfs.missing_dirs.clone();
             let missing_dir_watcher = _mfs.missing_dir_watcher.take().unwrap_or_else(Watcher::new);
@@ -599,15 +598,20 @@ impl FileSystem {
                                     Ok(_) => Some((e, event_time)),
                                     Err(e) => {
                                         match e {
-                                            Error::File(_) | Error::DirectoryListNotValid(_, _) => {
-                                                retry_event_sender
-                                                    .send((
-                                                        event.unwrap(),
-                                                        event_time,
-                                                        retries.unwrap_or(0),
-                                                    ))
-                                                    .await
-                                                    .unwrap();
+                                            Error::File(io_err)
+                                            | Error::DirectoryListNotValid(io_err, _) => {
+                                                if io_err.kind() == io::ErrorKind::NotFound {
+                                                    {}
+                                                } else {
+                                                    retry_event_sender
+                                                        .send((
+                                                            event.unwrap(),
+                                                            event_time,
+                                                            retries.unwrap_or(0),
+                                                        ))
+                                                        .await
+                                                        .unwrap();
+                                                }
                                             }
                                             _ => {}
                                         }
