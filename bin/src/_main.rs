@@ -609,7 +609,7 @@ pub async fn _main(
                             Ok(s) => handle_send_status(s),
                             Err(e) => handle_client_error(e, shutdown_tx).await,
                         },
-                        Err(e) => error!("Couldn't batch lines {:?}", e),
+                        Err(e) => error!("Couldn't batch lines in lines_driver: {:?}", e),
                     }
                 })
                 .await
@@ -648,7 +648,7 @@ pub async fn _main(
                                     Err(e) => handle_client_error(e, shutdown_tx).await,
                                 }
                             }
-                            Err(e) => error!("Couldn't batch lines {:?}", e),
+                            Err(e) => error!("Couldn't batch lines in retry_stream: {:?}", e),
                         }
                     }
                 })
