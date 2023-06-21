@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use http::types::body::LineBufferMut;
+use std::ops::Deref;
 use std::thread::spawn;
 
 pub mod k8s_line_rules;
@@ -17,38 +18,44 @@ pub trait Middleware: Send + Sync + 'static {
     fn process<'a>(&self, lines: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut>;
 }
 
-pub enum MixedMiddleware<T: Middleware> {
-    DirectMiddleware(T),
-    ArcMiddleware(Arc<T>),
-}
-
-impl<T> MixedMiddleware<T>
+impl<T, U> Middleware for T
 where
-    T: Middleware,
+    T: Deref<Target = U> + Send + Sync + 'static,
+    U: Middleware,
 {
-    fn take(self) -> Arc<T> {
-        match self {
-            MixedMiddleware::DirectMiddleware(middleware) => Arc::new(middleware),
-            MixedMiddleware::ArcMiddleware(middleware) => middleware,
-        }
+    fn run(&self) {
+        self.deref().run()
+    }
+
+    fn process<'a>(&self, lines: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
+        self.deref().process(lines)
     }
 }
 
-impl<T> From<Arc<T>> for MixedMiddleware<T>
-where
-    T: Middleware,
-{
-    fn from(middleware: Arc<T>) -> MixedMiddleware<T> {
-        MixedMiddleware::ArcMiddleware(middleware)
+// Newtype wrapper so we can impl
+pub struct ArcMiddleware<T>(Arc<T>);
+
+impl<T> ArcMiddleware<T> {
+    fn into_inner(self) -> Arc<T> {
+        self.0
     }
 }
 
-impl<T> From<T> for MixedMiddleware<T>
+impl<T> From<Arc<T>> for ArcMiddleware<T>
 where
     T: Middleware,
 {
-    fn from(middleware: T) -> MixedMiddleware<T> {
-        MixedMiddleware::DirectMiddleware(middleware)
+    fn from(middleware: Arc<T>) -> ArcMiddleware<T> {
+        Self(middleware)
+    }
+}
+
+impl<T> From<T> for ArcMiddleware<T>
+where
+    T: Middleware,
+{
+    fn from(middleware: T) -> ArcMiddleware<T> {
+        Self(Arc::new(middleware))
     }
 }
 
@@ -64,8 +71,9 @@ impl Executor {
         }
     }
 
-    pub fn register<T: Into<MixedMiddleware<Z>>, Z: Middleware>(&mut self, mixed_middleware: T) {
-        self.middlewares.push(mixed_middleware.into().take())
+    pub fn register<T: Middleware>(&mut self, middleware: T) {
+        self.middlewares
+            .push(ArcMiddleware::from(middleware).into_inner())
     }
 
     pub fn init(&self) {
