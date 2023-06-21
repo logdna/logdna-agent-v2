@@ -10,7 +10,7 @@ integration_tests = []
 [dependencies]
 #local
 metrics = { package = "metrics", path = "../metrics" }
-state = { package = "state", path = "../state" }
+state = { package = "state", path = "../state", default-features=false }
 
 #http
 logdna-client = { git = "https://github.com/logdna/logdna-rust.git", branch="0.7.x", version = "0.7.2" }
