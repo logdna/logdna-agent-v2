@@ -8,7 +8,7 @@ edition = "2018"
 #local
 http = { package = "http", path = "../http" }
 metrics = { package = "metrics", path = "../metrics" }
-state = { package = "state", path = "../state" }
+state = { package = "state", path = "../state", default-features=false }
 notify_stream = { package = "notify_stream", path = "../notify_stream" }
 
 #error
