@@ -603,6 +603,11 @@ pub async fn _main(
                                     Err(e) => handle_client_error(e, shutdown_tx).await,
                                 }
                             }
+                            Err(http::retry::Error::Io(e))
+                                if e.kind() == std::io::ErrorKind::NotFound =>
+                            {
+                                debug!("Couldn't batch lines in retry_stream: ignoring - {:?}", e)
+                            }
                             Err(e) => error!("Couldn't batch lines in retry_stream: {:?}", e),
                         }
                     }
