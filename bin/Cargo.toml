@@ -53,9 +53,6 @@ auditable = { version = "0.1", optional = true }
 miniz_oxide = "0.5"
 rand = "0.8.5"
 
-[target.'cfg(any(unix, macos))'.dependencies]
-capctl = "0.2"
-
 [target.'cfg(any(windows))'.dependencies]
 winservice = { git = "https://github.com/dkhokhlov/winservice.git" }
 flexi_logger = { version = "0.22", features = ["async"] }
@@ -63,6 +60,7 @@ flexi_logger = { version = "0.22", features = ["async"] }
 # Dependency for linux integration tests
 [target.'cfg(target_os="linux")'.dependencies]
 systemd = { package = "systemd", version = "0.10", optional = true}
+capctl = "0.2"
 
 [target.'cfg(unix)'.dependencies]
 tikv-jemallocator  = { version = "0.5", default-features = false, features = ["stats"], optional = true }
