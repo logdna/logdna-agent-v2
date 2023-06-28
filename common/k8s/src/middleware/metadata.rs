@@ -246,13 +246,9 @@ impl K8sMetadata {
             (deletion_state.clone(), deletion_ack_recv),
             move |(deletion_state, deletion_ack_recv)| async move {
                 let next_event = loop {
-                    if let Ok(Some((deleted_container, deleted_container_pod))) = deletion_ack_recv
+                    let (deleted_container, deleted_container_pod) = match deletion_ack_recv
                         .recv()
                         .await
-                        .map_err(|e| {
-                            warn!("unable to receive delete events: {}", e);
-                            e
-                        })
                         .map(|deleted_container_paths| {
                             deleted_container_paths
                                 .into_iter()
@@ -270,39 +266,42 @@ impl K8sMetadata {
                                         <&ParseResult as Into<PodIdent>>::into(&parse_result),
                                     )
                                 })
-                        })
-                    {
-                        let mut lock_guard = deletion_state.lock().await;
-                        let DeletionState {
-                            ref mut pod_lookup,
-                            ref mut pending_deletions,
-                        } = lock_guard.deref_mut();
-                        if let std::collections::hash_map::Entry::Occupied(pod_containers_entry) =
-                            pod_lookup
-                                .entry(deleted_container_pod.clone())
-                                .and_modify(|pod| {
-                                    pod.containers.retain(|container| {
-                                        container.name != deleted_container.name
-                                    });
-                                })
-                        {
-                            let pod_containers = pod_containers_entry.get();
-                            break match Ok(pod_containers
-                                .containers
-                                .is_empty()
-                                .then(|| pending_deletions.remove(&deleted_container_pod))
-                                .flatten())
-                            .transpose()
-                            {
-                                Some(event) => {
-                                    pod_containers_entry.remove();
-                                    Some(event)
-                                }
-                                _ => continue,
-                            };
-                        } else {
-                            continue;
+                        }) {
+                        Ok(Some(tuple)) => tuple,
+                        Err(e) => {
+                            error!("unable to receive delete events: {}", e);
+                            return None;
                         }
+                        _ => continue,
+                    };
+
+                    let mut lock_guard = deletion_state.lock().await;
+                    let DeletionState {
+                        ref mut pod_lookup,
+                        ref mut pending_deletions,
+                    } = lock_guard.deref_mut();
+                    if let std::collections::hash_map::Entry::Occupied(pod_containers_entry) =
+                        pod_lookup
+                            .entry(deleted_container_pod.clone())
+                            .and_modify(|pod| {
+                                pod.containers
+                                    .retain(|container| container.name != deleted_container.name);
+                            })
+                    {
+                        let pod_containers = pod_containers_entry.get();
+                        break match Ok(pod_containers
+                            .containers
+                            .is_empty()
+                            .then(|| pending_deletions.remove(&deleted_container_pod))
+                            .flatten())
+                        .transpose()
+                        {
+                            Some(event) => {
+                                pod_containers_entry.remove();
+                                Some(event)
+                            }
+                            _ => continue,
+                        };
                     } else {
                         continue;
                     }
