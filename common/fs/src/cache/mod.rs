@@ -700,10 +700,7 @@ impl FileSystem {
                 }
                 Error::File(err) => {
                     warn!("Processing notify event resulted in error: {}", e);
-                    if err
-                        .to_string()
-                        .starts_with("Too many open files (os error 24)")
-                    {
+                    if err.to_string().contains("(os error 24)") {
                         error!(
                             "Agent process has hit the upper limit of files it's allowed to open"
                         );
