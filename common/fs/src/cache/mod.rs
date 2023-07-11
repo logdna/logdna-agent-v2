@@ -1028,10 +1028,26 @@ impl FileSystem {
 
                 for dir_entry in contents.flatten() {
                     if let Err(e) = self.insert(&dir_entry.path(), events, _entries) {
-                        info!(
-                            "error found when inserting child entry for {:?}: {}",
-                            path, e
+                        match e {
+                            Error::File(err) => {
+                                warn!(
+                                    "error found when inserting child entry for {:?}: {}",
+                                    path, err
+                                );
+                                if err.to_string().contains("(os error 24)") {
+                                    error!(
+                            "Agent process has hit the upper limit of files it's allowed to open"
                         );
+                                    std::process::exit(24);
+                                }
+                            }
+                            _ => {
+                                info!(
+                                    "error found when inserting child entry for {:?}: {}",
+                                    path, e
+                                );
+                            }
+                        }
                     }
                 }
                 new_key
