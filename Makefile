@@ -507,8 +507,10 @@ publish-s3-binary:
 	elif [ "$(MACOS)" != "" ]; then \
 		aws s3 cp --acl public-read arm/arm-target/release/logdna-agent s3://logdna-agent-build-bin/${TARGET_TAG}/arm64/logdna-agent; \
         aws s3 cp --acl public-read x86/x86-target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${TARGET_TAG}/x86_64-apple-darwin/logdna-agent; \
+        aws s3 cp --acl public-read x86/x86-target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${TARGET_TAG}/x86_64-apple-darwin.build$(BUILD_NUMBER)/logdna-agent; \
 	else \
 	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET).build$(BUILD_NUMBER)/logdna-agent; \
 	fi;
 
 define PUBLISH_SIGNED_RULE
