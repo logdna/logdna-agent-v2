@@ -1906,9 +1906,9 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.142"
+version = "0.2.147"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a987beff54b60ffa6d51982e1aa1146bc42f19bd26be28b0586f252fccf5317"
+checksum = "b4668fb0ea861c1df094127ac5f1da3409a82116a4ba74fca2e58ef927159bb3"
 
 [[package]]
 name = "libloading"
@@ -2055,6 +2055,7 @@ dependencies = [
  "rand",
  "rcgen",
  "regex",
+ "rlimit",
  "rustls",
  "rustls-pemfile 0.2.1",
  "serde",
@@ -3173,6 +3174,15 @@ dependencies = [
  "untrusted",
  "web-sys",
  "winapi",
+]
+
+[[package]]
+name = "rlimit"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b5b8be0bc0ef630d24f8fa836b3a3463479b2343b29f9a8fa905c71a8c7b69b"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

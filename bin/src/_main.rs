@@ -640,7 +640,18 @@ pub async fn _main(
                             {
                                 debug!("Couldn't batch lines in retry_stream: ignoring - {:?}", e)
                             }
-                            Err(e) => error!("Couldn't batch lines in retry_stream: {:?}", e),
+                            Err(e) => {
+                                error!("Couldn't batch lines in retry_stream: {:?}", e);
+                                if e.to_string().contains("Too many open files")
+                                    || e.to_string().contains("No file descriptors available")
+                                {
+                                    error!(
+                            "Agent process has hit the limit of maximum number of open files. \
+                            Try to increase the open file limit."
+                                    );
+                                    std::process::exit(24);
+                                }
+                            }
                         }
                     }
                 })
