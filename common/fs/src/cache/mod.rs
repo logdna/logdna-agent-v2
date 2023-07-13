@@ -702,7 +702,8 @@ impl FileSystem {
                     warn!("Processing notify event resulted in error: {}", e);
                     if err.to_string().contains("(os error 24)") {
                         error!(
-                            "Agent process has hit the upper limit of files it's allowed to open"
+                            "Agent process has hit the limit of maximum number of open files. \
+                            Try to increase the Open Files system limit."
                         );
                         std::process::exit(24);
                     }
