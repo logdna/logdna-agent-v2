@@ -55,6 +55,8 @@ rand = "0.8.5"
 shell-words = "1.0"
 async-channel = "1.8"
 
+rlimit = "0.10"
+
 [target.'cfg(any(windows))'.dependencies]
 winservice = { git = "https://github.com/dkhokhlov/winservice.git" }
 flexi_logger = { version = "0.22", features = ["async"] }

@@ -2013,6 +2013,7 @@ dependencies = [
  "rand",
  "rcgen",
  "regex",
+ "rlimit",
  "rustls",
  "rustls-pemfile 0.2.1",
  "serde",
@@ -3087,6 +3088,15 @@ dependencies = [
  "untrusted",
  "web-sys",
  "winapi",
+]
+
+[[package]]
+name = "rlimit"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b5b8be0bc0ef630d24f8fa836b3a3463479b2343b29f9a8fa905c71a8c7b69b"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

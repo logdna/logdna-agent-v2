@@ -64,6 +64,14 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        info!(
+            "Open Files limits in the system: {:?}",
+            rlimit::getrlimit(rlimit::Resource::NOFILE).unwrap()
+        );
+    }
+
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
     let shutdown_tx = Arc::new(Mutex::new(Some(shutdown_tx)));
 
