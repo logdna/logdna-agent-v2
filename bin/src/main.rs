@@ -69,7 +69,7 @@ fn main() -> anyhow::Result<()> {
     #[cfg(any(target_os = "macos", target_os = "linux"))]
     {
         info!(
-            "Open Files limits: {:?}",
+            "Open Files limits in the system: {:?}",
             rlimit::getrlimit(rlimit::Resource::NOFILE).unwrap()
         );
     }
