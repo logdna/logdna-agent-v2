@@ -45,7 +45,7 @@ pub struct LazyLineSerializer {
     path: Option<String>,
     line_buffer: Option<Bytes>,
 
-    file_offset: (u64, u64, u64),
+    file_offset: Option<(u64, u64, u64)>,
 
     reader: Arc<Mutex<TailedFileInner>>,
 }
@@ -192,7 +192,11 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
 }
 
 impl LazyLineSerializer {
-    pub fn new(reader: Arc<Mutex<TailedFileInner>>, path: String, offset: (u64, u64, u64)) -> Self {
+    pub fn new(
+        reader: Arc<Mutex<TailedFileInner>>,
+        path: String,
+        offset: Option<(u64, u64, u64)>,
+    ) -> Self {
         Self {
             reader,
             path: Some(path),
@@ -320,10 +324,11 @@ impl LineBufferMut for LazyLineSerializer {
 
 impl GetOffset for LazyLineSerializer {
     fn get_offset(&self) -> Option<(u64, u64)> {
-        Some((self.file_offset.1, self.file_offset.2))
+        self.file_offset
+            .map(|file_offset| (file_offset.1, file_offset.2))
     }
     fn get_key(&self) -> Option<u64> {
-        Some(self.file_offset.0)
+        self.file_offset.map(|file_offset| file_offset.0)
     }
 }
 
@@ -709,11 +714,20 @@ impl TailedFile<LazyLineSerializer> {
                                     Metrics::fs().increment_lines();
                                     Metrics::fs().add_bytes(count);
                                     *offset += count;
+                                    if paths.len() > 1 {
+                                        info!("sending lines for visible paths {:?}", &paths);
+                                    }
                                     let ret = (0..paths.len()).map({
                                         let paths = paths.clone();
+                                        let paths_len = paths.len();
                                         let rc_reader = rc_reader.clone();
                                         let current_offset = (*inode, initial_offset, *offset);
                                         move |path_idx| {
+                                            let current_offset =
+                                                // Can potentially cause log loss if path tracked more than once.
+                                                // Logs will be sent at at least one of the paths,
+                                                // but may be missing from secondary paths
+                                                (path_idx + 1 == paths_len).then_some(current_offset);
                                             LazyLineSerializer::new(
                                                 rc_reader.clone(),
                                                 paths[path_idx].clone(),
@@ -852,6 +866,6 @@ mod tests {
             inode: 0,
             path: file_path,
         }));
-        LazyLineSerializer::new(file_inner, "file/path.log".to_owned(), (0, 0, 0))
+        LazyLineSerializer::new(file_inner, "file/path.log".to_owned(), Some((0, 0, 0)))
     }
 }
