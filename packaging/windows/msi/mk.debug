@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
 set -eu
 function finish {
-  rm -f "$SRC_ROOT/$BUILD_DIR/$CERT_FILE_NAME" "$SRC_ROOT/$BUILD_DIR/$CERT_FILE_NAME.pwd"
+  rm -f "$SRC_ROOT/$BUILD_DIR/cert"
 }
 trap finish EXIT
 # shellcheck disable=SC1091
 source ./mk_env
 echo build version "$BUILD_VERSION_FULL"
-echo fetching cert
-aws s3 cp "s3://ecosys-vault/$CERT_FILE_NAME" "$SRC_ROOT/$BUILD_DIR"
-aws s3 cp "s3://ecosys-vault/$CERT_FILE_NAME.pwd" "$SRC_ROOT/$BUILD_DIR"
+echo fetching cert files ...
+mkdir -p "$SRC_ROOT/$BUILD_DIR/cert"
+aws s3 cp "s3://ecosys-vault/$CERT_FILE_NAME" "$SRC_ROOT/$BUILD_DIR/cert"
+aws s3 cp "s3://ecosys-vault/$CERT_FILE_NAME.pwd" "$SRC_ROOT/$BUILD_DIR/cert"
+echo making msi ...
 ./mk_msi.debug
 echo
 echo @@@@@@  SUCCESS  @@@@@@

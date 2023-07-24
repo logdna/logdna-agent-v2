@@ -533,21 +533,22 @@ $(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_SIGNED_RULE,$(_type))))
 
 define MSI_RULE
 .PHONY: msi-$(1)
-msi-$(1): ## create signed exe(s) and msi in $(BUILD_DIR)/signed
+msi-$(1): ## create signed exe and msi files in $(BUILD_DIR)/signed
 	$(eval BUILD_DIR := ${TARGET_DIR}/$(TARGET)/$(1))
 	$(eval SRC_ROOT := $(CURDIR))
-	$(eval CERT_FILE_NAME := "mezmo_cert_$(1).pfx")
 	bash -c " \
 	set -eu; \
-	trap \"rm -f '$(BUILD_DIR)/$(CERT_FILE_NAME)' '$(BUILD_DIR)/$(CERT_FILE_NAME).pwd'\" EXIT; \
-	aws s3 cp s3://ecosys-vault/$(CERT_FILE_NAME) '$(BUILD_DIR)'; \
+	trap \"rm -rf '$(BUILD_DIR)/cert'\" EXIT; \
 	if [ "$(1)" == "release" ]; then \
-	  printenv -0 CSC_PASS > '$(BUILD_DIR)/$(CERT_FILE_NAME).pwd'; \
+	  aws s3 cp s3://ecosys-vault/mezmo_cert_release.p12 '$(BUILD_DIR)/cert'; \
+	  aws s3 cp s3://ecosys-vault/mezmo_cert_release.pem '$(BUILD_DIR)/cert'; \
+	  aws s3 cp s3://ecosys-vault/mezmo_cert_release.env '$(BUILD_DIR)/cert'; \
 	else \
-	  aws s3 cp s3://ecosys-vault/$(CERT_FILE_NAME).pwd '$(BUILD_DIR)'; \
+	  aws s3 cp s3://ecosys-vault/mezmo_cert_debug.pfx '$(BUILD_DIR)/cert'; \
+	  aws s3 cp s3://ecosys-vault/mezmo_cert_debug.pfx.pwd '$(BUILD_DIR)/cert'; \
 	fi; \
 	$(TOOLS_COMMAND) '--env BUILD_DIR=$(BUILD_DIR) --env SRC_ROOT=/build \
-	                  --env CERT_FILE_NAME=$(CERT_FILE_NAME) --env BUILD_VERSION=$(BUILD_VERSION) \
+	                  --env BUILD_VERSION=$(BUILD_VERSION) \
 	                  --env BUILD_NUMBER=$(BUILD_NUMBER) --env TARGET=$(TARGET)' \
 	                  'cd /build/packaging/windows/msi && source ./mk_env.$(1) && ./mk_msi.$(1)'; \
 	"
@@ -563,7 +564,7 @@ test-msi-$(1): ## test msi created in $(BUILD_DIR)/signed
 	bash -c " \
 	set -eu; \
 	$(TOOLS_COMMAND) '--env BUILD_DIR=$(BUILD_DIR) --env SRC_ROOT=/build \
-	                  --env CERT_FILE_NAME=$(CERT_FILE_NAME) --env BUILD_VERSION=$(BUILD_VERSION) \
+	                  --env BUILD_VERSION=$(BUILD_VERSION) \
 	                  --env BUILD_NUMBER=$(BUILD_NUMBER) --env TARGET=$(TARGET)' \
 	                  'cd /build/packaging/windows/msi && source ./mk_env.$(1) && ./mk_test'; \
 	"
