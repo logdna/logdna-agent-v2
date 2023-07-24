@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -eu
+#
+# Sign exe files
+#
+mkdir -p "$SRC_ROOT/$BUILD_DIR/signed"
+CERT_FILE="$SRC_ROOT/$BUILD_DIR/$CERT_FILE_NAME"
+echo signing exe files
+osslsigncode sign \
+    -pkcs12 "$CERT_FILE" \
+    -readpass "$CERT_FILE.pwd" \
+    -n "Mezmo Agent" \
+    -h sha2 \
+    -i "https://www.mezmo.com" \
+    -t http://timestamp.comodoca.com/authenticode \
+    -in "$SRC_ROOT/$BUILD_DIR/logdna-agent-svc.exe" \
+    -out "$SRC_ROOT/$BUILD_DIR/signed/logdna-agent-svc.exe"
+osslsigncode sign \
+    -pkcs12 "$CERT_FILE" \
+    -readpass "$CERT_FILE.pwd" \
+    -n "Mezmo Agent" \
+    -h sha2 \
+    -i "https://www.mezmo.com" \
+    -t http://timestamp.comodoca.com/authenticode \
+    -in "$SRC_ROOT/$BUILD_DIR/logdna-agent.exe" \
+    -out "$SRC_ROOT/$BUILD_DIR/signed/logdna-agent.exe"
+
+# fetch prebuilt signed Winevt Tailer
+WINEVT_TAILER_VERSION=0.3.4
+wget -t 5 -O "$SRC_ROOT/$BUILD_DIR/signed/winevt-tailer.exe" "https://github.com/logdna/winevt-tailer/releases/download/$WINEVT_TAILER_VERSION/winevt-tailer.exe"
+#
+# Create msi
+#
+export AGENT_VERSION=${BUILD_VERSION_FULL}
+export AGENT_EXE_DIR="$SRC_ROOT/$BUILD_DIR/signed"
+export AGENT_SRC_ROOT="$SRC_ROOT"
+wixl -v --ext ui ./mezmo-agent.wxs -a x64 -o "$SRC_ROOT/$BUILD_DIR/mezmo-agent.msi"
+#
+# Sign msi
+#
+echo signing msi file
+osslsigncode sign \
+    -add-msi-dse \
+    -pkcs12 "$CERT_FILE" \
+    -readpass "$CERT_FILE.pwd" \
+    -n "Mezmo Agent" \
+    -h sha2 \
+    -i "https://www.mezmo.com" \
+    -t http://timestamp.comodoca.com/authenticode \
+    -in "$SRC_ROOT/$BUILD_DIR/mezmo-agent.msi" \
+    -out "$SRC_ROOT/$BUILD_DIR/signed/mezmo-agent.msi"
+echo
+echo package stored to "$BUILD_DIR/signed/mezmo-agent.msi"
+echo

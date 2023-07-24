@@ -549,7 +549,7 @@ msi-$(1): ## create signed exe(s) and msi in $(BUILD_DIR)/signed
 	$(TOOLS_COMMAND) '--env BUILD_DIR=$(BUILD_DIR) --env SRC_ROOT=/build \
 	                  --env CERT_FILE_NAME=$(CERT_FILE_NAME) --env BUILD_VERSION=$(BUILD_VERSION) \
 	                  --env BUILD_NUMBER=$(BUILD_NUMBER) --env TARGET=$(TARGET)' \
-	                  'cd /build/packaging/windows/msi && . ./mk_env && ./mk_msi'; \
+	                  'cd /build/packaging/windows/msi && source ./mk_env.$(1) && ./mk_msi.$(1)'; \
 	"
 endef
 BUILD_TYPES=debug release
@@ -565,7 +565,7 @@ test-msi-$(1): ## test msi created in $(BUILD_DIR)/signed
 	$(TOOLS_COMMAND) '--env BUILD_DIR=$(BUILD_DIR) --env SRC_ROOT=/build \
 	                  --env CERT_FILE_NAME=$(CERT_FILE_NAME) --env BUILD_VERSION=$(BUILD_VERSION) \
 	                  --env BUILD_NUMBER=$(BUILD_NUMBER) --env TARGET=$(TARGET)' \
-	                  'cd /build/packaging/windows/msi && . ./mk_env && ./mk_test'; \
+	                  'cd /build/packaging/windows/msi && source ./mk_env.$(1) && ./mk_test'; \
 	"
 endef
 BUILD_TYPES=debug release

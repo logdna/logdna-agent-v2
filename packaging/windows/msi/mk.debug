@@ -10,7 +10,7 @@ echo build version "$BUILD_VERSION_FULL"
 echo fetching cert
 aws s3 cp "s3://ecosys-vault/$CERT_FILE_NAME" "$SRC_ROOT/$BUILD_DIR"
 aws s3 cp "s3://ecosys-vault/$CERT_FILE_NAME.pwd" "$SRC_ROOT/$BUILD_DIR"
-./mk_msi
+./mk_msi.debug
 echo
 echo @@@@@@  SUCCESS  @@@@@@
 echo
