@@ -24,7 +24,7 @@ use async_compression::tokio::write::GzipEncoder;
 use async_compression::Level;
 use tokio::fs::{metadata, read_dir, remove_file, rename, File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt, BufReader, BufWriter};
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use uuid::Uuid;
 
@@ -99,39 +99,51 @@ impl Retry {
     }
 
     async fn fill_waiting(&self) -> Result<(), Error> {
-        let mut files = read_dir(&self.directory).await?;
-        while let Some(file) = files.next_entry().await? {
-            let path = file.path();
-            if path.is_dir() {
-                continue;
+        match read_dir(&self.directory).await {
+            Err(e) => {
+                // bad retry_dir is fatal error
+                error!("Error: {:?}", e);
+                error!(
+                    "Invalid Retry Directory: '{:?}'. Check configuration!",
+                    self.directory
+                );
+                std::process::exit(e.raw_os_error().unwrap_or(255));
             }
+            Ok(mut files) => {
+                while let Some(file) = files.next_entry().await? {
+                    let path = file.path();
+                    if path.is_dir() {
+                        continue;
+                    }
 
-            if path.extension() == Some(std::ffi::OsStr::new("retry")) {
-                let file_name = path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .map(|s| s.to_string())
-                    .ok_or_else(|| Error::NonUtf8(path.clone()))?;
+                    if path.extension() == Some(std::ffi::OsStr::new("retry")) {
+                        let file_name = path
+                            .file_name()
+                            .and_then(|s| s.to_str())
+                            .map(|s| s.to_string())
+                            .ok_or_else(|| Error::NonUtf8(path.clone()))?;
 
-                let timestamp: i64 = file_name
-                    .split('_')
-                    .map(|s| s.to_string())
-                    .collect::<Vec<String>>()
-                    .get(0)
-                    .and_then(|s| FromStr::from_str(s).ok())
-                    .ok_or_else(|| Error::InvalidFileName(file_name.clone()))?;
+                        let timestamp: i64 = file_name
+                            .split('_')
+                            .map(|s| s.to_string())
+                            .collect::<Vec<String>>()
+                            .get(0)
+                            .and_then(|s| FromStr::from_str(s).ok())
+                            .ok_or_else(|| Error::InvalidFileName(file_name.clone()))?;
 
-                if OffsetDateTime::now_utc().unix_timestamp() - timestamp
-                    < self.retry_base_delay_secs
-                {
-                    continue;
+                        if OffsetDateTime::now_utc().unix_timestamp() - timestamp
+                            < self.retry_base_delay_secs
+                        {
+                            continue;
+                        }
+                        Metrics::retry().inc_pending();
+                        self.waiting.push(path);
+                    }
                 }
-                Metrics::retry().inc_pending();
-                self.waiting.push(path);
+
+                Ok(())
             }
         }
-
-        Ok(())
     }
 
     async fn read_from_disk(&self, path: &Path) -> Result<(Option<OffsetMap>, IngestBody), Error> {
