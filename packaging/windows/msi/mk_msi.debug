@@ -4,7 +4,7 @@ set -eu
 # Sign exe files
 #
 mkdir -p "$SRC_ROOT/$BUILD_DIR/signed"
-CERT_FILE="$SRC_ROOT/$BUILD_DIR/$CERT_FILE_NAME"
+CERT_FILE="$SRC_ROOT/$BUILD_DIR/cert/$CERT_FILE_NAME"
 echo signing exe files
 osslsigncode sign \
     -pkcs12 "$CERT_FILE" \

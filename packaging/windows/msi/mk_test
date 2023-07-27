@@ -19,7 +19,8 @@ version=$(DISPLAY= WINEDEBUG=-all wine64 "$SRC_ROOT/$BUILD_DIR/signed/logdna-age
 [ "$version" == "$BUILD_VERSION" ] || (echo "Failed: Unexpected agent version!"; exit 1)
 # check exe is signed by Digicert
 osslsigncode extract-signature -in "$SRC_ROOT/$BUILD_DIR/signed/logdna-agent.exe" -out "$SRC_ROOT/$BUILD_DIR/signed/logdna-agent.pkcs7"
-(strings "$SRC_ROOT/$BUILD_DIR/signed/logdna-agent.pkcs7" | grep "DigiCert Inc") || (echo "Failed: Executable not signed with DigiCert!"; exit 1)
+(strings "$SRC_ROOT/$BUILD_DIR/signed/logdna-agent.pkcs7" | grep "DigiCert, Inc.") || (echo "Failed: Executable not signed by DigiCert!"; exit 1)
+(strings "$SRC_ROOT/$BUILD_DIR/signed/logdna-agent.pkcs7" | grep "Mezmo, Inc.") || (echo "Failed: Executable not signed by Mezmo!"; exit 1)
 echo
 echo @@@@@@  SUCCESS  @@@@@@
 echo

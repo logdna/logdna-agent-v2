@@ -504,13 +504,15 @@ publish-s3-binary:
 	if [ "$(WINDOWS)" != "" ]; then \
 	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent-svc.exe; \
 	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent.exe; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/build$(BUILD_NUMBER)/$(TARGET)/logdna-agent-svc.exe; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/build$(BUILD_NUMBER)/$(TARGET)/logdna-agent.exe; \
 	elif [ "$(MACOS)" != "" ]; then \
-		aws s3 cp --acl public-read arm/arm-target/release/logdna-agent s3://logdna-agent-build-bin/${TARGET_TAG}/arm64/logdna-agent; \
-        aws s3 cp --acl public-read x86/x86-target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${TARGET_TAG}/x86_64-apple-darwin/logdna-agent; \
-        aws s3 cp --acl public-read x86/x86-target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${TARGET_TAG}/x86_64-apple-darwin.build$(BUILD_NUMBER)/logdna-agent; \
+	    aws s3 cp --acl public-read arm/arm-target/release/logdna-agent s3://logdna-agent-build-bin/${TARGET_TAG}/arm64/logdna-agent; \
+	    aws s3 cp --acl public-read x86/x86-target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${TARGET_TAG}/x86_64-apple-darwin/logdna-agent; \
+	    aws s3 cp --acl public-read x86/x86-target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${TARGET_TAG}/build$(BUILD_NUMBER)/x86_64-apple-darwin/logdna-agent; \
 	else \
 	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent; \
-	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET).build$(BUILD_NUMBER)/logdna-agent; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/build$(BUILD_NUMBER)/$(TARGET)/logdna-agent; \
 	fi;
 
 define PUBLISH_SIGNED_RULE
@@ -533,23 +535,26 @@ $(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_SIGNED_RULE,$(_type))))
 
 define MSI_RULE
 .PHONY: msi-$(1)
-msi-$(1): ## create signed exe(s) and msi in $(BUILD_DIR)/signed
+msi-$(1): ## create signed exe and msi files in $(BUILD_DIR)/signed
 	$(eval BUILD_DIR := ${TARGET_DIR}/$(TARGET)/$(1))
 	$(eval SRC_ROOT := $(CURDIR))
-	$(eval CERT_FILE_NAME := "mezmo_cert_$(1).pfx")
 	bash -c " \
 	set -eu; \
-	trap \"rm -f '$(BUILD_DIR)/$(CERT_FILE_NAME)' '$(BUILD_DIR)/$(CERT_FILE_NAME).pwd'\" EXIT; \
-	aws s3 cp s3://ecosys-vault/$(CERT_FILE_NAME) '$(BUILD_DIR)'; \
+	trap \"rm -rf '$(BUILD_DIR)/cert'\" EXIT; \
+	mkdir -p '$(BUILD_DIR)/cert'; \
 	if [ "$(1)" == "release" ]; then \
-	  printenv -0 CSC_PASS > '$(BUILD_DIR)/$(CERT_FILE_NAME).pwd'; \
+	  aws s3 cp s3://ecosys-vault/mezmo_cert_release.p12 '$(BUILD_DIR)/cert'; \
+	  aws s3 cp s3://ecosys-vault/mezmo_cert_release.pem '$(BUILD_DIR)/cert'; \
+	  aws s3 cp s3://ecosys-vault/mezmo_cert_release.env '$(BUILD_DIR)/cert'; \
+	  aws s3 cp s3://ecosys-vault/x86_64-linux-gnu/smpkcs11.so '$(BUILD_DIR)/cert'; \
 	else \
-	  aws s3 cp s3://ecosys-vault/$(CERT_FILE_NAME).pwd '$(BUILD_DIR)'; \
+	  aws s3 cp s3://ecosys-vault/mezmo_cert_debug.pfx '$(BUILD_DIR)/cert'; \
+	  aws s3 cp s3://ecosys-vault/mezmo_cert_debug.pfx.pwd '$(BUILD_DIR)/cert'; \
 	fi; \
 	$(TOOLS_COMMAND) '--env BUILD_DIR=$(BUILD_DIR) --env SRC_ROOT=/build \
-	                  --env CERT_FILE_NAME=$(CERT_FILE_NAME) --env BUILD_VERSION=$(BUILD_VERSION) \
+	                  --env BUILD_VERSION=$(BUILD_VERSION) \
 	                  --env BUILD_NUMBER=$(BUILD_NUMBER) --env TARGET=$(TARGET)' \
-	                  'cd /build/packaging/windows/msi && . ./mk_env && ./mk_msi'; \
+	                  'cd /build/packaging/windows/msi && . ./mk_env && ./mk_msi.$(1)'; \
 	"
 endef
 BUILD_TYPES=debug release
@@ -563,7 +568,7 @@ test-msi-$(1): ## test msi created in $(BUILD_DIR)/signed
 	bash -c " \
 	set -eu; \
 	$(TOOLS_COMMAND) '--env BUILD_DIR=$(BUILD_DIR) --env SRC_ROOT=/build \
-	                  --env CERT_FILE_NAME=$(CERT_FILE_NAME) --env BUILD_VERSION=$(BUILD_VERSION) \
+	                  --env BUILD_VERSION=$(BUILD_VERSION) \
 	                  --env BUILD_NUMBER=$(BUILD_NUMBER) --env TARGET=$(TARGET)' \
 	                  'cd /build/packaging/windows/msi && . ./mk_env && ./mk_test'; \
 	"
