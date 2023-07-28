@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 use std::path::Path;
 
-use glob::{Pattern, PatternError};
+use glob::{MatchOptions, Pattern, PatternError};
 use os_str_bytes::OsStrBytes;
 use pcre2::{bytes::Regex, Error as RegexError};
 
@@ -40,7 +40,14 @@ impl Rule for RuleDef {
             Self::RegexRule(re) => re
                 .is_match(&value.as_os_str().to_raw_bytes())
                 .unwrap_or(false),
-            Self::GlobRule(p) => p.matches(&value.to_string_lossy()),
+            Self::GlobRule(p) => {
+                let opts = MatchOptions {
+                    case_sensitive: true,
+                    require_literal_separator: true,
+                    ..Default::default()
+                };
+                p.matches_with(&value.to_string_lossy(), opts)
+            }
         }
     }
 }
