@@ -500,11 +500,11 @@ publish-s3-binary:
 	if [ "$(WINDOWS)" != "" ]; then \
 	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent-svc.exe; \
 	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent.exe; \
-	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/build$(BUILD_NUMBER)/$(TARGET)/logdna-agent-svc.exe; \
-	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/build$(BUILD_NUMBER)/$(TARGET)/logdna-agent.exe; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(REMOTE_BRANCH)/$(BUILD_NUMBER)/$(TARGET)/logdna-agent-svc.exe; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(REMOTE_BRANCH)/$(BUILD_NUMBER)/$(TARGET)/logdna-agent.exe; \
 	else \
 	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent; \
-	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/build$(BUILD_NUMBER)/$(TARGET)/logdna-agent; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(REMOTE_BRANCH)/$(BUILD_NUMBER)/$(TARGET)/logdna-agent; \
 	fi;
 
 define PUBLISH_SIGNED_RULE
