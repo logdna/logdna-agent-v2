@@ -102,6 +102,7 @@ WINDOWS?=
 
 NO_DEFAULT_FEATURES?=
 
+ROCKSDB_VERSION=8.3.2
 
 ifneq ($(WINDOWS),)
 	FEATURES?=windows_service
@@ -115,10 +116,11 @@ ifneq ($(WINDOWS),)
 else ifeq ($(STATIC), 1)
 	FEATURES?=
 	ARCH_TRIPLE=$(ARCH)-linux-musl
+	TARGET=$(ARCH)-unknown-linux-musl
 	RUSTFLAGS:=-C link-self-contained=yes -Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc -L /usr/local/$(ARCH)-linux-musl/lib/ -l static=stdc++ $(RUSTFLAGS)
 	BINDGEN_EXTRA_CLANG_ARGS:=-I /usr/local/$(ARCH)-linux-musl/include
-	TARGET=$(ARCH)-unknown-linux-musl
-	BUILD_ENVS:=$(BUILD_ENVS) ROCKSDB_LIB_DIR=/usr/local/rocksdb/$(ARCH)-linux-musl/lib ROCKSDB_INCLUDE_DIR=/usr/local/rocksdb/$(ARCH)-linux-musl/include ROCKSDB_STATIC=1 JEMALLOC_SYS_WITH_LG_PAGE=16
+	SYSROOT_USR_DIR=/sysroot/$(ARCH)-musl/usr/$(TARGET)/
+	BUILD_ENVS:=$(BUILD_ENVS) ROCKSDB_LIB_DIR=$(SYSROOT_USR_DIR)/lib/rocksdb-$(ROCKSDB_VERSION)/ ROCKSDB_INCLUDE_DIR=$(SYSROOT_USR_DIR)/include/rocksdb-$(ROCKSDB_VERSION)/ ROCKSDB_STATIC=1 JEMALLOC_SYS_WITH_LG_PAGE=16
 else ifneq ($(MAKECMDGOALS),bench)
 	FEATURES?=libjournald
 	RUSTFLAGS:=
