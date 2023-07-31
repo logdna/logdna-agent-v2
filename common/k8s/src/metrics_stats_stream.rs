@@ -370,9 +370,7 @@ fn process_pods(
                 &translated_pod,
             );
 
-            if let Some(..) = extended_pod_stat {
-                let extended_pod_stat = extended_pod_stat.unwrap();
-
+            if let Some(extended_pod_stat) = extended_pod_stat {
                 let node_container_stat = node_container_counts_map
                     .entry(node.to_string())
                     .or_insert_with(NodeContainerStats::new);
@@ -413,9 +411,7 @@ fn process_pods(
                 &translated_pod,
             );
 
-            if let Some(..) = extended_pod_stat {
-                let extended_pod_stat = extended_pod_stat.unwrap();
-
+            if let Some(extended_pod_stat) = extended_pod_stat {
                 let node_container_stat = node_container_counts_map
                     .entry(node.to_string())
                     .or_insert_with(NodeContainerStats::new);

@@ -12,8 +12,8 @@ use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::api::ListParams;
 use kube::{
     core::PartialObjectMeta,
-    runtime::{watcher, metadata_watcher, WatchStreamExt},
-    Api, Client,ResourceExt,
+    runtime::{metadata_watcher, watcher, WatchStreamExt},
+    Api, Client, ResourceExt,
 };
 use metrics::Metrics;
 use pin_utils::pin_mut;
@@ -292,7 +292,10 @@ impl K8sEventStream {
                         .labels(&format!("app.kubernetes.io/name={}", &pod_label));
                     let stream = metadata_watcher(pods.clone(), params)
                         .skip_while(|e| {
-                            let matched = matches!(e, Ok(watcher::Event::<PartialObjectMeta<Pod>>::Restarted(_)));
+                            let matched = matches!(
+                                e,
+                                Ok(watcher::Event::<PartialObjectMeta<Pod>>::Restarted(_))
+                            );
                             async move { matched }
                         })
                         .map({
