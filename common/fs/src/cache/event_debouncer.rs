@@ -201,10 +201,17 @@ where
                         pq.insert_event(event, ts.unix_timestamp())
                     }
                 }
-
-                if let Some((event, ts)) = pq.pop() {
+                let mut events: smallvec::SmallVec<[_; 10]> = smallvec::smallvec![];
+                while events.len() < 10 {
+                    if let Some((event, ts)) = pq.pop() {
+                        events.push((event, EventTimestamp::from_unix_timestamp(ts).unwrap()));
+                    } else {
+                        break;
+                    }
+                }
+                if !events.is_empty() {
                     return Some((
-                        (event, EventTimestamp::from_unix_timestamp(ts).unwrap()),
+                        stream::iter(events),
                         (pq, notify_events_st, resume_events_st),
                     ));
                 }
@@ -216,6 +223,7 @@ where
             }
         },
     )
+    .flatten()
 }
 
 #[cfg(test)]

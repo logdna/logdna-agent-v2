@@ -1437,7 +1437,7 @@ async fn test_k8s_enrichment() {
             format!("{}-instance", socat_pod_name)
         );
         let values = &pod_file_info.values;
-        assert!(values.len() == 5);
+        assert!(values.len() == 5, "{:#?}", values);
         for (left, right) in values.iter().zip(messages.iter()) {
             assert!(left.ends_with(right));
         }
