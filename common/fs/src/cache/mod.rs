@@ -33,9 +33,11 @@ pub mod delayed_stream;
 pub mod dir_path;
 pub mod entry;
 pub mod event;
+mod event_debouncer;
 pub mod tailed_file;
 
 pub use dir_path::{DirPathBuf, DirPathBufError};
+pub use event_debouncer::debounce_fs_events;
 
 type Children = HashMap<OsString, EntryKey>;
 type Symlinks = HashMap<PathBuf, Vec<EntryKey>>;
@@ -492,7 +494,7 @@ impl FileSystem {
     pub fn stream_events(
         fs: Rc<RefCell<FileSystem>>,
     ) -> Result<impl Stream<Item = (Result<Event, Error>, EventTimestamp)>, std::io::Error> {
-        let events_stream = fs.borrow().watcher.receive();
+        let notify_events_stream = fs.borrow().watcher.receive();
 
         let (missing_dirs, missing_dir_watcher, missing_dir_event_stream, retry_event_sender) = {
             let mut _mfs = fs.borrow_mut();
@@ -566,7 +568,7 @@ impl FileSystem {
 
         use futures::future::Either;
         let resume_events = get_resume_events(&fs);
-        let events = futures::stream::select(events_stream, resume_events).map(Either::Left);
+        let events = futures::stream::select(notify_events_stream, resume_events).map(Either::Left);
 
         let retry_events = get_retry_events(
             &fs,
