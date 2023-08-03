@@ -39,7 +39,6 @@ mod event_debouncer;
 pub mod tailed_file;
 
 pub use dir_path::{DirPathBuf, DirPathBufError};
-pub use event_debouncer::debounce_fs_events;
 
 type Children = HashMap<OsString, EntryKey>;
 type Symlinks = HashMap<PathBuf, Vec<EntryKey>>;
@@ -586,8 +585,11 @@ impl FileSystem {
         .flatten();
 
         use futures::future::Either;
-        let resume_events = get_resume_events(&fs);
-        let events = futures::stream::select(notify_events_stream, resume_events).map(Either::Left);
+
+        let resume_events = Box::pin(get_resume_events(&fs));
+
+        let events = event_debouncer::debounce_fs_events(notify_events_stream, resume_events)
+            .map(Either::Left);
 
         let retry_events = get_retry_events(
             &fs,
@@ -2743,7 +2745,7 @@ mod tests {
         let events = take_events!(fs);
         assert_eq!(
             events.len(),
-            2, // version 5 of notify-rs throws 2 write events
+            1, // v5 of notify-rs throws 2 write events debounced to 1
             "events: {:#?}",
             events
                 .into_iter()
@@ -2761,11 +2763,11 @@ mod tests {
 
         writeln!(file2, "hello")?;
         let events = take_events!(fs);
-        assert_eq!(events.len(), 2, "events: {:#?}", events);
+        assert_eq!(events.len(), 1, "events: {:#?}", events);
 
         writeln!(file3, "hello")?;
         let events = take_events!(fs);
-        assert_eq!(events.len(), 2, "events: {:#?}", events);
+        assert_eq!(events.len(), 1, "events: {:#?}", events);
 
         drop(file1);
         drop(file2);
