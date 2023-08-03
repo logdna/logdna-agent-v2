@@ -35,9 +35,11 @@ mod delayed_stream;
 pub mod dir_path;
 pub mod entry;
 pub mod event;
+mod event_debouncer;
 pub mod tailed_file;
 
 pub use dir_path::{DirPathBuf, DirPathBufError};
+pub use event_debouncer::debounce_fs_events;
 
 type Children = HashMap<OsString, EntryKey>;
 type Symlinks = HashMap<PathBuf, Vec<EntryKey>>;
@@ -505,7 +507,7 @@ impl FileSystem {
     pub fn stream_events(
         fs: Arc<Mutex<FileSystem>>,
     ) -> Result<impl Stream<Item = (Result<Event, Error>, EventTimestamp)>, std::io::Error> {
-        let events_stream = {
+        let notify_events_stream = {
             let watcher = &fs
                 .try_lock()
                 .expect("could not lock filesystem cache")
@@ -585,7 +587,7 @@ impl FileSystem {
 
         use futures::future::Either;
         let resume_events = get_resume_events(&fs);
-        let events = futures::stream::select(events_stream, resume_events).map(Either::Left);
+        let events = futures::stream::select(notify_events_stream, resume_events).map(Either::Left);
 
         let retry_events = get_retry_events(
             &fs,
