@@ -1156,15 +1156,17 @@ async fn test_tags() {
     let mut agent_handle = common::spawn_agent(settings);
 
     let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
-    common::wait_for_event("Enabling filesystem", &mut agent_stderr);
+    common::wait_for_file_event("initialize", &file_path, &mut agent_stderr);
 
     consume_output(agent_stderr.into_inner());
 
     let (server_result, _) = tokio::join!(server, async {
         let total_lines: usize = 10;
-        common::append_to_file(&file_path, total_lines as i32, 5).unwrap();
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        common::append_to_file(&file_path, total_lines as i32, 1).unwrap();
         common::force_client_to_flush(&dir).await;
 
+        tokio::time::sleep(Duration::from_millis(500)).await;
         let mut file_info = FileInfo::default();
         let map_key = file_path.to_str().unwrap();
 
@@ -1176,14 +1178,14 @@ async fn test_tags() {
 
             if file_info.lines < total_lines {
                 // Wait for the data to be received by the mock ingester
-                tokio::time::sleep(Duration::from_millis(200)).await;
+                tokio::time::sleep(Duration::from_millis(500)).await;
                 continue;
             }
 
             break;
         }
 
-        assert_eq!(file_info.lines, total_lines);
+        assert_eq!(file_info.lines, total_lines, "{:#?}", file_info);
         assert_eq!(
             file_info.values,
             vec![common::LINE.to_owned() + "\n"; total_lines]
