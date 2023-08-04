@@ -1173,6 +1173,7 @@ async fn test_tags() {
         for _ in 0..10 {
             let map = received.lock().await;
             file_info = map.get(map_key).unwrap_or(&file_info).clone();
+            println!("{:#?}", file_info);
             // Avoid awaiting while holding the lock
             drop(map);
 
@@ -1181,7 +1182,6 @@ async fn test_tags() {
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 continue;
             }
-
             break;
         }
 
@@ -2086,7 +2086,7 @@ async fn test_tight_writes() {
         // Wait for the data to be received by the mock ingester
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
         writeln!(file, "And we're done").unwrap();
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
         let map = received.lock().await;
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();

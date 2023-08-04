@@ -9,10 +9,13 @@ use futures::{stream::try_unfold, Stream, StreamExt, TryStreamExt};
 use http::types::body::LineBuilder;
 use k8s_openapi::api::core::v1::{Event, ObjectReference, Pod};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
-use kube::api::ListParams;
 use kube::{
     core::PartialObjectMeta,
-    runtime::{metadata_watcher, watcher, WatchStreamExt},
+    runtime::{
+        metadata_watcher,
+        watcher::{self, watcher, Config as WatcherConfig},
+        WatchStreamExt,
+    },
     Api, Client, ResourceExt,
 };
 use metrics::Metrics;
@@ -287,10 +290,11 @@ impl K8sEventStream {
                     start_renewal_task(leader_meta.leader.clone());
                     Ok(None)
                 } else {
-                    let params = ListParams::default()
+                    let wc = WatcherConfig::default()
                         .timeout(30)
+                        .any_semantic()
                         .labels(&format!("app.kubernetes.io/name={}", &pod_label));
-                    let stream = metadata_watcher(pods.clone(), params)
+                    let stream = metadata_watcher(pods.clone(), wc)
                         .skip_while(|e| {
                             let matched = matches!(
                                 e,
@@ -360,10 +364,10 @@ impl K8sEventStream {
         previous_event_logger_delete_time: Arc<AtomicCell<Option<NonZeroI64>>>,
     ) -> impl Stream<Item = Result<StreamElem<LineBuilder>, K8sEventStreamError>> {
         let events: Api<Event> = Api::all(client.as_ref().clone());
-        let params = ListParams::default();
+        let wc = WatcherConfig::default().timeout(60).any_semantic();
 
         let latest_event_time_w = latest_event_time.clone();
-        watcher(events, params)
+        watcher(events, wc)
             .touched_objects()
             .map_err(K8sEventStreamError::WatcherError)
             .filter({
