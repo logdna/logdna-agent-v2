@@ -18,13 +18,13 @@ use futures::{
 };
 use http::types::body::{KeyValueMap, LineBufferMut};
 use k8s_openapi::api::core::v1::{Container, Pod, PodSpec};
+
 use kube::{
-    api::ListParams,
     runtime::{
         reflector,
         reflector::ObjectRef,
         utils::StreamBackoff,
-        watcher::{watcher, Event as WatcherEvent},
+        watcher::{watcher, Config as WatcherConfig, Event as WatcherEvent},
     },
     Api, Client, ResourceExt,
 };
@@ -231,13 +231,15 @@ impl K8sMetadata {
         let store_writer = reflector::store::Writer::default();
         let store = store_writer.as_reader();
 
-        let params = if let Some(node) = node_name {
-            ListParams::default().fields(&format!("spec.nodeName={}", node))
+        let wc = WatcherConfig::default().timeout(30).any_semantic();
+
+        let wc = if let Some(node) = node_name {
+            wc.fields(&format!("spec.nodeName={}", node))
         } else {
-            ListParams::default()
+            wc
         };
 
-        let watcher = watcher(api, params).map_ok(|ev| {
+        let watcher = watcher(api, wc).map_ok(|ev| {
             ev.modify(|pod| {
                 pod.managed_fields_mut().clear();
                 pod.status = None;
