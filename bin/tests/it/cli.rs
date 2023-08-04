@@ -1181,7 +1181,6 @@ async fn test_tags() {
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 continue;
             }
-
             break;
         }
 

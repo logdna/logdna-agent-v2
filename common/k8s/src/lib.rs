@@ -22,6 +22,8 @@ pub mod metrics_stats_stream;
 pub mod middleware;
 pub mod restarting_stream;
 
+const K8S_WATCHER_TIMEOUT: u32 = 30;
+
 /// Manually create the k8s http client so that we can add a user-agent header
 fn create_k8s_client(
     user_agent: hyper::http::header::HeaderValue,
