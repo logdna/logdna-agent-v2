@@ -2353,3 +2353,53 @@ fn test_offset_stream_state_gc() {
 
     agent_handle.kill().expect("Could not kill process");
 }
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn test_fs_rescan_on_initial_log_dir_delete() {
+    let base_dir = tempdir().expect("Could not create temp dir").into_path();
+
+    let dir_path = base_dir.join("initial_log_dir");
+    std::fs::create_dir(dir_path.clone()).expect("Unable to create dir");
+    let dir_path_str = dir_path.to_str().unwrap();
+
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(dir_path_str));
+    let mut reader = BufReader::new(agent_handle.stderr.take().unwrap());
+
+    common::wait_for_event("Enabling filesystem", &mut reader);
+
+    Command::new("rmdir")
+        .arg(dir_path)
+        .spawn()
+        .expect("Could not remove directory");
+
+    common::wait_for_event("rescanning stream", &mut reader);
+
+    common::assert_agent_running(&mut agent_handle);
+
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn test_fs_rescan_on_initial_log_dir_create() {
+    let base_dir = tempdir().expect("Could not create temp dir").into_path();
+
+    let dir_path = base_dir.join("initial_log_dir");
+    let dir_path_str = dir_path.to_str().unwrap();
+
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(dir_path_str));
+    let mut reader = BufReader::new(agent_handle.stderr.take().unwrap());
+
+    common::wait_for_event("Enabling filesystem", &mut reader);
+
+    std::fs::create_dir(dir_path.clone()).expect("Unable to create dir");
+
+    common::wait_for_event("rescanning stream", &mut reader);
+
+    common::assert_agent_running(&mut agent_handle);
+
+    agent_handle.kill().expect("Could not kill process");
+}
