@@ -6,7 +6,7 @@ use notify::{Config, ErrorKind, EventKind, Watcher as NotifyWatcher};
 use std::path::Path;
 use std::rc::Rc;
 use time::OffsetDateTime;
-use tracing::{info, instrument, trace, warn};
+use tracing::{info, trace, warn};
 
 type PathId = std::path::PathBuf;
 
