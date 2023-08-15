@@ -352,7 +352,7 @@ pub async fn _main(
                 fo_state_handles.clone(),
                 deletion_ack_sender.clone(),
             );
-            async move { tail::process(tailer).expect("except Failed to create FS Tailer") }
+            async move { tail::process(tailer).expect("Failed to create FS Tailer") }
         },
         config.log.clear_cache_interval, // we restart tailer to clear fs cache
     )

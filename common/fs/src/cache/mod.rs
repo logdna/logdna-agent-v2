@@ -161,13 +161,13 @@ pub fn get_inode(_path: &Path, file: Option<&std::fs::File>) -> std::io::Result<
 /// Turns an inotify event into an event stream
 fn as_event_stream(
     fs: Arc<Mutex<FileSystem>>,
-    event_result: &WatchEvent,
+    watch_event: &WatchEvent,
     event_time: EventTimestamp,
 ) -> impl Stream<Item = (Result<Event, Error>, EventTimestamp)> {
     let a = match fs
         .try_lock()
         .expect("couldn't lock filesystem cache")
-        .process(event_result)
+        .process(watch_event)
     {
         Ok(events) => events
             .into_iter()
@@ -278,33 +278,32 @@ pub struct FileSystem {
     _c: countme::Count<Self>,
 }
 
-#[cfg(unix)]
 fn add_initial_dir_rules(rules: &mut Rules, path: &DirPathBuf) {
     // Include one for self and the rest of its children
-    rules.add_inclusion(
-        RuleDef::glob_rule(path.join(r"**").to_str().expect("invalid unicode in path"))
-            .expect("invalid glob rule format"),
+    #[cfg(windows)]
+    let path_rest = format!(
+        "{}\\*",
+        path.to_str()
+            .expect("invalid unicode in path")
+            .trim_end_matches(std::path::is_separator)
     );
+    #[cfg(not(windows))]
+    let path_rest = format!(
+        "{}/*",
+        path.to_str()
+            .expect("invalid unicode in path")
+            .trim_end_matches(std::path::is_separator)
+    );
+    rules.add_inclusion(RuleDef::glob_rule(path_rest.as_str()).expect("invalid glob rule format"));
     rules.add_inclusion(
         RuleDef::glob_rule(path.to_str().expect("invalid unicode in path"))
             .expect("invalid glob rule format"),
     );
 }
 
-#[cfg(windows)]
-fn add_initial_dir_rules(rules: &mut Rules, path: &DirPathBuf) {
-    // Include one for self and the rest of its children
-    rules.add_inclusion(
-        RuleDef::glob_rule(
-            format!("{}*", path.to_str().expect("invalid unicode in path")).as_str(),
-        )
-        .expect("invalid glob rule format"),
-    );
-}
-
 impl FileSystem {
     pub fn new(
-        initial_dirs: Vec<DirPathBuf>,
+        initial_dirs_original: Vec<DirPathBuf>,
         lookback_config: Lookback,
         initial_offsets: HashMap<FileId, SpanVec>,
         rules: Rules,
@@ -313,7 +312,24 @@ impl FileSystem {
     ) -> Self {
         let (resume_events_send, resume_events_recv) = async_channel::unbounded();
         let (retry_events_send, retry_events_recv) = async_channel::unbounded();
-        initial_dirs.iter().for_each(|path| {
+
+        let mut initial_dirs_checked = initial_dirs_original.clone();
+        initial_dirs_checked.iter_mut().for_each(|path| {
+            // if postfix is Some then dir does not exists
+            // check again if non-existing path exists now
+            if let Some(postfix) = path.clone().postfix {
+                let mut full_path = PathBuf::new();
+                full_path.push(&path.inner);
+                full_path.push(&postfix);
+                if full_path.exists() {
+                    *path = DirPathBuf {
+                        inner: full_path.clone(),
+                        postfix: None,
+                    }
+                } else {
+                    *path = DirPathBuf::try_from(full_path).unwrap();
+                }
+            }
             if !path.inner.is_dir() {
                 panic!("initial dirs must be dirs")
             }
@@ -332,35 +348,27 @@ impl FileSystem {
 
         // Adds initial directories and constructs missing directory
         // vector and adds prefix path to the missing directory watcher
-        for path in initial_dirs.iter() {
-            if path.postfix.is_none() {
-                add_initial_dir_rules(&mut initial_dir_rules, path);
-            } else {
-                let mut full_missing_path = PathBuf::new();
-                let root_pathbuf = Path::new("/");
-                let mut format_postfix =
-                    String::from(path.postfix.as_ref().unwrap().to_str().unwrap());
-                if format_postfix.ends_with('/') {
-                    format_postfix.pop();
+        for dir_path in initial_dirs_checked.iter() {
+            match &dir_path.postfix {
+                None => {
+                    add_initial_dir_rules(&mut initial_dir_rules, dir_path);
                 }
-                if path.inner == root_pathbuf {
-                    full_missing_path.push(format!("{}{}", &path.inner.display(), format_postfix));
-                } else {
-                    full_missing_path.push(format!("{}/{}", &path.inner.display(), format_postfix));
+                Some(postfix) => {
+                    let mut full_missing_path = PathBuf::new();
+                    full_missing_path.push(&dir_path.inner);
+                    full_missing_path.push(postfix);
+                    let full_missing_dirpathbuff = DirPathBuf {
+                        inner: full_missing_path.clone(),
+                        postfix: None,
+                    };
+                    // Add missing directory to Rules
+                    add_initial_dir_rules(&mut initial_dir_rules, &full_missing_dirpathbuff);
+                    info!("adding {:?} to missing directory watcher", &dir_path.inner);
+                    missing_dirs.push(full_missing_path);
+                    missing_dir_watcher
+                        .watch(&dir_path.inner, RecursiveMode::NonRecursive)
+                        .expect("Could not add path to missing directory watcher");
                 }
-                let full_missing_dirpathbuff = DirPathBuf {
-                    inner: full_missing_path.clone(),
-                    postfix: None,
-                };
-
-                // Add missing directory to Rules
-                add_initial_dir_rules(&mut initial_dir_rules, &full_missing_dirpathbuff);
-
-                info!("adding {:?} to missing directory watcher", path.inner);
-                missing_dirs.push(full_missing_path);
-                missing_dir_watcher
-                    .watch(&path.inner, RecursiveMode::NonRecursive)
-                    .expect("Could not add path to missing directory watcher");
             }
         }
         debug!("initial directory rules: {:?}\n", initial_dir_rules);
@@ -371,7 +379,7 @@ impl FileSystem {
             watch_descriptors: WatchDescriptors::new(),
             wd_by_inode: HashMap::new(),
             master_rules: rules,
-            initial_dirs: initial_dirs.clone(),
+            initial_dirs: initial_dirs_checked.clone(),
             initial_dir_rules,
             missing_dirs,
             fs_start_time,
@@ -395,7 +403,7 @@ impl FileSystem {
 
         // Initial dirs
         let mut initial_dir_events = Vec::new();
-        for dir in initial_dirs
+        for dir in initial_dirs_checked
             .into_iter()
             .map(|path| -> PathBuf { path.into() })
         {
@@ -533,9 +541,16 @@ impl FileSystem {
                     if let notify_stream::Event::Create(ref path) = event {
                         if missing.contains(path) {
                             // Got a complete directory match, inserting it
-                            info!("missing directory {:?} was found!", path);
+                            info!(
+                                "missing initial log directory {:?} was found! triggering FS rescan.",
+                                path
+                            );
                             return Some((
-                                as_event_stream(mfs.clone(), &event, OffsetDateTime::now_utc()),
+                                as_event_stream(
+                                    mfs.clone(),
+                                    &notify_stream::Event::Rescan,
+                                    OffsetDateTime::now_utc(),
+                                ),
                                 (mfs, missing, watcher, stream),
                             ));
                         }
@@ -599,6 +614,7 @@ impl FileSystem {
                             async move {
                                 match e {
                                     Ok(_) => Some((e, event_time)),
+                                    Err(Error::Rescan) => Some((e, event_time)),
                                     Err(e) => {
                                         match e {
                                             Error::File(io_err)
@@ -705,6 +721,9 @@ impl FileSystem {
                         );
                         std::process::exit(24);
                     }
+                }
+                Error::Rescan => {
+                    warn!("Processing notify event resulted in FS rescan");
                 }
                 _ => {
                     warn!("Processing notify event resulted in error: {}", e);
@@ -837,6 +856,9 @@ impl FileSystem {
             let path = entry.path().to_path_buf();
             if !self.initial_dirs.iter().any(|dir| dir.as_ref() == path) {
                 self.remove(&path, &mut events, _entries)?;
+            } else {
+                info!("initial log dir {:?} removed, requesting FS rescan", path);
+                return Err(Error::Rescan);
             }
         } else {
             // The file is already gone (event was queued up), safely ignore
