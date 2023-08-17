@@ -2393,6 +2393,8 @@ fn test_fs_rescan_on_initial_log_dir_delete() {
 
     common::wait_for_event("rescanning stream", &mut reader);
 
+    consume_output(reader.into_inner());
+
     common::assert_agent_running(&mut agent_handle);
 
     agent_handle.kill().expect("Could not kill process");
@@ -2415,6 +2417,8 @@ fn test_fs_rescan_on_initial_log_dir_create() {
     std::fs::create_dir(dir_path.clone()).expect("Unable to create dir");
 
     common::wait_for_event("rescanning stream", &mut reader);
+
+    consume_output(reader.into_inner());
 
     common::assert_agent_running(&mut agent_handle);
 
