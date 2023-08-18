@@ -2371,31 +2371,32 @@ fn test_offset_stream_state_gc() {
     agent_handle.kill().expect("Could not kill process");
 }
 
-#[test]
+#[tokio::test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
-fn test_fs_rescan_on_initial_log_dir_delete() {
-    let base_dir = tempdir().expect("Could not create temp dir").into_path();
-
+async fn test_fs_rescan_on_initial_log_dir_delete() {
+    let base_dir = tempdir().expect("Couldn't create temp dir...").into_path();
     let dir_path = base_dir.join("initial_log_dir");
     std::fs::create_dir(dir_path.clone()).expect("Unable to create dir");
-    let dir_path_str = dir_path.to_str().unwrap();
 
-    let mut agent_handle = common::spawn_agent(AgentSettings::new(dir_path_str));
-    let mut reader = BufReader::new(agent_handle.stderr.take().unwrap());
+    let (server, _, shutdown_handle, addr) = common::start_http_ingester();
+    let (_, _) = tokio::join!(server, async {
+        let settings = AgentSettings::with_mock_ingester(dir_path.to_str().unwrap(), &addr);
+        let mut agent_handle = common::spawn_agent(settings);
+        let mut stderr_reader = std::io::BufReader::new(agent_handle.stderr.take().unwrap());
+        common::wait_for_event("Enabling filesystem", &mut stderr_reader);
 
-    common::wait_for_event("Enabling filesystem", &mut reader);
+        Command::new("rmdir")
+            .arg(dir_path)
+            .spawn()
+            .expect("Could not remove directory");
 
-    Command::new("rmdir")
-        .arg(dir_path)
-        .spawn()
-        .expect("Could not remove directory");
+        common::wait_for_event("rescanning stream", &mut stderr_reader);
 
-    common::wait_for_event("rescanning stream", &mut reader);
+        agent_handle.kill().expect("Could not kill process");
 
-    common::assert_agent_running(&mut agent_handle);
-
-    agent_handle.kill().expect("Could not kill process");
+        shutdown_handle();
+    });
 }
 
 #[test]
@@ -2415,6 +2416,8 @@ fn test_fs_rescan_on_initial_log_dir_create() {
     std::fs::create_dir(dir_path.clone()).expect("Unable to create dir");
 
     common::wait_for_event("rescanning stream", &mut reader);
+
+    consume_output(reader.into_inner());
 
     common::assert_agent_running(&mut agent_handle);
 
