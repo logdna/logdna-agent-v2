@@ -345,7 +345,7 @@ impl TryFrom<RawConfig> for Config {
                     d.clone()
                         .try_into()
                         .map_err(|e| {
-                            warn!("{} is not a valid directory: {}", d.display(), e);
+                            warn!("{} is not a valid directory: {:?}", d.display(), e);
                         })
                         .ok()
                 })

@@ -1,6 +1,5 @@
+use http::types::body::{LineBufferMut, LineBuilder};
 use std::sync::Arc;
-
-use http::types::body::LineBufferMut;
 use std::{ops::Deref, thread::spawn};
 
 pub mod k8s_line_rules;
@@ -10,6 +9,7 @@ pub mod meta_rules;
 pub enum Status<T> {
     Ok(T),
     Skip,
+    Retry,
 }
 
 pub trait Middleware: Send + Sync + 'static {
@@ -57,15 +57,16 @@ where
     }
 }
 
-#[derive(Default)]
 pub struct Executor {
     middlewares: Vec<Arc<dyn Middleware>>,
+    retry_lines_send: async_channel::Sender<LineBuilder>,
 }
 
 impl Executor {
-    pub fn new() -> Executor {
+    pub fn new(retry_lines_send: async_channel::Sender<LineBuilder>) -> Executor {
         Executor {
             middlewares: Vec::new(),
+            retry_lines_send,
         }
     }
 
@@ -90,6 +91,7 @@ impl Executor {
             .try_fold(line, |l, m| match m.process(l) {
                 Status::Ok(l) => Ok(l),
                 Status::Skip => Err(()),
+                Status::Retry => Err(()),
             })
             .ok()
     }

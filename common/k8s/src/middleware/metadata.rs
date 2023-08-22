@@ -33,7 +33,7 @@ use metrics::Metrics;
 use middleware::{Middleware, Status};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{error, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -436,7 +436,7 @@ impl Middleware for K8sMetadata {
                         let meta_object =
                             extract_image_name_and_tag(parse_result.container_name, pod.as_ref());
                         if meta_object.is_some() && line.set_meta(json!(meta_object)).is_err() {
-                            trace!("Unable to set meta object{:?}", meta_object);
+                            debug!("Unable to set meta object{:?}", meta_object);
                             return Status::Skip;
                         }
 
@@ -449,6 +449,7 @@ impl Middleware for K8sMetadata {
                                 )
                                 .is_err()
                             {
+                                debug!("Unable to set annotations {:?}", annotations);
                                 return Status::Skip;
                             };
                         }
@@ -462,9 +463,13 @@ impl Middleware for K8sMetadata {
                                 )
                                 .is_err()
                             {
+                                debug!("Unable to set labels {:?}", labels);
                                 return Status::Skip;
                             };
                         }
+                    } else {
+                        trace!("pod metadata is not available {:?}", obj_ref);
+                        return Status::Ok(line);
                     }
                 }
             }

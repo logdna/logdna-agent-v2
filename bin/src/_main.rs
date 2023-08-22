@@ -10,6 +10,8 @@ use k8s::feature_leader::FeatureLeader;
 use k8s::feature_leader::FeatureLeaderMeta;
 use k8s::metrics_stats_stream::MetricsStatsStream;
 
+use fs::cache::delayed_stream::delayed_stream;
+
 #[cfg(all(feature = "libjournald", target_os = "linux"))]
 use journald::libjournald::source::create_source;
 
@@ -134,7 +136,12 @@ pub async fn _main(
         client.set_timeout(config.http.timeout);
     }
 
-    let mut executor = Executor::new();
+    let (delayed_lines_send, delayed_lines_recv) = async_channel::unbounded();
+    let delayed_lines_source = Some(
+        delayed_stream(delayed_lines_recv, Duration::from_secs(10))
+            .map(StrictOrLazyLineBuilder::Strict),
+    );
+    let mut executor = Executor::new(delayed_lines_send);
 
     let mut k8s_claimed_lease: Option<String> = None;
     let mut metrics_stream_feature_meta: Option<FeatureLeaderMeta> = None;
@@ -500,6 +507,10 @@ pub async fn _main(
 
     pin_mut!(metric_stats_source);
 
+    pin_mut!(delayed_lines_source);
+
+    let mut delayed_lines_source: Option<std::pin::Pin<&mut _>> = delayed_lines_source.as_pin_mut();
+
     let mut k8s_event_source: Option<std::pin::Pin<&mut _>> = k8s_event_source.as_pin_mut();
     #[cfg(target_os = "linux")]
     let mut journalctl_source: Option<std::pin::Pin<&mut _>> = journalctl_source.as_pin_mut();
@@ -528,6 +539,11 @@ pub async fn _main(
     #[cfg(all(not(feature = "libjournald"), target_os = "linux"))]
     if let Some(s) = journalctl_source.as_mut() {
         info!("Enabling journalctl event source");
+        sources.push(s)
+    }
+
+    if let Some(s) = delayed_lines_source.as_mut() {
+        info!("Enabling delayed lines source");
         sources.push(s)
     }
 

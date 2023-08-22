@@ -2231,7 +2231,10 @@ dependencies = [
 name = "middleware"
 version = "0.1.0"
 dependencies = [
+ "async-channel",
  "config",
+ "fs",
+ "futures",
  "lazy_static",
  "memoffset 0.6.5",
  "multimap",

@@ -31,7 +31,7 @@ use tracing::{debug, error, info, instrument, trace, warn};
 
 use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
 
-mod delayed_stream;
+pub mod delayed_stream;
 pub mod dir_path;
 pub mod entry;
 pub mod event;
@@ -416,7 +416,7 @@ impl FileSystem {
                     if let Err(e) = fs.insert(&path_cpy, &mut initial_dir_events, &mut entries) {
                         // It can failed due to permissions or some other restriction
                         debug!(
-                            "Initial insertion of {} failed: {}",
+                            "Initial insertion of {} failed: {:?}",
                             path_cpy.to_str().unwrap(),
                             e
                         );
@@ -464,7 +464,7 @@ impl FileSystem {
                 if let Err(e) = fs.insert(path, &mut initial_dir_events, &mut entries) {
                     // It can failed due to file restrictions
                     debug!(
-                        "Initial recursive scan insertion of {} failed: {}",
+                        "Initial recursive scan insertion of {} failed: {:?}",
                         path.to_str().unwrap(),
                         e
                     );
@@ -716,7 +716,7 @@ impl FileSystem {
                     debug!("Processing event for untracked path: {}", path.display());
                 }
                 Error::File(err) => {
-                    warn!("Processing notify event resulted in error: {}", e);
+                    warn!("Processing notify event resulted in error: {:?}", e);
                     if err.to_string().contains("(os error 24)") {
                         error!(
                             "Agent process has hit the limit of maximum number of open files. \
@@ -729,7 +729,7 @@ impl FileSystem {
                     warn!("Processing notify event resulted in FS rescan");
                 }
                 _ => {
-                    warn!("Processing notify event resulted in error: {}", e);
+                    warn!("Processing notify event resulted in error: {:?}", e);
                 }
             }
         }
@@ -1076,7 +1076,7 @@ impl FileSystem {
                             }
                             _ => {
                                 info!(
-                                    "error found when inserting child entry for {:?}: {}",
+                                    "error found when inserting child entry for {:?}: {:?}",
                                     path, e
                                 );
                             }
@@ -1148,7 +1148,7 @@ impl FileSystem {
                                     // The insert of the target failed, the changes to the symlink itself
                                     // are going to be tracked, continue
                                     warn!(
-                                        "insert target {} of symlink {} resulted in error {}",
+                                        "insert target {} of symlink {} resulted in error {:?}",
                                         target.display(),
                                         path.display(),
                                         e
