@@ -9,6 +9,7 @@ use http::retry::{retry, RetryItem};
 use k8s::feature_leader::FeatureLeader;
 use k8s::feature_leader::FeatureLeaderMeta;
 use k8s::metrics_stats_stream::MetricsStatsStream;
+use middleware::MiddlewareError;
 
 use fs::cache::delayed_stream::delayed_stream;
 
@@ -571,7 +572,15 @@ pub async fn _main(
                     None
                 }
             },
-            Err(_) => None,
+            Err(MiddlewareError::Skip) => {
+                debug!("Dropping line: {:?}", line);
+                None
+            }
+            Err(MiddlewareError::Retry) => {
+                debug!("Retrying line: {:?}", line);
+                delayed_lines_send.send_blocking(line).unwrap();
+                None
+            }
         },
         StrictOrLazyLineBuilder::Lazy(mut line) => match executor.process(&mut line) {
             Ok(_) => Some(StrictOrLazyLines::Lazy(line)),

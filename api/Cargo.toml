@@ -6,6 +6,7 @@ edition = "2018"
 
 [dependencies]
 http = { package = "mz-http", path = "../common/http" }
+middleware = { package = "middleware", path = "../common/middleware" }
 
 tokio = { package = "tokio", version = "1", features = ["macros", "process", "rt-multi-thread", "time"] }
 futures = "0.3"

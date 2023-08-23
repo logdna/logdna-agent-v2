@@ -86,6 +86,7 @@ dependencies = [
  "env_logger",
  "futures",
  "log",
+ "middleware",
  "mz-http",
  "partial-io",
  "serial_test",
