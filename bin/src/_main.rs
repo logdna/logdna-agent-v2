@@ -141,7 +141,7 @@ pub async fn _main(
         delayed_stream(delayed_lines_recv, Duration::from_secs(10))
             .map(StrictOrLazyLineBuilder::Strict),
     );
-    let mut executor = Executor::new(delayed_lines_send);
+    let mut executor = Executor::new();
 
     let mut k8s_claimed_lease: Option<String> = None;
     let mut metrics_stream_feature_meta: Option<FeatureLeaderMeta> = None;
@@ -563,26 +563,20 @@ pub async fn _main(
     };
 
     let lines_stream = sources.map(|line| match line {
-        StrictOrLazyLineBuilder::Strict(mut line) => {
-            if executor.process(&mut line).is_some() {
-                match line.build() {
-                    Ok(line) => Some(StrictOrLazyLines::Strict(line)),
-                    Err(e) => {
-                        error!("Couldn't build line from linebuilder {:?}", e);
-                        None
-                    }
+        StrictOrLazyLineBuilder::Strict(mut line) => match executor.process(&mut line) {
+            Ok(_) => match line.build() {
+                Ok(line) => Some(StrictOrLazyLines::Strict(line)),
+                Err(e) => {
+                    error!("Couldn't build line from linebuilder {:?}", e);
+                    None
                 }
-            } else {
-                None
-            }
-        }
-        StrictOrLazyLineBuilder::Lazy(mut line) => {
-            if executor.process(&mut line).is_some() {
-                Some(StrictOrLazyLines::Lazy(line))
-            } else {
-                None
-            }
-        }
+            },
+            Err(_) => None,
+        },
+        StrictOrLazyLineBuilder::Lazy(mut line) => match executor.process(&mut line) {
+            Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
+            Err(_) => None,
+        },
     });
 
     let body_offsets_stream = lines_stream

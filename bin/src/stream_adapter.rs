@@ -9,7 +9,7 @@ use http::types::serialize::{
 use state::GetOffset;
 use std::collections::HashMap;
 
-pub(crate) enum StrictOrLazyLineBuilder {
+pub enum StrictOrLazyLineBuilder {
     Strict(LineBuilder),
     Lazy(LazyLineSerializer),
 }

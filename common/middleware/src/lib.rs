@@ -1,6 +1,7 @@
-use http::types::body::{LineBufferMut, LineBuilder};
+use http::types::body::LineBufferMut;
 use std::sync::Arc;
 use std::{ops::Deref, thread::spawn};
+use thiserror::Error;
 
 pub mod k8s_line_rules;
 pub mod line_rules;
@@ -10,6 +11,13 @@ pub enum Status<T> {
     Ok(T),
     Skip,
     Retry,
+}
+#[derive(Debug, Error)]
+pub enum MiddlewareError {
+    #[error("line needs to be delayed and tried again")]
+    Retry,
+    #[error("line needs to be dropped")]
+    Skip,
 }
 
 pub trait Middleware: Send + Sync + 'static {
@@ -59,14 +67,12 @@ where
 
 pub struct Executor {
     middlewares: Vec<Arc<dyn Middleware>>,
-    retry_lines_send: async_channel::Sender<LineBuilder>,
 }
 
 impl Executor {
-    pub fn new(retry_lines_send: async_channel::Sender<LineBuilder>) -> Executor {
+    pub fn new() -> Executor {
         Executor {
             middlewares: Vec::new(),
-            retry_lines_send,
         }
     }
 
@@ -85,15 +91,14 @@ impl Executor {
     pub fn process<'a>(
         &self,
         line: &'a mut dyn LineBufferMut,
-    ) -> Option<&'a mut dyn LineBufferMut> {
+    ) -> Result<&'a mut dyn LineBufferMut, MiddlewareError> {
         self.middlewares
             .iter()
             .try_fold(line, |l, m| match m.process(l) {
                 Status::Ok(l) => Ok(l),
-                Status::Skip => Err(()),
-                Status::Retry => Err(()),
+                Status::Skip => Err(MiddlewareError::Skip),
+                Status::Retry => Err(MiddlewareError::Retry),
             })
-            .ok()
     }
 }
 
