@@ -10,12 +10,9 @@ pub mod meta_rules;
 pub enum Status<T> {
     Ok(T),
     Skip,
-    Retry,
 }
 #[derive(Debug, Error)]
 pub enum MiddlewareError {
-    #[error("line needs to be delayed and tried again")]
-    Retry,
     #[error("line needs to be dropped")]
     Skip,
 }
@@ -65,6 +62,7 @@ where
     }
 }
 
+#[derive(Default)]
 pub struct Executor {
     middlewares: Vec<Arc<dyn Middleware>>,
 }
@@ -97,7 +95,6 @@ impl Executor {
             .try_fold(line, |l, m| match m.process(l) {
                 Status::Ok(l) => Ok(l),
                 Status::Skip => Err(MiddlewareError::Skip),
-                Status::Retry => Err(MiddlewareError::Retry),
             })
     }
 }

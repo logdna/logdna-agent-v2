@@ -12,6 +12,7 @@ use std::collections::HashMap;
 pub enum StrictOrLazyLineBuilder {
     Strict(LineBuilder),
     Lazy(LazyLineSerializer),
+    LazyDelayed(LazyLineSerializer),
 }
 
 #[allow(clippy::large_enum_variant)]

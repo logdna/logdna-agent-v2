@@ -12,7 +12,7 @@ lazy_static! {
     ).unwrap_or_else(|e| panic!("K8S_REG Regex::new() failed: {}", e));
 }
 
-struct ParseResult {
+pub struct ParseResult {
     pod_name: String,
     pod_namespace: String,
     container_name: String,
@@ -28,7 +28,7 @@ impl ParseResult {
     }
 }
 
-fn parse_container_path(path: &str) -> Option<ParseResult> {
+pub fn parse_container_path(path: &str) -> Option<ParseResult> {
     let captures = K8S_REG.captures(path)?;
     Some(ParseResult::new(
         captures.get(1)?.as_str().into(),

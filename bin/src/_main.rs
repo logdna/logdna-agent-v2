@@ -34,6 +34,7 @@ use middleware::line_rules::LineRules;
 use middleware::meta_rules::{MetaRules, MetaRulesConfig};
 use middleware::Executor;
 
+use http::types::body::LineMeta;
 use pin_utils::pin_mut;
 use rand::Rng;
 use state::{AgentState, FileId, GetOffset, Span, SpanVec};
@@ -140,7 +141,7 @@ pub async fn _main(
     let (delayed_lines_send, delayed_lines_recv) = async_channel::unbounded();
     let delayed_lines_source = Some(
         delayed_stream(delayed_lines_recv, Duration::from_secs(10))
-            .map(StrictOrLazyLineBuilder::Strict),
+            .map(StrictOrLazyLineBuilder::LazyDelayed),
     );
     let mut executor = Executor::new();
 
@@ -576,13 +577,25 @@ pub async fn _main(
                 debug!("Dropping line: {:?}", line);
                 None
             }
-            Err(MiddlewareError::Retry) => {
-                debug!("Retrying line: {:?}", line);
+        },
+        StrictOrLazyLineBuilder::Lazy(mut line) => {
+            // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
+            let file_name = line.get_file().unwrap_or("");
+            if k8s::middleware::parse_container_path(file_name).is_some() {
+                debug!("Delaying k8s line: {:?}", line);
                 delayed_lines_send.send_blocking(line).unwrap();
                 None
+            } else {
+                match executor.process(&mut line) {
+                    Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
+                    Err(MiddlewareError::Skip) => {
+                        debug!("Dropping line: {:?}", line);
+                        None
+                    }
+                }
             }
-        },
-        StrictOrLazyLineBuilder::Lazy(mut line) => match executor.process(&mut line) {
+        }
+        StrictOrLazyLineBuilder::LazyDelayed(mut line) => match executor.process(&mut line) {
             Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
             Err(_) => None,
         },

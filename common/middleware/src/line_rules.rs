@@ -180,7 +180,6 @@ mod tests {
                     );
                 }
                 Status::Skip => panic!("should not have been skipped"),
-                Status::Retry => panic!("should not have been retried"),
             }
         };
     }
