@@ -262,7 +262,8 @@ lint-clippy: ## Checks for code errors
 lint-audit: ## Audits packages for issues
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo audit  \
 	    --ignore RUSTSEC-2020-0071 \
-	    --ignore RUSTSEC-2023-0052"
+	    --ignore RUSTSEC-2023-0052 \
+	    "
 
 .PHONY:lint-docker
 lint-docker: ## Lint the Dockerfile for issues
@@ -657,8 +658,8 @@ publish-image-docker: ## Publish SemVer compliant releases to docker hub
 
 .PHONY:publish-image-ibm
 publish-image-ibm: ## Publish SemVer compliant releases to icr
-	$(DOCKER) tag $(REPO):$(IMAGE_TAG) $(DOCKER_IBM_IMAGE):3.9.0-alpha.0-1-${ARCH}
-	$(DOCKER) push $(DOCKER_IBM_IMAGE):3.9.0-alpha.0-1-${ARCH}
+	$(DOCKER) tag $(REPO):$(IMAGE_TAG) $(DOCKER_IBM_IMAGE):3.9.0-alpha.1-1-${ARCH}
+	$(DOCKER) push $(DOCKER_IBM_IMAGE):3.9.0-alpha.1-1-${ARCH}
 
 .PHONY: publish-image-multi
 publish-image-multi: publish-image-multi-gcr publish-image-multi-docker publish-image-multi-ibm ## Publish multi-arch SemVer compliant releases to our registries
