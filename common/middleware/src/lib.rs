@@ -15,11 +15,17 @@ pub enum Status<T> {
 pub enum MiddlewareError {
     #[error("line needs to be dropped")]
     Skip,
+    #[error("line needs to be retried for processing again later")]
+    Retry,
 }
 
 pub trait Middleware: Send + Sync + 'static {
     fn run(&self);
-    fn process<'a>(&self, lines: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut>;
+    fn process<'a>(&self, line: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut>;
+    fn validate<'a>(
+        &self,
+        line: &'a dyn LineBufferMut,
+    ) -> Result<&'a dyn LineBufferMut, MiddlewareError>;
 }
 
 impl<T, U> Middleware for T
@@ -31,8 +37,15 @@ where
         self.deref().run()
     }
 
-    fn process<'a>(&self, lines: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
-        self.deref().process(lines)
+    fn process<'a>(&self, line: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
+        self.deref().process(line)
+    }
+
+    fn validate<'a>(
+        &self,
+        line: &'a dyn LineBufferMut,
+    ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
+        Ok(line)
     }
 }
 
@@ -95,6 +108,19 @@ impl Executor {
             .try_fold(line, |l, m| match m.process(l) {
                 Status::Ok(l) => Ok(l),
                 Status::Skip => Err(MiddlewareError::Skip),
+            })
+    }
+
+    pub fn validate<'a>(
+        &self,
+        line: &'a dyn LineBufferMut,
+    ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
+        self.middlewares
+            .iter()
+            .try_fold(line, |l, m| match m.validate(l) {
+                Ok(_) => Ok(l),
+                Err(MiddlewareError::Skip) => Err(MiddlewareError::Skip),
+                Err(MiddlewareError::Retry) => Err(MiddlewareError::Retry),
             })
     }
 }

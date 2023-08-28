@@ -1,5 +1,6 @@
 use crate::errors::K8sError;
 use crate::middleware::{parse_container_path, ParseResult};
+use middleware::MiddlewareError;
 
 use std::{
     collections::HashMap,
@@ -475,6 +476,19 @@ impl Middleware for K8sMetadata {
             }
         }
         Status::Ok(line)
+    }
+
+    fn validate<'a>(
+        &self,
+        line: &'a dyn LineBufferMut,
+    ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
+        // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
+        let file_name = line.get_file().unwrap_or("");
+        if parse_container_path(file_name).is_some() {
+            Err(MiddlewareError::Retry)
+        } else {
+            Ok(line)
+        }
     }
 }
 

@@ -34,7 +34,6 @@ use middleware::line_rules::LineRules;
 use middleware::meta_rules::{MetaRules, MetaRulesConfig};
 use middleware::Executor;
 
-use http::types::body::LineMeta;
 use pin_utils::pin_mut;
 use rand::Rng;
 use state::{AgentState, FileId, GetOffset, Span, SpanVec};
@@ -577,21 +576,33 @@ pub async fn _main(
                 debug!("Dropping line: {:?}", line);
                 None
             }
+            Err(MiddlewareError::Retry) => {
+                debug!("Not retrying, dropping line: {:?}", line);
+                None
+            }
         },
         StrictOrLazyLineBuilder::Lazy(mut line) => {
-            // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
-            let file_name = line.get_file().unwrap_or("");
-            if k8s::middleware::parse_container_path(file_name).is_some() {
-                debug!("Delaying k8s line: {:?}", line);
-                delayed_lines_send.send_blocking(line).unwrap();
-                None
-            } else {
-                match executor.process(&mut line) {
+            match executor.validate(&mut line) {
+                Ok(_) => match executor.process(&mut line) {
                     Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
                     Err(MiddlewareError::Skip) => {
                         debug!("Dropping line: {:?}", line);
                         None
                     }
+                    Err(MiddlewareError::Retry) => {
+                        debug!("Not retrying, dropping line: {:?}", line);
+                        None
+                    }
+                },
+                Err(MiddlewareError::Skip) => {
+                    debug!("Dropping line: {:?}", line);
+                    None
+                }
+                Err(MiddlewareError::Retry) => {
+                    // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
+                    debug!("Delaying k8s line: {:?}", line);
+                    delayed_lines_send.send_blocking(line).unwrap();
+                    None
                 }
             }
         }

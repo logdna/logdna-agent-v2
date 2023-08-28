@@ -1,4 +1,4 @@
-use crate::{Middleware, Status};
+use crate::{Middleware, MiddlewareError, Status};
 use http::types::body::{KeyValueMap, LineBufferMut};
 use lazy_static::lazy_static;
 use multimap::MultiMap;
@@ -155,6 +155,13 @@ impl Middleware for K8sLineFilter {
             None => Status::Skip,
             Some(_) => self.process_line(line),
         }
+    }
+
+    fn validate<'a>(
+        &self,
+        line: &'a dyn LineBufferMut,
+    ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
+        Ok(line)
     }
 }
 
