@@ -34,6 +34,7 @@ pub const RETRY_DIR: &str = "MZ_RETRY_DIR";
 pub const RETRY_DISK_LIMIT: &str = "MZ_RETRY_DISK_LIMIT";
 pub const INTERNAL_FS_DELAY: &str = "MZ_INTERNAL_FS_DELAY";
 pub const CLEAR_CACHE_INTERVAL: &str = "MZ_CLEAR_CACHE_INTERVAL";
+pub const METADATA_RETRY_DELAY: &str = "MZ_METADATA_RETRY_DELAY";
 
 // unused or deprecated
 pub const INGESTION_KEY_ALTERNATE: &str = "LOGDNA_AGENT_KEY";

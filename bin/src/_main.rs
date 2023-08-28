@@ -138,10 +138,14 @@ pub async fn _main(
     }
 
     let (delayed_lines_send, delayed_lines_recv) = async_channel::unbounded();
-    let delayed_lines_source = Some(
-        delayed_stream(delayed_lines_recv, Duration::from_secs(10))
-            .map(StrictOrLazyLineBuilder::LazyDelayed),
-    );
+    let delayed_lines_source = if !config.log.metadata_retry_delay.is_zero() {
+        Some(
+            delayed_stream(delayed_lines_recv, config.log.metadata_retry_delay)
+                .map(StrictOrLazyLineBuilder::LazyDelayed),
+        )
+    } else {
+        None
+    };
     let mut executor = Executor::new();
 
     let mut k8s_claimed_lease: Option<String> = None;
@@ -543,8 +547,11 @@ pub async fn _main(
         sources.push(s)
     }
 
+    let mut delayed_source_enabled = false;
+    let metadata_retry_delay = config.log.metadata_retry_delay;
     if let Some(s) = delayed_lines_source.as_mut() {
         info!("Enabling delayed lines source");
+        delayed_source_enabled = true;
         sources.push(s)
     }
 
@@ -582,7 +589,7 @@ pub async fn _main(
             }
         },
         StrictOrLazyLineBuilder::Lazy(mut line) => {
-            match executor.validate(&mut line) {
+            match executor.validate(&line) {
                 Ok(_) => match executor.process(&mut line) {
                     Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
                     Err(MiddlewareError::Skip) => {
@@ -599,16 +606,30 @@ pub async fn _main(
                     None
                 }
                 Err(MiddlewareError::Retry) => {
-                    // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
-                    debug!("Delaying k8s line: {:?}", line);
-                    delayed_lines_send.send_blocking(line).unwrap();
+                    if delayed_source_enabled {
+                        // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
+                        debug!(
+                            "Retrying - delaying k8s line processing for {:?} seconds: {:?}",
+                            metadata_retry_delay, line
+                        );
+                        delayed_lines_send.send_blocking(line).unwrap();
+                    } else {
+                        debug!("Not retrying, dropping line: {:?}", line);
+                    }
                     None
                 }
             }
         }
         StrictOrLazyLineBuilder::LazyDelayed(mut line) => match executor.process(&mut line) {
             Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
-            Err(_) => None,
+            Err(MiddlewareError::Skip) => {
+                debug!("Dropping line: {:?}", line);
+                None
+            }
+            Err(MiddlewareError::Retry) => {
+                debug!("Not retrying, dropping line: {:?}", line);
+                None
+            }
         },
     });
 
