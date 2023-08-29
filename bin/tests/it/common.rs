@@ -94,6 +94,7 @@ pub struct AgentSettings<'a> {
     pub ingest_buffer_size: Option<&'a str>,
     pub log_level: Option<&'a str>,
     pub clear_cache_interval: Option<u32>,
+    pub metadata_retry_delay: Option<u32>,
 }
 
 impl<'a> AgentSettings<'a> {
@@ -261,6 +262,10 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
             "LOGDNA_CLEAR_CACHE_INTERVAL",
             format!("{}", clear_cache_interval),
         );
+    }
+
+    if let Some(metadata_retry_delay) = settings.metadata_retry_delay {
+        agent.env("METADATA_RETRY_DELAY", format!("{}", metadata_retry_delay));
     }
 
     agent.spawn().expect("Failed to start agent")

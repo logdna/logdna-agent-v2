@@ -613,10 +613,11 @@ pub async fn _main(
                             metadata_retry_delay, line
                         );
                         delayed_lines_send.send_blocking(line).unwrap();
+                        None
                     } else {
-                        debug!("Not retrying, dropping line: {:?}", line);
+                        trace!("Retrying disabled, processing line as-is: {:?}", line);
+                        Some(StrictOrLazyLines::Lazy(line))
                     }
-                    None
                 }
             }
         }
@@ -627,7 +628,7 @@ pub async fn _main(
                 None
             }
             Err(MiddlewareError::Retry) => {
-                debug!("Not retrying, dropping line: {:?}", line);
+                debug!("No more retries, processing line as-is: {:?}", line);
                 None
             }
         },

@@ -1,10 +1,12 @@
+use std::fs::File;
 use std::net::{SocketAddr, ToSocketAddrs};
 
+use futures::{StreamExt, TryStreamExt};
 use k8s::feature_leader::FeatureLeader;
+use std::io::{BufReader, Write};
+use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-
-use futures::{StreamExt, TryStreamExt};
 
 use k8s_openapi::api::apps::v1::DaemonSet;
 use k8s_openapi::api::coordination::v1::Lease;
@@ -18,6 +20,7 @@ use test_log::test;
 
 // workaround for unused functions in different features: https://github.com/rust-lang/rust/issues/46379
 use crate::common;
+use crate::common::{consume_output, AgentSettings};
 
 async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
     let pods: Api<Pod> = Api::namespaced(client, namespace);
@@ -1707,4 +1710,46 @@ async fn test_feature_leader_grabbing_lease() {
     });
 
     server_result.unwrap();
+}
+
+#[tokio::test]
+#[cfg_attr(not(feature = "k8s_tests"), ignore)]
+async fn test_retry_line_with_missing_pod_metadata() {
+    /// create fake pod log file
+    /// this file will not have pod meta data
+    /// log lines expected to be retried once
+    let base_dir = PathBuf::from("/var/log/containers");
+    let pod_log_path = base_dir.join("etcd-k8s-mac-ubuntu_kube-system_etcd-451e1.log");
+
+    let (server, _, shutdown_handle, addr) = common::start_http_ingester();
+    let mut settings = AgentSettings::with_mock_ingester(base_dir.to_str().unwrap(), &addr);
+    settings.metadata_retry_delay = Some(3);
+
+    let (_, _) = tokio::join!(server, async {
+        let mut agent_handle = common::spawn_agent(settings);
+        let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
+
+        common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+
+        let log_lines = "line 1\nline 2\nline 3\n";
+        let mut file = File::create(pod_log_path).expect("Couldn't create pod log file...");
+        writeln!(file, "{}", log_lines).expect("Couldn't write to pod log file...");
+        file.sync_all().unwrap();
+
+        consume_output(stderr_reader.into_inner());
+
+        // common::wait_for_event(
+        //     "Retrying - delaying k8s line processing",
+        //     &mut stderr_reader,
+        // );
+        //
+        // common::wait_for_event(
+        //     "No more retries, processing line as-is:",
+        //     &mut stderr_reader,
+        // );
+
+        common::assert_agent_running(&mut agent_handle);
+
+        agent_handle.kill().expect("Could not kill process");
+    });
 }
