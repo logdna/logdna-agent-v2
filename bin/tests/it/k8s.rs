@@ -1,10 +1,7 @@
-use std::fs::File;
 use std::net::{SocketAddr, ToSocketAddrs};
 
 use futures::{StreamExt, TryStreamExt};
 use k8s::feature_leader::FeatureLeader;
-use std::io::{BufReader, Write};
-use std::path::PathBuf;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
@@ -14,13 +11,12 @@ use k8s_openapi::api::core::v1::{Endpoints, Namespace, Pod, Service, ServiceAcco
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBinding};
 use kube::api::{Api, ListParams, LogParams, PostParams, WatchEvent};
 use kube::Client;
-use tracing::{debug, info};
+use tracing::info;
 
 use test_log::test;
 
 // workaround for unused functions in different features: https://github.com/rust-lang/rust/issues/46379
 use crate::common;
-use crate::common::{consume_output, AgentSettings};
 
 async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
     let pods: Api<Pod> = Api::namespaced(client, namespace);
@@ -42,14 +38,68 @@ async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
                     .unwrap()
                     .boxed();
 
-                debug!("Logging agent pod {:?}", p.metadata.name);
+                info!("Logging agent pod {:?}", p.metadata.name);
                 while let Some(line) = logs.next().await {
-                    debug!(
+                    info!(
                         "LOG [{:?}] {:?}",
                         p.metadata.name,
                         String::from_utf8_lossy(&line.unwrap())
                     );
                 }
+            }
+        });
+    })
+}
+
+async fn assert_log_lines(
+    client: Client,
+    namespace: &str,
+    label: &str,
+    substrings: Vec<&str>,
+    tail_lines: Option<i64>,
+    print_log_lines: bool,
+) {
+    let pods: Api<Pod> = Api::namespaced(client, namespace);
+    let lp = ListParams::default().labels(label);
+    pods.list(&lp).await.unwrap().into_iter().for_each(|p| {
+        let pods = pods.clone();
+        let mut substrings_not_found: Vec<String> =
+            substrings.iter().map(|s| s.to_string()).collect();
+        substrings_not_found.reverse();
+        tokio::spawn({
+            async move {
+                let mut logs = pods
+                    .log_stream(
+                        &p.metadata.name.clone().unwrap(),
+                        &LogParams {
+                            follow: true,
+                            tail_lines,
+                            ..LogParams::default()
+                        },
+                    )
+                    .await
+                    .unwrap()
+                    .boxed();
+
+                while let Some(line) = logs.next().await {
+                    let pat = substrings_not_found.last();
+                    if pat.is_none() {
+                        break;
+                    }
+                    let line = line.unwrap();
+                    let line_str = String::from_utf8_lossy(&line);
+                    if line_str.contains(pat.unwrap()) {
+                        substrings_not_found.pop();
+                    }
+                    if print_log_lines {
+                        info!("LOG: {:?}", &line_str);
+                    }
+                }
+                assert!(
+                    substrings_not_found.is_empty(),
+                    "not found substrings: {:?}",
+                    substrings_not_found
+                );
             }
         });
     })
@@ -562,6 +612,7 @@ fn get_agent_ds_yaml(
                     }
                 },
                 "spec": {
+                    "automountServiceAccountToken": true,
                     "containers": [
                         {
                             "env": [
@@ -1715,41 +1766,105 @@ async fn test_feature_leader_grabbing_lease() {
 #[tokio::test]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_retry_line_with_missing_pod_metadata() {
-    /// create fake pod log file
-    /// this file will not have pod meta data
-    /// log lines expected to be retried once
-    let base_dir = PathBuf::from("/var/log/containers");
-    let pod_log_path = base_dir.join("etcd-k8s-mac-ubuntu_kube-system_etcd-451e1.log");
+    let (server, _, shutdown_handle, ingester_addr) = common::start_http_ingester();
 
-    let (server, _, shutdown_handle, addr) = common::start_http_ingester();
-    let mut settings = AgentSettings::with_mock_ingester(base_dir.to_str().unwrap(), &addr);
-    settings.metadata_retry_delay = Some(3);
+    tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
 
-    let (_, _) = tokio::join!(server, async {
-        let mut agent_handle = common::spawn_agent(settings);
-        let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
+    let client = Client::try_default().await.unwrap();
 
-        common::wait_for_event("Enabling filesystem", &mut stderr_reader);
+    let line_proxy_pod_name = "socat-listener";
+    let line_proxy_namespace = "default";
+    let pod_node_addr = start_line_proxy_pod(
+        client.clone(),
+        line_proxy_pod_name,
+        line_proxy_namespace,
+        30001,
+    )
+    .await;
 
-        let log_lines = "line 1\nline 2\nline 3\n";
-        let mut file = File::create(pod_log_path).expect("Couldn't create pod log file...");
-        writeln!(file, "{}", log_lines).expect("Couldn't write to pod log file...");
-        file.sync_all().unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
-        consume_output(stderr_reader.into_inner());
+    let (server_result, _) = tokio::join!(server, async {
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-        // common::wait_for_event(
-        //     "Retrying - delaying k8s line processing",
-        //     &mut stderr_reader,
-        // );
-        //
-        // common::wait_for_event(
-        //     "No more retries, processing line as-is:",
-        //     &mut stderr_reader,
-        // );
+        // Create Agent
+        let agent_name = "logdna-agent";
+        let agent_namespace = "logdna-agent";
 
-        common::assert_agent_running(&mut agent_handle);
+        let ns = serde_json::from_value(serde_json::json!({
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {
+                "name": agent_namespace
+            }
+        }))
+        .unwrap();
+        let nss: Api<Namespace> = Api::all(client.clone());
+        nss.create(&PostParams::default(), &ns).await.unwrap();
 
-        agent_handle.kill().expect("Could not kill process");
+        let mock_ingester_socket_addr_str = create_mock_ingester_service(
+            client.clone(),
+            ingester_public_addr(ingester_addr),
+            "ingest-service",
+            agent_namespace,
+            80,
+        )
+        .await;
+
+        // start agent
+        create_agent_ds(
+            client.clone(),
+            agent_name,
+            agent_namespace,
+            &mock_ingester_socket_addr_str,
+            "never",
+            "always",
+            "debug",
+            "never",
+            "never",
+        )
+        .await;
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+
+        let messages = vec![
+            "Hello, World! 0\n",
+            "Hello, World! 2\n",
+            "Hello, World! 3\n",
+            "Hello, World! 1\n",
+            "Hello, World! 4\n",
+        ];
+
+        let mut logger_stream = TcpStream::connect(pod_node_addr).await.unwrap();
+
+        for msg in messages.iter() {
+            // Write log lines
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            logger_stream.write_all(msg.as_bytes()).await.unwrap();
+        }
+
+        // Wait for the data to be received by the mock ingester
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+
+        // print_pod_logs(
+        //     client.clone(),
+        //     agent_namespace,
+        //     &format!("app={}", &agent_name),
+        // )
+        // .await;
+
+        assert_log_lines(
+            client.clone(),
+            agent_namespace,
+            &format!("app={}", &agent_name),
+            vec!["Enabling filesystem"],
+            None,
+            true,
+        )
+        .await;
+
+        shutdown_handle();
     });
+
+    server_result.unwrap();
 }

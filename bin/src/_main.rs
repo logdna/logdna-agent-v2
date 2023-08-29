@@ -580,11 +580,16 @@ pub async fn _main(
                 }
             },
             Err(MiddlewareError::Skip) => {
-                debug!("Dropping line: {:?}", line);
+                debug!("Dropping line [{}:{}]: {:?}", file!(), line!(), line);
                 None
             }
             Err(MiddlewareError::Retry) => {
-                debug!("Not retrying, dropping line: {:?}", line);
+                debug!(
+                    "Not retrying, dropping line [{}:{}]: {:?}",
+                    file!(),
+                    line!(),
+                    line
+                );
                 None
             }
         },
@@ -593,29 +598,55 @@ pub async fn _main(
                 Ok(_) => match executor.process(&mut line) {
                     Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
                     Err(MiddlewareError::Skip) => {
-                        debug!("Dropping line: {:?}", line);
+                        debug!("Skipping line [{}:{}]: {:?}", file!(), line!(), line);
                         None
                     }
                     Err(MiddlewareError::Retry) => {
-                        debug!("Not retrying, dropping line: {:?}", line);
-                        None
+                        if delayed_source_enabled {
+                            // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
+                            debug!(
+                                "Retrying - delaying line processing for {:?} seconds [{}:{}]: {:?}",
+                                metadata_retry_delay,
+                                file!(),
+                                line!(),
+                                line
+                            );
+                            delayed_lines_send.send_blocking(line).unwrap();
+                            None
+                        } else {
+                            debug!(
+                                "Retrying disabled, processing line as-is [{}:{}]: {:?}",
+                                file!(),
+                                line!(),
+                                line
+                            );
+                            Some(StrictOrLazyLines::Lazy(line))
+                        }
                     }
                 },
                 Err(MiddlewareError::Skip) => {
-                    debug!("Dropping line: {:?}", line);
+                    debug!("Skipping line [{}:{}]: {:?}", file!(), line!(), line);
                     None
                 }
                 Err(MiddlewareError::Retry) => {
                     if delayed_source_enabled {
                         // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
                         debug!(
-                            "Retrying - delaying k8s line processing for {:?} seconds: {:?}",
-                            metadata_retry_delay, line
+                            "Retrying - delaying line processing for {:?} seconds [{}:{}]: {:?}",
+                            metadata_retry_delay,
+                            file!(),
+                            line!(),
+                            line
                         );
                         delayed_lines_send.send_blocking(line).unwrap();
                         None
                     } else {
-                        trace!("Retrying disabled, processing line as-is: {:?}", line);
+                        debug!(
+                            "Retrying disabled, processing line as-is [{}:{}]: {:?}",
+                            file!(),
+                            line!(),
+                            line
+                        );
                         Some(StrictOrLazyLines::Lazy(line))
                     }
                 }
@@ -624,11 +655,16 @@ pub async fn _main(
         StrictOrLazyLineBuilder::LazyDelayed(mut line) => match executor.process(&mut line) {
             Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
             Err(MiddlewareError::Skip) => {
-                debug!("Dropping line: {:?}", line);
+                debug!("Skipping line [{}:{}]: {:?}", file!(), line!(), line);
                 None
             }
             Err(MiddlewareError::Retry) => {
-                debug!("No more retries, processing line as-is: {:?}", line);
+                debug!(
+                    "No more retries, processing line as-is [{}:{}]: {:?}",
+                    file!(),
+                    line!(),
+                    line
+                );
                 None
             }
         },
