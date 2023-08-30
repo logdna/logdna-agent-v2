@@ -1,4 +1,4 @@
-use std::net::{SocketAddr, ToSocketAddrs};
+use std::net::{SocketAddr, TcpListener, ToSocketAddrs};
 
 use futures::{StreamExt, TryStreamExt};
 use k8s::feature_leader::FeatureLeader;
@@ -352,6 +352,7 @@ async fn create_agent_ds(
     agent_log_level: &str,
     agent_startup_lease: &str,
     log_reporter_metrics: &str,
+    kube_api: bool,
 ) {
     let sa = serde_json::from_value(serde_json::json!({
         "apiVersion": "v1",
@@ -529,6 +530,7 @@ async fn create_agent_ds(
         agent_log_level,
         agent_startup_lease,
         log_reporter_metrics,
+        kube_api,
     );
     //
     let dss: Api<DaemonSet> = Api::namespaced(client.clone(), agent_namespace);
@@ -586,6 +588,7 @@ fn get_agent_ds_yaml(
     log_level: &str,
     startup_lease: &str,
     log_reporter_metrics: &str,
+    kube_api: bool,
 ) -> DaemonSet {
     serde_json::from_value(serde_json::json!({
         "apiVersion": "apps/v1",
@@ -612,7 +615,7 @@ fn get_agent_ds_yaml(
                     }
                 },
                 "spec": {
-                    "automountServiceAccountToken": true,
+                    "automountServiceAccountToken": kube_api,
                     "containers": [
                         {
                             "env": [
@@ -1021,6 +1024,14 @@ async fn create_agent_feature_lease(
         .unwrap();
 }
 
+fn get_available_port() -> Option<u16> {
+    (30000..40000).find(|port| port_is_available(*port))
+}
+
+fn port_is_available(port: u16) -> bool {
+    TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
 #[test(tokio::test)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_k8s_connection() {
@@ -1082,6 +1093,7 @@ async fn test_k8s_enrichment() {
             "warn",
             "never",
             "never",
+            true,
         )
         .await;
 
@@ -1236,6 +1248,7 @@ async fn test_k8s_events_logged() {
             "warn",
             "never",
             "never",
+            true,
         )
         .await;
 
@@ -1309,7 +1322,6 @@ async fn test_k8s_startup_leases_always_start() {
 
     let pod_name = "always-lease-listener";
     let pod_node_addr = start_line_proxy_pod(client.clone(), pod_name, "default", 30002).await;
-
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
     let (server_result, _) = tokio::join!(server, async {
@@ -1364,6 +1376,7 @@ async fn test_k8s_startup_leases_always_start() {
             "info",
             "always",
             "never",
+            true,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -1480,6 +1493,7 @@ async fn test_k8s_startup_leases_never_start() {
             "info",
             "never",
             "never",
+            true,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -1577,6 +1591,7 @@ async fn test_metric_stats_aggregator_enabled() {
             "info",
             "never",
             "always",
+            true,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(60000)).await;
@@ -1668,6 +1683,7 @@ async fn test_metric_stats_aggregator_disabled() {
             "info",
             "never",
             "never",
+            true,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(45000)).await;
@@ -1775,7 +1791,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-        // create namespace
+        // create test namespace
         let test_namespace = "test-retry-line-with-missing-pod-metadata";
         let ns = serde_json::from_value(serde_json::json!({
             "apiVersion": "v1",
@@ -1788,9 +1804,16 @@ async fn test_retry_line_with_missing_pod_metadata() {
         let nss: Api<Namespace> = Api::all(client.clone());
         nss.create(&PostParams::default(), &ns).await.unwrap();
 
+        // start line proxy pod
         let line_proxy_pod_name = "socat-listener";
-        let pod_node_addr =
-            start_line_proxy_pod(client.clone(), line_proxy_pod_name, test_namespace, 30001).await;
+        let node_port = get_available_port().expect("failed to find free tcp port");
+        let pod_node_addr = start_line_proxy_pod(
+            client.clone(),
+            line_proxy_pod_name,
+            test_namespace,
+            node_port,
+        )
+        .await;
 
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
@@ -1815,6 +1838,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
             "debug",
             "never",
             "never",
+            false,
         )
         .await;
 
