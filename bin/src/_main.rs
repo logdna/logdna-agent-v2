@@ -571,6 +571,7 @@ pub async fn _main(
     };
 
     let lines_stream = sources.map(|line| match line {
+        // Strict (concrete lines)
         StrictOrLazyLineBuilder::Strict(mut line) => match executor.process(&mut line) {
             Ok(_) => match line.build() {
                 Ok(line) => Some(StrictOrLazyLines::Strict(line)),
@@ -593,6 +594,7 @@ pub async fn _main(
                 None
             }
         },
+        // Lazy (tailed files, not fetched yet lines)
         StrictOrLazyLineBuilder::Lazy(mut line) => {
             match executor.validate(&line) {
                 Ok(_) => match executor.process(&mut line) {
@@ -601,27 +603,15 @@ pub async fn _main(
                         debug!("Skipping line [{}:{}]: {:?}", file!(), line!(), line);
                         None
                     }
-                    Err(MiddlewareError::Retry) => {
-                        if delayed_source_enabled {
-                            // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
-                            debug!(
-                                "Retrying - delaying line processing for {:?} seconds [{}:{}]: {:?}",
-                                metadata_retry_delay,
-                                file!(),
-                                line!(),
-                                line
-                            );
-                            delayed_lines_send.send_blocking(line).unwrap();
-                            None
-                        } else {
-                            debug!(
-                                "Retrying disabled, processing line as-is [{}:{}]: {:?}",
-                                file!(),
-                                line!(),
-                                line
-                            );
-                            Some(StrictOrLazyLines::Lazy(line))
-                        }
+                    Err(e) => {
+                        error!(
+                            "Unexpected error {:?} - skipping line [{}:{}]: {:?}",
+                            e,
+                            file!(),
+                            line!(),
+                            line
+                        );
+                        None
                     }
                 },
                 Err(MiddlewareError::Skip) => {
@@ -652,15 +642,17 @@ pub async fn _main(
                 }
             }
         }
+        // Lazy, already delayed (tailed files, not fetched yet lines)
         StrictOrLazyLineBuilder::LazyDelayed(mut line) => match executor.process(&mut line) {
             Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
             Err(MiddlewareError::Skip) => {
                 debug!("Skipping line [{}:{}]: {:?}", file!(), line!(), line);
                 None
             }
-            Err(MiddlewareError::Retry) => {
-                debug!(
-                    "No more retries, processing line as-is [{}:{}]: {:?}",
+            Err(e) => {
+                error!(
+                    "Unexpected error {:?} - skipping line [{}:{}]: {:?}",
+                    e,
                     file!(),
                     line!(),
                     line
