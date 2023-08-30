@@ -1772,50 +1772,43 @@ async fn test_retry_line_with_missing_pod_metadata() {
 
     let client = Client::try_default().await.unwrap();
 
-    let line_proxy_pod_name = "socat-listener";
-    let line_proxy_namespace = "default";
-    let pod_node_addr = start_line_proxy_pod(
-        client.clone(),
-        line_proxy_pod_name,
-        line_proxy_namespace,
-        30001,
-    )
-    .await;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
-
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-        // Create Agent
-        let agent_name = "logdna-agent";
-        let agent_namespace = "logdna-agent";
-
+        // create namespace
+        let test_namespace = "test-retry-line-with-missing-pod-metadata";
         let ns = serde_json::from_value(serde_json::json!({
             "apiVersion": "v1",
             "kind": "Namespace",
             "metadata": {
-                "name": agent_namespace
+                "name": test_namespace
             }
         }))
         .unwrap();
         let nss: Api<Namespace> = Api::all(client.clone());
         nss.create(&PostParams::default(), &ns).await.unwrap();
 
+        let line_proxy_pod_name = "socat-listener";
+        let pod_node_addr =
+            start_line_proxy_pod(client.clone(), line_proxy_pod_name, test_namespace, 30001).await;
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+
         let mock_ingester_socket_addr_str = create_mock_ingester_service(
             client.clone(),
             ingester_public_addr(ingester_addr),
             "ingest-service",
-            agent_namespace,
+            test_namespace,
             80,
         )
         .await;
 
         // start agent
+        let agent_pod_name = "logdna-agent";
         create_agent_ds(
             client.clone(),
-            agent_name,
-            agent_namespace,
+            agent_pod_name,
+            test_namespace,
             &mock_ingester_socket_addr_str,
             "never",
             "always",
@@ -1855,8 +1848,8 @@ async fn test_retry_line_with_missing_pod_metadata() {
 
         assert_log_lines(
             client.clone(),
-            agent_namespace,
-            &format!("app={}", &agent_name),
+            test_namespace,
+            &format!("app={}", &agent_pod_name),
             vec!["Enabling filesystem"],
             None,
             true,
