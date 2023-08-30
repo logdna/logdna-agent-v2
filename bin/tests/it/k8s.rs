@@ -92,7 +92,7 @@ async fn assert_log_lines(
                         substrings_not_found.pop();
                     }
                     if print_log_lines {
-                        info!("LOG: {:?}", &line_str);
+                        info!("LOG: {:?}", line_str);
                     }
                 }
                 assert!(
@@ -525,6 +525,7 @@ async fn create_agent_ds(
         ingester_addr,
         "false",
         agent_name,
+        agent_namespace,
         log_k8s_events,
         enrich_logs_with_k8s,
         agent_log_level,
@@ -583,6 +584,7 @@ fn get_agent_ds_yaml(
     ingester_addr: &str,
     use_ssl: &str,
     agent_name: &str,
+    agent_namespace: &str,
     log_k8s_events: &str,
     enrich_logs_with_k8s: &str,
     log_level: &str,
@@ -659,7 +661,7 @@ fn get_agent_ds_yaml(
                                 },
                                 {
                                     "name": "LOGDNA_K8S_METADATA_LINE_INCLUSION",
-                                    "value": "namespace:default"
+                                    "value": format!("namespace:{}", agent_namespace)
                                 },
                                 {
                                     "name": "LOGDNA_K8S_METADATA_LINE_EXCLUSION",
@@ -1838,7 +1840,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
             "debug",
             "never",
             "never",
-            false,
+            true,
         )
         .await;
 
@@ -1863,12 +1865,12 @@ async fn test_retry_line_with_missing_pod_metadata() {
         // Wait for the data to be received by the mock ingester
         tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
-        // print_pod_logs(
-        //     client.clone(),
-        //     agent_namespace,
-        //     &format!("app={}", &agent_name),
-        // )
-        // .await;
+        print_pod_logs(
+            client.clone(),
+            test_namespace,
+            &format!("app={}", &agent_pod_name),
+        )
+        .await;
 
         assert_log_lines(
             client.clone(),
