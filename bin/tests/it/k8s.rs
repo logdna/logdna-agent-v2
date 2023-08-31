@@ -1,4 +1,4 @@
-use std::net::{SocketAddr, TcpListener, ToSocketAddrs};
+use std::net::{SocketAddr, ToSocketAddrs};
 
 use futures::{StreamExt, TryStreamExt};
 use k8s::feature_leader::FeatureLeader;
@@ -210,18 +210,19 @@ async fn assert_log_lines(
 ) {
     let pods: Api<Pod> = Api::namespaced(client, namespace);
     let lp = ListParams::default().labels(label);
+    let mut handles = Vec::new();
     pods.list(&lp).await.unwrap().into_iter().for_each(|p| {
         let pods = pods.clone();
         let mut substrings_not_found: Vec<String> =
             substrings.iter().map(|s| s.to_string()).collect();
         substrings_not_found.reverse();
-        tokio::spawn({
+        let handle = tokio::spawn({
             async move {
                 let mut logs = pods
                     .log_stream(
                         &p.metadata.name.clone().unwrap(),
                         &LogParams {
-                            follow: true,
+                            follow: false,
                             tail_lines,
                             ..LogParams::default()
                         },
@@ -229,14 +230,13 @@ async fn assert_log_lines(
                     .await
                     .unwrap()
                     .boxed();
-
                 while let Some(line) = logs.next().await {
+                    let line = line.unwrap();
+                    let line_str = String::from_utf8_lossy(&line);
                     let pat = substrings_not_found.last();
                     if pat.is_none() {
                         break;
                     }
-                    let line = line.unwrap();
-                    let line_str = String::from_utf8_lossy(&line);
                     if line_str.contains(pat.unwrap()) {
                         substrings_not_found.pop();
                     }
@@ -251,7 +251,16 @@ async fn assert_log_lines(
                 );
             }
         });
-    })
+        handles.push(handle);
+    });
+    assert!(
+        !handles.is_empty(),
+        "not found substrings: {:?}",
+        substrings
+    );
+    for handle in handles {
+        handle.await.unwrap();
+    }
 }
 
 async fn start_line_proxy_pod(
@@ -502,6 +511,7 @@ async fn create_agent_ds(
     agent_startup_lease: &str,
     log_reporter_metrics: &str,
     kube_api: bool,
+    metadata_retry_delay: u16,
 ) {
     let sa = serde_json::from_value(serde_json::json!({
         "apiVersion": "v1",
@@ -681,6 +691,7 @@ async fn create_agent_ds(
         agent_startup_lease,
         log_reporter_metrics,
         kube_api,
+        metadata_retry_delay,
     );
     //
     let dss: Api<DaemonSet> = Api::namespaced(client.clone(), agent_namespace);
@@ -740,6 +751,7 @@ fn get_agent_ds_yaml(
     startup_lease: &str,
     log_reporter_metrics: &str,
     kube_api: bool,
+    metadata_retry_delay: u16,
 ) -> DaemonSet {
     serde_json::from_value(serde_json::json!({
         "apiVersion": "apps/v1",
@@ -773,6 +785,10 @@ fn get_agent_ds_yaml(
                                 {
                                     "name": "RUST_LOG",
                                     "value": log_level
+                                },
+                                {
+                                    "name": "MZ_METADATA_RETRY_DELAY",
+                                    "value": format!("{}", metadata_retry_delay),
                                 },
                                 {
                                     "name": "LOGDNA_HOST",
@@ -1246,6 +1262,7 @@ async fn test_k8s_enrichment() {
             "never",
             "never",
             true,
+            0,
         )
         .await;
 
@@ -1410,6 +1427,7 @@ async fn test_k8s_events_logged() {
             "never",
             "never",
             true,
+            0,
         )
         .await;
 
@@ -1538,6 +1556,7 @@ async fn test_k8s_startup_leases_always_start() {
             "always",
             "never",
             true,
+            0,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -1655,6 +1674,7 @@ async fn test_k8s_startup_leases_never_start() {
             "never",
             "never",
             true,
+            0,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -1753,6 +1773,7 @@ async fn test_metric_stats_aggregator_enabled() {
             "never",
             "always",
             true,
+            0,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(60000)).await;
@@ -1845,6 +1866,7 @@ async fn test_metric_stats_aggregator_disabled() {
             "never",
             "never",
             true,
+            0,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(45000)).await;
@@ -1940,7 +1962,7 @@ async fn test_feature_leader_grabbing_lease() {
     server_result.unwrap();
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_retry_line_with_missing_pod_metadata() {
     let (server, _, shutdown_handle, ingester_addr) = common::start_http_ingester();
@@ -1949,7 +1971,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
 
     let client = Client::try_default().await.unwrap();
 
-    let pod_name = "socat-listener";
+    let pod_name = "test-retry-line-socat-listener";
     let default_namespace = "default";
 
     // delete the pod and service first
@@ -1957,7 +1979,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
     delete_service(client.clone(), pod_name, default_namespace).await;
 
     let pod_node_addr =
-        start_line_proxy_pod(client.clone(), pod_name, default_namespace, 30010).await;
+        start_line_proxy_pod(client.clone(), pod_name, default_namespace, 30004).await;
 
     assert!(
         wait_for_pod_ready(
@@ -2002,10 +2024,11 @@ async fn test_retry_line_with_missing_pod_metadata() {
             &mock_ingester_socket_addr_str,
             "never",
             "always",
-            "warn",
+            "logdna_agent::_main=debug,info",
             "never",
             "never",
-            true,
+            false,
+            5,
         )
         .await;
 
@@ -2020,38 +2043,26 @@ async fn test_retry_line_with_missing_pod_metadata() {
         );
         info!("daemonset {} in {} is ready", agent_name, agent_namespace);
 
-        print_pod_logs(
-            client.clone(),
-            agent_namespace,
-            &format!("app={}", &agent_name),
-        )
-        .await;
+        // let messages = [
+        //     "Hello, World! 0\n",
+        //     "Hello, World! 1\n",
+        //     "Hello, World! 2\n",
+        //     "Hello, World! 3\n",
+        //     "Hello, World! 4\n",
+        // ];
+        //
+        // let mut logger_stream = TcpStream::connect(pod_node_addr).await.unwrap();
+        //
+        // for msg in messages.iter() {
+        //     // Write log lines
+        //     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        //     logger_stream.write_all(msg.as_bytes()).await.unwrap();
+        // }
 
-        let messages = [
-            "Hello, World! 0\n",
-            "Hello, World! 2\n",
-            "Hello, World! 3\n",
-            "Hello, World! 1\n",
-            "Hello, World! 4\n",
-        ];
-
-        let mut logger_stream = TcpStream::connect(pod_node_addr).await.unwrap();
-
-        for msg in messages.iter() {
-            // Write log lines
-            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-            logger_stream.write_all(msg.as_bytes()).await.unwrap();
-        }
-
-        // Wait for the data to be received by the mock ingester
+        info!("Wait for the data to be received by the mock ingester");
         tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
-        print_pod_logs(
-            client.clone(),
-            agent_namespace,
-            &format!("app={}", &agent_name),
-        )
-        .await;
+        info!("assert_log_lines");
 
         assert_log_lines(
             client.clone(),
@@ -2062,6 +2073,8 @@ async fn test_retry_line_with_missing_pod_metadata() {
             true,
         )
         .await;
+
+        info!("success");
 
         shutdown_handle();
     });

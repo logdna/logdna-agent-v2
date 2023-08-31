@@ -11,7 +11,7 @@ use tokio::{
     task::JoinHandle,
     time::{sleep, Duration},
 };
-use tracing::{error, trace, warn};
+use tracing::{error, info, trace, warn};
 
 pub static SWAP_DELAY: Duration = Duration::from_secs(3);
 pub static RESET_DURATION: Duration = Duration::from_secs(60);
@@ -131,7 +131,7 @@ pub fn metadata_runner(
 ) {
     let middleware = Arc::new(K8sMetadata::new(deletion_ack_receiver));
     executor.register(middleware.clone());
-
+    info!("registered middleware: K8sMetadata");
     tokio::spawn(async move {
         trampoline(State::Init, &user_agent, &node_name, &middleware).await;
     });
