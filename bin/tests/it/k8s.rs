@@ -2043,21 +2043,21 @@ async fn test_retry_line_with_missing_pod_metadata() {
         );
         info!("daemonset {} in {} is ready", agent_name, agent_namespace);
 
-        // let messages = [
-        //     "Hello, World! 0\n",
-        //     "Hello, World! 1\n",
-        //     "Hello, World! 2\n",
-        //     "Hello, World! 3\n",
-        //     "Hello, World! 4\n",
-        // ];
-        //
-        // let mut logger_stream = TcpStream::connect(pod_node_addr).await.unwrap();
-        //
-        // for msg in messages.iter() {
-        //     // Write log lines
-        //     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-        //     logger_stream.write_all(msg.as_bytes()).await.unwrap();
-        // }
+        let messages = [
+            "Hello, World! 0\n",
+            "Hello, World! 1\n",
+            "Hello, World! 2\n",
+            "Hello, World! 3\n",
+            "Hello, World! 4\n",
+        ];
+
+        let mut logger_stream = TcpStream::connect(pod_node_addr).await.unwrap();
+
+        for msg in messages.iter() {
+            // Write log lines
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            logger_stream.write_all(msg.as_bytes()).await.unwrap();
+        }
 
         info!("Wait for the data to be received by the mock ingester");
         tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;

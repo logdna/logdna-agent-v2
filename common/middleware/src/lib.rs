@@ -2,6 +2,7 @@ use http::types::body::LineBufferMut;
 use std::sync::Arc;
 use std::{ops::Deref, thread::spawn};
 use thiserror::Error;
+use tracing::info;
 
 pub mod k8s_line_rules;
 pub mod line_rules;
@@ -26,6 +27,7 @@ pub trait Middleware: Send + Sync + 'static {
         &self,
         line: &'a dyn LineBufferMut,
     ) -> Result<&'a dyn LineBufferMut, MiddlewareError>;
+    fn name(&self) -> &'static str;
 }
 
 impl<T, U> Middleware for T
@@ -46,6 +48,10 @@ where
         line: &'a dyn LineBufferMut,
     ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
         Ok(line)
+    }
+
+    fn name(&self) -> &'static str {
+        std::any::type_name::<T>()
     }
 }
 
@@ -88,8 +94,9 @@ impl Executor {
     }
 
     pub fn register<T: Middleware>(&mut self, middleware: T) {
+        info!("register middleware: {}", middleware.name());
         self.middlewares
-            .push(ArcMiddleware::from(middleware).into_inner())
+            .push(ArcMiddleware::from(middleware).into_inner());
     }
 
     pub fn init(&self) {

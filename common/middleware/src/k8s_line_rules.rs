@@ -163,6 +163,10 @@ impl Middleware for K8sLineFilter {
     ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
         Ok(line)
     }
+
+    fn name(&self) -> &'static str {
+        std::any::type_name::<K8sLineFilter>()
+    }
 }
 
 fn set_k8s_line_rule(rules: &[String]) -> Result<K8sLineRules, K8sLineRulesError> {

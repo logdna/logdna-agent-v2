@@ -266,6 +266,10 @@ impl Middleware for MetaRules {
     ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
         Ok(line)
     }
+
+    fn name(&self) -> &'static str {
+        std::any::type_name::<MetaRules>()
+    }
 }
 
 fn os_env_hashmap() -> HashMap<String, String> {

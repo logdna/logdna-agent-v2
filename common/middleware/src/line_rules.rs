@@ -148,11 +148,16 @@ impl Middleware for LineRules {
             Some(_) => self.process_line(line),
         }
     }
+
     fn validate<'a>(
         &self,
         line: &'a dyn LineBufferMut,
     ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
         Ok(line)
+    }
+
+    fn name(&self) -> &'static str {
+        std::any::type_name::<LineRules>()
     }
 }
 

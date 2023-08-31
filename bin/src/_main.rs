@@ -273,6 +273,7 @@ pub async fn _main(
         e
     })?);
 
+    info!("initializing middleware executor");
     executor.init();
 
     // Use an internal env var to support running integration test w/o additional delays

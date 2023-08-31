@@ -482,13 +482,18 @@ impl Middleware for K8sMetadata {
         &self,
         line: &'a dyn LineBufferMut,
     ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
-        // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
+        // here we retry all pod lines to give time for k8s pod metadata to catchup
+        // if metadata retry delay is not configured or zero then lines will be processed as usual
         let file_name = line.get_file().unwrap_or("");
         if parse_container_path(file_name).is_some() {
             Err(MiddlewareError::Retry)
         } else {
             Ok(line)
         }
+    }
+
+    fn name(&self) -> &'static str {
+        std::any::type_name::<K8sMetadata>()
     }
 }
 
