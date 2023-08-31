@@ -51,6 +51,70 @@ async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
     })
 }
 
+async fn wait_for_pod_ready(
+    client: Client,
+    namespace: &str,
+    pod_name: &str,
+    timeout: std::time::Duration,
+) -> bool {
+    let pods: Api<k8s_openapi::api::core::v1::Pod> = Api::namespaced(client, namespace);
+    let mut is_ready = false;
+    let start_time = std::time::Instant::now();
+    while !is_ready && start_time.elapsed() < timeout {
+        match pods.get(pod_name).await {
+            Ok(pod) => {
+                if let Some(status) = &pod.status {
+                    if let Some(conditions) = &status.conditions {
+                        for condition in conditions {
+                            if condition.type_ == "Ready" && condition.status == "True" {
+                                is_ready = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                panic!("Error getting pod: {:?}", e);
+            }
+        }
+        if !is_ready {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+    }
+    is_ready
+}
+
+async fn wait_for_ds_ready(
+    client: Client,
+    namespace: &str,
+    ds_name: &str,
+    timeout: std::time::Duration,
+) -> bool {
+    let daemonsets: Api<k8s_openapi::api::apps::v1::DaemonSet> =
+        Api::namespaced(client.clone(), namespace);
+    let mut is_ready = false;
+    let start_time = std::time::Instant::now();
+    while !is_ready && start_time.elapsed() < timeout {
+        match daemonsets.get(ds_name).await {
+            Ok(ds) => {
+                if let Some(status) = ds.status {
+                    if status.number_ready == status.current_number_scheduled {
+                        is_ready = true;
+                    }
+                }
+            }
+            Err(e) => {
+                panic!("Error getting daemonset {}: {:?}", ds_name, e);
+            }
+        }
+        if !is_ready {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+    }
+    is_ready
+}
+
 async fn assert_log_lines(
     client: Client,
     namespace: &str,
@@ -661,7 +725,7 @@ fn get_agent_ds_yaml(
                                 },
                                 {
                                     "name": "LOGDNA_K8S_METADATA_LINE_INCLUSION",
-                                    "value": format!("namespace:{}", agent_namespace)
+                                    "value": format!("namespace:default, namespace:{}", agent_namespace)
                                 },
                                 {
                                     "name": "LOGDNA_K8S_METADATA_LINE_EXCLUSION",
@@ -1054,15 +1118,24 @@ async fn test_k8s_enrichment() {
     let client = Client::try_default().await.unwrap();
 
     let pod_name = "socat-listener";
-    let pod_node_addr = start_line_proxy_pod(client.clone(), pod_name, "default", 30001).await;
+    let default_namespace = "default";
+    let pod_node_addr =
+        start_line_proxy_pod(client.clone(), pod_name, default_namespace, 30001).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+    assert!(
+        wait_for_pod_ready(
+            client.clone(),
+            default_namespace,
+            pod_name,
+            tokio::time::Duration::from_millis(10_000),
+        )
+        .await
+    );
+    info!("pod {} in {} is ready", pod_name, default_namespace);
 
     let (server_result, _) = tokio::join!(server, async {
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
         // Create Agent
-        let agent_name = "k8s-enrichment";
+        let agent_pod_name = "k8s-enrichment";
         let agent_namespace = "k8s-enrichment";
 
         let ns = serde_json::from_value(serde_json::json!({
@@ -1087,7 +1160,7 @@ async fn test_k8s_enrichment() {
 
         create_agent_ds(
             client.clone(),
-            agent_name,
+            agent_pod_name,
             agent_namespace,
             &mock_ingester_socket_addr_str,
             "never",
@@ -1099,16 +1172,28 @@ async fn test_k8s_enrichment() {
         )
         .await;
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+        assert!(
+            wait_for_ds_ready(
+                client.clone(),
+                agent_pod_name,
+                agent_namespace,
+                tokio::time::Duration::from_millis(10_000),
+            )
+            .await
+        );
+        info!(
+            "daemonset {} in {} is ready",
+            agent_pod_name, agent_namespace
+        );
 
         print_pod_logs(
             client.clone(),
             agent_namespace,
-            &format!("app={}", &agent_name),
+            &format!("app={}", &agent_pod_name),
         )
         .await;
 
-        let messages = vec![
+        let messages = [
             "Hello, World! 0\n",
             "Hello, World! 2\n",
             "Hello, World! 3\n",
@@ -1817,7 +1902,13 @@ async fn test_retry_line_with_missing_pod_metadata() {
         )
         .await;
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+        wait_for_pod_ready(
+            client.clone(),
+            test_namespace,
+            line_proxy_pod_name,
+            tokio::time::Duration::from_millis(5000),
+        )
+        .await;
 
         let mock_ingester_socket_addr_str = create_mock_ingester_service(
             client.clone(),
@@ -1844,9 +1935,15 @@ async fn test_retry_line_with_missing_pod_metadata() {
         )
         .await;
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+        wait_for_ds_ready(
+            client.clone(),
+            agent_pod_name,
+            test_namespace,
+            tokio::time::Duration::from_millis(10_000),
+        )
+        .await;
 
-        let messages = vec![
+        let messages = [
             "Hello, World! 0\n",
             "Hello, World! 2\n",
             "Hello, World! 3\n",
