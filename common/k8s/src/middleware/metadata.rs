@@ -482,14 +482,21 @@ impl Middleware for K8sMetadata {
         &self,
         line: &'a dyn LineBufferMut,
     ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
-        // here we retry all pod lines to give time for k8s pod metadata to catchup
-        // if metadata retry delay is not configured or zero then lines will be processed as usual
+        // here we retry only pod log lines that do not have k8s metadata
         let file_name = line.get_file().unwrap_or("");
-        if parse_container_path(file_name).is_some() {
-            Err(MiddlewareError::Retry)
-        } else {
-            Ok(line)
+        debug!("validate line from file: '{:?}'", file_name);
+        if let Some(parse_result) = parse_container_path(file_name) {
+            let obj_ref =
+                ObjectRef::new(&parse_result.pod_name).within(&parse_result.pod_namespace);
+            if let Some(ref store) = self.state.lock().unwrap().store {
+                if let Some(_) = store.get(&obj_ref) {
+                    return Ok(line);
+                }
+            }
+            // line does not have metadata yet
+            return Err(MiddlewareError::Retry);
         }
+        Ok(line)
     }
 
     fn name(&self) -> &'static str {

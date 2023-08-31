@@ -126,8 +126,7 @@ impl Executor {
             .iter()
             .try_fold(line, |l, m| match m.validate(l) {
                 Ok(_) => Ok(l),
-                Err(MiddlewareError::Skip) => Err(MiddlewareError::Skip),
-                Err(MiddlewareError::Retry) => Err(MiddlewareError::Retry),
+                Err(e) => Err(e),
             })
     }
 }

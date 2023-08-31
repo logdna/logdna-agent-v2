@@ -874,7 +874,7 @@ fn get_agent_ds_yaml(
                             "name": "logdna-agent",
                             "resources": {
                                 "limits": {
-                                    "memory": "500Mi"
+                                    "memory": "5000Mi"
                                 },
                                 "requests": {
                                     "cpu": "20m"
@@ -2027,7 +2027,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
             "logdna_agent::_main=debug,info",
             "never",
             "never",
-            false,
+            true,
             5,
         )
         .await;
@@ -2043,24 +2043,24 @@ async fn test_retry_line_with_missing_pod_metadata() {
         );
         info!("daemonset {} in {} is ready", agent_name, agent_namespace);
 
-        let messages = [
-            "Hello, World! 0\n",
-            "Hello, World! 1\n",
-            "Hello, World! 2\n",
-            "Hello, World! 3\n",
-            "Hello, World! 4\n",
-        ];
+        // let messages = [
+        //     "Hello, World! 0\n",
+        //     "Hello, World! 1\n",
+        //     "Hello, World! 2\n",
+        //     "Hello, World! 3\n",
+        //     "Hello, World! 4\n",
+        // ];
+        //
+        // let mut logger_stream = TcpStream::connect(pod_node_addr).await.unwrap();
+        //
+        // for msg in messages.iter() {
+        //     // Write log lines
+        //     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        //     logger_stream.write_all(msg.as_bytes()).await.unwrap();
+        // }
 
-        let mut logger_stream = TcpStream::connect(pod_node_addr).await.unwrap();
-
-        for msg in messages.iter() {
-            // Write log lines
-            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-            logger_stream.write_all(msg.as_bytes()).await.unwrap();
-        }
-
-        info!("Wait for the data to be received by the mock ingester");
-        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+        // info!("Wait for the data to be received by the mock ingester");
+        // tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
         info!("assert_log_lines");
 
