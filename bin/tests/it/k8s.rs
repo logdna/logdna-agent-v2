@@ -53,8 +53,8 @@ async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
 
 async fn wait_for_pod_ready(
     client: Client,
-    namespace: &str,
     pod_name: &str,
+    namespace: &str,
     timeout: std::time::Duration,
 ) -> bool {
     let pods: Api<k8s_openapi::api::core::v1::Pod> = Api::namespaced(client, namespace);
@@ -87,8 +87,8 @@ async fn wait_for_pod_ready(
 
 async fn wait_for_ds_ready(
     client: Client,
-    namespace: &str,
     ds_name: &str,
+    namespace: &str,
     timeout: std::time::Duration,
 ) -> bool {
     let daemonsets: Api<k8s_openapi::api::apps::v1::DaemonSet> =
@@ -113,6 +113,91 @@ async fn wait_for_ds_ready(
         }
     }
     is_ready
+}
+
+async fn delete_pod(client: Client, pod_name: &str, namespace: &str) {
+    let pods: Api<k8s_openapi::api::core::v1::Pod> = Api::namespaced(client, namespace);
+    let dp = kube::api::DeleteParams::default();
+    match pods.delete(pod_name, &dp).await {
+        Ok(_) => {}
+        Err(kube::Error::Api(ae)) if ae.code == 404 => {
+            info!("Pod {} does not exist in {}.", pod_name, namespace);
+            return;
+        }
+        Err(e) => {
+            info!(
+                "Failed to delete pod {} in {}: {:?}",
+                pod_name, namespace, e
+            );
+        }
+    }
+    // wait for the pod to be completely deleted
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        match pods.get(pod_name).await {
+            Ok(_) => {
+                info!(
+                    "Waiting for pod {} in {} to be deleted...",
+                    pod_name, namespace
+                );
+            }
+            Err(kube::Error::Api(ae)) if ae.code == 404 => {
+                info!("Pod {} has been deleted in {}.", pod_name, namespace);
+                break;
+            }
+            Err(e) => {
+                // Some other error
+                panic!(
+                    "Failed to check status of pod {} in {}: {:?}",
+                    pod_name, namespace, e
+                );
+            }
+        }
+    }
+}
+
+async fn delete_service(client: Client, service_name: &str, namespace: &str) {
+    let services: Api<k8s_openapi::api::core::v1::Service> = Api::namespaced(client, namespace);
+    let dp = kube::api::DeleteParams::default();
+    match services.delete(service_name, &dp).await {
+        Ok(_) => {}
+        Err(kube::Error::Api(ae)) if ae.code == 404 => {
+            info!("Service {} does not exist in {}.", service_name, namespace);
+            return;
+        }
+        Err(e) => {
+            info!(
+                "Failed to delete service {} in {}: {:?}",
+                service_name, namespace, e
+            );
+        }
+    }
+    // wait for the service to be completely deleted
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        match services.get(service_name).await {
+            Ok(_) => {
+                info!(
+                    "Waiting for service {} in {} to be deleted...",
+                    service_name, namespace
+                );
+            }
+            Err(kube::Error::Api(ae)) if ae.code == 404 => {
+                info!(
+                    "Service {} has been deleted in {}.",
+                    service_name, namespace
+                );
+                break;
+            }
+            Err(e) => {
+                // Some other error
+                panic!(
+                    "Failed to check status of service {} in {}: {:?}",
+                    service_name, namespace, e
+                );
+            }
+        }
+    }
 }
 
 async fn assert_log_lines(
@@ -1090,14 +1175,6 @@ async fn create_agent_feature_lease(
         .unwrap();
 }
 
-fn get_available_port() -> Option<u16> {
-    (30000..40000).find(|port| port_is_available(*port))
-}
-
-fn port_is_available(port: u16) -> bool {
-    TcpListener::bind(("127.0.0.1", port)).is_ok()
-}
-
 #[test(tokio::test)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_k8s_connection() {
@@ -1125,8 +1202,8 @@ async fn test_k8s_enrichment() {
     assert!(
         wait_for_pod_ready(
             client.clone(),
-            default_namespace,
             pod_name,
+            default_namespace,
             tokio::time::Duration::from_millis(10_000),
         )
         .await
@@ -1135,7 +1212,7 @@ async fn test_k8s_enrichment() {
 
     let (server_result, _) = tokio::join!(server, async {
         // Create Agent
-        let agent_pod_name = "k8s-enrichment";
+        let agent_name = "k8s-enrichment";
         let agent_namespace = "k8s-enrichment";
 
         let ns = serde_json::from_value(serde_json::json!({
@@ -1160,7 +1237,7 @@ async fn test_k8s_enrichment() {
 
         create_agent_ds(
             client.clone(),
-            agent_pod_name,
+            agent_name,
             agent_namespace,
             &mock_ingester_socket_addr_str,
             "never",
@@ -1175,21 +1252,18 @@ async fn test_k8s_enrichment() {
         assert!(
             wait_for_ds_ready(
                 client.clone(),
-                agent_pod_name,
+                agent_name,
                 agent_namespace,
                 tokio::time::Duration::from_millis(10_000),
             )
             .await
         );
-        info!(
-            "daemonset {} in {} is ready",
-            agent_pod_name, agent_namespace
-        );
+        info!("daemonset {} in {} is ready", agent_name, agent_namespace);
 
         print_pod_logs(
             client.clone(),
             agent_namespace,
-            &format!("app={}", &agent_pod_name),
+            &format!("app={}", &agent_name),
         )
         .await;
 
@@ -1875,71 +1949,81 @@ async fn test_retry_line_with_missing_pod_metadata() {
 
     let client = Client::try_default().await.unwrap();
 
-    let (server_result, _) = tokio::join!(server, async {
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    let pod_name = "socat-listener";
+    let default_namespace = "default";
 
-        // create test namespace
-        let test_namespace = "test-retry-line-with-missing-pod-metadata";
+    // delete the pod and service first
+    delete_pod(client.clone(), pod_name, default_namespace).await;
+    delete_service(client.clone(), pod_name, default_namespace).await;
+
+    let pod_node_addr =
+        start_line_proxy_pod(client.clone(), pod_name, default_namespace, 30010).await;
+
+    assert!(
+        wait_for_pod_ready(
+            client.clone(),
+            pod_name,
+            default_namespace,
+            tokio::time::Duration::from_millis(10_000),
+        )
+        .await
+    );
+    info!("pod {} in {} is ready", pod_name, default_namespace);
+
+    let (server_result, _) = tokio::join!(server, async {
+        // Create Agent
+        let agent_name = "test-retry-line";
+        let agent_namespace = "test-retry-line";
+
         let ns = serde_json::from_value(serde_json::json!({
             "apiVersion": "v1",
             "kind": "Namespace",
             "metadata": {
-                "name": test_namespace
+                "name": agent_namespace
             }
         }))
         .unwrap();
         let nss: Api<Namespace> = Api::all(client.clone());
         nss.create(&PostParams::default(), &ns).await.unwrap();
 
-        // start line proxy pod
-        let line_proxy_pod_name = "socat-listener";
-        let node_port = get_available_port().expect("failed to find free tcp port");
-        let pod_node_addr = start_line_proxy_pod(
-            client.clone(),
-            line_proxy_pod_name,
-            test_namespace,
-            node_port,
-        )
-        .await;
-
-        wait_for_pod_ready(
-            client.clone(),
-            test_namespace,
-            line_proxy_pod_name,
-            tokio::time::Duration::from_millis(5000),
-        )
-        .await;
-
         let mock_ingester_socket_addr_str = create_mock_ingester_service(
             client.clone(),
             ingester_public_addr(ingester_addr),
             "ingest-service",
-            test_namespace,
+            agent_namespace,
             80,
         )
         .await;
 
-        // start agent
-        let agent_pod_name = "logdna-agent";
         create_agent_ds(
             client.clone(),
-            agent_pod_name,
-            test_namespace,
+            agent_name,
+            agent_namespace,
             &mock_ingester_socket_addr_str,
             "never",
             "always",
-            "debug",
+            "warn",
             "never",
             "never",
             true,
         )
         .await;
 
-        wait_for_ds_ready(
+        assert!(
+            wait_for_ds_ready(
+                client.clone(),
+                agent_name,
+                agent_namespace,
+                tokio::time::Duration::from_millis(10_000),
+            )
+            .await
+        );
+        info!("daemonset {} in {} is ready", agent_name, agent_namespace);
+
+        print_pod_logs(
             client.clone(),
-            agent_pod_name,
-            test_namespace,
-            tokio::time::Duration::from_millis(10_000),
+            agent_namespace,
+            &format!("app={}", &agent_name),
         )
         .await;
 
@@ -1964,15 +2048,15 @@ async fn test_retry_line_with_missing_pod_metadata() {
 
         print_pod_logs(
             client.clone(),
-            test_namespace,
-            &format!("app={}", &agent_pod_name),
+            agent_namespace,
+            &format!("app={}", &agent_name),
         )
         .await;
 
         assert_log_lines(
             client.clone(),
-            test_namespace,
-            &format!("app={}", &agent_pod_name),
+            agent_namespace,
+            &format!("app={}", &agent_name),
             vec!["Enabling filesystem"],
             None,
             true,
