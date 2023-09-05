@@ -4,9 +4,8 @@
 //! The following dependencies are needed:
 //!
 //! [dependency]
-//! rate_limit_macro = "0.1.0"
-//! lazy_static = "1.4"
-//! once_cell = "1.8"
+//! rate_limit_macro = "0.1"
+//! once_cell = "1"
 //!
 //! Here is code example:
 //!
