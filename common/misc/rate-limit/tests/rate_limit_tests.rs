@@ -13,4 +13,3 @@ fn test_rate_limit_is_limited() {
     // Only 5 calls should have been allowed due to rate limiting.
     assert_eq!(called_times, 5);
 }
-

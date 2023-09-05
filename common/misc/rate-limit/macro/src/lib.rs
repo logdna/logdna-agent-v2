@@ -90,8 +90,8 @@ pub fn rate_limit(item: TokenStream) -> TokenStream {
             use std::thread::sleep;
             use once_cell::sync::Lazy;
 
-        static STATE: Lazy<Mutex<i32>> = Lazy::new(|| Mutex::new(0));
-        static LAST_CALLED: Lazy<Mutex<Instant>> = Lazy::new(|| Mutex::new(Instant::now() - Duration::from_secs(10)));
+            static STATE: Lazy<Mutex<i32>> = Lazy::new(|| Mutex::new(0));
+            static LAST_CALLED: Lazy<Mutex<Instant>> = Lazy::new(|| Mutex::new(Instant::now() - Duration::from_secs(10)));
 
             let mut state = STATE.lock().unwrap();
             let mut last_called = LAST_CALLED.lock().unwrap();
