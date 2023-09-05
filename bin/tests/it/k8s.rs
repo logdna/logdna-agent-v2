@@ -1978,7 +1978,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
     delete_pod(client.clone(), pod_name, default_namespace).await;
     delete_service(client.clone(), pod_name, default_namespace).await;
 
-    let pod_node_addr =
+    let _pod_node_addr =
         start_line_proxy_pod(client.clone(), pod_name, default_namespace, 30004).await;
 
     assert!(

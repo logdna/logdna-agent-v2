@@ -10,6 +10,7 @@ use k8s::feature_leader::FeatureLeader;
 use k8s::feature_leader::FeatureLeaderMeta;
 use k8s::metrics_stats_stream::MetricsStatsStream;
 use middleware::MiddlewareError;
+use rate_limit_macro::rate_limit;
 
 use fs::cache::delayed_stream::delayed_stream;
 
@@ -572,7 +573,7 @@ pub async fn _main(
     };
 
     let lines_stream = sources.map(|line| match line {
-        // Strict (concrete lines)
+        // Strict (concrete) lines
         StrictOrLazyLineBuilder::Strict(mut line) => match executor.process(&mut line) {
             Ok(_) => match line.build() {
                 Ok(line) => Some(StrictOrLazyLines::Strict(line)),
@@ -582,12 +583,12 @@ pub async fn _main(
                 }
             },
             Err(MiddlewareError::Skip) => {
-                debug!("Dropping line [{}:{}]: {:?}", file!(), line!(), line);
+                debug!("Dropping line at [{}:{}]: {:?}", file!(), line!(), line);
                 None
             }
             Err(MiddlewareError::Retry) => {
                 debug!(
-                    "Not retrying, dropping line [{}:{}]: {:?}",
+                    "Not retrying, dropping line at [{}:{}]: {:?}",
                     file!(),
                     line!(),
                     line
@@ -595,7 +596,7 @@ pub async fn _main(
                 None
             }
         },
-        // Lazy (tailed files, not fetched yet lines)
+        // Lazy (tailed files, not fetched yet) lines
         StrictOrLazyLineBuilder::Lazy(mut line) => {
             match executor.validate(&line) {
                 Ok(_) => match executor.process(&mut line) {
@@ -616,14 +617,17 @@ pub async fn _main(
                     }
                 },
                 Err(MiddlewareError::Skip) => {
-                    debug!("Skipping line [{}:{}]: {:?}", file!(), line!(), line);
+                    debug!("Skipping line at [{}:{}]: {:?}", file!(), line!(), line);
                     None
                 }
                 Err(MiddlewareError::Retry) => {
                     if delayed_source_enabled {
+                        rate_limit!(rate = 1, interval = 10 * 60, {
+                            warn!("Pod metadata is missing for line: {:?}", line);
+                        });
                         // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
                         debug!(
-                            "Retrying - delaying line processing for {:?} seconds [{}:{}]: {:?}",
+                            "Retrying - delaying line processing for {:?} seconds at [{}:{}]: {:?}",
                             metadata_retry_delay,
                             file!(),
                             line!(),
@@ -632,8 +636,11 @@ pub async fn _main(
                         delayed_lines_send.send_blocking(line).unwrap();
                         None
                     } else {
+                        rate_limit!(rate = 1, interval = 10 * 60, {
+                            error!("Pod metadata is missing for line: {:?}", line);
+                        });
                         debug!(
-                            "Retrying disabled, processing line as-is [{}:{}]: {:?}",
+                            "Retrying disabled, processing line as-is at [{}:{}]: {:?}",
                             file!(),
                             line!(),
                             line
@@ -643,29 +650,52 @@ pub async fn _main(
                 }
             }
         }
-        // Lazy, already delayed (tailed files, not fetched yet lines)
-        StrictOrLazyLineBuilder::LazyDelayed(mut line) => match executor.process(&mut line) {
-            Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
-            Err(MiddlewareError::Skip) => {
-                debug!("Skipping line [{}:{}]: {:?}", file!(), line!(), line);
-                None
+        // Lazy, already delayed/retried (tailed files, not fetched yet) lines
+        StrictOrLazyLineBuilder::LazyDelayed(mut line) => {
+            match executor.validate(&line) {
+                Ok(_) => match executor.process(&mut line) {
+                    Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
+                    Err(MiddlewareError::Skip) => {
+                        debug!("Skipping line [{}:{}]: {:?}", file!(), line!(), line);
+                        None
+                    }
+                    Err(e) => {
+                        rate_limit!(rate = 1, interval = 10 * 60, {
+                            error!(
+                                "Unexpected error {:?} - skipping line [{}:{}]: {:?}",
+                                e,
+                                file!(),
+                                line!(),
+                                line
+                            )
+                        });
+                        None
+                    }
+                },
+                Err(MiddlewareError::Skip) => {
+                    debug!("Skipping line at [{}:{}]: {:?}", file!(), line!(), line);
+                    None
+                }
+                Err(MiddlewareError::Retry) => {
+                    // no more retries
+                    rate_limit!(rate = 1, interval = 10 * 60, {
+                        error!("Pod metadata is missing for line: {:?}", line);
+                    });
+                    debug!(
+                        "Retrying disabled, processing line as-is at [{}:{}]: {:?}",
+                        file!(),
+                        line!(),
+                        line
+                    );
+                    Some(StrictOrLazyLines::Lazy(line))
+                }
             }
-            Err(e) => {
-                error!(
-                    "Unexpected error {:?} - skipping line [{}:{}]: {:?}",
-                    e,
-                    file!(),
-                    line!(),
-                    line
-                );
-                None
-            }
-        },
+        }
     });
 
     let body_offsets_stream = lines_stream
         .filter_map(|l| async { l })
-        // TODO: paramaterise the flush frequency
+        // TODO: parameterize the flush frequency
         .timed_request_batches(config.http.body_size, Duration::from_millis(250))
         .map(|b| async { b })
         .buffered(10);
