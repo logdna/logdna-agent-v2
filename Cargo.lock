@@ -3086,26 +3086,20 @@ dependencies = [
 name = "rate-limit-core"
 version = "0.1.0"
 dependencies = [
- "lazy_static",
  "once_cell",
  "proc-macro2",
  "quote",
  "rate-limit-macro",
  "syn 1.0.109",
- "tracing",
 ]
 
 [[package]]
 name = "rate-limit-macro"
 version = "0.1.0"
 dependencies = [
- "lazy_static",
- "once_cell",
  "proc-macro2",
  "quote",
  "syn 1.0.109",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

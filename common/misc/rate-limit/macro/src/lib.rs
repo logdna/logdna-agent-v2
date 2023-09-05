@@ -24,7 +24,7 @@
 //! assert_eq!(called_times, 5);
 //!
 //! Notes:
-//! - this macro shoudl be used with synchronous blocks of code, block example: {  tracing::error!("this log message can create log flood!");  }
+//! - this macro should be used with synchronous blocks of code, block example: {  tracing::error!("this log message can create log flood!");  }
 //!
 extern crate proc_macro;
 
@@ -85,28 +85,25 @@ pub fn rate_limit(item: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         {
-            use std::sync::{Mutex, Arc};
-            use std::time::{Duration, Instant};
-            use std::thread::sleep;
+            use std::sync::atomic::{AtomicU64, Ordering};
+            use std::time::{SystemTime, Duration};
             use once_cell::sync::Lazy;
 
-            static STATE: Lazy<Mutex<i32>> = Lazy::new(|| Mutex::new(0));
-            static LAST_CALLED: Lazy<Mutex<Instant>> = Lazy::new(|| Mutex::new(Instant::now() - Duration::from_secs(10)));
+            static STATE: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
+            static LAST_CALLED: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
 
-            let mut state = STATE.lock().unwrap();
-            let mut last_called = LAST_CALLED.lock().unwrap();
-            let now = Instant::now();
-            let elapsed = now.duration_since(*last_called).as_secs();
+            let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_else(|_| Duration::new(0, 0)).as_secs();
+            let elapsed = now - LAST_CALLED.load(Ordering::Relaxed);
 
             // If the time since the last call is greater than the interval, reset the state
             if elapsed > #interval as u64 {
-                *state = 0;
-                *last_called = now;
+                STATE.store(0, Ordering::Relaxed);
+                LAST_CALLED.store(now, Ordering::Relaxed);
             }
 
-            if *state < #rate {
+            if STATE.fetch_add(1, Ordering::Relaxed) < #rate as u64 {
                 #block
-                *state += 1;
+                LAST_CALLED.store(now, Ordering::Relaxed);
             } else {
                 // TODO: Action when rate limit is exceeded
             }
