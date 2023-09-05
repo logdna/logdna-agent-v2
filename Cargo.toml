@@ -10,6 +10,8 @@ members = [
     "common/journald",
     "common/state",
     "common/notify_stream",
+    "common/misc/rate-limit",
+    "common/misc/rate-limit/macro",
     "api",
     "utils/metrics-recorder",
 ]
