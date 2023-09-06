@@ -489,7 +489,7 @@ impl Middleware for K8sMetadata {
             let obj_ref =
                 ObjectRef::new(&parse_result.pod_name).within(&parse_result.pod_namespace);
             if let Some(ref store) = self.state.lock().unwrap().store {
-                if let Some(_) = store.get(&obj_ref) {
+                if store.get(&obj_ref).is_some() {
                     return Ok(line);
                 }
             }
