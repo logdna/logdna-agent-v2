@@ -1,11 +1,6 @@
 //! This crate provides "rate_limit_macro" procedural macro.
 //!
 //! Usage:
-//! The following dependencies are needed:
-//!
-//! [dependency]
-//! rate_limit_macro = "0.1"
-//! once_cell = "1"
 //!
 //! Here is code example:
 //!
@@ -86,10 +81,9 @@ pub fn rate_limit(item: TokenStream) -> TokenStream {
         {
             use std::sync::atomic::{AtomicU64, Ordering};
             use std::time::{SystemTime, Duration};
-            use once_cell::sync::Lazy;
 
-            static STATE: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
-            static LAST_CALLED: Lazy<AtomicU64> = Lazy::new(|| AtomicU64::new(0));
+            static STATE: AtomicU64 = AtomicU64::new(0);
+            static LAST_CALLED: AtomicU64 = AtomicU64::new(0);
 
             let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_else(|_| Duration::new(0, 0)).as_secs();
             let elapsed = now - LAST_CALLED.load(Ordering::Relaxed);

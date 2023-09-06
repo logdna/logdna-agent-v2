@@ -2328,7 +2328,6 @@ dependencies = [
  "futures",
  "futures-timer",
  "hyper",
- "lazy_static",
  "logdna-client",
  "metrics",
  "num_cpus",
@@ -3086,7 +3085,6 @@ dependencies = [
 name = "rate-limit-core"
 version = "0.1.0"
 dependencies = [
- "once_cell",
  "proc-macro2",
  "quote",
  "rate-limit-macro",
