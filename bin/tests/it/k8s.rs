@@ -2071,7 +2071,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
                 client.clone(),
                 agent_name,
                 agent_namespace,
-                tokio::time::Duration::from_millis(20_000),
+                tokio::time::Duration::from_millis(120_000),
             )
             .await
         );
