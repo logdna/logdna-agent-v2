@@ -501,7 +501,7 @@ impl Middleware for K8sMetadata {
                 }
             }
             // line does not have metadata yet
-            return Err(MiddlewareError::Retry);
+            return Err(MiddlewareError::Retry(self.name().into()));
         }
         Ok(line)
     }

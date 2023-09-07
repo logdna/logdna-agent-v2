@@ -15,9 +15,9 @@ pub enum Status<T> {
 #[derive(Debug, Error)]
 pub enum MiddlewareError {
     #[error("line needs to be dropped")]
-    Skip,
+    Skip(String),
     #[error("line needs to be retried for processing again later")]
-    Retry,
+    Retry(String),
 }
 
 pub trait Middleware: Send + Sync + 'static {
@@ -114,7 +114,7 @@ impl Executor {
             .iter()
             .try_fold(line, |l, m| match m.process(l) {
                 Status::Ok(l) => Ok(l),
-                Status::Skip => Err(MiddlewareError::Skip),
+                Status::Skip => Err(MiddlewareError::Skip(m.name().into())),
             })
     }
 

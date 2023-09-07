@@ -578,17 +578,26 @@ pub async fn _main(
             Ok(_) => match line.build() {
                 Ok(line) => Some(StrictOrLazyLines::Strict(line)),
                 Err(e) => {
-                    error!("Couldn't build line from linebuilder {:?}", e);
+                    rate_limit!(rate = 1, interval = 1 * 60, {
+                        error!("Couldn't build line from linebuilder {:?}", e);
+                    });
                     None
                 }
             },
-            Err(MiddlewareError::Skip) => {
-                debug!("Dropping line at [{}:{}]: {:?}", file!(), line!(), line);
+            Err(MiddlewareError::Skip(name)) => {
+                debug!(
+                    "Dropping line by {} at [{}:{}]: {:?}",
+                    name,
+                    file!(),
+                    line!(),
+                    line
+                );
                 None
             }
-            Err(MiddlewareError::Retry) => {
+            Err(MiddlewareError::Retry(name)) => {
                 debug!(
-                    "Not retrying, dropping line at [{}:{}]: {:?}",
+                    "Not retrying, dropping line by {} at [{}:{}]: {:?}",
+                    name,
                     file!(),
                     line!(),
                     line
@@ -601,33 +610,47 @@ pub async fn _main(
             match executor.validate(&line) {
                 Ok(_) => match executor.process(&mut line) {
                     Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
-                    Err(MiddlewareError::Skip) => {
-                        debug!("Skipping line [{}:{}]: {:?}", file!(), line!(), line);
-                        None
-                    }
-                    Err(e) => {
-                        error!(
-                            "Unexpected error {:?} - skipping line [{}:{}]: {:?}",
-                            e,
+                    Err(MiddlewareError::Skip(name)) => {
+                        debug!(
+                            "Skipping line by {} at [{}:{}]: {:?}",
+                            name,
                             file!(),
                             line!(),
                             line
                         );
                         None
                     }
+                    Err(e) => {
+                        rate_limit!(rate = 1, interval = 10 * 60, {
+                            error!(
+                                "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
+                                e,
+                                file!(),
+                                line!(),
+                                line
+                        )});
+                        None
+                    }
                 },
-                Err(MiddlewareError::Skip) => {
-                    debug!("Skipping line at [{}:{}]: {:?}", file!(), line!(), line);
+                Err(MiddlewareError::Skip(name)) => {
+                    debug!(
+                        "Skipping line by {} at [{}:{}]: {:?}",
+                        name,
+                        file!(),
+                        line!(),
+                        line
+                    );
                     None
                 }
-                Err(MiddlewareError::Retry) => {
+                Err(MiddlewareError::Retry(name)) => {
                     if delayed_source_enabled {
                         rate_limit!(rate = 1, interval = 10 * 60, {
                             warn!("Pod metadata is missing for line: {:?}", line);
                         });
                         // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
                         debug!(
-                            "Retrying - delaying line processing for {:?} seconds at [{}:{}]: {:?}",
+                            "Retrying - delaying line processing by {} for {:?} seconds at [{}:{}]: {:?}",
+                            name,
                             metadata_retry_delay,
                             file!(),
                             line!(),
@@ -640,7 +663,8 @@ pub async fn _main(
                             error!("Pod metadata is missing for line: {:?}", line);
                         });
                         debug!(
-                            "Retrying disabled, processing line as-is at [{}:{}]: {:?}",
+                            "Retrying disabled, processing line by {} as-is at [{}:{}]: {:?}",
+                            name,
                             file!(),
                             line!(),
                             line
@@ -655,14 +679,14 @@ pub async fn _main(
             match executor.validate(&line) {
                 Ok(_) => match executor.process(&mut line) {
                     Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
-                    Err(MiddlewareError::Skip) => {
-                        debug!("Skipping line [{}:{}]: {:?}", file!(), line!(), line);
+                    Err(MiddlewareError::Skip(name)) => {
+                        debug!("Skipping line by {} at [{}:{}]: {:?}", name, file!(), line!(), line);
                         None
                     }
                     Err(e) => {
                         rate_limit!(rate = 1, interval = 10 * 60, {
                             error!(
-                                "Unexpected error {:?} - skipping line [{}:{}]: {:?}",
+                                "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
                                 e,
                                 file!(),
                                 line!(),
@@ -672,17 +696,18 @@ pub async fn _main(
                         None
                     }
                 },
-                Err(MiddlewareError::Skip) => {
-                    debug!("Skipping line at [{}:{}]: {:?}", file!(), line!(), line);
+                Err(MiddlewareError::Skip(name)) => {
+                    debug!("Skipping line by {} at [{}:{}]: {:?}", name, file!(), line!(), line);
                     None
                 }
-                Err(MiddlewareError::Retry) => {
+                Err(MiddlewareError::Retry(name)) => {
                     // no more retries
                     rate_limit!(rate = 1, interval = 10 * 60, {
                         error!("Pod metadata is missing for line: {:?}", line);
                     });
                     debug!(
-                        "Retrying disabled, processing line as-is at [{}:{}]: {:?}",
+                        "Retries exhausted - processing line by {} as-is at [{}:{}]: {:?}",
+                        name,
                         file!(),
                         line!(),
                         line

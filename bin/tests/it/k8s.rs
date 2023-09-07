@@ -11,7 +11,7 @@ use kube::Client;
 use test_log::test;
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
-use tracing::info;
+use tracing::{debug, info};
 
 use k8s::feature_leader::FeatureLeader;
 
@@ -38,9 +38,9 @@ async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
                     .unwrap()
                     .boxed();
 
-                info!("Logging agent pod {:?}", p.metadata.name);
+                debug!("Logging agent pod {:?}", p.metadata.name);
                 while let Some(line) = logs.next().await {
-                    info!(
+                    debug!(
                         "LOG [{:?}] {:?}",
                         p.metadata.name,
                         String::from_utf8_lossy(&line.unwrap())
