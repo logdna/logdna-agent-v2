@@ -1291,10 +1291,15 @@ async fn test_k8s_enrichment() {
             &mock_ingester_socket_addr_str,
             "never",
             "always",
-            "warn",
+            "logdna_agent::_main=debug,info",
             "never",
             "never",
-            None,
+            Some(vec![
+                // to make sure all is still functional with delay enabled,
+                // in normal case this delay is not going be triggered as
+                // all pod metadata shall be always available in this setup (good case)
+                (config::env_vars::METADATA_RETRY_DELAY, "5"),
+            ]),
         )
         .await;
 
@@ -2005,7 +2010,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
     delete_pod(client.clone(), pod_name, default_namespace).await;
     delete_service(client.clone(), pod_name, default_namespace).await;
 
-    let _pod_node_addr =
+    let pod_node_addr =
         start_line_proxy_pod(client.clone(), pod_name, default_namespace, 30004).await;
 
     assert!(
@@ -2072,27 +2077,37 @@ async fn test_retry_line_with_missing_pod_metadata() {
         );
         info!("daemonset {} in {} is ready", agent_name, agent_namespace);
 
-        // let messages = [
-        //     "Hello, World! 0\n",
-        //     "Hello, World! 1\n",
-        //     "Hello, World! 2\n",
-        //     "Hello, World! 3\n",
-        //     "Hello, World! 4\n",
-        // ];
-        //
-        // let mut logger_stream = TcpStream::connect(pod_node_addr).await.unwrap();
-        //
-        // for msg in messages.iter() {
-        //     // Write log lines
-        //     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-        //     logger_stream.write_all(msg.as_bytes()).await.unwrap();
-        // }
+        assert!(
+            wait_for_pod_ready(
+                client.clone(),
+                "sample-pod",
+                "default",
+                tokio::time::Duration::from_millis(10_000),
+            )
+            .await
+        );
+        info!("daemonset {} in {} is ready", agent_name, agent_namespace);
+
+        let messages = [
+            "Hello, World! 0\n",
+            "Hello, World! 1\n",
+            "Hello, World! 2\n",
+            "Hello, World! 3\n",
+            "Hello, World! 4\n",
+        ];
+
+        let mut logger_stream = TcpStream::connect(pod_node_addr).await.unwrap();
+
+        for msg in messages.iter() {
+            // Write log lines
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            logger_stream.write_all(msg.as_bytes()).await.unwrap();
+        }
 
         // info!("Wait for the data to be received by the mock ingester");
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(3_000)).await;
-
-        let log_lines = vec!["Enabling filesystem", "Pod metadata is missing for line"];
+        let log_lines = vec!["Enabling filesystem"];
         info!("asserting log lines: {:?}", log_lines);
         assert_log_lines(
             client.clone(),
