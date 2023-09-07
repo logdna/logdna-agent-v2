@@ -1,4 +1,6 @@
 target
+bin/target
 bench/target
 .cargo_cache/*
 .git/*
+.idea
