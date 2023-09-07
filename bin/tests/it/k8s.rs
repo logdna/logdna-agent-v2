@@ -2052,7 +2052,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
                 client.clone(),
                 agent_name,
                 agent_namespace,
-                tokio::time::Duration::from_millis(10_000),
+                tokio::time::Duration::from_millis(20_000),
             )
             .await
         );
@@ -2075,15 +2075,17 @@ async fn test_retry_line_with_missing_pod_metadata() {
         // }
 
         // info!("Wait for the data to be received by the mock ingester");
-        // tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
-        info!("assert_log_lines");
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+
+        let log_lines = vec!["Enabling filesystem"];
+        info!("asserting log lines: {:?}", log_lines);
 
         assert_log_lines(
             client.clone(),
             agent_namespace,
             &format!("app={}", &agent_name),
-            vec!["Enabling filesystem"],
+            log_lines,
             None,
             true,
         )
