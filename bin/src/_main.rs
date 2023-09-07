@@ -755,10 +755,14 @@ pub async fn _main(
     fn handle_send_status(s: SendStatus) {
         match s {
             SendStatus::Retry(e) => {
-                warn!("failed sending http request, retrying: {}", e);
+                rate_limit!(rate = 1, interval = 1 * 60, {
+                    warn!("failed sending http request, retrying: {}", e);
+                });
             }
             SendStatus::RetryTimeout => {
-                warn!("failed sending http request, retrying: request timed out!");
+                rate_limit!(rate = 1, interval = 1 * 60, {
+                    warn!("failed sending http request, retrying: request timed out!");
+                });
             }
             _ => {}
         }
