@@ -573,7 +573,7 @@ pub async fn _main(
     };
 
     let lines_stream = sources.map(|line| match line {
-        // Strict (concrete) lines
+        // Strict lines (concrete)
         StrictOrLazyLineBuilder::Strict(mut line) => match executor.process(&mut line) {
             Ok(_) => match line.build() {
                 Ok(line) => Some(StrictOrLazyLines::Strict(line)),
@@ -596,7 +596,7 @@ pub async fn _main(
                 None
             }
         },
-        // Lazy (tailed files, not fetched yet) lines
+        // Lazy lines (from tailed files, not fetched yet)
         StrictOrLazyLineBuilder::Lazy(mut line) => {
             match executor.validate(&line) {
                 Ok(_) => match executor.process(&mut line) {
@@ -650,7 +650,7 @@ pub async fn _main(
                 }
             }
         }
-        // Lazy, already delayed/retried (tailed files, not fetched yet) lines
+        // Lazy already delayed/retried lines (from tailed files, not fetched yet)
         StrictOrLazyLineBuilder::LazyDelayed(mut line) => {
             match executor.validate(&line) {
                 Ok(_) => match executor.process(&mut line) {

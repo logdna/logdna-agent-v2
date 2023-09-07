@@ -2,19 +2,18 @@ use std::collections::HashMap;
 use std::net::{SocketAddr, ToSocketAddrs};
 
 use futures::{StreamExt, TryStreamExt};
-use k8s::feature_leader::FeatureLeader;
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpStream;
-
 use k8s_openapi::api::apps::v1::DaemonSet;
 use k8s_openapi::api::coordination::v1::Lease;
 use k8s_openapi::api::core::v1::{Endpoints, Namespace, Pod, Service, ServiceAccount};
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBinding};
 use kube::api::{Api, ListParams, LogParams, PostParams, WatchEvent};
 use kube::Client;
+use test_log::test;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
 use tracing::info;
 
-use test_log::test;
+use k8s::feature_leader::FeatureLeader;
 
 // workaround for unused functions in different features: https://github.com/rust-lang/rust/issues/46379
 use crate::common;
@@ -201,6 +200,7 @@ async fn delete_service(client: Client, service_name: &str, namespace: &str) {
     }
 }
 
+/// tail_lines = None - means no lookback
 async fn assert_log_lines(
     client: Client,
     namespace: &str,
@@ -231,19 +231,33 @@ async fn assert_log_lines(
                     .await
                     .unwrap()
                     .boxed();
-                while let Some(line) = logs.next().await {
-                    let line = line.unwrap();
-                    let line_str = String::from_utf8_lossy(&line);
-                    let pat = substrings_not_found.last();
-                    if pat.is_none() {
-                        break;
+                let mut accumulated = String::new();
+                while let Some(buffer) = logs.next().await {
+                    let buffer = buffer.unwrap();
+                    accumulated.push_str(&String::from_utf8_lossy(&buffer));
+
+                    let mut lines: Vec<&str> = accumulated.split('\n').collect();
+                    if lines.len() > 1 {
+                        let last = lines.pop().unwrap_or_default().to_string();
+                        for line_str in lines {
+                            if print_log_lines {
+                                info!("LOG: {:?}", line_str);
+                            }
+                            let pat = substrings_not_found.last();
+                            if let Some(pat) = pat {
+                                if line_str.contains(pat) {
+                                    substrings_not_found.pop();
+                                }
+                            } else if !print_log_lines {
+                                break;
+                            }
+                        }
+                        accumulated = last;
                     }
-                    if line_str.contains(pat.unwrap()) {
-                        substrings_not_found.pop();
-                    }
-                    if print_log_lines {
-                        info!("LOG: {:?}", line_str);
-                    }
+                }
+                // Process the remaining accumulated data if any.
+                if !accumulated.is_empty() && print_log_lines {
+                    info!("LOG: {:?}", accumulated);
                 }
                 assert!(
                     substrings_not_found.is_empty(),
@@ -2042,7 +2056,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
             "never",
             Some(vec![
                 (config::env_vars::METADATA_RETRY_DELAY, "5"),
-                (config::env_vars::MOCK_NO_PODS, "true"),
+                (config::env_vars::MOCK_NO_PODS, "true"), // k8s log lines will not have metadata
             ]),
         )
         .await;
@@ -2076,11 +2090,10 @@ async fn test_retry_line_with_missing_pod_metadata() {
 
         // info!("Wait for the data to be received by the mock ingester");
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(3_000)).await;
 
-        let log_lines = vec!["Enabling filesystem"];
+        let log_lines = vec!["Enabling filesystem", "Pod metadata is missing for line"];
         info!("asserting log lines: {:?}", log_lines);
-
         assert_log_lines(
             client.clone(),
             agent_namespace,
