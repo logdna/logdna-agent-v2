@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::net::{SocketAddr, ToSocketAddrs};
 
 use futures::{StreamExt, TryStreamExt};
@@ -510,8 +511,7 @@ async fn create_agent_ds(
     agent_log_level: &str,
     agent_startup_lease: &str,
     log_reporter_metrics: &str,
-    kube_api: bool,
-    metadata_retry_delay: u16,
+    env_vars: Option<Vec<(&str, &str)>>,
 ) {
     let sa = serde_json::from_value(serde_json::json!({
         "apiVersion": "v1",
@@ -690,8 +690,7 @@ async fn create_agent_ds(
         agent_log_level,
         agent_startup_lease,
         log_reporter_metrics,
-        kube_api,
-        metadata_retry_delay,
+        env_vars,
     );
     //
     let dss: Api<DaemonSet> = Api::namespaced(client.clone(), agent_namespace);
@@ -750,10 +749,9 @@ fn get_agent_ds_yaml(
     log_level: &str,
     startup_lease: &str,
     log_reporter_metrics: &str,
-    kube_api: bool,
-    metadata_retry_delay: u16,
+    env_vars: Option<Vec<(&str, &str)>>,
 ) -> DaemonSet {
-    serde_json::from_value(serde_json::json!({
+    let mut cfgmap = serde_json::json!({
         "apiVersion": "apps/v1",
         "kind": "DaemonSet",
         "metadata": {
@@ -778,17 +776,12 @@ fn get_agent_ds_yaml(
                     }
                 },
                 "spec": {
-                    "automountServiceAccountToken": kube_api,
                     "containers": [
                         {
                             "env": [
                                 {
                                     "name": "RUST_LOG",
                                     "value": log_level
-                                },
-                                {
-                                    "name": "MZ_METADATA_RETRY_DELAY",
-                                    "value": format!("{}", metadata_retry_delay),
                                 },
                                 {
                                     "name": "LOGDNA_HOST",
@@ -983,8 +976,34 @@ fn get_agent_ds_yaml(
             }
         }
         }
-    ))
-    .expect("failed to serialize DS manifest")
+    );
+    if let Some(env_vars) = env_vars {
+        let env_vars: Vec<HashMap<&str, serde_json::Value>> = env_vars
+            .into_iter()
+            .map(|(k, v)| {
+                let mut map = HashMap::new();
+                map.insert(k, serde_json::json!(v));
+                map
+            })
+            .collect();
+        if let Some(serde_json::Value::Array(containers)) = cfgmap.get_mut("containers") {
+            if let Some(serde_json::Value::Object(container)) = containers.get_mut(0) {
+                if let Some(serde_json::Value::Array(existing_env_vars)) = container.get_mut("env")
+                {
+                    for env_var in env_vars {
+                        let map: serde_json::Map<String, serde_json::Value> = env_var
+                            .into_iter()
+                            .map(|(k, v)| (k.to_string(), v))
+                            .collect();
+                        existing_env_vars.push(serde_json::Value::Object(map));
+                    }
+                } else {
+                    panic!("unexpected");
+                }
+            }
+        }
+    }
+    serde_json::from_value(cfgmap).expect("failed to serialize DS manifest")
 }
 
 async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: &str) {
@@ -1261,8 +1280,7 @@ async fn test_k8s_enrichment() {
             "warn",
             "never",
             "never",
-            true,
-            0,
+            None,
         )
         .await;
 
@@ -1426,8 +1444,7 @@ async fn test_k8s_events_logged() {
             "warn",
             "never",
             "never",
-            true,
-            0,
+            None,
         )
         .await;
 
@@ -1555,8 +1572,7 @@ async fn test_k8s_startup_leases_always_start() {
             "info",
             "always",
             "never",
-            true,
-            0,
+            None,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -1673,8 +1689,7 @@ async fn test_k8s_startup_leases_never_start() {
             "info",
             "never",
             "never",
-            true,
-            0,
+            None,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -1772,8 +1787,7 @@ async fn test_metric_stats_aggregator_enabled() {
             "info",
             "never",
             "always",
-            true,
-            0,
+            None,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(60000)).await;
@@ -1865,8 +1879,7 @@ async fn test_metric_stats_aggregator_disabled() {
             "info",
             "never",
             "never",
-            true,
-            0,
+            None,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(45000)).await;
@@ -2027,8 +2040,10 @@ async fn test_retry_line_with_missing_pod_metadata() {
             "logdna_agent::_main=debug,info",
             "never",
             "never",
-            true,
-            5,
+            Some(vec![
+                (config::env_vars::METADATA_RETRY_DELAY, "5"),
+                (config::env_vars::MOCK_NO_PODS, "true"),
+            ]),
         )
         .await;
 

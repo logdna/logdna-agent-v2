@@ -11,6 +11,7 @@ use std::{
 
 use arc_interner::ArcIntern;
 use async_channel::Receiver;
+
 use futures::{
     stream::{self, select},
     StreamExt, TryStreamExt,
@@ -35,6 +36,10 @@ use middleware::{Middleware, Status};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{debug, error, trace, warn};
+
+lazy_static::lazy_static! {
+    static ref MOCK_NO_PODS: bool = std::env::var(config::env_vars::MOCK_NO_PODS).is_ok();
+}
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -486,11 +491,13 @@ impl Middleware for K8sMetadata {
         let file_name = line.get_file().unwrap_or("");
         debug!("validate line from file: '{:?}'", file_name);
         if let Some(parse_result) = parse_container_path(file_name) {
-            let obj_ref =
-                ObjectRef::new(&parse_result.pod_name).within(&parse_result.pod_namespace);
-            if let Some(ref store) = self.state.lock().unwrap().store {
-                if store.get(&obj_ref).is_some() {
-                    return Ok(line);
+            if !*MOCK_NO_PODS {
+                let obj_ref =
+                    ObjectRef::new(&parse_result.pod_name).within(&parse_result.pod_namespace);
+                if let Some(ref store) = self.state.lock().unwrap().store {
+                    if store.get(&obj_ref).is_some() {
+                        return Ok(line);
+                    }
                 }
             }
             // line does not have metadata yet

@@ -61,3 +61,5 @@ pub const META_ANNOTATIONS: &str = "MZ_META_ANNOTATIONS";
 pub const META_LABELS: &str = "MZ_META_LABELS";
 
 pub const NO_CAP: &str = "MZ_NO_CAP";
+
+pub const MOCK_NO_PODS: &str = "MZ_MOCK_NO_PODS";
