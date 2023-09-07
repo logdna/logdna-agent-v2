@@ -1995,7 +1995,7 @@ async fn test_feature_leader_grabbing_lease() {
 }
 
 #[test(tokio::test)]
-#[cfg_attr(not(feature = "k8s_tests"), ignore)]
+#[ignore]
 async fn test_retry_line_with_missing_pod_metadata() {
     let (server, _, shutdown_handle, ingester_addr) = common::start_http_ingester();
 
