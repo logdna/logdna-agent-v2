@@ -12,6 +12,7 @@ RUN rm -f /lib/systemd/system/multi-user.target.wants/* \
   /lib/systemd/system/sockets.target.wants/*udev* \
   /lib/systemd/system/sockets.target.wants/*initctl* \
   /lib/systemd/system/sysinit.target.wants/systemd-tmpfiles-setup* \
+  /lib/systemd/system/sysinit.target.wants/*udev* \
   /lib/systemd/system/systemd-update-utmp*
 
 RUN mkdir -p /var/log/journal && \
@@ -26,4 +27,4 @@ RUN chmod 777 /etc
 RUN mkdir /etc/logdna
 RUN chmod 777 /etc/logdna
 
-CMD [ "/bin/systemd", "--system", "--unit=basic.target" ]
+CMD [ "/bin/systemd", "--system", "--unit=sysinit.target" ]
