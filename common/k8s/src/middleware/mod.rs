@@ -8,7 +8,7 @@ pub use runner::*;
 
 lazy_static! {
     static ref K8S_REG: Regex = Regex::new(
-        r#"^/var/log/containers/([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)-([a-z0-9]{64}).log$"#
+        r"^/var/log/containers/([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)_([a-z0-9A-Z\-.]+)-([a-z0-9]{64}).log$"
     ).unwrap_or_else(|e| panic!("K8S_REG Regex::new() failed: {}", e));
 }
 

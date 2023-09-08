@@ -106,7 +106,7 @@ fn test_list_config_from_conf() -> io::Result<()> {
     assert!(output.status.success());
     let stdout = from_utf8(&output.stdout).unwrap();
 
-    vec![
+    [
         "Listing current settings from config",
         ", environment variables and command line options in yaml format",
         "ingestion_key: REDACTED",

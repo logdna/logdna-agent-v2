@@ -165,6 +165,7 @@ fn key_value_map_st(max_entries: usize) -> impl Strategy<Value = KeyValueMap> {
 }
 
 //recursive JSON type
+#[allow(clippy::arc_with_non_send_sync)]
 fn json_st(depth: u32) -> impl Strategy<Value = serde_json::Value> {
     let leaf = prop_oneof![
         Just(serde_json::Value::Null),
