@@ -175,7 +175,7 @@ pipeline {
                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                          ]]){
                             sh """
-                            TEST_THREADS="${TEST_THREADS}" make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
+                              TEST_THREADS="${TEST_THREADS}" make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
                             """
                         }
                     }
@@ -219,7 +219,7 @@ pipeline {
                                 echo "[default]" > ${WORKSPACE}/.aws_creds_k8s-test
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_k8s-test
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_k8s-test
-                                # make k8s-test AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_k8s-test
+                                make k8s-test AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_k8s-test
                             """
                         }
                     }
