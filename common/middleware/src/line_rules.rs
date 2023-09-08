@@ -1,4 +1,4 @@
-use crate::{Middleware, Status};
+use crate::{Middleware, MiddlewareError, Status};
 use http::types::body::LineBufferMut;
 use regex::bytes::{Regex, RegexSet};
 use std::cmp;
@@ -147,6 +147,17 @@ impl Middleware for LineRules {
             None => Status::Skip,
             Some(_) => self.process_line(line),
         }
+    }
+
+    fn validate<'a>(
+        &self,
+        line: &'a dyn LineBufferMut,
+    ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
+        Ok(line)
+    }
+
+    fn name(&self) -> &'static str {
+        std::any::type_name::<LineRules>()
     }
 }
 

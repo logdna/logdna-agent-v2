@@ -312,6 +312,8 @@ pub struct LogConfig {
     pub tailer_cmd: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tailer_args: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata_retry_delay: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
@@ -475,6 +477,7 @@ impl Default for LogConfig {
             clear_cache_interval: Some(3600 * 6), // 6 hours
             tailer_cmd: None,
             tailer_args: None,
+            metadata_retry_delay: Some(0),
         }
     }
 }
@@ -508,6 +511,8 @@ impl Merge for LogConfig {
         );
         self.clear_cache_interval
             .merge(&other.clear_cache_interval, &default.clear_cache_interval);
+        self.metadata_retry_delay
+            .merge(&other.metadata_retry_delay, &default.metadata_retry_delay);
     }
 }
 

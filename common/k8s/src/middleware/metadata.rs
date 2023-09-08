@@ -1,5 +1,6 @@
 use crate::errors::K8sError;
 use crate::middleware::{parse_container_path, ParseResult};
+use middleware::MiddlewareError;
 
 use std::{
     collections::HashMap,
@@ -10,6 +11,7 @@ use std::{
 
 use arc_interner::ArcIntern;
 use async_channel::Receiver;
+
 use futures::{
     stream::{self, select},
     StreamExt, TryStreamExt,
@@ -33,7 +35,11 @@ use metrics::Metrics;
 use middleware::{Middleware, Status};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tracing::{error, trace, warn};
+use tracing::{debug, error, trace, warn};
+
+lazy_static::lazy_static! {
+    static ref MOCK_NO_PODS: bool = std::env::var(config::env_vars::MOCK_NO_PODS).is_ok();
+}
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -436,7 +442,7 @@ impl Middleware for K8sMetadata {
                         let meta_object =
                             extract_image_name_and_tag(parse_result.container_name, pod.as_ref());
                         if meta_object.is_some() && line.set_meta(json!(meta_object)).is_err() {
-                            trace!("Unable to set meta object{:?}", meta_object);
+                            debug!("Unable to set meta object{:?}", meta_object);
                             return Status::Skip;
                         }
 
@@ -449,6 +455,7 @@ impl Middleware for K8sMetadata {
                                 )
                                 .is_err()
                             {
+                                debug!("Unable to set annotations {:?}", annotations);
                                 return Status::Skip;
                             };
                         }
@@ -462,14 +469,45 @@ impl Middleware for K8sMetadata {
                                 )
                                 .is_err()
                             {
+                                debug!("Unable to set labels {:?}", labels);
                                 return Status::Skip;
                             };
                         }
+                    } else {
+                        trace!("pod metadata is not available {:?}", obj_ref);
+                        return Status::Ok(line);
                     }
                 }
             }
         }
         Status::Ok(line)
+    }
+
+    fn validate<'a>(
+        &self,
+        line: &'a dyn LineBufferMut,
+    ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
+        // here we retry only pod log lines that do not have k8s metadata
+        let file_name = line.get_file().unwrap_or("");
+        debug!("validate line from file: '{:?}'", file_name);
+        if let Some(parse_result) = parse_container_path(file_name) {
+            if !*MOCK_NO_PODS {
+                let obj_ref =
+                    ObjectRef::new(&parse_result.pod_name).within(&parse_result.pod_namespace);
+                if let Some(ref store) = self.state.lock().unwrap().store {
+                    if store.get(&obj_ref).is_some() {
+                        return Ok(line);
+                    }
+                }
+            }
+            // line does not have metadata yet
+            return Err(MiddlewareError::Retry(self.name().into()));
+        }
+        Ok(line)
+    }
+
+    fn name(&self) -> &'static str {
+        std::any::type_name::<K8sMetadata>()
     }
 }
 

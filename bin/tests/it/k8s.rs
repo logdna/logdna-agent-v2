@@ -1,20 +1,19 @@
+use std::collections::HashMap;
 use std::net::{SocketAddr, ToSocketAddrs};
 
-use k8s::feature_leader::FeatureLeader;
-use tokio::io::AsyncWriteExt;
-use tokio::net::TcpStream;
-
 use futures::{StreamExt, TryStreamExt};
-
 use k8s_openapi::api::apps::v1::DaemonSet;
 use k8s_openapi::api::coordination::v1::Lease;
 use k8s_openapi::api::core::v1::{Endpoints, Namespace, Pod, Service, ServiceAccount};
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBinding};
 use kube::api::{Api, ListParams, LogParams, PostParams, WatchEvent};
 use kube::Client;
+use test_log::test;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
 use tracing::{debug, info};
 
-use test_log::test;
+use k8s::feature_leader::FeatureLeader;
 
 // workaround for unused functions in different features: https://github.com/rust-lang/rust/issues/46379
 use crate::common;
@@ -50,6 +49,233 @@ async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
             }
         });
     })
+}
+
+async fn wait_for_pod_ready(
+    client: Client,
+    pod_name: &str,
+    namespace: &str,
+    timeout: std::time::Duration,
+) -> bool {
+    let pods: Api<k8s_openapi::api::core::v1::Pod> = Api::namespaced(client, namespace);
+    let mut is_ready = false;
+    let start_time = std::time::Instant::now();
+    while !is_ready && start_time.elapsed() < timeout {
+        match pods.get(pod_name).await {
+            Ok(pod) => {
+                if let Some(status) = &pod.status {
+                    if let Some(conditions) = &status.conditions {
+                        for condition in conditions {
+                            if condition.type_ == "Ready" && condition.status == "True" {
+                                is_ready = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                panic!("Error getting pod: {:?}", e);
+            }
+        }
+        if !is_ready {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+    }
+    is_ready
+}
+
+async fn wait_for_ds_ready(
+    client: Client,
+    ds_name: &str,
+    namespace: &str,
+    timeout: std::time::Duration,
+) -> bool {
+    let daemonsets: Api<k8s_openapi::api::apps::v1::DaemonSet> =
+        Api::namespaced(client.clone(), namespace);
+    let mut is_ready = false;
+    let start_time = std::time::Instant::now();
+    while !is_ready && start_time.elapsed() < timeout {
+        match daemonsets.get(ds_name).await {
+            Ok(ds) => {
+                if let Some(status) = ds.status {
+                    if status.number_ready == status.current_number_scheduled {
+                        is_ready = true;
+                    }
+                }
+            }
+            Err(e) => {
+                panic!("Error getting daemonset {}: {:?}", ds_name, e);
+            }
+        }
+        if !is_ready {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+    }
+    is_ready
+}
+
+async fn delete_pod(client: Client, pod_name: &str, namespace: &str) {
+    let pods: Api<k8s_openapi::api::core::v1::Pod> = Api::namespaced(client, namespace);
+    let dp = kube::api::DeleteParams::default();
+    match pods.delete(pod_name, &dp).await {
+        Ok(_) => {}
+        Err(kube::Error::Api(ae)) if ae.code == 404 => {
+            info!("Pod {} does not exist in {}.", pod_name, namespace);
+            return;
+        }
+        Err(e) => {
+            info!(
+                "Failed to delete pod {} in {}: {:?}",
+                pod_name, namespace, e
+            );
+        }
+    }
+    // wait for the pod to be completely deleted
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        match pods.get(pod_name).await {
+            Ok(_) => {
+                info!(
+                    "Waiting for pod {} in {} to be deleted...",
+                    pod_name, namespace
+                );
+            }
+            Err(kube::Error::Api(ae)) if ae.code == 404 => {
+                info!("Pod {} has been deleted in {}.", pod_name, namespace);
+                break;
+            }
+            Err(e) => {
+                // Some other error
+                panic!(
+                    "Failed to check status of pod {} in {}: {:?}",
+                    pod_name, namespace, e
+                );
+            }
+        }
+    }
+}
+
+async fn delete_service(client: Client, service_name: &str, namespace: &str) {
+    let services: Api<k8s_openapi::api::core::v1::Service> = Api::namespaced(client, namespace);
+    let dp = kube::api::DeleteParams::default();
+    match services.delete(service_name, &dp).await {
+        Ok(_) => {}
+        Err(kube::Error::Api(ae)) if ae.code == 404 => {
+            info!("Service {} does not exist in {}.", service_name, namespace);
+            return;
+        }
+        Err(e) => {
+            info!(
+                "Failed to delete service {} in {}: {:?}",
+                service_name, namespace, e
+            );
+        }
+    }
+    // wait for the service to be completely deleted
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        match services.get(service_name).await {
+            Ok(_) => {
+                info!(
+                    "Waiting for service {} in {} to be deleted...",
+                    service_name, namespace
+                );
+            }
+            Err(kube::Error::Api(ae)) if ae.code == 404 => {
+                info!(
+                    "Service {} has been deleted in {}.",
+                    service_name, namespace
+                );
+                break;
+            }
+            Err(e) => {
+                // Some other error
+                panic!(
+                    "Failed to check status of service {} in {}: {:?}",
+                    service_name, namespace, e
+                );
+            }
+        }
+    }
+}
+
+/// tail_lines = None - means no lookback
+async fn assert_log_lines(
+    client: Client,
+    namespace: &str,
+    label: &str,
+    substrings: Vec<&str>,
+    tail_lines: Option<i64>,
+    print_log_lines: bool,
+) {
+    let pods: Api<Pod> = Api::namespaced(client, namespace);
+    let lp = ListParams::default().labels(label);
+    let mut handles = Vec::new();
+    pods.list(&lp).await.unwrap().into_iter().for_each(|p| {
+        let pods = pods.clone();
+        let mut substrings_not_found: Vec<String> =
+            substrings.iter().map(|s| s.to_string()).collect();
+        substrings_not_found.reverse();
+        let handle = tokio::spawn({
+            async move {
+                let mut logs = pods
+                    .log_stream(
+                        &p.metadata.name.clone().unwrap(),
+                        &LogParams {
+                            follow: false,
+                            tail_lines,
+                            ..LogParams::default()
+                        },
+                    )
+                    .await
+                    .unwrap()
+                    .boxed();
+                let mut accumulated = String::new();
+                while let Some(buffer) = logs.next().await {
+                    let buffer = buffer.unwrap();
+                    accumulated.push_str(&String::from_utf8_lossy(&buffer));
+
+                    let mut lines: Vec<&str> = accumulated.split('\n').collect();
+                    if lines.len() > 1 {
+                        let last = lines.pop().unwrap_or_default().to_string();
+                        for line_str in lines {
+                            if print_log_lines {
+                                info!("LOG: {:?}", line_str);
+                            }
+                            let pat = substrings_not_found.last();
+                            if let Some(pat) = pat {
+                                if line_str.contains(pat) {
+                                    substrings_not_found.pop();
+                                }
+                            } else if !print_log_lines {
+                                break;
+                            }
+                        }
+                        accumulated = last;
+                    }
+                }
+                // Process the remaining accumulated data if any.
+                if !accumulated.is_empty() && print_log_lines {
+                    info!("LOG: {:?}", accumulated);
+                }
+                assert!(
+                    substrings_not_found.is_empty(),
+                    "not found substrings: {:?}",
+                    substrings_not_found
+                );
+            }
+        });
+        handles.push(handle);
+    });
+    assert!(
+        !handles.is_empty(),
+        "not found substrings: {:?}",
+        substrings
+    );
+    for handle in handles {
+        handle.await.unwrap();
+    }
 }
 
 async fn start_line_proxy_pod(
@@ -299,6 +525,7 @@ async fn create_agent_ds(
     agent_log_level: &str,
     agent_startup_lease: &str,
     log_reporter_metrics: &str,
+    env_vars: Option<Vec<(&str, &str)>>,
 ) {
     let sa = serde_json::from_value(serde_json::json!({
         "apiVersion": "v1",
@@ -471,11 +698,13 @@ async fn create_agent_ds(
         ingester_addr,
         "false",
         agent_name,
+        agent_namespace,
         log_k8s_events,
         enrich_logs_with_k8s,
         agent_log_level,
         agent_startup_lease,
         log_reporter_metrics,
+        env_vars,
     );
     //
     let dss: Api<DaemonSet> = Api::namespaced(client.clone(), agent_namespace);
@@ -528,13 +757,15 @@ fn get_agent_ds_yaml(
     ingester_addr: &str,
     use_ssl: &str,
     agent_name: &str,
+    agent_namespace: &str,
     log_k8s_events: &str,
     enrich_logs_with_k8s: &str,
     log_level: &str,
     startup_lease: &str,
     log_reporter_metrics: &str,
+    env_vars: Option<Vec<(&str, &str)>>,
 ) -> DaemonSet {
-    serde_json::from_value(serde_json::json!({
+    let mut cfgmap = serde_json::json!({
         "apiVersion": "apps/v1",
         "kind": "DaemonSet",
         "metadata": {
@@ -602,7 +833,7 @@ fn get_agent_ds_yaml(
                                 },
                                 {
                                     "name": "LOGDNA_K8S_METADATA_LINE_INCLUSION",
-                                    "value": "namespace:default"
+                                    "value": format!("namespace:default, namespace:{}", agent_namespace)
                                 },
                                 {
                                     "name": "LOGDNA_K8S_METADATA_LINE_EXCLUSION",
@@ -650,7 +881,7 @@ fn get_agent_ds_yaml(
                             "name": "logdna-agent",
                             "resources": {
                                 "limits": {
-                                    "memory": "500Mi"
+                                    "memory": "5000Mi"
                                 },
                                 "requests": {
                                     "cpu": "20m"
@@ -759,8 +990,34 @@ fn get_agent_ds_yaml(
             }
         }
         }
-    ))
-    .expect("failed to serialize DS manifest")
+    );
+    if let Some(env_vars) = env_vars {
+        let env_vars: Vec<HashMap<&str, serde_json::Value>> = env_vars
+            .into_iter()
+            .map(|(k, v)| {
+                let mut map = HashMap::new();
+                map.insert(k, serde_json::json!(v));
+                map
+            })
+            .collect();
+        if let Some(serde_json::Value::Array(containers)) = cfgmap.get_mut("containers") {
+            if let Some(serde_json::Value::Object(container)) = containers.get_mut(0) {
+                if let Some(serde_json::Value::Array(existing_env_vars)) = container.get_mut("env")
+                {
+                    for env_var in env_vars {
+                        let map: serde_json::Map<String, serde_json::Value> = env_var
+                            .into_iter()
+                            .map(|(k, v)| (k.to_string(), v))
+                            .collect();
+                        existing_env_vars.push(serde_json::Value::Object(map));
+                    }
+                } else {
+                    panic!("unexpected");
+                }
+            }
+        }
+    }
+    serde_json::from_value(cfgmap).expect("failed to serialize DS manifest")
 }
 
 async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: &str) {
@@ -987,13 +1244,22 @@ async fn test_k8s_enrichment() {
     let client = Client::try_default().await.unwrap();
 
     let pod_name = "socat-listener";
-    let pod_node_addr = start_line_proxy_pod(client.clone(), pod_name, "default", 30001).await;
+    let default_namespace = "default";
+    let pod_node_addr =
+        start_line_proxy_pod(client.clone(), pod_name, default_namespace, 30001).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
+    assert!(
+        wait_for_pod_ready(
+            client.clone(),
+            pod_name,
+            default_namespace,
+            tokio::time::Duration::from_millis(10_000),
+        )
+        .await
+    );
+    info!("pod {} in {} is ready", pod_name, default_namespace);
 
     let (server_result, _) = tokio::join!(server, async {
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
         // Create Agent
         let agent_name = "k8s-enrichment";
         let agent_namespace = "k8s-enrichment";
@@ -1025,13 +1291,28 @@ async fn test_k8s_enrichment() {
             &mock_ingester_socket_addr_str,
             "never",
             "always",
-            "warn",
+            "logdna_agent::_main=debug,info",
             "never",
             "never",
+            Some(vec![
+                // to make sure all is still functional with delay enabled,
+                // in normal case this delay is not going be triggered as
+                // all pod metadata shall be always available in this setup (good case)
+                (config::env_vars::METADATA_RETRY_DELAY, "5"),
+            ]),
         )
         .await;
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+        assert!(
+            wait_for_ds_ready(
+                client.clone(),
+                agent_name,
+                agent_namespace,
+                tokio::time::Duration::from_millis(10_000),
+            )
+            .await
+        );
+        info!("daemonset {} in {} is ready", agent_name, agent_namespace);
 
         print_pod_logs(
             client.clone(),
@@ -1040,7 +1321,7 @@ async fn test_k8s_enrichment() {
         )
         .await;
 
-        let messages = vec![
+        let messages = [
             "Hello, World! 0\n",
             "Hello, World! 2\n",
             "Hello, World! 3\n",
@@ -1182,6 +1463,7 @@ async fn test_k8s_events_logged() {
             "warn",
             "never",
             "never",
+            None,
         )
         .await;
 
@@ -1255,7 +1537,6 @@ async fn test_k8s_startup_leases_always_start() {
 
     let pod_name = "always-lease-listener";
     let pod_node_addr = start_line_proxy_pod(client.clone(), pod_name, "default", 30002).await;
-
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
     let (server_result, _) = tokio::join!(server, async {
@@ -1310,6 +1591,7 @@ async fn test_k8s_startup_leases_always_start() {
             "info",
             "always",
             "never",
+            None,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -1426,6 +1708,7 @@ async fn test_k8s_startup_leases_never_start() {
             "info",
             "never",
             "never",
+            None,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -1523,6 +1806,7 @@ async fn test_metric_stats_aggregator_enabled() {
             "info",
             "never",
             "always",
+            None,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(60000)).await;
@@ -1614,6 +1898,7 @@ async fn test_metric_stats_aggregator_disabled() {
             "info",
             "never",
             "never",
+            None,
         )
         .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(45000)).await;
@@ -1702,6 +1987,139 @@ async fn test_feature_leader_grabbing_lease() {
         tokio::time::sleep(tokio::time::Duration::from_millis(10000)).await;
         taken_over = feature_leader.try_claim_feature_leader().await;
         assert!(taken_over);
+
+        shutdown_handle();
+    });
+
+    server_result.unwrap();
+}
+
+#[test(tokio::test)]
+#[ignore]
+async fn test_retry_line_with_missing_pod_metadata() {
+    let (server, _, shutdown_handle, ingester_addr) = common::start_http_ingester();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
+
+    let client = Client::try_default().await.unwrap();
+
+    let pod_name = "test-retry-line-socat-listener";
+    let default_namespace = "default";
+
+    // delete the pod and service first
+    delete_pod(client.clone(), pod_name, default_namespace).await;
+    delete_service(client.clone(), pod_name, default_namespace).await;
+
+    let pod_node_addr =
+        start_line_proxy_pod(client.clone(), pod_name, default_namespace, 30004).await;
+
+    assert!(
+        wait_for_pod_ready(
+            client.clone(),
+            pod_name,
+            default_namespace,
+            tokio::time::Duration::from_millis(10_000),
+        )
+        .await
+    );
+    info!("pod {} in {} is ready", pod_name, default_namespace);
+
+    let (server_result, _) = tokio::join!(server, async {
+        // Create Agent
+        let agent_name = "test-retry-line";
+        let agent_namespace = "test-retry-line";
+
+        let ns = serde_json::from_value(serde_json::json!({
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {
+                "name": agent_namespace
+            }
+        }))
+        .unwrap();
+        let nss: Api<Namespace> = Api::all(client.clone());
+        nss.create(&PostParams::default(), &ns).await.unwrap();
+
+        let mock_ingester_socket_addr_str = create_mock_ingester_service(
+            client.clone(),
+            ingester_public_addr(ingester_addr),
+            "ingest-service",
+            agent_namespace,
+            80,
+        )
+        .await;
+
+        create_agent_ds(
+            client.clone(),
+            agent_name,
+            agent_namespace,
+            &mock_ingester_socket_addr_str,
+            "never",
+            "always",
+            "logdna_agent::_main=debug,info",
+            "never",
+            "never",
+            Some(vec![
+                (config::env_vars::METADATA_RETRY_DELAY, "5"),
+                (config::env_vars::MOCK_NO_PODS, "true"), // k8s log lines will not have metadata
+            ]),
+        )
+        .await;
+
+        assert!(
+            wait_for_ds_ready(
+                client.clone(),
+                agent_name,
+                agent_namespace,
+                tokio::time::Duration::from_millis(120_000),
+            )
+            .await
+        );
+        info!("daemonset {} in {} is ready", agent_name, agent_namespace);
+
+        assert!(
+            wait_for_pod_ready(
+                client.clone(),
+                "sample-pod",
+                "default",
+                tokio::time::Duration::from_millis(10_000),
+            )
+            .await
+        );
+        info!("daemonset {} in {} is ready", agent_name, agent_namespace);
+
+        let messages = [
+            "Hello, World! 0\n",
+            "Hello, World! 1\n",
+            "Hello, World! 2\n",
+            "Hello, World! 3\n",
+            "Hello, World! 4\n",
+        ];
+
+        let mut logger_stream = TcpStream::connect(pod_node_addr).await.unwrap();
+
+        for msg in messages.iter() {
+            // Write log lines
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            logger_stream.write_all(msg.as_bytes()).await.unwrap();
+        }
+
+        // info!("Wait for the data to be received by the mock ingester");
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+
+        let log_lines = vec!["Enabling filesystem"];
+        info!("asserting log lines: {:?}", log_lines);
+        assert_log_lines(
+            client.clone(),
+            agent_namespace,
+            &format!("app={}", &agent_name),
+            log_lines,
+            None,
+            true,
+        )
+        .await;
+
+        info!("success");
 
         shutdown_handle();
     });

@@ -1,7 +1,8 @@
-use std::sync::Arc;
-
 use http::types::body::LineBufferMut;
+use std::sync::Arc;
 use std::{ops::Deref, thread::spawn};
+use thiserror::Error;
+use tracing::info;
 
 pub mod k8s_line_rules;
 pub mod line_rules;
@@ -11,10 +12,22 @@ pub enum Status<T> {
     Ok(T),
     Skip,
 }
+#[derive(Debug, Error)]
+pub enum MiddlewareError {
+    #[error("line needs to be dropped")]
+    Skip(String),
+    #[error("line needs to be retried for processing again later")]
+    Retry(String),
+}
 
 pub trait Middleware: Send + Sync + 'static {
     fn run(&self);
-    fn process<'a>(&self, lines: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut>;
+    fn process<'a>(&self, line: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut>;
+    fn validate<'a>(
+        &self,
+        line: &'a dyn LineBufferMut,
+    ) -> Result<&'a dyn LineBufferMut, MiddlewareError>;
+    fn name(&self) -> &'static str;
 }
 
 impl<T, U> Middleware for T
@@ -26,8 +39,19 @@ where
         self.deref().run()
     }
 
-    fn process<'a>(&self, lines: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
-        self.deref().process(lines)
+    fn process<'a>(&self, line: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
+        self.deref().process(line)
+    }
+
+    fn validate<'a>(
+        &self,
+        line: &'a dyn LineBufferMut,
+    ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
+        Ok(line)
+    }
+
+    fn name(&self) -> &'static str {
+        std::any::type_name::<T>()
     }
 }
 
@@ -70,8 +94,9 @@ impl Executor {
     }
 
     pub fn register<T: Middleware>(&mut self, middleware: T) {
+        info!("register middleware: {}", middleware.name());
         self.middlewares
-            .push(ArcMiddleware::from(middleware).into_inner())
+            .push(ArcMiddleware::from(middleware).into_inner());
     }
 
     pub fn init(&self) {
@@ -84,14 +109,25 @@ impl Executor {
     pub fn process<'a>(
         &self,
         line: &'a mut dyn LineBufferMut,
-    ) -> Option<&'a mut dyn LineBufferMut> {
+    ) -> Result<&'a mut dyn LineBufferMut, MiddlewareError> {
         self.middlewares
             .iter()
             .try_fold(line, |l, m| match m.process(l) {
                 Status::Ok(l) => Ok(l),
-                Status::Skip => Err(()),
+                Status::Skip => Err(MiddlewareError::Skip(m.name().into())),
             })
-            .ok()
+    }
+
+    pub fn validate<'a>(
+        &self,
+        line: &'a dyn LineBufferMut,
+    ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
+        self.middlewares
+            .iter()
+            .try_fold(line, |l, m| match m.validate(l) {
+                Ok(_) => Ok(l),
+                Err(e) => Err(e),
+            })
     }
 }
 

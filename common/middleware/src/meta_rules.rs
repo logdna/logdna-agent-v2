@@ -1,4 +1,4 @@
-use crate::{Middleware, Status};
+use crate::{Middleware, MiddlewareError, Status};
 use config::env_vars;
 use http::types::body::{KeyValueMap, LineBufferMut};
 use lazy_static::lazy_static;
@@ -255,8 +255,20 @@ impl MetaRules {
 
 impl Middleware for MetaRules {
     fn run(&self) {}
+
     fn process<'a>(&self, line: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
         self.process_line(line)
+    }
+
+    fn validate<'a>(
+        &self,
+        line: &'a dyn LineBufferMut,
+    ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
+        Ok(line)
+    }
+
+    fn name(&self) -> &'static str {
+        std::any::type_name::<MetaRules>()
     }
 }
 

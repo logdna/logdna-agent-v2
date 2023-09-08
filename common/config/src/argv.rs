@@ -221,6 +221,11 @@ pub struct ArgumentOptions {
     /// Interval in sec between clearing of various unconstrained agent caches
     #[structopt(long, env = env_vars::CLEAR_CACHE_INTERVAL)]
     clear_cache_interval: Option<u32>,
+
+    /// Seconds to wait before checking for missing k8s pod metadata and then sending log line
+    /// to Mezmo as-is. Zero value or when not set means disabled (default).
+    #[structopt(long, env = env_vars::METADATA_RETRY_DELAY)]
+    metadata_retry_delay: Option<u32>,
 }
 
 impl ArgumentOptions {
@@ -389,6 +394,10 @@ impl ArgumentOptions {
 
         if self.clear_cache_interval.is_some() {
             raw.log.clear_cache_interval = self.clear_cache_interval
+        }
+
+        if self.metadata_retry_delay.is_some() {
+            raw.log.metadata_retry_delay = self.metadata_retry_delay
         }
 
         raw
@@ -715,6 +724,10 @@ mod test {
             config.log.clear_cache_interval,
             Some(raw::LogConfig::default().clear_cache_interval.unwrap())
         );
+        assert_eq!(
+            config.log.metadata_retry_delay,
+            Some(raw::LogConfig::default().metadata_retry_delay.unwrap())
+        );
     }
 
     #[test]
@@ -744,6 +757,7 @@ mod test {
             retry_dir: some_string!("/tmp/argv"),
             clear_cache_interval: Some(777),
             retry_disk_limit: Some(Bytes::new(123456, Unit::Byte).unwrap()),
+            metadata_retry_delay: Some(555),
             ..ArgumentOptions::default()
         };
         let config = argv.merge(RawConfig::default());
@@ -775,6 +789,7 @@ mod test {
         assert_eq!(config.journald.systemd_journal_tailer, Some(false));
         assert_eq!(config.startup.option, Some(String::from("always")));
         assert_eq!(config.log.clear_cache_interval, Some(777));
+        assert_eq!(config.log.metadata_retry_delay, Some(555));
     }
 
     #[test]
