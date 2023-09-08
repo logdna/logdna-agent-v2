@@ -492,7 +492,7 @@ impl FileSystem {
     #[instrument(level = "debug", skip_all)]
     pub fn stream_events(
         fs: Rc<RefCell<FileSystem>>,
-    ) -> Result<impl Stream<Item = (Result<Event, Error>, EventTimestamp)>, std::io::Error> {
+    ) -> Result<impl Stream<Item = Result<Event, Error>>, std::io::Error> {
         let notify_events_stream = fs.borrow().watcher.receive();
 
         let (missing_dirs, missing_dir_watcher, missing_dir_event_stream, retry_event_sender) = {
@@ -580,8 +580,6 @@ impl FileSystem {
         .map(Either::Right);
 
         let events = futures::stream::select(events, retry_events)
-            .map(|event_result| async { event_result })
-            .buffered(EVENT_STREAM_BUFFER_COUNT)
             .map({
                 let fs = fs.clone();
                 move |e| {
@@ -632,10 +630,10 @@ impl FileSystem {
             .flatten();
 
         let initial_events = get_initial_events(&fs);
-        Ok(futures::stream::select(
-            initial_events.chain(events),
-            missing_dir_event,
-        ))
+        Ok(
+            futures::stream::select(initial_events.chain(events), missing_dir_event)
+                .map(|(event, _)| event),
+        )
     }
 
     /// Handles inotify events and may produce Event(s) that are returned upstream through sender
@@ -2198,7 +2196,7 @@ mod tests {
                     let fs = fs.clone();
                     move |e| {
                         (
-                            lookup_entry_path!(fs, e.as_ref().unwrap().0.as_ref().unwrap().key()),
+                            lookup_entry_path!(fs, e.as_ref().unwrap().as_ref().unwrap().key()),
                             e,
                         )
                     }
@@ -2734,7 +2732,7 @@ mod tests {
                     let fs = fs.clone();
                     move |e| {
                         (
-                            lookup_entry_path!(fs, e.as_ref().unwrap().0.as_ref().unwrap().key()),
+                            lookup_entry_path!(fs, e.as_ref().unwrap().as_ref().unwrap().key()),
                             e,
                         )
                     }

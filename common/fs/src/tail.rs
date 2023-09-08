@@ -2,7 +2,7 @@ use crate::cache::entry::Entry;
 use crate::cache::event::Event;
 use crate::cache::tailed_file::LazyLineSerializer;
 pub use crate::cache::DirPathBuf;
-use crate::cache::{EntryKey, Error as CacheError, FileSystem, EVENT_STREAM_BUFFER_COUNT};
+use crate::cache::{EntryKey, Error as CacheError, FileSystem};
 use crate::lookback::Lookback;
 use crate::rule::Rules;
 
@@ -11,9 +11,6 @@ use state::{FileId, SpanVec};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use tracing::{debug, info, warn};
-
-use std::sync::Arc;
-use tokio::sync::Mutex;
 
 use futures::{ready, Future, Stream, StreamExt};
 
@@ -25,12 +22,9 @@ use std::task::{Context, Poll};
 
 use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
 
-type SyncHashMap<K, V> = Arc<Mutex<HashMap<K, V>>>;
-
 /// Tails files on a filesystem by inheriting events from a Watcher
 pub struct Tailer {
     fs_cache: std::rc::Rc<std::cell::RefCell<FileSystem>>,
-    event_times: SyncHashMap<EntryKey, (usize, time::OffsetDateTime)>,
 }
 
 fn get_file_for_path(fs: &FileSystem, next_path: &std::path::Path) -> Option<EntryKey> {
@@ -196,53 +190,19 @@ pub fn process(
     };
 
     Ok(events
-        .enumerate()
         .then({
             let fs = state.fs_cache.clone();
-            let event_times = state.event_times;
 
-            move |(event_idx, (event_result, event_time))| {
+            move |event_result| {
                 let fs = fs.clone();
-                let event_times = event_times.clone();
 
                 async move {
                     match event_result {
                         Err(err) => Some(futures::stream::iter(vec![Err(err)]).left_stream()),
                         Ok(event) => {
-                            // debounce events
-                            // check event_time, if it's before the previous one
-                            let key_and_previous_event_time = match event {
-                                Event::Write(key) => {
-                                    let event_times = event_times.lock().await;
-                                    Some((key, event_times.get(&key).cloned()))
-                                }
-                                _ => None,
-                            };
-
-                            // Need to check if the event is within buffer_length
-                            if let Some((_, Some((prev_event_idx, previous_event_time)))) =
-                                key_and_previous_event_time
-                            {
-                                // We've already processed this event, skip tailing
-                                if previous_event_time >= event_time
-                                    && event_idx < (prev_event_idx + EVENT_STREAM_BUFFER_COUNT)
-                                {
-                                    debug!("skipping already processed events");
-                                    Metrics::fs().increment_writes();
-                                    return None;
-                                }
-                            }
-
                             let line = handle_event(event, fs.borrow().deref()).await;
 
-                            let line = line.map(|option_val| option_val.map(Ok).right_stream());
-
-                            if let Some((key, _)) = key_and_previous_event_time {
-                                let mut event_times = event_times.lock().await;
-                                let new_event_time = time::OffsetDateTime::now_utc();
-                                event_times.insert(key, (event_idx, new_event_time));
-                            }
-                            line
+                            line.map(|option_val| option_val.map(Ok).right_stream())
                         }
                     }
                 }
@@ -271,7 +231,6 @@ impl Tailer {
                 fo_state_handles,
                 deletion_ack_sender,
             ))),
-            event_times: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
