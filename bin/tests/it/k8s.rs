@@ -203,69 +203,52 @@ async fn assert_log_lines(
     client: Client,
     namespace: &str,
     label: &str,
-    substrings: Vec<&str>,
+    substrings: Vec<String>,
     tail_lines: Option<i64>,
     print_log_lines: bool,
 ) {
     let pods: Api<Pod> = Api::namespaced(client, namespace);
     let lp = ListParams::default().labels(label);
     let mut handles = Vec::new();
-    pods.list(&lp).await.unwrap().into_iter().for_each(|p| {
+    let pods_list = pods.list(&lp).await.unwrap();
+    for p in pods_list {
         let pods = pods.clone();
-        let mut substrings_not_found: Vec<String> =
-            substrings.iter().map(|s| s.to_string()).collect();
+        let mut substrings_not_found = substrings.clone();
         substrings_not_found.reverse();
-        let handle = tokio::spawn({
-            async move {
-                let mut logs = pods
-                    .log_stream(
-                        &p.metadata.name.clone().unwrap(),
-                        &LogParams {
-                            follow: false,
-                            tail_lines,
-                            ..LogParams::default()
-                        },
-                    )
-                    .await
-                    .unwrap()
-                    .lines();
-                let mut accumulated = String::new();
-                while let Some(buffer) = logs.next().await {
-                    let buffer = buffer.unwrap();
-                    accumulated.push_str(&buffer);
 
-                    let mut lines: Vec<&str> = accumulated.split('\n').collect();
-                    if lines.len() > 1 {
-                        let last = lines.pop().unwrap_or_default().to_string();
-                        for line_str in lines {
-                            if print_log_lines {
-                                info!("LOG: {:?}", line_str);
-                            }
-                            let pat = substrings_not_found.last();
-                            if let Some(pat) = pat {
-                                if line_str.contains(pat) {
-                                    substrings_not_found.pop();
-                                }
-                            } else if !print_log_lines {
-                                break;
-                            }
-                        }
-                        accumulated = last;
+        let handle = tokio::spawn(async move {
+            let mut logs = pods
+                .log_stream(
+                    &p.metadata.name.clone().unwrap(),
+                    &LogParams {
+                        follow: false,
+                        tail_lines,
+                        ..LogParams::default()
+                    },
+                )
+                .await
+                .unwrap()
+                .lines();
+            while let Some(line) = logs.try_next().await.unwrap() {
+                if print_log_lines {
+                    info!("LOG: {:?}", line);
+                }
+                if let Some(pat) = substrings_not_found.last() {
+                    if line.contains(pat) {
+                        substrings_not_found.pop();
                     }
+                } else if !print_log_lines {
+                    break;
                 }
-                // Process the remaining accumulated data if any.
-                if !accumulated.is_empty() && print_log_lines {
-                    info!("LOG: {:?}", accumulated);
-                }
-                assert!(
-                    substrings_not_found.is_empty(),
-                    "not found substrings: {:?}",
-                    substrings_not_found
-                );
             }
+            assert!(
+                substrings_not_found.is_empty(),
+                "not found substrings: {:?}",
+                substrings_not_found
+            );
         });
         handles.push(handle);
-    });
+    }
     assert!(
         !handles.is_empty(),
         "not found substrings: {:?}",
@@ -2116,7 +2099,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
             client.clone(),
             agent_namespace,
             &format!("app={}", &agent_name),
-            log_lines,
+            log_lines.iter().map(|&s| s.to_string()).collect(),
             None,
             true,
         )
