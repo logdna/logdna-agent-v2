@@ -106,7 +106,6 @@ RUN microdnf update -y \
     && microdnf install ca-certificates libcap shadow-utils -y \
     && rm -rf /var/cache/yum \
     && chmod -R 777 . \
-    && setcap "cap_dac_read_search+eip" /work/logdna-agent \
     && groupadd -g 5000 logdna \
     && useradd -u 5000 -g logdna logdna
 
