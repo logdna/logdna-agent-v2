@@ -1,10 +1,12 @@
 [package]
 name = "rate-limit-macro"
-version = "0.1.0"
+description = "Procedural macro that provides a simple way to rate-limit blocks of code."
+version = "1.0.1"
 authors = ["Dmitri Khokhlov <dkhokhlov@gmail.com>"]
 edition = "2018"
 license = "MIT"
-repository = "https://github.com/logdna/logdna-agent-v2"
+readme = "README.md"
+repository = "https://github.com/logdna/logdna-agent-v2/common/msic/rate-limit/macro"
 
 [lib]
 proc-macro = true

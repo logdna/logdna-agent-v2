@@ -22,3 +22,7 @@ debug = true
 
 [profile.dev]
 opt-level = 0
+
+[patch.crates-io]
+rate-limit-core = { path = "common/misc/rate-limit" }
+rate-limit-macro = { path = "common/misc/rate-limit/macro" }
