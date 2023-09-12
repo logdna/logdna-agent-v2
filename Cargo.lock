@@ -3086,7 +3086,7 @@ dependencies = [
 
 [[package]]
 name = "rate-limit-core"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3096,7 +3096,7 @@ dependencies = [
 
 [[package]]
 name = "rate-limit-macro"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "proc-macro2",
  "quote",
