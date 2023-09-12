@@ -18,7 +18,7 @@
 //! assert_eq!(called_times, 5);
 //!
 //! Notes:
-//! - this macro should be used with synchronous blocks of code, block example: {  tracing::error!("this log message can create log flood!");  }
+//! - this macro is lockless, the rate limiting may not be 100% accurate.
 //!
 extern crate proc_macro;
 
@@ -31,43 +31,47 @@ struct RateLimitInput {
     rate: Expr,
     interval: Expr,
     block: Block,
+    fallback_block: Option<Block>,
 }
 
 impl Parse for RateLimitInput {
     fn parse(input: ParseStream) -> syn::Result<Self> {
-        let rate_ident: syn::Ident = input.parse()?;
-        assert_eq!(rate_ident.to_string(), "rate");
+        let _: syn::Ident = input.parse()?;
         let _: Token![=] = input.parse()?;
         let rate: Expr = input.parse()?;
         let _: Token![,] = input.parse()?;
 
-        let interval_ident: syn::Ident = input.parse()?;
-        assert_eq!(interval_ident.to_string(), "interval");
+        let _: syn::Ident = input.parse()?;
         let _: Token![=] = input.parse()?;
         let interval: Expr = input.parse()?;
         let _: Token![,] = input.parse()?;
 
         let block: Block = input.parse()?;
 
+        let fallback_block: Option<Block> = if input.is_empty() {
+            None
+        } else {
+            let _: Token![,] = input.parse()?;
+            Some(input.parse()?)
+        };
+
         Ok(RateLimitInput {
             rate,
             interval,
             block,
+            fallback_block,
         })
     }
 }
 
 /// Rate-limits the execution of a block of code.
 ///
-/// This macro introduces a rate-limiting mechanism that allows a block of code
-/// to be executed at a defined maximum rate. If the code is called more frequently
-/// than the specified rate, the exceeding calls will trigger an action (e.g., printing a warning).
-///
 /// # Parameters
 ///
 /// - `rate`: The maximum number of times the block of code can be executed within the specified interval.
 /// - `interval`: The time interval (in seconds) for which the `rate` applies.
 /// - `block`: The block of code to be rate-limited.
+/// - `fallback_block` (Optional): A block of code to be executed when the rate limit is exceeded.
 ///
 #[proc_macro]
 pub fn rate_limit(item: TokenStream) -> TokenStream {
@@ -76,6 +80,9 @@ pub fn rate_limit(item: TokenStream) -> TokenStream {
     let rate = &input.rate;
     let interval = &input.interval;
     let block = &input.block;
+    let fallback_block = &input.fallback_block.unwrap_or_else(|| {
+        syn::parse2(quote!({})).unwrap_or_else(|_| panic!("Failed to parse an empty block"))
+    });
 
     let expanded = quote! {
         {
@@ -88,7 +95,6 @@ pub fn rate_limit(item: TokenStream) -> TokenStream {
             let now = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap_or_else(|_| Duration::new(0, 0)).as_secs();
             let elapsed = now - LAST_CALLED.load(Ordering::Relaxed);
 
-            // If the time since the last call is greater than the interval, reset the state
             if elapsed > #interval as u64 {
                 STATE.store(0, Ordering::Relaxed);
                 LAST_CALLED.store(now, Ordering::Relaxed);
@@ -98,7 +104,7 @@ pub fn rate_limit(item: TokenStream) -> TokenStream {
                 #block
                 LAST_CALLED.store(now, Ordering::Relaxed);
             } else {
-                // TODO: Action when rate limit is exceeded
+                #fallback_block
             }
         }
     };
