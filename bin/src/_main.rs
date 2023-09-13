@@ -645,29 +645,29 @@ pub async fn _main(
                     if delayed_source_enabled {
                         rate_limit!(rate = 1, interval = 10 * 60, {
                             warn!("Pod metadata is missing for line: {:?}", line);
+                            // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
+                            debug!(
+                                "Retrying - delaying line processing by {} for {:?} seconds at [{}:{}]: {:?}",
+                                name,
+                                metadata_retry_delay,
+                                file!(),
+                                line!(),
+                                line
+                            );
                         });
-                        // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
-                        debug!(
-                            "Retrying - delaying line processing by {} for {:?} seconds at [{}:{}]: {:?}",
-                            name,
-                            metadata_retry_delay,
-                            file!(),
-                            line!(),
-                            line
-                        );
                         delayed_lines_send.send_blocking(line).unwrap();
                         None
                     } else {
                         rate_limit!(rate = 1, interval = 10 * 60, {
                             error!("Pod metadata is missing for line: {:?}", line);
+                            debug!(
+                                "Retrying disabled, processing line by {} as-is at [{}:{}]: {:?}",
+                                name,
+                                file!(),
+                                line!(),
+                                line
+                            );
                         });
-                        debug!(
-                            "Retrying disabled, processing line by {} as-is at [{}:{}]: {:?}",
-                            name,
-                            file!(),
-                            line!(),
-                            line
-                        );
                         Some(StrictOrLazyLines::Lazy(line))
                     }
                 }

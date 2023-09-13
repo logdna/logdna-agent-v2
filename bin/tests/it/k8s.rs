@@ -1086,20 +1086,18 @@ fn get_agent_ds_yaml(
                 map
             })
             .collect();
-        if let Some(serde_json::Value::Array(containers)) = cfgmap.get_mut("containers") {
-            if let Some(serde_json::Value::Object(container)) = containers.get_mut(0) {
-                if let Some(serde_json::Value::Array(existing_env_vars)) = container.get_mut("env")
-                {
-                    for env_var in env_vars {
-                        let map: serde_json::Map<String, serde_json::Value> = env_var
-                            .into_iter()
-                            .map(|(k, v)| (k.to_string(), v))
-                            .collect();
-                        existing_env_vars.push(serde_json::Value::Object(map));
-                    }
-                } else {
-                    panic!("unexpected");
-                }
+        let existing_env_vars = &mut cfgmap["spec"]["template"]["spec"]["containers"][0]["env"]
+            .as_array_mut()
+            .unwrap();
+        for env_var in env_vars {
+            if let Some((k, v)) = env_var.iter().next() {
+                // Create a new serde_json::Map to hold the restructured environment variable
+                let mut new_map = serde_json::Map::new();
+                new_map.insert("name".to_string(), serde_json::json!(k));
+                new_map.insert("value".to_string(), v.clone());
+
+                // Push the newly formatted environment variable into existing_env_vars
+                existing_env_vars.push(serde_json::Value::Object(new_map));
             }
         }
     }
@@ -2223,7 +2221,10 @@ async fn test_retry_line_with_missing_pod_metadata() {
         info!("Wait for the data to be received by the mock ingester");
         tokio::time::sleep(tokio::time::Duration::from_millis(3_000)).await;
 
-        let log_lines = vec!["Enabling filesystem"];
+        let log_lines = vec![
+            "Enabling filesystem",
+            "Retrying - delaying line processing by k8s::middleware::metadata::K8sMetadata for 5s seconds",
+        ];
         info!("asserting log lines: {:?}", log_lines);
         assert_log_lines(
             client.clone(),
