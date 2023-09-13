@@ -2221,10 +2221,15 @@ async fn test_retry_line_with_missing_pod_metadata() {
         info!("Wait for the data to be received by the mock ingester");
         tokio::time::sleep(tokio::time::Duration::from_millis(3_000)).await;
 
+        // wait for delayed line delay to expire
+        tokio::time::sleep(tokio::time::Duration::from_millis(6_000)).await;
+
         let log_lines = vec![
             "Enabling filesystem",
             "Retrying - delaying line processing by k8s::middleware::metadata::K8sMetadata for 5s seconds",
+            "Retries exhausted - processing line",
         ];
+
         info!("asserting log lines: {:?}", log_lines);
         assert_log_lines(
             client.clone(),

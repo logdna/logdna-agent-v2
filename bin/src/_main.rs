@@ -661,7 +661,7 @@ pub async fn _main(
                         rate_limit!(rate = 1, interval = 10 * 60, {
                             error!("Pod metadata is missing for line: {:?}", line);
                             debug!(
-                                "Retrying disabled, processing line by {} as-is at [{}:{}]: {:?}",
+                                "Retrying disabled, processing line by {} AS-IS at [{}:{}]: {:?}",
                                 name,
                                 file!(),
                                 line!(),
@@ -703,14 +703,14 @@ pub async fn _main(
                     // no more retries
                     rate_limit!(rate = 1, interval = 10 * 60, {
                         error!("Pod metadata is missing for line: {:?}", line);
+                        debug!(
+                            "Retries exhausted - processing line by {} AS-IS at [{}:{}]: {:?}",
+                            name,
+                            file!(),
+                            line!(),
+                            line
+                        );
                     });
-                    debug!(
-                        "Retries exhausted - processing line by {} as-is at [{}:{}]: {:?}",
-                        name,
-                        file!(),
-                        line!(),
-                        line
-                    );
                     Some(StrictOrLazyLines::Lazy(line))
                 }
             }
