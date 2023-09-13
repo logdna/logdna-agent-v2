@@ -585,7 +585,7 @@ pub async fn _main(
             },
             Err(MiddlewareError::Skip(name)) => {
                 debug!(
-                    "Dropping line by {} at [{}:{}]: {:?}",
+                    "Skipping line by {} at [{}:{}]: {:?}",
                     name,
                     file!(),
                     line!(),
@@ -593,14 +593,15 @@ pub async fn _main(
                 );
                 None
             }
-            Err(MiddlewareError::Retry(name)) => {
-                debug!(
-                    "Not retrying, dropping line by {} at [{}:{}]: {:?}",
-                    name,
-                    file!(),
-                    line!(),
-                    line
-                );
+            Err(e) => {
+                rate_limit!(rate = 1, interval = 10 * 60, {
+                        error!(
+                            "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
+                            e,
+                            file!(),
+                            line!(),
+                            line
+                    )});
                 None
             }
         },
