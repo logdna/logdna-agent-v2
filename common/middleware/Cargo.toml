@@ -11,6 +11,7 @@ integration_tests = []
 #local
 http = { package = "mz-http", path = "../http" }
 config = { package = "config", path = "../config" }
+rate-limit-macro = { package = "rate-limit-macro", path = "../misc/rate-limit/macro" }
 memoffset = "0.6"
 regex = "1"
 thiserror = "1.0"

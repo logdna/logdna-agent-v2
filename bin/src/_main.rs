@@ -164,8 +164,7 @@ pub async fn _main(
                 )
                 .await;
 
-                if config.log.use_k8s_enrichment == K8sTrackingConf::Always
-                    && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
+                if config.log.use_k8s_enrichment == K8sTrackingConf::Always && k8s::is_in_cluster()
                 {
                     let node_name = std::env::var("NODE_NAME").ok();
                     metadata_runner(deletion_ack_receiver, user_agent, node_name, &mut executor);

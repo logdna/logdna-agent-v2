@@ -80,7 +80,7 @@ pub fn create_k8s_client_default_from_env(
     Ok(create_k8s_client(user_agent, config)?)
 }
 
-fn is_in_cluster() -> bool {
+pub fn is_in_cluster() -> bool {
     env::var("KUBERNETES_SERVICE_HOST").is_ok()
 }
 
