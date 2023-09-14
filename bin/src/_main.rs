@@ -164,8 +164,7 @@ pub async fn _main(
                 )
                 .await;
 
-                if config.log.use_k8s_enrichment == K8sTrackingConf::Always
-                    && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
+                if config.log.use_k8s_enrichment == K8sTrackingConf::Always && k8s::is_in_cluster()
                 {
                     let node_name = std::env::var("NODE_NAME").ok();
                     metadata_runner(deletion_ack_receiver, user_agent, node_name, &mut executor);
@@ -586,7 +585,7 @@ pub async fn _main(
             },
             Err(MiddlewareError::Skip(name)) => {
                 debug!(
-                    "Dropping line by {} at [{}:{}]: {:?}",
+                    "Skipping line by {} at [{}:{}]: {:?}",
                     name,
                     file!(),
                     line!(),
@@ -594,14 +593,15 @@ pub async fn _main(
                 );
                 None
             }
-            Err(MiddlewareError::Retry(name)) => {
-                debug!(
-                    "Not retrying, dropping line by {} at [{}:{}]: {:?}",
-                    name,
-                    file!(),
-                    line!(),
-                    line
-                );
+            Err(e) => {
+                rate_limit!(rate = 1, interval = 10 * 60, {
+                        error!(
+                            "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
+                            e,
+                            file!(),
+                            line!(),
+                            line
+                    )});
                 None
             }
         },
@@ -646,29 +646,29 @@ pub async fn _main(
                     if delayed_source_enabled {
                         rate_limit!(rate = 1, interval = 10 * 60, {
                             warn!("Pod metadata is missing for line: {:?}", line);
+                            // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
+                            debug!(
+                                "Retrying - delaying line processing by {} for {:?} seconds at [{}:{}]: {:?}",
+                                name,
+                                metadata_retry_delay,
+                                file!(),
+                                line!(),
+                                line
+                            );
                         });
-                        // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
-                        debug!(
-                            "Retrying - delaying line processing by {} for {:?} seconds at [{}:{}]: {:?}",
-                            name,
-                            metadata_retry_delay,
-                            file!(),
-                            line!(),
-                            line
-                        );
                         delayed_lines_send.send_blocking(line).unwrap();
                         None
                     } else {
                         rate_limit!(rate = 1, interval = 10 * 60, {
                             error!("Pod metadata is missing for line: {:?}", line);
+                            debug!(
+                                "Retrying disabled, processing line by {} AS-IS at [{}:{}]: {:?}",
+                                name,
+                                file!(),
+                                line!(),
+                                line
+                            );
                         });
-                        debug!(
-                            "Retrying disabled, processing line by {} as-is at [{}:{}]: {:?}",
-                            name,
-                            file!(),
-                            line!(),
-                            line
-                        );
                         Some(StrictOrLazyLines::Lazy(line))
                     }
                 }
@@ -704,14 +704,14 @@ pub async fn _main(
                     // no more retries
                     rate_limit!(rate = 1, interval = 10 * 60, {
                         error!("Pod metadata is missing for line: {:?}", line);
+                        debug!(
+                            "Retries exhausted - processing line by {} AS-IS at [{}:{}]: {:?}",
+                            name,
+                            file!(),
+                            line!(),
+                            line
+                        );
                     });
-                    debug!(
-                        "Retries exhausted - processing line by {} as-is at [{}:{}]: {:?}",
-                        name,
-                        file!(),
-                        line!(),
-                        line
-                    );
                     Some(StrictOrLazyLines::Lazy(line))
                 }
             }

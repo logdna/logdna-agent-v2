@@ -39,7 +39,7 @@ fn main() -> anyhow::Result<()> {
         .with_writer(std::io::stderr)
         .finish();
 
-    tracing::subscriber::set_global_default(subscriber).expect("failied to set subscriber");
+    tracing::subscriber::set_global_default(subscriber).expect("failed to set subscriber");
 
     info!("running version: {}", env!("CARGO_PKG_VERSION"));
 
@@ -49,8 +49,7 @@ fn main() -> anyhow::Result<()> {
         // apply capabilities only when running under:
         // - k8s
         // - docker
-        if (std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
-            || std::path::Path::new("/.dockerenv").exists())
+        if (k8s::is_in_cluster() || std::path::Path::new("/.dockerenv").exists())
             && std::env::var_os(config::env_vars::NO_CAP).is_none()
         {
             match set_capabilities() {

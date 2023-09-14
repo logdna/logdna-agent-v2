@@ -47,7 +47,7 @@ where
         &self,
         line: &'a dyn LineBufferMut,
     ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
-        Ok(line)
+        self.deref().validate(line)
     }
 
     fn name(&self) -> &'static str {

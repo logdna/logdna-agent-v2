@@ -198,6 +198,92 @@ async fn delete_service(client: Client, service_name: &str, namespace: &str) {
     }
 }
 
+async fn delete_daemonset(client: Client, daemonset_name: &str, namespace: &str) {
+    let daemonsets: Api<k8s_openapi::api::apps::v1::DaemonSet> = Api::namespaced(client, namespace);
+    let dp = kube::api::DeleteParams::default();
+
+    match daemonsets.delete(daemonset_name, &dp).await {
+        Ok(_) => {}
+        Err(kube::Error::Api(ae)) if ae.code == 404 => {
+            info!(
+                "DaemonSet {} does not exist in {}.",
+                daemonset_name, namespace
+            );
+            return;
+        }
+        Err(e) => {
+            info!(
+                "Failed to delete DaemonSet {} in {}: {:?}",
+                daemonset_name, namespace, e
+            );
+        }
+    }
+
+    // wait for the DaemonSet to be completely deleted
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        match daemonsets.get(daemonset_name).await {
+            Ok(_) => {
+                info!(
+                    "Waiting for DaemonSet {} in {} to be deleted...",
+                    daemonset_name, namespace
+                );
+            }
+            Err(kube::Error::Api(ae)) if ae.code == 404 => {
+                info!(
+                    "DaemonSet {} has been deleted in {}.",
+                    daemonset_name, namespace
+                );
+                break;
+            }
+            Err(e) => {
+                // Some other error
+                panic!(
+                    "Failed to check status of DaemonSet {} in {}: {:?}",
+                    daemonset_name, namespace, e
+                );
+            }
+        }
+    }
+}
+
+async fn delete_namespace(client: Client, namespace_name: &str) {
+    let namespaces: Api<k8s_openapi::api::core::v1::Namespace> = Api::all(client);
+    let dp = kube::api::DeleteParams::default();
+
+    match namespaces.delete(namespace_name, &dp).await {
+        Ok(_) => {}
+        Err(kube::Error::Api(ae)) if ae.code == 404 => {
+            info!("Namespace {} does not exist.", namespace_name);
+            return;
+        }
+        Err(e) => {
+            info!("Failed to delete Namespace {}: {:?}", namespace_name, e);
+        }
+    }
+
+    // wait for the namespace to be completely deleted
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        match namespaces.get(namespace_name).await {
+            Ok(_) => {
+                info!("Waiting for Namespace {} to be deleted...", namespace_name);
+            }
+            Err(kube::Error::Api(ae)) if ae.code == 404 => {
+                info!("Namespace {} has been deleted.", namespace_name);
+                break;
+            }
+            Err(e) => {
+                // Some other error
+                panic!(
+                    "Failed to check status of Namespace {}: {:?}",
+                    namespace_name, e
+                );
+            }
+        }
+    }
+}
+
 /// tail_lines = None - means no lookback
 async fn assert_log_lines(
     client: Client,
@@ -986,20 +1072,18 @@ fn get_agent_ds_yaml(
                 map
             })
             .collect();
-        if let Some(serde_json::Value::Array(containers)) = cfgmap.get_mut("containers") {
-            if let Some(serde_json::Value::Object(container)) = containers.get_mut(0) {
-                if let Some(serde_json::Value::Array(existing_env_vars)) = container.get_mut("env")
-                {
-                    for env_var in env_vars {
-                        let map: serde_json::Map<String, serde_json::Value> = env_var
-                            .into_iter()
-                            .map(|(k, v)| (k.to_string(), v))
-                            .collect();
-                        existing_env_vars.push(serde_json::Value::Object(map));
-                    }
-                } else {
-                    panic!("unexpected");
-                }
+        let existing_env_vars = &mut cfgmap["spec"]["template"]["spec"]["containers"][0]["env"]
+            .as_array_mut()
+            .unwrap();
+        for env_var in env_vars {
+            if let Some((k, v)) = env_var.iter().next() {
+                // Create a new serde_json::Map to hold the restructured environment variable
+                let mut new_map = serde_json::Map::new();
+                new_map.insert("name".to_string(), serde_json::json!(k));
+                new_map.insert("value".to_string(), v.clone());
+
+                // Push the newly formatted environment variable into existing_env_vars
+                existing_env_vars.push(serde_json::Value::Object(new_map));
             }
         }
     }
@@ -1229,27 +1313,26 @@ async fn test_k8s_enrichment() {
 
     let client = Client::try_default().await.unwrap();
 
-    let pod_name = "socat-listener";
+    let socat_pod_name = "socat-listener";
     let default_namespace = "default";
-    let pod_node_addr =
-        start_line_proxy_pod(client.clone(), pod_name, default_namespace, 30001).await;
+    let socat_pod_node_addr =
+        start_line_proxy_pod(client.clone(), socat_pod_name, default_namespace, 30001).await;
 
     assert!(
         wait_for_pod_ready(
             client.clone(),
-            pod_name,
+            socat_pod_name,
             default_namespace,
             tokio::time::Duration::from_millis(10_000),
         )
         .await
     );
-    info!("pod {} in {} is ready", pod_name, default_namespace);
+    info!("pod {} in {} is ready", socat_pod_name, default_namespace);
+
+    let agent_name = "k8s-enrichment";
+    let agent_namespace = "k8s-enrichment";
 
     let (server_result, _) = tokio::join!(server, async {
-        // Create Agent
-        let agent_name = "k8s-enrichment";
-        let agent_namespace = "k8s-enrichment";
-
         let ns = serde_json::from_value(serde_json::json!({
             "apiVersion": "v1",
             "kind": "Namespace",
@@ -1315,7 +1398,7 @@ async fn test_k8s_enrichment() {
             "Hello, World! 4\n",
         ];
 
-        let mut logger_stream = TcpStream::connect(pod_node_addr).await.unwrap();
+        let mut logger_stream = TcpStream::connect(socat_pod_node_addr).await.unwrap();
 
         for msg in messages.iter() {
             // Write some data.
@@ -1324,20 +1407,20 @@ async fn test_k8s_enrichment() {
         }
 
         // Wait for the data to be received by the mock ingester
-        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(3_000)).await;
 
         let map = received.lock().await;
 
-        let result = map.iter().find(|(k, _)| k.contains(pod_name));
+        let result = map.iter().find(|(k, _)| k.contains(socat_pod_name));
         assert!(result.is_some());
 
         let (_, pod_file_info) = result.unwrap();
         let label = pod_file_info.label.as_ref();
         assert!(label.is_some());
-        assert_eq!(label.unwrap()["app.kubernetes.io/name"], pod_name);
+        assert_eq!(label.unwrap()["app.kubernetes.io/name"], socat_pod_name);
         assert_eq!(
             label.unwrap()["app.kubernetes.io/instance"],
-            format!("{}-instance", pod_name)
+            format!("{}-instance", socat_pod_name)
         );
         let values = &pod_file_info.values;
         assert!(values.len() == 5, "{:#?}", values);
@@ -1378,6 +1461,13 @@ async fn test_k8s_enrichment() {
         shutdown_handle();
     });
 
+    // cleanup
+    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
+    delete_service(client.clone(), "ingest-service", agent_namespace).await;
+    delete_namespace(client.clone(), agent_namespace).await;
+    delete_pod(client.clone(), socat_pod_name, default_namespace).await;
+    delete_service(client.clone(), socat_pod_name, default_namespace).await;
+
     server_result.unwrap();
 }
 
@@ -1400,12 +1490,11 @@ async fn test_k8s_events_logged() {
 
     let client = Client::try_default().await.unwrap();
 
+    let agent_name = "k8s-events-logged";
+    let agent_namespace = "k8s-events-logged";
+
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-        // Create Agent
-        let agent_name = "k8s-events-logged";
-        let agent_namespace = "k8s-events-logged";
 
         let nss: Api<Namespace> = Api::all(client.clone());
         let ns = serde_json::from_value(serde_json::json!({
@@ -1477,6 +1566,11 @@ async fn test_k8s_events_logged() {
         shutdown_handle();
     });
 
+    // cleanup
+    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
+    delete_service(client.clone(), "ingest-service", agent_namespace).await;
+    delete_namespace(client.clone(), agent_namespace).await;
+
     server_result.unwrap();
 }
 
@@ -1525,11 +1619,12 @@ async fn test_k8s_startup_leases_always_start() {
     let pod_node_addr = start_line_proxy_pod(client.clone(), pod_name, "default", 30002).await;
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
+    let agent_name = "k8s-agent-lease";
+    let agent_namespace = "k8s-agent-lease";
+
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
-        let agent_name = "k8s-agent-lease";
-        let agent_namespace = "k8s-agent-lease";
         let agent_lease_name = "agent-startup-lease";
         let agent_lease_label = "process=logdna-agent-startup";
 
@@ -1638,6 +1733,11 @@ async fn test_k8s_startup_leases_always_start() {
         shutdown_handle();
     });
 
+    // cleanup
+    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
+    delete_service(client.clone(), "ingest-service", agent_namespace).await;
+    delete_namespace(client.clone(), agent_namespace).await;
+
     server_result.unwrap();
 }
 
@@ -1654,11 +1754,11 @@ async fn test_k8s_startup_leases_never_start() {
 
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
+    let agent_name = "k8s-agent-lease-off";
+    let agent_namespace = "k8s-agent-lease-off";
+
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
-
-        let agent_name = "k8s-agent-lease-off";
-        let agent_namespace = "k8s-agent-lease-off";
 
         // Create Agent
         let nss: Api<Namespace> = Api::all(client.clone());
@@ -1732,6 +1832,11 @@ async fn test_k8s_startup_leases_never_start() {
         shutdown_handle();
     });
 
+    // cleanup
+    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
+    delete_service(client.clone(), "ingest-service", agent_namespace).await;
+    delete_namespace(client.clone(), agent_namespace).await;
+
     server_result.unwrap();
 }
 
@@ -1744,11 +1849,11 @@ async fn test_metric_stats_aggregator_enabled() {
     let client = Client::try_default().await.unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
+    let agent_name = "metric-aggregator";
+    let agent_namespace = "metric-aggregator";
+
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
-
-        let agent_name = "metric-aggregator";
-        let agent_namespace = "metric-aggregator";
 
         // Create Agent
         let nss: Api<Namespace> = Api::all(client.clone());
@@ -1823,6 +1928,11 @@ async fn test_metric_stats_aggregator_enabled() {
         shutdown_handle();
     });
 
+    // cleanup
+    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
+    delete_service(client.clone(), "ingest-service", agent_namespace).await;
+    delete_namespace(client.clone(), agent_namespace).await;
+
     server_result.unwrap();
 }
 
@@ -1836,11 +1946,11 @@ async fn test_metric_stats_aggregator_disabled() {
 
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
+    let agent_name = "metric-aggregator-disabled";
+    let agent_namespace = "metric-aggregator-disabled";
+
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
-
-        let agent_name = "metric-aggregator-disabled";
-        let agent_namespace = "metric-aggregator-disabled";
 
         // Create Agent
         let nss: Api<Namespace> = Api::all(client.clone());
@@ -1914,6 +2024,11 @@ async fn test_metric_stats_aggregator_disabled() {
         shutdown_handle();
     });
 
+    // cleanup
+    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
+    delete_service(client.clone(), "ingest-service", agent_namespace).await;
+    delete_namespace(client.clone(), agent_namespace).await;
+
     server_result.unwrap();
 }
 
@@ -1927,11 +2042,11 @@ async fn test_feature_leader_grabbing_lease() {
 
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
+    let agent_name = "feature-leader";
+    let agent_namespace = "feature-leader";
+
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
-
-        let agent_name = "feature-leader";
-        let agent_namespace = "feature-leader";
 
         // Create Agent
         let nss: Api<Namespace> = Api::all(client.clone());
@@ -1977,11 +2092,16 @@ async fn test_feature_leader_grabbing_lease() {
         shutdown_handle();
     });
 
+    // cleanup
+    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
+    delete_service(client.clone(), "ingest-service", agent_namespace).await;
+    delete_namespace(client.clone(), agent_namespace).await;
+
     server_result.unwrap();
 }
 
 #[test(tokio::test)]
-#[ignore]
+#[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_retry_line_with_missing_pod_metadata() {
     let (server, _, shutdown_handle, ingester_addr) = common::start_http_ingester();
 
@@ -1989,32 +2109,30 @@ async fn test_retry_line_with_missing_pod_metadata() {
 
     let client = Client::try_default().await.unwrap();
 
-    let pod_name = "test-retry-line-socat-listener";
+    let socat_pod_name = "test-retry-line-socat-listener";
     let default_namespace = "default";
 
-    // delete the pod and service first
-    delete_pod(client.clone(), pod_name, default_namespace).await;
-    delete_service(client.clone(), pod_name, default_namespace).await;
-
-    let pod_node_addr =
-        start_line_proxy_pod(client.clone(), pod_name, default_namespace, 30004).await;
+    let socat_pod_node_addr =
+        start_line_proxy_pod(client.clone(), socat_pod_name, default_namespace, 30004).await;
 
     assert!(
         wait_for_pod_ready(
             client.clone(),
-            pod_name,
+            socat_pod_name,
             default_namespace,
             tokio::time::Duration::from_millis(10_000),
         )
         .await
     );
-    info!("pod {} in {} is ready", pod_name, default_namespace);
+    info!(
+        "socat pod {} in {} is ready",
+        socat_pod_name, default_namespace
+    );
+
+    let agent_name = "test-retry-line";
+    let agent_namespace = "test-retry-line";
 
     let (server_result, _) = tokio::join!(server, async {
-        // Create Agent
-        let agent_name = "test-retry-line";
-        let agent_namespace = "test-retry-line";
-
         let ns = serde_json::from_value(serde_json::json!({
             "apiVersion": "v1",
             "kind": "Namespace",
@@ -2053,17 +2171,6 @@ async fn test_retry_line_with_missing_pod_metadata() {
         .await;
 
         assert!(
-            wait_for_ds_ready(
-                client.clone(),
-                agent_name,
-                agent_namespace,
-                tokio::time::Duration::from_millis(120_000),
-            )
-            .await
-        );
-        info!("daemonset {} in {} is ready", agent_name, agent_namespace);
-
-        assert!(
             wait_for_pod_ready(
                 client.clone(),
                 "sample-pod",
@@ -2082,18 +2189,33 @@ async fn test_retry_line_with_missing_pod_metadata() {
             "Hello, World! 4\n",
         ];
 
-        let mut logger_stream = TcpStream::connect(pod_node_addr).await.unwrap();
+        let mut logger_stream = TcpStream::connect(socat_pod_node_addr).await.unwrap();
 
         for msg in messages.iter() {
             // Write log lines
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-            logger_stream.write_all(msg.as_bytes()).await.unwrap();
+            info!("msg: {}", msg);
+            match logger_stream.write_all(msg.as_bytes()).await {
+                Err(e) => {
+                    info!("error: {:?}", e);
+                    break;
+                }
+                Ok(_) => continue,
+            }
         }
 
-        // info!("Wait for the data to be received by the mock ingester");
-        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
+        info!("Wait for the data to be received by the mock ingester");
+        tokio::time::sleep(tokio::time::Duration::from_millis(3_000)).await;
 
-        let log_lines = vec!["Enabling filesystem"];
+        // wait for delayed line delay to expire
+        tokio::time::sleep(tokio::time::Duration::from_millis(6_000)).await;
+
+        let log_lines = vec![
+            "Enabling filesystem",
+            "Retrying - delaying line processing by k8s::middleware::metadata::K8sMetadata for 5s seconds",
+            "Retries exhausted - processing line",
+        ];
+
         info!("asserting log lines: {:?}", log_lines);
         assert_log_lines(
             client.clone(),
@@ -2109,6 +2231,12 @@ async fn test_retry_line_with_missing_pod_metadata() {
 
         shutdown_handle();
     });
+
+    // cleanup
+    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
+    delete_namespace(client.clone(), agent_namespace).await;
+    delete_pod(client.clone(), socat_pod_name, default_namespace).await;
+    delete_service(client.clone(), socat_pod_name, default_namespace).await;
 
     server_result.unwrap();
 }
