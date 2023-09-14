@@ -1,6 +1,7 @@
 use crate::errors::K8sError;
 use crate::middleware::{parse_container_path, ParseResult};
 use middleware::MiddlewareError;
+use rate_limit_macro::rate_limit;
 
 use std::{
     collections::HashMap,
@@ -489,7 +490,9 @@ impl Middleware for K8sMetadata {
     ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
         // here we retry only pod log lines that do not have k8s metadata
         let file_name = line.get_file().unwrap_or("");
-        debug!("validate line from file: '{:?}'", file_name);
+        rate_limit!(rate = 1, interval = 5, {
+            debug!("validate line from file: '{:?}'", file_name);
+        });
         if let Some(parse_result) = parse_container_path(file_name) {
             if !*MOCK_NO_PODS {
                 let obj_ref =

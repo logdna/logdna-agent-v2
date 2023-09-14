@@ -1746,6 +1746,7 @@ dependencies = [
  "pin-project-lite",
  "pin-utils",
  "rand",
+ "rate-limit-macro",
  "regex",
  "serde",
  "serde-value-flatten",
@@ -2239,6 +2240,7 @@ dependencies = [
  "memoffset 0.6.5",
  "multimap",
  "mz-http",
+ "rate-limit-macro",
  "regex",
  "serde_json",
  "thiserror",
@@ -3086,7 +3088,7 @@ dependencies = [
 
 [[package]]
 name = "rate-limit-core"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3096,7 +3098,7 @@ dependencies = [
 
 [[package]]
 name = "rate-limit-macro"
-version = "1.0.0"
+version = "1.0.1"
 dependencies = [
  "proc-macro2",
  "quote",

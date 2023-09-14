@@ -313,7 +313,7 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
     }
 
     if let Some(value) = map.get(&METADATA_RETRY_DELAY) {
-        result.log.clear_cache_interval = Some(u32::from_str(value).map_err(|e| {
+        result.log.metadata_retry_delay = Some(u32::from_str(value).map_err(|e| {
             ConfigError::PropertyInvalid(format!("metadata retry delay property is invalid: {}", e))
         })?);
     }
