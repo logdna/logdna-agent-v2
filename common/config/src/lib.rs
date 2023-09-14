@@ -190,18 +190,6 @@ impl Config {
             print_settings(&yaml_str, &config_path);
         }
 
-        for (key, value) in std::env::vars() {
-            // Check if the key starts with "LOGDNA_" or "MZ_"
-            if key.starts_with("LOGDNA_") || key.starts_with("MZ_") {
-                // Print the key and its value
-                if key.contains("KEY") || key.contains("PIN") {
-                    info!("{}: [REDACTED]", key);
-                } else {
-                    info!("{}: {}", key, value);
-                }
-            }
-        }
-
         info!(
             "read the following options from cli, env and config: \n{}",
             yaml_str
