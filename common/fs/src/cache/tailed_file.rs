@@ -31,7 +31,7 @@ use serde_json::Value;
 use time::OffsetDateTime;
 use tokio::io::{AsyncSeekExt, BufReader, SeekFrom};
 use tokio_util::compat::{Compat, TokioAsyncReadCompatExt};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 
 #[derive(Debug)]
 pub struct LazyLineSerializer {
@@ -491,7 +491,7 @@ impl TailedFile<LineBuilder> {
                         let paths = paths.clone();
                         line_res.ok().map({
                             move |line| {
-                                debug!("tailer sendings lines for {:?}", paths);
+                                trace!("tailer sendings lines for {:?}", paths);
                                 stream::iter(paths.into_iter().map({
                                     move |path| {
                                         Metrics::fs().increment_lines();
@@ -704,7 +704,7 @@ impl TailedFile<LazyLineSerializer> {
                             if let Some(c) = buf.last() {
                                 if *c == b'\n' {
                                     *total_read += count;
-                                    debug!("tailer sendings lines for {:?}", &paths);
+                                    trace!("tailer sendings lines for {:?}", &paths);
                                     let count = TryInto::<u64>::try_into(count).unwrap();
                                     Metrics::fs().increment_lines();
                                     Metrics::fs().add_bytes(count);

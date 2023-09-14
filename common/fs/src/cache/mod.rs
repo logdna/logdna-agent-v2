@@ -330,8 +330,14 @@ impl FileSystem {
                     *path = DirPathBuf::try_from(full_path).unwrap();
                 }
             }
+            fs::create_dir_all(&path.inner).unwrap_or_else(|_| {
+                panic!(
+                    "failed to recreate missing initial log dir: {:?}",
+                    &path.inner
+                )
+            });
             if !path.inner.is_dir() {
-                panic!("initial dirs must be dirs")
+                panic!("initial log dirs must be dirs: {:?}", path.inner);
             }
         });
 
