@@ -1,3 +1,8 @@
+use lazy_static::lazy_static;
+
+//
+// DO NOT FORGET to add new consts to ENV_VARS_LIST at the end file.
+//
 pub const INGESTION_KEY: &str = "MZ_INGESTION_KEY";
 pub const CONFIG_FILE: &str = "MZ_CONFIG_FILE";
 pub const LOG_DIRS: &str = "MZ_LOG_DIRS";
@@ -61,5 +66,55 @@ pub const META_ANNOTATIONS: &str = "MZ_META_ANNOTATIONS";
 pub const META_LABELS: &str = "MZ_META_LABELS";
 
 pub const NO_CAP: &str = "MZ_NO_CAP";
-
 pub const MOCK_NO_PODS: &str = "MZ_MOCK_NO_PODS";
+
+lazy_static! {
+    pub static ref ENV_VARS_LIST: Vec<&'static str> = vec![
+        INGESTION_KEY,
+        CONFIG_FILE,
+        LOG_DIRS,
+        TAGS,
+        HOST,
+        ENDPOINT,
+        USE_SSL,
+        USE_COMPRESSION,
+        GZIP_LEVEL,
+        EXCLUSION_RULES,
+        EXCLUSION_REGEX_RULES,
+        INCLUSION_RULES,
+        INCLUSION_REGEX_RULES,
+        K8S_METADATA_LINE_INCLUSION,
+        K8S_METADATA_LINE_EXCLUSION,
+        HOSTNAME,
+        IP,
+        MAC,
+        SYSTEMD_JOURNAL_TAILER,
+        JOURNALD_PATHS,
+        LOOKBACK,
+        DB_PATH,
+        METRICS_PORT,
+        USE_K8S_LOG_ENRICHMENT,
+        LOG_K8S_EVENTS,
+        LOG_METRIC_SERVER_STATS,
+        K8S_STARTUP_LEASE,
+        LINE_EXCLUSION,
+        LINE_INCLUSION,
+        REDACT,
+        INGEST_TIMEOUT,
+        INGEST_BUFFER_SIZE,
+        RETRY_DIR,
+        RETRY_DISK_LIMIT,
+        INTERNAL_FS_DELAY,
+        CLEAR_CACHE_INTERVAL,
+        META_APP,
+        META_HOST,
+        META_ENV,
+        META_FILE,
+        META_K8S_FILE,
+        META_JSON,
+        META_ANNOTATIONS,
+        META_LABELS,
+        NO_CAP,
+        MOCK_NO_PODS
+    ];
+}
