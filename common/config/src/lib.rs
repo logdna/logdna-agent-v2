@@ -192,6 +192,7 @@ impl Config {
 
         let env_config: String = env_vars::ENV_VARS_LIST
             .iter()
+            .chain(env_vars::DEPRECATED_ENV_VARS_LIST.iter())
             .filter_map(|&key| {
                 std::env::var(key).ok().map(|value| {
                     if key.contains("KEY") || key.contains("PIN") {
