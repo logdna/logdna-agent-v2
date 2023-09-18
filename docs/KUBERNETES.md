@@ -339,3 +339,9 @@ To control whether the LogDNA agent reports usage statistics use the `LOGDNA_LOG
 * `always` - Always report usage
 * `never` - Never report usage
 __Note:__ The default option is `never`.
+
+#### Cluster Tag to distinguish between multiple clusters
+
+When you are sending log lines to Mezmo from multiple similarly named clusters you will need to add a value to the `MZ_TAGS` environment variable.  Please add a tag that is prefixed `k8sclusterkey_` (for example `k8sclusterkey_prod-clstr`).  This will allow enrichment to distinguish between the clusters when the nodes are similarly named.
+
+This will also add a new line identifier called **Cluster** to your log lines which can be searched against.
