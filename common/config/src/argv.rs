@@ -171,12 +171,12 @@ pub struct ArgumentOptions {
 
     /// List of regex patterns to exclude log lines.
     /// When set, the Agent will NOT send log lines that match any of these patterns.
-    #[structopt(long, env = env_vars::LINE_EXCLUSION)]
+    #[structopt(long, env = env_vars::LINE_EXCLUSION_REGEX)]
     line_exclusion: Vec<String>,
 
     /// List of regex patterns to include log lines.
     /// When set, the Agent will send ONLY log lines that match any of these patterns.
-    #[structopt(long, env = env_vars::LINE_INCLUSION)]
+    #[structopt(long, env = env_vars::LINE_INCLUSION_REGEX)]
     line_inclusion: Vec<String>,
 
     /// List of Kubernetes pod metadata to include in log lines.
@@ -189,7 +189,7 @@ pub struct ArgumentOptions {
 
     /// List of regex patterns used to mask matching sensitive information (such as PII) before
     /// sending it in the log line.
-    #[structopt(long, env = env_vars::REDACT)]
+    #[structopt(long, env = env_vars::REDACT_REGEX)]
     line_redact: Vec<String>,
 
     /// Show the current agent settings from the configuration sources (default config file
