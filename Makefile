@@ -657,8 +657,8 @@ publish-image-docker: ## Publish SemVer compliant releases to docker hub
 
 .PHONY:publish-image-ibm
 publish-image-ibm: ## Publish SemVer compliant releases to icr
-	$(DOCKER) tag $(REPO):$(IMAGE_TAG) $(DOCKER_IBM_IMAGE):3.9.0-alpha.2-3-${ARCH}
-	$(DOCKER) push $(DOCKER_IBM_IMAGE):3.9.0-alpha.2-3-${ARCH}
+	$(DOCKER) tag $(REPO):$(IMAGE_TAG) $(DOCKER_IBM_IMAGE):3.9.0-alpha.2-4-${ARCH}
+	$(DOCKER) push $(DOCKER_IBM_IMAGE):3.9.0-alpha.2-4-${ARCH}
 
 .PHONY: publish-image-multi
 publish-image-multi: publish-image-multi-gcr publish-image-multi-docker publish-image-multi-ibm ## Publish multi-arch SemVer compliant releases to our registries
