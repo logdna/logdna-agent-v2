@@ -194,8 +194,24 @@ impl Config {
             print_settings(&yaml_str, &config_path);
         }
 
+        let env_config: String = env_vars::ENV_VARS_LIST
+            .iter()
+            .chain(env_vars::DEPRECATED_ENV_VARS_LIST.iter())
+            .filter_map(|&key| {
+                std::env::var(key).ok().map(|value| {
+                    if key.contains("KEY") || key.contains("PIN") {
+                        format!("{}: REDACTED", key)
+                    } else {
+                        format!("{}: {}", key, value)
+                    }
+                })
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        info!("env config: \n{}", env_config);
+
         info!(
-            "read the following options from cli, env and config: \n{}",
+            "effective configuration collected from cli, env and config:\n{}",
             yaml_str
         );
 
@@ -670,7 +686,7 @@ mod tests {
             .open(&path)
             .unwrap();
 
-        guard(file, |mut file| {
+        let _ = guard(file, |mut file| {
             let args = vec![OsString::new()];
             serde_yaml::to_writer(&mut file, &RawConfig::default()).unwrap();
             file.flush().unwrap();

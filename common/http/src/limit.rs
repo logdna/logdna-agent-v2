@@ -6,7 +6,7 @@ use std::sync::Arc;
 use metrics::Metrics;
 use serde::{Serialize, Serializer};
 use std::time::Duration;
-use tracing::info;
+use tracing::debug;
 
 pub struct RateLimiter {
     pub slots: Arc<AtomicUsize>,
@@ -128,8 +128,9 @@ impl Backoff {
 
     pub async fn snooze(&self) {
         let step = self.step.load(Ordering::SeqCst);
-        // TODO make debug
-        info!("hit rate limit, snoozing");
+        rate_limit_macro::rate_limit!(rate = 1, interval = 5, {
+            debug!("hit rate limit, snoozing");
+        });
         tokio::time::sleep(Duration::from_millis(self.base.pow(step) * self.multipler)).await;
         self.step.fetch_add(1, Ordering::SeqCst);
     }
