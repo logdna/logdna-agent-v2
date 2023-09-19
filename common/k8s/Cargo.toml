@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 #local
 middleware = { package = "middleware", path = "../middleware" }
-http = { package = "http", path = "../http" }
+http = { package = "mz-http", path = "../http" }
 metrics = { package = "metrics", path = "../metrics" }
 backoff = { version = "0.4.0", features = ["tokio"] }
 chrono = { version = "0.4", features = ["serde"] }
