@@ -93,19 +93,14 @@ pub struct HttpConfig {
     pub retry_step_delay: Duration,
 }
 
-#[derive(Clone, Display, core::fmt::Debug, Eq, PartialEq, EnumString)]
+#[derive(Clone, Default, Display, core::fmt::Debug, Eq, PartialEq, EnumString)]
 pub enum K8sTrackingConf {
     #[strum(serialize = "always")]
     Always,
 
     #[strum(serialize = "never")]
+    #[default]
     Never,
-}
-
-impl Default for K8sTrackingConf {
-    fn default() -> Self {
-        K8sTrackingConf::Never
-    }
 }
 
 #[derive(Debug)]
@@ -132,9 +127,10 @@ pub struct JournaldConfig {
     pub systemd_journal_tailer: bool,
 }
 
-#[derive(Clone, core::fmt::Debug, Display, EnumString, Eq, PartialEq)]
+#[derive(Clone, Default, core::fmt::Debug, Display, EnumString, Eq, PartialEq)]
 pub enum K8sLeaseConf {
     #[strum(serialize = "never")]
+    #[default]
     Never,
 
     #[strum(serialize = "attempt")]
@@ -142,12 +138,6 @@ pub enum K8sLeaseConf {
 
     #[strum(serialize = "always")]
     Always,
-}
-
-impl Default for K8sLeaseConf {
-    fn default() -> Self {
-        K8sLeaseConf::Never
-    }
 }
 
 const LOGDNA_PREFIX: &str = "LOGDNA_";

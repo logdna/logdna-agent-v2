@@ -1,11 +1,12 @@
 use std::fmt;
 use thiserror::Error;
 
-#[derive(Clone, std::fmt::Debug, Eq, PartialEq)]
+#[derive(Clone, Default, std::fmt::Debug, Eq, PartialEq)]
 pub enum Lookback {
     Start,
     SmallFiles,
     Tail,
+    #[default]
     None,
 }
 
@@ -46,11 +47,5 @@ impl fmt::Display for Lookback {
                 Lookback::Tail => "tail",
             }
         )
-    }
-}
-
-impl Default for Lookback {
-    fn default() -> Self {
-        Lookback::None
     }
 }

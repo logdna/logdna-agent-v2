@@ -313,7 +313,7 @@ impl FileSystem {
         let (resume_events_send, resume_events_recv) = async_channel::unbounded();
         let (retry_events_send, retry_events_recv) = async_channel::unbounded();
 
-        let mut initial_dirs_checked = initial_dirs_original.clone();
+        let mut initial_dirs_checked = initial_dirs_original;
         initial_dirs_checked.iter_mut().for_each(|path| {
             // if postfix is Some then dir does not exists
             // check again if non-existing path exists now

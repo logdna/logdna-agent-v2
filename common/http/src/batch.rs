@@ -429,19 +429,17 @@ mod tests {
                     batch_stream.collect::<Vec<_>>().await
                 });
 
-            let all_results = results.into_iter().map(move |body|{
-                let mut buf = String::new();
-                body.as_ref()
-                    .unwrap()
-                    .0
-                    .reader()
-                    .read_to_string(&mut buf)
-                    .unwrap();
-                let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
-                body.remove("lines").unwrap_or_default()
-            })
-                .into_iter()
-                .flatten();
+            let all_results = results.into_iter().flat_map(move |body|{
+                 let mut buf = String::new();
+                 body.as_ref()
+                     .unwrap()
+                     .0
+                     .reader()
+                     .read_to_string(&mut buf)
+                     .unwrap();
+                 let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
+                 body.remove("lines").unwrap_or_default()
+             });
 
             assert_eq!(all_results.count(), size);
         }

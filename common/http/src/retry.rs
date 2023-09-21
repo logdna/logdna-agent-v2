@@ -470,7 +470,7 @@ mod tests {
                 .collect::<Vec<_>>();
 
             // Grab results and check we got them all
-            let stream_results = results.into_iter().map(move |body_offsets|{
+            let stream_results = results.into_iter().flat_map(move |body_offsets|{
                 let mut buf = String::new();
                 let (body, _offsets) = body_offsets.unwrap();
                 body.reader()
@@ -479,8 +479,6 @@ mod tests {
                 let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
                 body.remove("lines").unwrap_or_default()
             })
-                .into_iter()
-                .flatten()
                 .collect::<Vec<_>>();
 
             let lines_set: HashSet<String> = lines.iter().map(|l|l.line.clone()).collect::<HashSet<_>>();
@@ -490,7 +488,7 @@ mod tests {
             assert_eq!(lines_set, l);
 
             // Grab retries and check we got them all
-            let retry_results = retry_results.into_iter().map(move |body_offsets|{
+            let retry_results = retry_results.into_iter().flat_map(move |body_offsets|{
                 let mut buf = String::new();
                 let body = body_offsets.unwrap();
                 body.body_buffer.reader()
@@ -499,8 +497,6 @@ mod tests {
                 let mut body: HashMap<String, Vec<Line>> = serde_json::from_str(&buf).unwrap();
                 body.remove("lines").unwrap_or_default()
             })
-                .into_iter()
-                .flatten()
                 .collect::<Vec<_>>();
             let r: HashSet<String> = retry_results.iter().map(|r|r.line.clone()).collect::<HashSet<_>>();
 
