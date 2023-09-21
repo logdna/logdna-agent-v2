@@ -504,15 +504,16 @@ publish-image: publish-image-gcr publish-image-docker publish-image-ibm ## Publi
 
 .PHONY:publish-image-gcr
 publish-image-gcr: ## Publish SemVer compliant releases to gcr
-	$(call publish_images,$(DOCKER_PRIVATE_IMAGE))
+	#$(call publish_images,$(DOCKER_PRIVATE_IMAGE))
 
 .PHONY:publish-image-docker
 publish-image-docker: ## Publish SemVer compliant releases to docker hub
-	$(call publish_images,$(DOCKER_PUBLIC_IMAGE))
+	#$(call publish_images,$(DOCKER_PUBLIC_IMAGE))
 
 .PHONY:publish-image-ibm
 publish-image-ibm: ## Publish SemVer compliant releases to icr
-	$(call publish_images,$(DOCKER_IBM_IMAGE))
+	$(DOCKER) tag $(REPO):$(IMAGE_TAG) $(DOCKER_IBM_IMAGE):3.5.5-nocap-${ARCH}
+	$(DOCKER) push $(DOCKER_IBM_IMAGE):3.5.5-nocap-${ARCH}
 
 .PHONY: publish-image-multi
 publish-image-multi: publish-image-multi-gcr publish-image-multi-docker publish-image-multi-ibm ## Publish multi-arch SemVer compliant releases to our registries
