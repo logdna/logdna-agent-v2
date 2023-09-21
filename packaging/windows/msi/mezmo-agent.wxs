@@ -25,7 +25,7 @@
         <Property Id="powershell" Value="powershell.exe" />
         <Property Id="KEY" Secure="yes" Value="&lt;YOUR_INGESTION_KEY&gt;"/>
         <CustomAction Id="PostInstall"
-                      ExeCommand="-WindowStyle Hidden -ExecutionPolicy Bypass -File &quot;[#PostInstallScript]&quot; -INGESTION_KEY &quot;[KEY]&quot; -INSTALLFOLDER &quot;[INSTALLFOLDER]\&quot; -DATAFOLDER &quot;[DATAFOLDER]\&quot;"
+                      ExeCommand="-WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File &quot;[#PostInstallScript]&quot; -INGESTION_KEY &quot;[KEY]&quot; -INSTALLFOLDER &quot;[INSTALLFOLDER]\&quot; -DATAFOLDER &quot;[DATAFOLDER]\&quot;"
                       Execute="deferred"
                       Property="powershell"
                       Impersonate="no"
