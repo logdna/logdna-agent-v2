@@ -29,7 +29,7 @@ type SyncHashMap<K, V> = Arc<Mutex<HashMap<K, V>>>;
 
 /// Tails files on a filesystem by inheriting events from a Watcher
 pub struct Tailer {
-    fs_cache: Arc<Mutex<FileSystem>>,
+    fs_cache: std::rc::Rc<std::cell::RefCell<FileSystem>>,
     event_times: SyncHashMap<EntryKey, (usize, time::OffsetDateTime)>,
 }
 
@@ -233,7 +233,7 @@ pub fn process(
                                 }
                             }
 
-                            let line = handle_event(event, fs.lock().await.deref()).await;
+                            let line = handle_event(event, fs.borrow().deref()).await;
 
                             let line = line.map(|option_val| option_val.map(Ok).right_stream());
 
@@ -263,7 +263,7 @@ impl Tailer {
         deletion_ack_sender: async_channel::Sender<Vec<std::path::PathBuf>>,
     ) -> Self {
         Self {
-            fs_cache: Arc::new(Mutex::new(FileSystem::new(
+            fs_cache: std::rc::Rc::new(std::cell::RefCell::new(FileSystem::new(
                 watched_dirs,
                 lookback_config,
                 initial_offsets.unwrap_or_default(),

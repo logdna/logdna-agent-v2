@@ -17,7 +17,6 @@ use std::ffi::OsString;
 use std::ops::Deref;
 use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
-use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 use std::{fmt, fs, io};
 
@@ -26,7 +25,6 @@ use slotmap::{DefaultKey, SlotMap};
 use smallvec::SmallVec;
 use thiserror::Error;
 use time::OffsetDateTime;
-use tokio::sync::Mutex;
 use tracing::{debug, error, info, instrument, trace, warn};
 
 use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
@@ -159,15 +157,11 @@ pub fn get_inode(_path: &Path, file: Option<&std::fs::File>) -> std::io::Result<
 
 /// Turns an inotify event into an event stream
 fn as_event_stream(
-    fs: Arc<Mutex<FileSystem>>,
+    fs: Rc<RefCell<FileSystem>>,
     watch_event: &WatchEvent,
     event_time: EventTimestamp,
 ) -> impl Stream<Item = (Result<Event, Error>, EventTimestamp)> {
-    let a = match fs
-        .try_lock()
-        .expect("couldn't lock filesystem cache")
-        .process(watch_event)
-    {
+    let a = match fs.borrow_mut().process(watch_event) {
         Ok(events) => events
             .into_iter()
             .map(Ok)
@@ -187,11 +181,11 @@ fn as_event_stream(
 }
 
 fn get_initial_events(
-    fs: &Arc<Mutex<FileSystem>>,
+    fs: &Rc<RefCell<FileSystem>>,
 ) -> impl Stream<Item = (Result<Event, Error>, EventTimestamp)> {
     let init_time = OffsetDateTime::now_utc();
     let initial_events = {
-        let mut fs = fs.try_lock().expect("could not lock filesystem cache");
+        let mut fs = fs.borrow_mut();
 
         let mut acc = Vec::new();
         if !fs.initial_events.is_empty() {
@@ -206,18 +200,14 @@ fn get_initial_events(
 }
 
 fn get_resume_events(
-    fs: &Arc<Mutex<FileSystem>>,
+    fs: &Rc<RefCell<FileSystem>>,
 ) -> impl Stream<Item = (WatchEvent, EventTimestamp)> {
-    let resume_events_recv = {
-        let _fs = fs.try_lock().expect("couldn't lock filesystem cache");
-        _fs.resume_events_recv.clone()
-    };
+    let resume_events_recv = fs.borrow().resume_events_recv.clone();
     resume_events_recv
         .map({
             let fs = fs.clone();
             move |(inode, event_time)| {
-                fs.try_lock()
-                    .expect("couldn't lock filesystem cache")
+                fs.borrow()
                     .wd_by_inode
                     .get(&inode)
                     .map(|wd| (WatchEvent::Write(wd.clone()), event_time))
@@ -228,14 +218,11 @@ fn get_resume_events(
 
 #[instrument(level = "debug", skip_all)]
 fn get_retry_events(
-    fs: &Arc<Mutex<FileSystem>>,
+    fs: &Rc<RefCell<FileSystem>>,
     retry_delay: Duration,
     retry_limit: u32,
 ) -> impl Stream<Item = (WatchEvent, EventTimestamp, u32)> {
-    let retry_events = {
-        let _fs = fs.try_lock().expect("couldn't lock filesystem cache");
-        _fs.retry_events_recv.clone()
-    };
+    let retry_events = fs.borrow().retry_events_recv.clone();
     delayed_stream(retry_events, retry_delay).filter_map(move |(event, ts, retries)| async move {
         debug!("retry {} for event {:?}", retries + 1, event);
         if retries <= retry_limit {
@@ -503,18 +490,12 @@ impl FileSystem {
     // Stream events
     #[instrument(level = "debug", skip_all)]
     pub fn stream_events(
-        fs: Arc<Mutex<FileSystem>>,
+        fs: Rc<RefCell<FileSystem>>,
     ) -> Result<impl Stream<Item = (Result<Event, Error>, EventTimestamp)>, std::io::Error> {
-        let events_stream = {
-            let watcher = &fs
-                .try_lock()
-                .expect("could not lock filesystem cache")
-                .watcher;
-            watcher.receive()
-        };
+        let events_stream = fs.borrow().watcher.receive();
 
         let (missing_dirs, missing_dir_watcher, missing_dir_event_stream, retry_event_sender) = {
-            let mut _mfs = fs.try_lock().expect("could not lock filesystem cache");
+            let mut _mfs = fs.borrow_mut();
 
             let missing_dirs = _mfs.missing_dirs.clone();
             let missing_dir_watcher = _mfs.missing_dir_watcher.take().unwrap_or_else(Watcher::new);
@@ -802,9 +783,7 @@ impl FileSystem {
                 .referring_symlinks(parent, _entries)
                 .iter()
                 .map(|target| self.is_reachable(cuts, target, _entries))
-                .fold(Ok(false), |acc, reachable| {
-                    reachable.and_then(|inner| acc.map(|a| a || inner))
-                })?;
+                .try_fold(false, |acc, reachable| reachable.map(|inner| acc || inner))?;
 
             if cuts.iter().any(|cut| cut == parent) {
                 path_to_root = false;
@@ -1654,7 +1633,7 @@ mod tests {
 
     macro_rules! lookup {
         ( $x:expr, $y: expr ) => {{
-            let fs = $x.lock().await;
+            let fs = $x.borrow();
             fs.watch_descriptors
                 .get(&$y)
                 .map(|entry_keys| entry_keys[0])
@@ -1663,7 +1642,7 @@ mod tests {
 
     macro_rules! lookup_entry_path {
         ( $x:expr, $y: expr ) => {{
-            let fs = $x.try_lock().unwrap();
+            let fs = $x.borrow();
             let entries = fs.entries.borrow();
             entries.get($y).as_ref().unwrap().path().to_path_buf()
         }};
@@ -1673,7 +1652,7 @@ mod tests {
         ( $x:expr, $y: expr ) => {
             assert!($y.is_some());
             {
-                let fs = $x.lock().await;
+                let fs = $x.borrow();
                 let entries = fs.entries.borrow();
                 assert!(matches!(
                     entries.get($y.unwrap()).unwrap().deref(),
@@ -1704,13 +1683,13 @@ mod tests {
         symlink_file(original, link)
     }
 
-    fn new_fs(path: PathBuf, rules: Option<Rules>) -> FileSystem {
+    fn new_fs(path: PathBuf, rules: Option<Rules>) -> Rc<RefCell<FileSystem>> {
         let rules = rules.unwrap_or_else(|| {
             let mut rules = Rules::new();
             rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
             rules
         });
-        FileSystem::new(
+        Rc::new(RefCell::new(FileSystem::new(
             vec![path
                 .as_path()
                 .try_into()
@@ -1720,11 +1699,11 @@ mod tests {
             rules,
             None,
             async_channel::unbounded().0,
-        )
+        )))
     }
 
-    fn create_fs(path: &Path) -> Arc<Mutex<FileSystem>> {
-        Arc::new(Mutex::new(new_fs(path.to_path_buf(), None)))
+    fn create_fs(path: &Path) -> Rc<RefCell<FileSystem>> {
+        new_fs(path.to_path_buf(), None)
     }
 
     #[tokio::test]
@@ -1868,7 +1847,7 @@ mod tests {
         let entry_key = lookup!(fs, path);
         assert!(entry_key.is_some());
 
-        let fs = fs.lock().await;
+        let fs = fs.borrow();
         let entries = fs.entries.borrow();
         assert!(matches!(
             entries.get(entry_key.unwrap()).unwrap().deref(),
@@ -1935,7 +1914,7 @@ mod tests {
         assert!(entry_key_dir.is_some());
         let entry_key_symlink = lookup!(fs, b);
         assert!(entry_key_symlink.is_some());
-        let _fs = fs.lock().await;
+        let _fs = fs.borrow();
         let _entries = &_fs.entries;
         let _entries = _entries.borrow();
         match _entries.get(entry_key_dir.unwrap()).unwrap().deref() {
@@ -2399,7 +2378,7 @@ mod tests {
         let entry4 = lookup!(fs, new_dir_path.join("sym.log"));
         assert!(entry4.is_some());
 
-        let _fs = fs.lock().await;
+        let _fs = fs.borrow();
         let _entries = &_fs.entries;
         let _entries = _entries.borrow();
         match _entries.get(entry.unwrap()).unwrap().deref() {
@@ -2445,7 +2424,7 @@ mod tests {
         symlink_file(&file_path, &sym_path)?;
         hard_link(&file_path, &hard_path)?;
 
-        let fs = Arc::new(Mutex::new(new_fs(old_dir_path.clone(), None)));
+        let fs = new_fs(old_dir_path.clone(), None);
 
         rename(&old_dir_path, &new_dir_path)?;
         take_events!(fs);
@@ -2480,7 +2459,7 @@ mod tests {
         symlink_file(&file_path, &sym_path)?;
         hard_link(&file_path, &hard_path)?;
 
-        let fs = Arc::new(Mutex::new(new_fs(new_path, None)));
+        let fs = new_fs(new_path, None);
 
         assert!(lookup!(fs, old_dir_path).is_none());
         assert!(lookup!(fs, new_dir_path).is_none());
@@ -2503,7 +2482,7 @@ mod tests {
         let entry4 = lookup!(fs, new_dir_path.join("sym.log"));
         assert!(entry4.is_some());
 
-        let _fs = fs.lock().await;
+        let _fs = fs.borrow();
         let _entries = &_fs.entries;
         let _entries = _entries.borrow();
         match _entries.get(entry.unwrap()).unwrap().deref() {
@@ -2536,7 +2515,7 @@ mod tests {
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
 
-        let fs = Arc::new(Mutex::new(new_fs(path.clone(), None)));
+        let fs = new_fs(path.clone(), None);
 
         let file_path = path.join("insert.log");
         let new_path = path.join("new.log");
@@ -2550,7 +2529,7 @@ mod tests {
 
         let entry = lookup!(fs, new_path);
         assert!(entry.is_some());
-        let _fs = fs.lock().await;
+        let _fs = fs.borrow();
         let _entries = &_fs.entries;
         let _entries = _entries.borrow();
         match _entries.get(entry.unwrap()).unwrap().deref() {
@@ -2576,7 +2555,7 @@ mod tests {
         let move_path = other_path.join("outside.log");
         File::create(file_path.clone())?;
 
-        let fs = Arc::new(Mutex::new(new_fs(watch_path, None)));
+        let fs = new_fs(watch_path, None);
 
         rename(&file_path, &move_path)?;
 
@@ -2606,7 +2585,7 @@ mod tests {
         let move_path = watch_path.join("outside.log");
         File::create(file_path.clone())?;
 
-        let fs = Arc::new(Mutex::new(new_fs(watch_path, None)));
+        let fs = new_fs(watch_path, None);
 
         rename(&file_path, &move_path)?;
         File::create(file_path.clone())?;
@@ -2618,7 +2597,7 @@ mod tests {
 
         let entry = lookup!(fs, move_path);
         assert!(entry.is_some());
-        let _fs = fs.lock().await;
+        let _fs = fs.borrow();
         let _entries = &_fs.entries;
         let _entries = _entries.borrow();
         match _entries.get(entry.unwrap()).unwrap().deref() {
@@ -2651,7 +2630,7 @@ mod tests {
         File::create(file_path.clone())?;
         symlink_file(&file_path, &sym_path)?;
 
-        let fs = Arc::new(Mutex::new(new_fs(watch_path, None)));
+        let fs = new_fs(watch_path, None);
 
         take_events!(fs);
 
@@ -2697,7 +2676,7 @@ mod tests {
         let sym_path = path.join("test.log");
         File::create(file_path.clone())?;
 
-        let fs = Arc::new(Mutex::new(new_fs(path, Some(rules))));
+        let fs = new_fs(path, Some(rules));
 
         let entry = lookup!(fs, file_path);
         assert!(entry.is_none());
@@ -2730,7 +2709,7 @@ mod tests {
         let mut file3 = File::create(&sub_dir_file_path)?;
         symlink_file(&file1_path, &sym_path)?;
 
-        let fs = Arc::new(Mutex::new(new_fs(path, None)));
+        let fs = new_fs(path, None);
 
         let entry = lookup!(fs, file1_path);
         assert!(entry.is_some());

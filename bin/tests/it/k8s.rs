@@ -1698,7 +1698,7 @@ async fn test_k8s_startup_leases_always_start() {
         )
         .await;
 
-        let messages = vec![
+        let messages = [
             "Agent data! 0\n",
             "Agent data! 1\n",
             "Agent data! 2\n",
@@ -1820,7 +1820,7 @@ async fn test_k8s_startup_leases_never_start() {
         )
         .await;
 
-        let messages = vec![
+        let messages = [
             "Agent data! 0\n",
             "Agent data! 1\n",
             "Agent data! 2\n",

@@ -226,7 +226,7 @@ impl MetaRules {
         }
         if let (Some(over_k8s_file), true) = (&self.over_k8s_file, is_k8s_line) {
             let file = config::substitute(over_k8s_file.deref(), &meta_map);
-            if line.set_file(file).is_err() {}
+            let _ = line.set_file(file).is_err();
             // overriding "file" will disable server side CRIO log line parsing,
             // so we remove CRIO log prefix from line here to make regular line parser happy
             if let Some(line_text) = line.get_line_buffer() {

@@ -689,8 +689,7 @@ mod tests {
     fn test_default_rules() {
         let config = get_default_config();
 
-        let should_pass = vec![
-            "/var/log/a.log",
+        let should_pass = ["/var/log/a.log",
             "/var/log/containers/a.log",
             "/var/log/custom/a.log",
 
@@ -698,8 +697,7 @@ mod tests {
             // so if a symlink points to it, it should pass
             "/var/data/a.log",
             "/tmp/app/a.log",
-            "/var/data/kubeletlogs/some-named-service-aabb67c8fc-9ncjd_52c36bc5-4a53-4827-9dc8-082926ac1bc9/some-named-service/1.log",
-        ];
+            "/var/data/kubeletlogs/some-named-service-aabb67c8fc-9ncjd_52c36bc5-4a53-4827-9dc8-082926ac1bc9/some-named-service/1.log"];
 
         for p in should_pass.iter().map(PathBuf::from) {
             assert!(
