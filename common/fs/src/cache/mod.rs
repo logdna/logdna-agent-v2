@@ -1150,7 +1150,9 @@ impl FileSystem {
                 new_key
             }
             Err(e) => {
-                warn!("Error tracking path {}", e);
+                rate_limit_macro::rate_limit!(rate = 1, interval = 30, {
+                    warn!("Error tracking path: {}", e);
+                });
                 return Ok(None);
             }
         };

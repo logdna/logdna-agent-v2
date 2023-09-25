@@ -13,6 +13,7 @@ http = { package = "mz-http", path = "../http" }
 metrics = { package = "metrics", path = "../metrics" }
 state = { package = "state", path = "../state", default-features=false }
 notify_stream = { package = "notify_stream", path = "../notify_stream" }
+rate-limit-macro = "1"
 
 #error
 thiserror = "1.0"
