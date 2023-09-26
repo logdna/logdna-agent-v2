@@ -1150,6 +1150,7 @@ dependencies = [
  "pin-project-lite",
  "pin-utils",
  "regex",
+ "rate-limit-macro",
  "serde_json",
  "slotmap",
  "smallvec",
