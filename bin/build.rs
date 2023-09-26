@@ -11,6 +11,9 @@ fn main() {
                 res.set_toolkit_path(&path);
             }
         }
+
+        res.set_icon("../packaging/windows/msi/ui/bitmaps/Mezmo.ico");
+
         /*
         // Set more stuff in the resource file
         res.set_language(0x0409)
