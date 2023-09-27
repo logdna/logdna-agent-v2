@@ -126,6 +126,7 @@ systemd = { package = "systemd", version = "0.10" }
 
 [build-dependencies]
 auditable-build = { version = "0.1", optional = true }
+winres = "0.1"
 
 [profile.release]
 opt-level = 2
