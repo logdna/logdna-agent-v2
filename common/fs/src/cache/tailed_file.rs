@@ -4,6 +4,7 @@ use std::convert::{TryFrom, TryInto};
 use std::ops::DerefMut;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use http::types::body::{KeyValueMap, LineBufferMut, LineBuilder, LineMeta, LineMetaMut};
@@ -513,14 +514,14 @@ pub struct LazyLines {
     reader: Arc<Mutex<TailedFileInner>>,
     total_read: usize,
     target_read: Option<usize>,
-    paths: Arc<Vec<String>>,
+    paths: Rc<[String]>,
     resume_channel_send: Option<async_channel::Sender<(u64, OffsetDateTime)>>,
 }
 
 impl LazyLines {
     pub async fn new(
         reader: Arc<Mutex<TailedFileInner>>,
-        paths: Vec<String>,
+        paths: Rc<[String]>,
         target_read: Option<u64>,
         resume_channel_send: Option<Sender<(u64, OffsetDateTime)>>,
     ) -> Self {
@@ -558,7 +559,7 @@ impl LazyLines {
             reader,
             total_read: 0,
             target_read,
-            paths: Arc::new(paths),
+            paths,
             resume_channel_send,
         }
     }
@@ -636,10 +637,12 @@ impl TailedFile<LazyLineSerializer> {
             stream::unfold(
                 LazyLines::new(
                     self.inner.clone(),
-                    paths
-                        .iter()
-                        .map(|path| path.to_string_lossy().into())
-                        .collect(),
+                    Rc::from(
+                        paths
+                            .iter()
+                            .map(|path| path.to_string_lossy().into())
+                            .collect::<Vec<_>>(),
+                    ),
                     target_read,
                     self.resume_events_sender.clone(),
                 )
