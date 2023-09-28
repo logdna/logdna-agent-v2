@@ -1,5 +1,5 @@
 use crate::env_vars;
-use crate::raw::{Config as RawConfig, Rules};
+use crate::raw::{Config as RawConfig, JournaldConfig, K8sStartupLeaseConfig, Rules};
 use crate::K8sLeaseConf;
 use crate::K8sTrackingConf;
 use fs::lookback::Lookback;
@@ -323,14 +323,20 @@ impl ArgumentOptions {
         );
 
         if !self.journald_paths.is_empty() {
-            let paths = raw.journald.paths.get_or_insert(Vec::new());
+            let paths = raw
+                .journald
+                .get_or_insert_with(JournaldConfig::default)
+                .paths
+                .get_or_insert(Vec::new());
             with_csv(self.journald_paths)
                 .iter()
                 .for_each(|v| paths.push(PathBuf::from(v)));
         }
 
         if self.systemd_journal_tailer.is_some() {
-            raw.journald.systemd_journal_tailer = self.systemd_journal_tailer
+            if let Some(journald) = raw.journald.as_mut() {
+                journald.systemd_journal_tailer = self.systemd_journal_tailer;
+            }
         }
 
         if self.lookback.is_some() {
@@ -350,7 +356,10 @@ impl ArgumentOptions {
         }
 
         if self.k8s_startup_lease.is_some() {
-            raw.startup.option = self.k8s_startup_lease.map(|v| v.to_string());
+            let startup = raw
+                .startup
+                .get_or_insert_with(K8sStartupLeaseConfig::default);
+            startup.option = self.k8s_startup_lease.map(|v| v.to_string());
         }
 
         if self.db_path.is_some() {
@@ -533,7 +542,7 @@ fn combine(escaped: &str, token: &str) -> String {
 mod test {
     use super::*;
 
-    use crate::raw::{Config as RawConfig, K8sStartupLeaseConfig, Rules};
+    use crate::raw::{Config as RawConfig, Rules};
 
     use humanize_rs::bytes::Unit;
 
@@ -718,7 +727,7 @@ mod test {
         assert_eq!(config.log.k8s_metadata_exclude, None);
         assert_eq!(config.log.db_path, None);
         assert_eq!(config.log.metrics_port, None);
-        assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
+        assert_eq!(config.startup, None);
         assert_eq!(config.log.log_metric_server_stats, None);
         assert_eq!(
             config.log.clear_cache_interval,
@@ -785,9 +794,15 @@ mod test {
         assert_eq!(config.log.log_metric_server_stats, some_string!("always"));
         assert_eq!(config.log.db_path, Some(PathBuf::from("a/b/c")));
         assert_eq!(config.log.metrics_port, Some(9089));
-        assert_eq!(config.journald.paths, Some(vec_paths!["/a"]));
-        assert_eq!(config.journald.systemd_journal_tailer, Some(false));
-        assert_eq!(config.startup.option, Some(String::from("always")));
+        assert_eq!(
+            config.journald.as_ref().unwrap().paths,
+            Some(vec_paths!["/a"])
+        );
+        assert_eq!(
+            config.journald.as_ref().unwrap().systemd_journal_tailer,
+            Some(false)
+        );
+        assert_eq!(config.startup.unwrap().option, Some(String::from("always")));
         assert_eq!(config.log.clear_cache_interval, Some(777));
         assert_eq!(config.log.metadata_retry_delay, Some(555));
     }
@@ -804,7 +819,7 @@ mod test {
             config.log.dirs,
             vec_paths![DEFAULT_LOG_DIR, "/my/path", "/other"]
         );
-        assert_eq!(config.journald.paths, Some(vec_paths!["/a", "/b"]));
+        assert_eq!(config.journald.unwrap().paths, Some(vec_paths!["/a", "/b"]));
     }
 
     #[test]
@@ -904,7 +919,8 @@ mod test {
         };
         let mut config = RawConfig::default();
         config.log.dirs = vec_paths!["/log_dir"];
-        config.journald.paths = Some(vec_paths!["/default_journald"]);
+        let journald_config = config.journald.get_or_insert_with(JournaldConfig::default);
+        journald_config.paths = Some(vec_paths!["/default_journald"]);
         let config = argv.merge(config);
 
         assert_eq!(
@@ -912,7 +928,7 @@ mod test {
             vec_paths!["/log_dir", "/my/path", "/my/other/path"]
         );
         assert_eq!(
-            config.journald.paths,
+            config.journald.unwrap().paths,
             Some(vec_paths!["/default_journald", "/journal", "/journald"])
         );
     }
