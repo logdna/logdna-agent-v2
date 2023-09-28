@@ -445,15 +445,18 @@ impl TryFrom<RawConfig> for Config {
             }
         }
 
-        let startup = parse_k8s_enum_config_or_warn(
-            raw.startup.option,
-            env_vars::K8S_STARTUP_LEASE,
-            K8sLeaseConf::Never,
-        );
+        let startup = raw.startup.map_or_else(K8sLeaseConf::default, |startup| {
+            parse_k8s_enum_config_or_warn(
+                startup.option,
+                env_vars::K8S_STARTUP_LEASE,
+                K8sLeaseConf::Never,
+            )
+        });
 
+        let raw_journald = raw.journald.unwrap_or_default();
         let journald = JournaldConfig {
-            paths: raw.journald.paths.unwrap_or_default().into_iter().collect(),
-            systemd_journal_tailer: raw.journald.systemd_journal_tailer.unwrap_or(true),
+            paths: raw_journald.paths.unwrap_or_default().into_iter().collect(),
+            systemd_journal_tailer: raw_journald.systemd_journal_tailer.unwrap_or(true),
         };
 
         Ok(Config {

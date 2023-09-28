@@ -1,7 +1,7 @@
 use crate::argv;
 use crate::env_vars;
 use crate::error::ConfigError;
-use crate::raw::{Config, Rules};
+use crate::raw::{Config, JournaldConfig, K8sStartupLeaseConfig, Rules};
 use http::types::params::{Params, Tags};
 use humanize_rs::bytes::Bytes;
 use java_properties::PropertiesIter;
@@ -114,12 +114,7 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
         return Err(ConfigError::MissingField("empty property map"));
     }
     let map = Map { inner: map };
-    let mut result = Config {
-        http: Default::default(),
-        log: Default::default(),
-        journald: Default::default(),
-        startup: Default::default(),
-    };
+    let mut result = Config::default();
     result.http.ingestion_key = map.get(&INGESTION_KEY).map(|s| s.to_string());
 
     match (map.get_string(&HOST), map.get_string(&IBM_HOST_DEPRECATED)) {
@@ -254,14 +249,20 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
     }
 
     if let Some(value) = map.get(&JOURNALD_PATHS) {
-        let paths = result.journald.paths.get_or_insert(Vec::new());
+        let paths = result
+            .journald
+            .get_or_insert_with(JournaldConfig::default)
+            .paths
+            .get_or_insert(Vec::new());
         argv::split_by_comma(value)
             .iter()
             .for_each(|v| paths.push(PathBuf::from(v)));
     }
 
     if let Some(value) = map.get(&SYSTEMD_JOURNAL_TAILER) {
-        result.journald.systemd_journal_tailer = Some(value.parse().unwrap_or(true));
+        if let Some(journald) = result.journald.as_mut() {
+            journald.systemd_journal_tailer = Some(value.parse().unwrap_or(true));
+        }
     }
 
     result.log.lookback = map.get_string(&LOOKBACK);
@@ -269,7 +270,13 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
     result.log.log_k8s_events = map.get_string(&LOG_K8S_EVENTS);
     result.log.log_metric_server_stats = map.get_string(&LOG_METRIC_SERVER_STATS);
     result.log.db_path = map.get(&DB_PATH).map(PathBuf::from);
-    result.startup.option = map.get_string(&K8S_STARTUP_LEASE);
+
+    if let Some(k8s_startup_lease) = map.get_string(&K8S_STARTUP_LEASE) {
+        let startup = result
+            .startup
+            .get_or_insert_with(K8sStartupLeaseConfig::default);
+        startup.option = Some(k8s_startup_lease)
+    }
 
     if let Some(value) = map.get(&LINE_EXCLUSION_REGEX) {
         let regex_rules = result.log.line_exclusion_regex.get_or_insert(Vec::new());

@@ -201,8 +201,10 @@ impl<T: PartialEq + Clone> Merge for Vec<T> {
 pub struct Config {
     pub http: HttpConfig,
     pub log: LogConfig,
-    pub journald: JournaldConfig,
-    pub startup: K8sStartupLeaseConfig,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub journald: Option<JournaldConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub startup: Option<K8sStartupLeaseConfig>,
 }
 
 impl Config {
@@ -546,15 +548,13 @@ mod tests {
         let yaml = yaml.unwrap();
         // make sure the config can be deserialized
         let new_config = serde_yaml::from_str::<Config>(&yaml);
-        let k8s_config = K8sStartupLeaseConfig { option: None };
         assert!(new_config.is_ok());
         let new_config = new_config.unwrap();
         assert_eq!(config, new_config);
-        assert_eq!(config.startup, k8s_config);
+        assert_eq!(config.startup, None);
         assert_eq!(config.log.k8s_metadata_include, None);
         assert_eq!(config.log.k8s_metadata_exclude, None);
-        assert_eq!(config.journald.systemd_journal_tailer, Some(true));
-        assert_eq!(config.journald.paths, None);
+        assert_eq!(config.journald, None);
     }
 
     #[test]
@@ -726,7 +726,7 @@ key = abcdef01
 
         let conf = Config::parse(&file_name).map_err(|es| es.into_iter().next().unwrap());
 
-        assert!(matches!(conf, Err(ConfigError::Serde(_)),));
+        assert!(matches!(conf, Err(ConfigError::Serde(_)),), "{:?}", conf);
         Ok(())
     }
 
@@ -767,7 +767,6 @@ log:
     - /var/log1/
     - /var/log2/
 journald: {}
-startup: {}
 ",
         )?;
 
@@ -785,7 +784,7 @@ startup: {}
             config.log.dirs,
             vec![PathBuf::from("/var/log1/"), PathBuf::from("/var/log2/")]
         );
-        assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
+        assert_eq!(config.startup, None);
         Ok(())
     }
 
@@ -833,7 +832,7 @@ startup: {}
             config.log.dirs,
             vec![PathBuf::from("/var/log1/"), PathBuf::from("/var/log2/")]
         );
-        assert_eq!(config.startup, K8sStartupLeaseConfig { option: None });
+        assert_eq!(config.startup, Some(K8sStartupLeaseConfig::default()));
         Ok(())
     }
 
@@ -899,7 +898,7 @@ ingest_buffer_size = 3145728
         assert_eq!(config.log.log_k8s_events, some_string!("always"));
         assert_eq!(config.log.log_metric_server_stats, some_string!("always"));
         assert_eq!(
-            config.journald.paths,
+            config.journald.unwrap().paths,
             Some(vec![
                 PathBuf::from("/first-j"),
                 PathBuf::from("/second-j/a")
@@ -1393,6 +1392,41 @@ startup: {}",
         assert!(result[0].is_ok());
         assert!(matches!(result[1], Err(ConfigError::Io(_))));
         assert!(result[2].is_ok());
+
+        Ok(())
+    }
+
+    #[test]
+    fn try_load_confs_valid_minimal_yaml() -> io::Result<()> {
+        let test_dir = tempdir()?;
+
+        let new_conf_path = test_dir.path().join("new_conf.yaml");
+        fs::write(
+            &new_conf_path,
+            "
+http:
+    host: new.logdna.test
+    endpoint: /path/to/endpoint1
+    use_ssl: false
+    timeout: 12000
+    use_compression: true
+    gzip_level: 1
+    params:
+        hostname: abc
+        tags: tag1,tag2
+        now: 0
+    body_size: 2097152
+log:
+    dirs:
+        - /var/log1/
+        - /var/log2/",
+        )?;
+
+        let conf_paths: Vec<&Path> = vec![&new_conf_path];
+        let result: Vec<Result<Config, ConfigError>> = try_load_confs(&conf_paths).collect();
+
+        assert_eq!(result.len(), 1);
+        assert!(&result[0].is_ok());
 
         Ok(())
     }
