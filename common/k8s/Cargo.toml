@@ -19,7 +19,7 @@ rate-limit-macro = { package = "rate-limit-macro", path = "../misc/rate-limit/ma
 anyhow = "1.0.57"
 hyper = "0.14"
 hyper-timeout = "0.4"
-hyper-rustls = "0.23"
+native-tls = "0.23"
 tower = "0.4"
 tower-http = { version = "0.3", features = ["set-header"] }
 tracing = "0.1"

@@ -1454,7 +1454,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyper-rustls"
+name = "native-tls"
 version = "0.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1788965e61b367cd03a62950836d5cd41560c3577d90e40e0819373194d1661c"
@@ -1735,7 +1735,7 @@ dependencies = [
  "http",
  "humantime",
  "hyper",
- "hyper-rustls",
+ "native-tls",
  "hyper-timeout",
  "k8s-openapi",
  "kube",
@@ -1823,7 +1823,7 @@ dependencies = [
  "http",
  "http-body",
  "hyper",
- "hyper-rustls",
+ "native-tls",
  "hyper-timeout",
  "jsonpath_lib",
  "k8s-openapi",
@@ -2104,7 +2104,7 @@ dependencies = [
  "futures",
  "http",
  "hyper",
- "hyper-rustls",
+ "native-tls",
  "log",
  "once_cell",
  "pin-project",
@@ -2140,7 +2140,7 @@ dependencies = [
  "env_logger",
  "futures",
  "hyper",
- "hyper-rustls",
+ "native-tls",
  "rcgen",
  "rustls",
  "rustls-pemfile 1.0.2",
