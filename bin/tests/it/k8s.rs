@@ -314,32 +314,18 @@ async fn assert_log_lines(
                     .await
                     .unwrap()
                     .lines();
-                let mut accumulated = String::new();
-                while let Some(line) = logs.try_next().await.unwrap() {
-                    accumulated.push_str(&line);
 
-                    let mut lines: Vec<&str> = accumulated.split('\n').collect();
-                    if lines.len() > 1 {
-                        let last = lines.pop().unwrap_or_default().to_string();
-                        for line_str in lines {
-                            if print_log_lines {
-                                info!("LOG: {:?}", line_str);
-                            }
-                            let pat = substrings_not_found.last();
-                            if let Some(pat) = pat {
-                                if line_str.contains(pat) {
-                                    substrings_not_found.pop();
-                                }
-                            } else if !print_log_lines {
-                                break;
-                            }
-                        }
-                        accumulated = last;
+                while let Some(line) = logs.try_next().await.unwrap() {
+                    if print_log_lines {
+                        info!("LOG: {:?}", line);
                     }
-                }
-                // Process the remaining accumulated data if any.
-                if !accumulated.is_empty() && print_log_lines {
-                    info!("LOG: {:?}", accumulated);
+                    if let Some(pat) = substrings_not_found.last() {
+                        if line.contains(pat) {
+                            substrings_not_found.pop();
+                        }
+                    } else if !print_log_lines {
+                        break;
+                    }
                 }
                 assert!(
                     substrings_not_found.is_empty(),
@@ -2118,7 +2104,7 @@ async fn test_feature_leader_grabbing_lease() {
 #[test(tokio::test)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_retry_line_with_missing_pod_metadata() {
-    let (server, _, shutdown_handle, ingester_addr) = common::start_http_ingester();
+    let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();
 
     tokio::time::sleep(tokio::time::Duration::from_millis(3000)).await;
 
@@ -2144,7 +2130,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
         socat_pod_name, default_namespace
     );
 
-    let agent_name = "test-retry-line";
+    let agent_name = "test-retry-line-agent";
     let agent_namespace = "test-retry-line";
 
     let (server_result, _) = tokio::join!(server, async {
@@ -2175,7 +2161,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
             &mock_ingester_socket_addr_str,
             "never",
             "always",
-            "logdna_agent::_main=debug,info",
+            "info",
             "never",
             "never",
             Some(vec![
@@ -2185,15 +2171,6 @@ async fn test_retry_line_with_missing_pod_metadata() {
         )
         .await;
 
-        assert!(
-            wait_for_pod_ready(
-                client.clone(),
-                "sample-pod",
-                "default",
-                tokio::time::Duration::from_millis(10_000),
-            )
-            .await
-        );
         info!("daemonset {} in {} is ready", agent_name, agent_namespace);
 
         let messages = [
@@ -2209,28 +2186,28 @@ async fn test_retry_line_with_missing_pod_metadata() {
         for msg in messages.iter() {
             // Write log lines
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-            info!("msg: {}", msg);
-            match logger_stream.write_all(msg.as_bytes()).await {
-                Err(e) => {
-                    info!("error: {:?}", e);
-                    break;
-                }
-                Ok(_) => continue,
-            }
+            logger_stream.write_all(msg.as_bytes()).await.unwrap();
         }
 
-        info!("Wait for the data to be received by the mock ingester");
-        tokio::time::sleep(tokio::time::Duration::from_millis(3_000)).await;
+        // Wait for the data to be received by the mock ingester
+        // and delayed lines (all) delay time to expire
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
-        // wait for delayed line delay to expire
-        tokio::time::sleep(tokio::time::Duration::from_millis(6_000)).await;
+        // get socat pod log stats from ingester
+        let map = received.lock().await;
+        let result = map.iter().find(|(k, _)| k.contains(socat_pod_name));
+        assert!(result.is_some());
 
+        // assert we got all lines
+        let (_, pod_file_info) = result.unwrap();
+        assert!(pod_file_info.lines == 5);
+
+        // assert processing steps triggered
         let log_lines = vec![
             "Enabling filesystem",
-            "Retrying - delaying line processing by k8s::middleware::metadata::K8sMetadata for 5s seconds",
-            "Retries exhausted - processing line",
+            "Pod metadata is missing for line (retries=1)",
+            "Pod metadata is missing for line (retries=0)",
         ];
-
         info!("asserting log lines: {:?}", log_lines);
         assert_log_lines(
             client.clone(),
@@ -2238,7 +2215,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
             &format!("app={}", &agent_name),
             log_lines,
             None,
-            true,
+            false,
         )
         .await;
 

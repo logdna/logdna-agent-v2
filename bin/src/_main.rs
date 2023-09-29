@@ -645,7 +645,7 @@ pub async fn _main(
                 Err(MiddlewareError::Retry(name)) => {
                     if delayed_source_enabled {
                         rate_limit!(rate = 1, interval = 10 * 60, {
-                            warn!("Pod metadata is missing for line: {:?}", line);
+                            warn!("Pod metadata is missing for line (retries=1): {:?}", line);
                             // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
                             debug!(
                                 "Retrying - delaying line processing by {} for {:?} seconds at [{}:{}]: {:?}",
@@ -660,7 +660,7 @@ pub async fn _main(
                         None
                     } else {
                         rate_limit!(rate = 1, interval = 10 * 60, {
-                            error!("Pod metadata is missing for line: {:?}", line);
+                            error!("Pod metadata is missing for line (retries=disabled): {:?}", line);
                             debug!(
                                 "Retrying disabled, processing line by {} AS-IS at [{}:{}]: {:?}",
                                 name,
@@ -703,7 +703,7 @@ pub async fn _main(
                 Err(MiddlewareError::Retry(name)) => {
                     // no more retries
                     rate_limit!(rate = 1, interval = 10 * 60, {
-                        error!("Pod metadata is missing for line: {:?}", line);
+                        error!("Pod metadata is missing for line (retries=0): {:?}", line);
                         debug!(
                             "Retries exhausted - processing line by {} AS-IS at [{}:{}]: {:?}",
                             name,
@@ -712,7 +712,25 @@ pub async fn _main(
                             line
                         );
                     });
-                    Some(StrictOrLazyLines::Lazy(line))
+                    match executor.process(&mut line) {
+                        Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
+                        Err(MiddlewareError::Skip(name)) => {
+                            debug!("Skipping line by {} at [{}:{}]: {:?}", name, file!(), line!(), line);
+                            None
+                        }
+                        Err(e) => {
+                            rate_limit!(rate = 1, interval = 10 * 60, {
+                            error!(
+                                "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
+                                e,
+                                file!(),
+                                line!(),
+                                line
+                            )
+                        });
+                            None
+                        }
+                    }
                 }
             }
         }
@@ -764,7 +782,7 @@ pub async fn _main(
                     warn!("failed sending http request, retrying: request timed out!");
                 });
             }
-            _ => {}
+            SendStatus::Sent => {}
         }
     }
 
