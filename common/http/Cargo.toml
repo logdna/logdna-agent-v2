@@ -11,6 +11,7 @@ integration_tests = []
 #local
 metrics = { package = "metrics", path = "../metrics" }
 state = { package = "state", path = "../state", default-features=false }
+rate-limit-macro = { package = "rate-limit-macro", path = "../misc/rate-limit/macro" }
 
 #http
 logdna-client = { git = "https://github.com/logdna/logdna-rust.git", branch="0.7.x", version = "0.7.2" }
@@ -42,3 +43,4 @@ rand = "0.8"
 num_cpus = "1.0"
 proptest = "1"
 test_types = { package = "types", path = "../test/types" }
+once_cell = "1.10"

@@ -10,10 +10,10 @@ use http::types::body::LineBuilder;
 use k8s_openapi::api::core::v1::{Event, ObjectReference, Pod};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::api::ListParams;
-use kube::ResourceExt;
 use kube::{
-    runtime::{watcher, WatchStreamExt},
-    Api, Client,
+    core::PartialObjectMeta,
+    runtime::{metadata_watcher, watcher, WatchStreamExt},
+    Api, Client, ResourceExt,
 };
 use metrics::Metrics;
 use pin_utils::pin_mut;
@@ -290,9 +290,12 @@ impl K8sEventStream {
                     let params = ListParams::default()
                         .timeout(30)
                         .labels(&format!("app.kubernetes.io/name={}", &pod_label));
-                    let stream = watcher(pods.clone(), params)
+                    let stream = metadata_watcher(pods.clone(), params)
                         .skip_while(|e| {
-                            let matched = matches!(e, Ok(watcher::Event::<Pod>::Restarted(_)));
+                            let matched = matches!(
+                                e,
+                                Ok(watcher::Event::<PartialObjectMeta<Pod>>::Restarted(_))
+                            );
                             async move { matched }
                         })
                         .map({

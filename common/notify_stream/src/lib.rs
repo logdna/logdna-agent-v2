@@ -60,6 +60,18 @@ pub enum Event {
     Error(Error, Option<PathId>),
 }
 
+impl Event {
+    pub fn path_id(&self) -> Option<&PathId> {
+        use Event::*;
+        match self {
+            Remove(path_id) | Create(path_id) | Write(path_id) | Rename(path_id, _) => {
+                Some(path_id)
+            }
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Error {
     /// Generic error

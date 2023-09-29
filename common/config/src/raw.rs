@@ -312,6 +312,8 @@ pub struct LogConfig {
     pub tailer_cmd: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tailer_args: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata_retry_delay: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Clone, Default)]
@@ -475,6 +477,7 @@ impl Default for LogConfig {
             clear_cache_interval: Some(3600 * 6), // 6 hours
             tailer_cmd: None,
             tailer_args: None,
+            metadata_retry_delay: Some(0),
         }
     }
 }
@@ -508,6 +511,8 @@ impl Merge for LogConfig {
         );
         self.clear_cache_interval
             .merge(&other.clear_cache_interval, &default.clear_cache_interval);
+        self.metadata_retry_delay
+            .merge(&other.metadata_retry_delay, &default.metadata_retry_delay);
     }
 }
 
@@ -1017,10 +1022,7 @@ ingest_buffer_size = 3145728
         // Case 5: With two None values, the existing value should remain.
         target = None;
         target.merge(&None, &default_val);
-        assert!(
-            matches!(target, None),
-            "None expected when merging with None"
-        );
+        assert!(target.is_none(), "None expected when merging with None");
     }
 
     #[test]
@@ -1317,8 +1319,8 @@ startup: {}",
         let result: Vec<Result<Config, ConfigError>> = try_load_confs(&conf_paths).collect();
 
         assert_eq!(result.len(), 2);
-        assert!(matches!(&result[0], Ok(_)));
-        assert!(matches!(&result[1], Ok(_)));
+        assert!(result[0].is_ok());
+        assert!(result[1].is_ok());
 
         Ok(())
     }
@@ -1388,9 +1390,9 @@ startup: {}",
         let result: Vec<Result<Config, ConfigError>> = try_load_confs(&conf_paths).collect();
 
         assert_eq!(result.len(), 3);
-        assert!(matches!(result[0], Ok(_)));
+        assert!(result[0].is_ok());
         assert!(matches!(result[1], Err(ConfigError::Io(_))));
-        assert!(matches!(result[2], Ok(_)));
+        assert!(result[2].is_ok());
 
         Ok(())
     }

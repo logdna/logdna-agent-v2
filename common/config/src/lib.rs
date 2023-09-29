@@ -124,6 +124,7 @@ pub struct LogConfig {
     pub clear_cache_interval: Duration,
     pub tailer_cmd: Option<String>,
     pub tailer_args: Option<String>,
+    pub metadata_retry_delay: Duration,
 }
 
 #[derive(Debug)]
@@ -189,8 +190,25 @@ impl Config {
             print_settings(&yaml_str, &config_path);
         }
 
+        let env_config: String = env_vars::ENV_VARS_LIST
+            .iter()
+            .chain(env_vars::DEPRECATED_ENV_VARS_LIST.iter())
+            .chain(["RUST_LOG"].iter())
+            .filter_map(|&key| {
+                std::env::var(key).ok().map(|value| {
+                    if key.contains("KEY") || key.contains("PIN") {
+                        format!("{}: REDACTED", key)
+                    } else {
+                        format!("{}: {}", key, value)
+                    }
+                })
+            })
+            .collect::<Vec<String>>()
+            .join("\n");
+        info!("env config: \n{}", env_config);
+
         info!(
-            "read the following options from cli, env and config: \n{}",
+            "effective configuration collected from cli, env and config:\n{}",
             yaml_str
         );
 
@@ -345,7 +363,7 @@ impl TryFrom<RawConfig> for Config {
                     d.clone()
                         .try_into()
                         .map_err(|e| {
-                            warn!("{} is not a valid directory: {}", d.display(), e);
+                            warn!("{} is not a valid directory: {:?}", d.display(), e);
                         })
                         .ok()
                 })
@@ -387,6 +405,13 @@ impl TryFrom<RawConfig> for Config {
             ) as u64),
             tailer_cmd: raw.log.tailer_cmd,
             tailer_args: raw.log.tailer_args,
+            metadata_retry_delay: Duration::from_secs(raw.log.metadata_retry_delay.unwrap_or_else(
+                || {
+                    raw::LogConfig::default()
+                        .metadata_retry_delay
+                        .unwrap_or_default()
+                },
+            ) as u64),
         };
 
         if log.use_k8s_enrichment == K8sTrackingConf::Never
@@ -665,8 +690,7 @@ mod tests {
     fn test_default_rules() {
         let config = get_default_config();
 
-        let should_pass = vec![
-            "/var/log/a.log",
+        let should_pass = ["/var/log/a.log",
             "/var/log/containers/a.log",
             "/var/log/custom/a.log",
 
@@ -674,8 +698,7 @@ mod tests {
             // so if a symlink points to it, it should pass
             "/var/data/a.log",
             "/tmp/app/a.log",
-            "/var/data/kubeletlogs/some-named-service-aabb67c8fc-9ncjd_52c36bc5-4a53-4827-9dc8-082926ac1bc9/some-named-service/1.log",
-        ];
+            "/var/data/kubeletlogs/some-named-service-aabb67c8fc-9ncjd_52c36bc5-4a53-4827-9dc8-082926ac1bc9/some-named-service/1.log"];
 
         for p in should_pass.iter().map(PathBuf::from) {
             assert!(
@@ -728,7 +751,7 @@ mod tests {
             .open(&path)
             .unwrap();
 
-        guard(file, |mut file| {
+        let _ = guard(file, |mut file| {
             let args = vec![OsString::new()];
             serde_yaml::to_writer(&mut file, &RawConfig::default()).unwrap();
             file.flush().unwrap();

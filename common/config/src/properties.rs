@@ -49,14 +49,15 @@ from_env_name!(K8S_METADATA_LINE_INCLUSION);
 from_env_name!(K8S_METADATA_LINE_EXCLUSION);
 from_env_name!(LOG_METRIC_SERVER_STATS);
 from_env_name!(K8S_STARTUP_LEASE);
-from_env_name!(LINE_EXCLUSION);
-from_env_name!(LINE_INCLUSION);
-from_env_name!(REDACT);
+from_env_name!(LINE_EXCLUSION_REGEX);
+from_env_name!(LINE_INCLUSION_REGEX);
+from_env_name!(REDACT_REGEX);
 from_env_name!(INGEST_TIMEOUT);
 from_env_name!(INGEST_BUFFER_SIZE);
 from_env_name!(RETRY_DIR);
 from_env_name!(RETRY_DISK_LIMIT);
 from_env_name!(CLEAR_CACHE_INTERVAL);
+from_env_name!(METADATA_RETRY_DELAY);
 
 enum Key {
     FromEnv(&'static str),
@@ -270,14 +271,14 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
     result.log.db_path = map.get(&DB_PATH).map(PathBuf::from);
     result.startup.option = map.get_string(&K8S_STARTUP_LEASE);
 
-    if let Some(value) = map.get(&LINE_EXCLUSION) {
+    if let Some(value) = map.get(&LINE_EXCLUSION_REGEX) {
         let regex_rules = result.log.line_exclusion_regex.get_or_insert(Vec::new());
         argv::split_by_comma(value)
             .iter()
             .for_each(|v| regex_rules.push(v.to_string()));
     }
 
-    if let Some(value) = map.get(&LINE_INCLUSION) {
+    if let Some(value) = map.get(&LINE_INCLUSION_REGEX) {
         let regex_rules = result.log.line_inclusion_regex.get_or_insert(Vec::new());
         argv::split_by_comma(value)
             .iter()
@@ -298,7 +299,7 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
             .for_each(|v| k8s_rules.push(v.to_string()));
     }
 
-    if let Some(value) = map.get(&REDACT) {
+    if let Some(value) = map.get(&REDACT_REGEX) {
         let regex_rules = result.log.line_redact_regex.get_or_insert(Vec::new());
         argv::split_by_comma(value)
             .iter()
@@ -308,6 +309,12 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
     if let Some(value) = map.get(&CLEAR_CACHE_INTERVAL) {
         result.log.clear_cache_interval = Some(u32::from_str(value).map_err(|e| {
             ConfigError::PropertyInvalid(format!("clear cache interval property is invalid: {}", e))
+        })?);
+    }
+
+    if let Some(value) = map.get(&METADATA_RETRY_DELAY) {
+        result.log.metadata_retry_delay = Some(u32::from_str(value).map_err(|e| {
+            ConfigError::PropertyInvalid(format!("metadata retry delay property is invalid: {}", e))
         })?);
     }
 

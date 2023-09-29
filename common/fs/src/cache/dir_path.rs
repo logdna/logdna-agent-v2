@@ -86,7 +86,7 @@ fn find_valid_path(
 ) -> Result<DirPathBuf, DirPathBufError> {
     match path {
         Some(some_path) => {
-            if matches!(std::fs::canonicalize(&some_path), Ok(_)) {
+            if std::fs::canonicalize(&some_path).is_ok() {
                 Ok(DirPathBuf {
                     inner: some_path,
                     postfix,

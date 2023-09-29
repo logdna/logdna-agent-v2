@@ -9,6 +9,10 @@ use http::retry::{retry, RetryItem};
 use k8s::feature_leader::FeatureLeader;
 use k8s::feature_leader::FeatureLeaderMeta;
 use k8s::metrics_stats_stream::MetricsStatsStream;
+use middleware::MiddlewareError;
+use rate_limit_macro::rate_limit;
+
+use fs::cache::delayed_stream::delayed_stream;
 
 #[cfg(all(feature = "libjournald", target_os = "linux"))]
 use journald::libjournald::source::create_source;
@@ -33,8 +37,9 @@ use middleware::Executor;
 
 use pin_utils::pin_mut;
 use rand::Rng;
-use state::{AgentState, FileId, SpanVec};
+use state::{AgentState, FileId, GetOffset, Span, SpanVec};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::path::Path;
 use std::sync::Arc;
 use tokio::signal::*;
@@ -133,6 +138,15 @@ pub async fn _main(
         client.set_timeout(config.http.timeout);
     }
 
+    let (delayed_lines_send, delayed_lines_recv) = async_channel::unbounded();
+    let delayed_lines_source = if !config.log.metadata_retry_delay.is_zero() {
+        Some(
+            delayed_stream(delayed_lines_recv, config.log.metadata_retry_delay)
+                .map(StrictOrLazyLineBuilder::LazyDelayed),
+        )
+    } else {
+        None
+    };
     let mut executor = Executor::new();
 
     let mut k8s_claimed_lease: Option<String> = None;
@@ -150,8 +164,7 @@ pub async fn _main(
                 )
                 .await;
 
-                if config.log.use_k8s_enrichment == K8sTrackingConf::Always
-                    && std::env::var_os("KUBERNETES_SERVICE_HOST").is_some()
+                if config.log.use_k8s_enrichment == K8sTrackingConf::Always && k8s::is_in_cluster()
                 {
                     let node_name = std::env::var("NODE_NAME").ok();
                     metadata_runner(deletion_ack_receiver, user_agent, node_name, &mut executor);
@@ -260,6 +273,7 @@ pub async fn _main(
         e
     })?);
 
+    info!("initializing middleware executor");
     executor.init();
 
     // Use an internal env var to support running integration test w/o additional delays
@@ -348,12 +362,27 @@ pub async fn _main(
     }
     debug!("Initialised offset state");
 
+    let mut initial_offsets: Option<HashMap<FileId, SpanVec>> = None;
+
+    if let Some(offset_state) = offset_state {
+        match offset_state.offsets() {
+            Ok(offsets) => {
+                initial_offsets =
+                    Some(offsets.into_iter().map(|fo| (fo.key, fo.offsets)).collect());
+            }
+            Err(e) => warn!("couldn't retrieve offsets from agent state, {:?}", e),
+        }
+    }
+
+    let fs_offsets: Arc<Mutex<HashMap<FileId, SpanVec>>> =
+        Arc::new(Mutex::new(initial_offsets.unwrap_or_default()));
+
     let ds_source_params = (
         config.log.dirs.clone(),
         config.log.rules.clone(),
         config.log.lookback.clone(),
-        offset_state,
         fo_state_handles,
+        fs_offsets,
     );
 
     debug!("Creating fs_source");
@@ -367,28 +396,44 @@ pub async fn _main(
             }
             _ => false,
         },
-        |(watched_dirs, rules, lookback, offset_state, fo_state_handles)| {
-            let mut initial_offsets: Option<HashMap<FileId, SpanVec>> = None;
+        |(watched_dirs, rules, lookback, fo_state_handles, fs_offsets)| {
+            let watched_dirs = watched_dirs.clone();
+            let rules = rules.clone();
+            let lookback = lookback.clone();
+            let deletion_ack_sender = deletion_ack_sender.clone();
+            let fo_state_handles = fo_state_handles.clone();
+            let fs_offsets = fs_offsets.clone();
+            async move {
+                let tailer = tail::Tailer::new(
+                    watched_dirs,
+                    rules,
+                    lookback,
+                    Some(fs_offsets.lock().await.clone()),
+                    fo_state_handles,
+                    deletion_ack_sender,
+                );
 
-            if let Some(offset_state) = offset_state {
-                match offset_state.offsets() {
-                    Ok(offsets) => {
-                        initial_offsets =
-                            Some(offsets.into_iter().map(|fo| (fo.key, fo.offsets)).collect());
-                    }
-                    Err(e) => warn!("couldn't retrieve offsets from agent state, {:?}", e),
-                }
+                tail::process(tailer)
+                    .expect("Failed to create FS Tailer")
+                    .filter(move |line| {
+                        let mut pair = (None, None);
+                        if let Ok(line) = line {
+                            pair = (line.get_key(), line.get_offset());
+                        }
+
+                        let fs_offsets = fs_offsets.clone();
+                        async move {
+                            if let (Some(key), Some(offsets)) = pair {
+                                let mut span_vec = SpanVec::new();
+                                if let Ok(offsets) = Span::try_from(offsets) {
+                                    span_vec.insert(offsets);
+                                    fs_offsets.lock().await.insert(FileId::from(key), span_vec);
+                                }
+                            }
+                            true
+                        }
+                    })
             }
-
-            let tailer = tail::Tailer::new(
-                watched_dirs.clone(),
-                rules.clone(),
-                lookback.clone(),
-                initial_offsets,
-                fo_state_handles.clone(),
-                deletion_ack_sender.clone(),
-            );
-            async move { tail::process(tailer).expect("except Failed to create FS Tailer") }
         },
         config.log.clear_cache_interval, // we restart tailer to clear fs cache
     )
@@ -468,6 +513,10 @@ pub async fn _main(
 
     pin_mut!(metric_stats_source);
 
+    pin_mut!(delayed_lines_source);
+
+    let mut delayed_lines_source: Option<std::pin::Pin<&mut _>> = delayed_lines_source.as_pin_mut();
+
     let mut k8s_event_source: Option<std::pin::Pin<&mut _>> = k8s_event_source.as_pin_mut();
     #[cfg(target_os = "linux")]
     let mut journalctl_source: Option<std::pin::Pin<&mut _>> = journalctl_source.as_pin_mut();
@@ -499,6 +548,14 @@ pub async fn _main(
         sources.push(s)
     }
 
+    let mut delayed_source_enabled = false;
+    let metadata_retry_delay = config.log.metadata_retry_delay;
+    if let Some(s) = delayed_lines_source.as_mut() {
+        info!("Enabling delayed lines source");
+        delayed_source_enabled = true;
+        sources.push(s)
+    }
+
     if let Some(s) = tailer_source.as_mut() {
         info!("Enabling api tailer source");
         sources.push(s)
@@ -515,31 +572,155 @@ pub async fn _main(
     };
 
     let lines_stream = sources.map(|line| match line {
-        StrictOrLazyLineBuilder::Strict(mut line) => {
-            if executor.process(&mut line).is_some() {
-                match line.build() {
-                    Ok(line) => Some(StrictOrLazyLines::Strict(line)),
-                    Err(e) => {
+        // Strict lines (concrete)
+        StrictOrLazyLineBuilder::Strict(mut line) => match executor.process(&mut line) {
+            Ok(_) => match line.build() {
+                Ok(line) => Some(StrictOrLazyLines::Strict(line)),
+                Err(e) => {
+                    rate_limit!(rate = 1, interval = 1 * 60, {
                         error!("Couldn't build line from linebuilder {:?}", e);
-                        None
-                    }
+                    });
+                    None
                 }
-            } else {
+            },
+            Err(MiddlewareError::Skip(name)) => {
+                debug!(
+                    "Skipping line by {} at [{}:{}]: {:?}",
+                    name,
+                    file!(),
+                    line!(),
+                    line
+                );
                 None
             }
-        }
-        StrictOrLazyLineBuilder::Lazy(mut line) => {
-            if executor.process(&mut line).is_some() {
-                Some(StrictOrLazyLines::Lazy(line))
-            } else {
+            Err(e) => {
+                rate_limit!(rate = 1, interval = 10 * 60, {
+                        error!(
+                            "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
+                            e,
+                            file!(),
+                            line!(),
+                            line
+                    )});
                 None
+            }
+        },
+        // Lazy lines (from tailed files, not fetched yet)
+        StrictOrLazyLineBuilder::Lazy(mut line) => {
+            match executor.validate(&line) {
+                Ok(_) => match executor.process(&mut line) {
+                    Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
+                    Err(MiddlewareError::Skip(name)) => {
+                        debug!(
+                            "Skipping line by {} at [{}:{}]: {:?}",
+                            name,
+                            file!(),
+                            line!(),
+                            line
+                        );
+                        None
+                    }
+                    Err(e) => {
+                        rate_limit!(rate = 1, interval = 10 * 60, {
+                            error!(
+                                "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
+                                e,
+                                file!(),
+                                line!(),
+                                line
+                        )});
+                        None
+                    }
+                },
+                Err(MiddlewareError::Skip(name)) => {
+                    debug!(
+                        "Skipping line by {} at [{}:{}]: {:?}",
+                        name,
+                        file!(),
+                        line!(),
+                        line
+                    );
+                    None
+                }
+                Err(MiddlewareError::Retry(name)) => {
+                    if delayed_source_enabled {
+                        rate_limit!(rate = 1, interval = 10 * 60, {
+                            warn!("Pod metadata is missing for line: {:?}", line);
+                            // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
+                            debug!(
+                                "Retrying - delaying line processing by {} for {:?} seconds at [{}:{}]: {:?}",
+                                name,
+                                metadata_retry_delay,
+                                file!(),
+                                line!(),
+                                line
+                            );
+                        });
+                        delayed_lines_send.send_blocking(line).unwrap();
+                        None
+                    } else {
+                        rate_limit!(rate = 1, interval = 10 * 60, {
+                            error!("Pod metadata is missing for line: {:?}", line);
+                            debug!(
+                                "Retrying disabled, processing line by {} AS-IS at [{}:{}]: {:?}",
+                                name,
+                                file!(),
+                                line!(),
+                                line
+                            );
+                        });
+                        Some(StrictOrLazyLines::Lazy(line))
+                    }
+                }
+            }
+        }
+        // Lazy already delayed/retried lines (from tailed files, not fetched yet)
+        StrictOrLazyLineBuilder::LazyDelayed(mut line) => {
+            match executor.validate(&line) {
+                Ok(_) => match executor.process(&mut line) {
+                    Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
+                    Err(MiddlewareError::Skip(name)) => {
+                        debug!("Skipping line by {} at [{}:{}]: {:?}", name, file!(), line!(), line);
+                        None
+                    }
+                    Err(e) => {
+                        rate_limit!(rate = 1, interval = 10 * 60, {
+                            error!(
+                                "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
+                                e,
+                                file!(),
+                                line!(),
+                                line
+                            )
+                        });
+                        None
+                    }
+                },
+                Err(MiddlewareError::Skip(name)) => {
+                    debug!("Skipping line by {} at [{}:{}]: {:?}", name, file!(), line!(), line);
+                    None
+                }
+                Err(MiddlewareError::Retry(name)) => {
+                    // no more retries
+                    rate_limit!(rate = 1, interval = 10 * 60, {
+                        error!("Pod metadata is missing for line: {:?}", line);
+                        debug!(
+                            "Retries exhausted - processing line by {} AS-IS at [{}:{}]: {:?}",
+                            name,
+                            file!(),
+                            line!(),
+                            line
+                        );
+                    });
+                    Some(StrictOrLazyLines::Lazy(line))
+                }
             }
         }
     });
 
     let body_offsets_stream = lines_stream
         .filter_map(|l| async { l })
-        // TODO: paramaterise the flush frequency
+        // TODO: parameterize the flush frequency
         .timed_request_batches(config.http.body_size, Duration::from_millis(250))
         .map(|b| async { b })
         .buffered(10);
@@ -574,10 +755,14 @@ pub async fn _main(
     fn handle_send_status(s: SendStatus) {
         match s {
             SendStatus::Retry(e) => {
-                warn!("failed sending http request, retrying: {}", e);
+                rate_limit!(rate = 1, interval = 1 * 60, {
+                    warn!("failed sending http request, retrying: {}", e);
+                });
             }
             SendStatus::RetryTimeout => {
-                warn!("failed sending http request, retrying: request timed out!");
+                rate_limit!(rate = 1, interval = 1 * 60, {
+                    warn!("failed sending http request, retrying: request timed out!");
+                });
             }
             _ => {}
         }

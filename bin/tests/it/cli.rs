@@ -1156,15 +1156,17 @@ async fn test_tags() {
     let mut agent_handle = common::spawn_agent(settings);
 
     let mut agent_stderr = BufReader::new(agent_handle.stderr.take().unwrap());
-    common::wait_for_event("Enabling filesystem", &mut agent_stderr);
+    common::wait_for_file_event("initialize", &file_path, &mut agent_stderr);
 
     consume_output(agent_stderr.into_inner());
 
     let (server_result, _) = tokio::join!(server, async {
         let total_lines: usize = 10;
-        common::append_to_file(&file_path, total_lines as i32, 5).unwrap();
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        common::append_to_file(&file_path, total_lines as i32, 1).unwrap();
         common::force_client_to_flush(&dir).await;
 
+        tokio::time::sleep(Duration::from_millis(500)).await;
         let mut file_info = FileInfo::default();
         let map_key = file_path.to_str().unwrap();
 
@@ -1176,14 +1178,14 @@ async fn test_tags() {
 
             if file_info.lines < total_lines {
                 // Wait for the data to be received by the mock ingester
-                tokio::time::sleep(Duration::from_millis(200)).await;
+                tokio::time::sleep(Duration::from_millis(500)).await;
                 continue;
             }
 
             break;
         }
 
-        assert_eq!(file_info.lines, total_lines);
+        assert_eq!(file_info.lines, total_lines, "{:#?}", file_info);
         assert_eq!(
             file_info.values,
             vec![common::LINE.to_owned() + "\n"; total_lines]
@@ -2348,6 +2350,56 @@ fn test_offset_stream_state_gc() {
     debug!("got GC event");
 
     consume_output(stderr_reader.into_inner());
+
+    common::assert_agent_running(&mut agent_handle);
+
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn test_fs_rescan_on_initial_log_dir_delete() {
+    let base_dir = tempdir().expect("Could not create temp dir").into_path();
+
+    let dir_path = base_dir.join("initial_log_dir");
+    std::fs::create_dir(dir_path.clone()).expect("Unable to create dir");
+    let dir_path_str = dir_path.to_str().unwrap();
+
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(dir_path_str));
+    let mut reader = BufReader::new(agent_handle.stderr.take().unwrap());
+
+    common::wait_for_event("Enabling filesystem", &mut reader);
+
+    Command::new("rmdir")
+        .arg(dir_path)
+        .spawn()
+        .expect("Could not remove directory");
+
+    common::wait_for_event("rescanning stream", &mut reader);
+
+    common::assert_agent_running(&mut agent_handle);
+
+    agent_handle.kill().expect("Could not kill process");
+}
+
+#[test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+fn test_fs_rescan_on_initial_log_dir_create() {
+    let base_dir = tempdir().expect("Could not create temp dir").into_path();
+
+    let dir_path = base_dir.join("initial_log_dir");
+    let dir_path_str = dir_path.to_str().unwrap();
+
+    let mut agent_handle = common::spawn_agent(AgentSettings::new(dir_path_str));
+    let mut reader = BufReader::new(agent_handle.stderr.take().unwrap());
+
+    common::wait_for_event("Enabling filesystem", &mut reader);
+
+    std::fs::create_dir(dir_path.clone()).expect("Unable to create dir");
+
+    common::wait_for_event("rescanning stream", &mut reader);
 
     common::assert_agent_running(&mut agent_handle);
 

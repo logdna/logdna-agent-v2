@@ -14,6 +14,8 @@ http = { package = "mz-http", path = "../http" }
 metrics = { package = "metrics", path = "../metrics" }
 backoff = { version = "0.4.0", features = ["tokio"] }
 chrono = { version = "0.4", features = ["serde"] }
+config = { package = "config", path = "../config" }
+rate-limit-macro = { package = "rate-limit-macro", path = "../misc/rate-limit/macro" }
 anyhow = "1.0.57"
 hyper = "0.14"
 hyper-timeout = "0.4"

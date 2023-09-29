@@ -139,7 +139,7 @@ CHANGE_K8S_VERSION = sed 's/\(.*\)app\.kubernetes\.io\/version\(.\).*$$/\1app.ku
 
 CHANGE_K8S_IMAGE = sed 's/\(logdna\/logdna-agent.\).*$$/\1$(1)/g' $(2) >> $(2).tmp && mv $(2).tmp $(2)
 
-REMOTE_BRANCH := $(shell git branch -vv | awk '/^\*/{split(substr($$4, 2, length($$4)-2), arr, "/"); print arr[2]}')
+REMOTE_BRANCH ?= $(shell git branch -vv | awk '/^\*/{split(substr($$4, 2, length($$4)-2), arr, "/"); print arr[2]}')
 
 AWS_SHARED_CREDENTIALS_FILE=$(HOME)/.aws/credentials
 
@@ -260,7 +260,9 @@ lint-clippy: ## Checks for code errors
 
 .PHONY:lint-audit
 lint-audit: ## Audits packages for issues
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo audit --ignore RUSTSEC-2020-0071"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo audit  \
+	    --ignore RUSTSEC-2020-0071 \
+	    --ignore RUSTSEC-2023-0052"
 
 .PHONY:lint-docker
 lint-docker: ## Lint the Dockerfile for issues
@@ -506,15 +508,15 @@ publish-s3-binary:
 	if [ "$(WINDOWS)" != "" ]; then \
 	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent-svc.exe; \
 	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent.exe; \
-	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/build$(BUILD_NUMBER)/$(TARGET)/logdna-agent-svc.exe; \
-	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/build$(BUILD_NUMBER)/$(TARGET)/logdna-agent.exe; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent-svc.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(REMOTE_BRANCH)/$(BUILD_NUMBER)/$(TARGET)/logdna-agent-svc.exe; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent.exe s3://logdna-agent-build-bin/$(TARGET_TAG)/$(REMOTE_BRANCH)/$(BUILD_NUMBER)/$(TARGET)/logdna-agent.exe; \
 	elif [ "$(MACOS)" != "" ]; then \
 	    aws s3 cp --acl public-read arm/arm-target/release/logdna-agent s3://logdna-agent-build-bin/${TARGET_TAG}/arm64/logdna-agent; \
 	    aws s3 cp --acl public-read x86/x86-target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${TARGET_TAG}/x86_64-apple-darwin/logdna-agent; \
-	    aws s3 cp --acl public-read x86/x86-target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${TARGET_TAG}/build$(BUILD_NUMBER)/x86_64-apple-darwin/logdna-agent; \
+	    aws s3 cp --acl public-read x86/x86-target/x86_64-apple-darwin/release/logdna-agent s3://logdna-agent-build-bin/${TARGET_TAG}/$(REMOTE_BRANCH)/$(BUILD_NUMBER)/x86_64-apple-darwin/logdna-agent; \
 	else \
 	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(TARGET)/logdna-agent; \
-	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/build$(BUILD_NUMBER)/$(TARGET)/logdna-agent; \
+	    aws s3 cp --acl public-read ${TARGET_DIR}/$(TARGET)/release/logdna-agent s3://logdna-agent-build-bin/$(TARGET_TAG)/$(REMOTE_BRANCH)/$(BUILD_NUMBER)/$(TARGET)/logdna-agent; \
 	fi;
 
 define PUBLISH_SIGNED_RULE

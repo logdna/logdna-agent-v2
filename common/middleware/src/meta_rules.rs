@@ -1,4 +1,4 @@
-use crate::{Middleware, Status};
+use crate::{Middleware, MiddlewareError, Status};
 use config::env_vars;
 use http::types::body::{KeyValueMap, LineBufferMut};
 use lazy_static::lazy_static;
@@ -226,7 +226,7 @@ impl MetaRules {
         }
         if let (Some(over_k8s_file), true) = (&self.over_k8s_file, is_k8s_line) {
             let file = config::substitute(over_k8s_file.deref(), &meta_map);
-            if line.set_file(file).is_err() {}
+            let _ = line.set_file(file).is_err();
             // overriding "file" will disable server side CRIO log line parsing,
             // so we remove CRIO log prefix from line here to make regular line parser happy
             if let Some(line_text) = line.get_line_buffer() {
@@ -255,8 +255,20 @@ impl MetaRules {
 
 impl Middleware for MetaRules {
     fn run(&self) {}
+
     fn process<'a>(&self, line: &'a mut dyn LineBufferMut) -> Status<&'a mut dyn LineBufferMut> {
         self.process_line(line)
+    }
+
+    fn validate<'a>(
+        &self,
+        line: &'a dyn LineBufferMut,
+    ) -> Result<&'a dyn LineBufferMut, MiddlewareError> {
+        Ok(line)
+    }
+
+    fn name(&self) -> &'static str {
+        std::any::type_name::<MetaRules>()
     }
 }
 

@@ -1,0 +1,17 @@
+[package]
+name = "rate-limit-core"
+description = "This is a companion crate to `rate-limit-macro` with primary purpose to provide tests."
+version = "1.0.1"
+authors = ["Dmitri Khokhlov <dkhokhlov@gmail.com>"]
+edition = "2018"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/logdna/logdna-agent-v2/common/misc/rate-limit"
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+syn = { version = "1.0", features = ["full", "extra-traits"] }
+rate-limit-macro =  { version = "1" }
+
+[dev-dependencies]
