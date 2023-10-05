@@ -25,11 +25,21 @@ lazy_static! {
     )
     .unwrap();
     static ref FS_LINES: IntCounter =
-        register_int_counter!("logdna_agent_fs_lines", "Number of lines parsed by the Filesystem module").unwrap();
+        register_int_counter!("logdna_agent_fs_lines", "Number of lines parsed by Filesystem module").unwrap();
     static ref FS_FILES: IntGauge =
         register_int_gauge!("logdna_agent_fs_files", "Number of open files").unwrap();
     static ref FS_BYTES: IntCounter =
         register_int_counter!("logdna_agent_fs_bytes", "Number of bytes read by the Filesystem module").unwrap();
+    static ref MID_LINES_INGRESS: IntCounter =
+        register_int_counter!("logdna_agent_mid_lines_ingress", "Number of lines received by Middleware").unwrap();
+    static ref MID_LINES_EGRESS: IntCounter =
+        register_int_counter!("logdna_agent_mid_lines_egress", "Number of lines sent out by Middleware").unwrap();
+    static ref MID_LINES_IGNORED: IntCounter =
+        register_int_counter!("logdna_agent_mid_lines_ignored", "Number of lines ignored by Middleware").unwrap();
+    static ref MID_LINES_DELAYED: IntCounter =
+        register_int_counter!("logdna_agent_mid_lines_delayed", "Number of lines delayed by Middleware").unwrap();
+    static ref MID_LINES_NO_K8S_META: IntCounter =
+        register_int_counter!("logdna_agent_mid_lines_no_k8s_meta", "Number of lines from Filesystem module without k8s metadata").unwrap();
     static ref INGEST_RETRIES: IntCounter = register_int_counter!(
         "logdna_agent_ingest_retries",
         "Retry attempts made to the http ingestion service"
@@ -97,25 +107,27 @@ mod labels {
 }
 
 pub struct Metrics {
-    fs: Fs,
     #[cfg(all(unix, feature = "jemalloc"))]
     memory: Memory,
-    http: Http,
+    fs: Fs,
     k8s: K8s,
     journald: Journald,
+    middleware: Middleware,
     retry: Retry,
+    http: Http,
 }
 
 impl Metrics {
     fn new() -> Self {
         Self {
-            fs: Fs::new(),
             #[cfg(all(unix, feature = "jemalloc"))]
             memory: Memory::new(),
-            http: Http::new(),
+            fs: Fs::new(),
             k8s: K8s::new(),
             journald: Journald::new(),
+            middleware: Middleware::new(),
             retry: Retry::new(),
+            http: Http::new(),
         }
     }
 
@@ -124,6 +136,10 @@ impl Metrics {
             sleep(Duration::from_secs(60)).await;
             info!("{}", Metrics::print());
         }
+    }
+
+    pub fn middleware() -> &'static Middleware {
+        &METRICS.middleware
     }
 
     pub fn fs() -> &'static Fs {
@@ -162,15 +178,6 @@ impl Metrics {
         let latency_timeout = INGEST_REQUEST_DURATION.with_label_values(&[labels::TIMEOUT]);
 
         let object = object! {
-            "fs" => object!{
-                "events" => fs_create + fs_delete + fs_write,
-                "creates" => fs_create,
-                "deletes" => fs_delete,
-                "writes" => fs_write,
-                "lines" => FS_LINES.get(),
-                "bytes" => FS_BYTES.get(),
-                "files_tracked" => FS_FILES.get(),
-            },
             // CPU and memory metrics are exported to Prometheus by default only on linux.
             // We still rely on jemalloc stats for this periodic printing the memory metrics
             // as it supports more platforms
@@ -187,6 +194,36 @@ impl Metrics {
                 #[cfg(any(not(unix), not(feature="jemalloc")))]
                 object!{}
             },
+            "fs" => object!{
+                "events" => fs_create + fs_delete + fs_write,
+                "creates" => fs_create,
+                "deletes" => fs_delete,
+                "writes" => fs_write,
+                "lines" => FS_LINES.get(),
+                "bytes" => FS_BYTES.get(),
+                "files_tracked" => FS_FILES.get(),
+            },
+            "k8s" => object!{
+                "lines" => K8S_LINES.get(),
+                "creates" => k8s_create,
+                "deletes" => k8s_delete,
+                "events" => k8s_create + k8s_delete,
+            },
+            "journald" => object!{
+                "lines" => JOURNAL_RECORDS.get_sample_count(),
+                "bytes" => JOURNAL_RECORDS.get_sample_sum(),
+            },
+            "middleware" => object!{
+                "lines_ingress" => MID_LINES_INGRESS.get(),
+                "lines_egress" => MID_LINES_EGRESS.get(),
+                "lines_ignored" => MID_LINES_IGNORED.get(),
+                "lines_delayed" => MID_LINES_DELAYED.get(),
+                "lines_no_k8s_meta" => MID_LINES_NO_K8S_META.get(),
+            },
+            "retry" => object!{
+                "pending" => RETRY_PENDING.get(),
+                "storage_used" => RETRY_STORAGE_USED.get(),
+            },
             "ingest" => object!{
                 "requests" => INGEST_REQUEST_SIZE.get_sample_count(),
                 "requests_size" => INGEST_REQUEST_SIZE.get_sample_sum(),
@@ -201,20 +238,6 @@ impl Metrics {
                 "requests_failed" => latency_failure.get_sample_count(),
                 "requests_succeeded" => latency_success.get_sample_count(),
             },
-            "k8s" => object!{
-                "lines" => K8S_LINES.get(),
-                "creates" => k8s_create,
-                "deletes" => k8s_delete,
-                "events" => k8s_create + k8s_delete,
-            },
-            "journald" => object!{
-                "lines" => JOURNAL_RECORDS.get_sample_count(),
-                "bytes" => JOURNAL_RECORDS.get_sample_sum(),
-            },
-            "retry" => object!{
-                "pending" => RETRY_PENDING.get(),
-                "storage_used" => RETRY_STORAGE_USED.get(),
-            }
         };
 
         object.to_string()
@@ -255,6 +278,30 @@ impl Fs {
 
     pub fn add_bytes(&self, num: u64) {
         FS_BYTES.inc_by(num);
+    }
+}
+
+pub struct Middleware {}
+
+impl Middleware {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub fn increment_lines_ingress(&self) {
+        MID_LINES_INGRESS.inc();
+    }
+    pub fn increment_lines_egress(&self) {
+        MID_LINES_EGRESS.inc();
+    }
+    pub fn increment_lines_delayed(&self) {
+        MID_LINES_DELAYED.inc();
+    }
+    pub fn increment_lines_ignored(&self) {
+        MID_LINES_IGNORED.inc();
+    }
+    pub fn increment_lines_no_k8s_meta(&self) {
+        MID_LINES_NO_K8S_META.inc();
     }
 }
 

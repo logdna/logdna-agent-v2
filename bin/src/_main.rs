@@ -571,45 +571,21 @@ pub async fn _main(
         sources.push(k)
     };
 
-    let lines_stream = sources.map(|line| match line {
-        // Strict lines (concrete)
-        StrictOrLazyLineBuilder::Strict(mut line) => match executor.process(&mut line) {
-            Ok(_) => match line.build() {
-                Ok(line) => Some(StrictOrLazyLines::Strict(line)),
-                Err(e) => {
-                    rate_limit!(rate = 1, interval = 1 * 60, {
-                        error!("Couldn't build line from linebuilder {:?}", e);
-                    });
-                    None
-                }
-            },
-            Err(MiddlewareError::Skip(name)) => {
-                debug!(
-                    "Skipping line by {} at [{}:{}]: {:?}",
-                    name,
-                    file!(),
-                    line!(),
-                    line
-                );
-                None
-            }
-            Err(e) => {
-                rate_limit!(rate = 1, interval = 10 * 60, {
-                        error!(
-                            "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
-                            e,
-                            file!(),
-                            line!(),
-                            line
-                    )});
-                None
-            }
-        },
-        // Lazy lines (from tailed files, not fetched yet)
-        StrictOrLazyLineBuilder::Lazy(mut line) => {
-            match executor.validate(&line) {
-                Ok(_) => match executor.process(&mut line) {
-                    Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
+    let lines_stream = sources.map(|line|
+        {
+            Metrics::middleware().increment_lines_ingress();
+            match line {
+                // Strict lines (concrete)
+                StrictOrLazyLineBuilder::Strict(mut line) => match executor.process(&mut line) {
+                    Ok(_) => match line.build() {
+                        Ok(line) => Some(StrictOrLazyLines::Strict(line)),
+                        Err(e) => {
+                            rate_limit!(rate = 1, interval = 1 * 60, {
+                                error!("Couldn't build line from linebuilder {:?}", e);
+                            });
+                            None
+                        }
+                    },
                     Err(MiddlewareError::Skip(name)) => {
                         debug!(
                             "Skipping line by {} at [{}:{}]: {:?}",
@@ -622,122 +598,163 @@ pub async fn _main(
                     }
                     Err(e) => {
                         rate_limit!(rate = 1, interval = 10 * 60, {
-                            error!(
-                                "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
-                                e,
-                                file!(),
-                                line!(),
-                                line
-                        )});
+                                error!(
+                                    "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
+                                    e,
+                                    file!(),
+                                    line!(),
+                                    line
+                            )});
                         None
                     }
                 },
-                Err(MiddlewareError::Skip(name)) => {
-                    debug!(
-                        "Skipping line by {} at [{}:{}]: {:?}",
-                        name,
-                        file!(),
-                        line!(),
-                        line
-                    );
-                    None
-                }
-                Err(MiddlewareError::Retry(name)) => {
-                    if delayed_source_enabled {
-                        rate_limit!(rate = 1, interval = 10 * 60, {
-                            warn!("Pod metadata is missing for line (retries=1): {:?}", line);
-                            // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
+                // Lazy lines (from tailed files, not fetched yet)
+                StrictOrLazyLineBuilder::Lazy(mut line) => {
+                    match executor.validate(&line) {
+                        Ok(_) => match executor.process(&mut line) {
+                            Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
+                            Err(MiddlewareError::Skip(name)) => {
+                                debug!(
+                                    "Skipping line by {} at [{}:{}]: {:?}",
+                                    name,
+                                    file!(),
+                                    line!(),
+                                    line
+                                );
+                                Metrics::middleware().increment_lines_ignored();
+                                None
+                            }
+                            Err(e) => {
+                                rate_limit!(rate = 1, interval = 10 * 60, {
+                                    error!(
+                                        "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
+                                        e,
+                                        file!(),
+                                        line!(),
+                                        line
+                                )});
+                                Metrics::middleware().increment_lines_ignored();
+                                None
+                            }
+                        },
+                        Err(MiddlewareError::Skip(name)) => {
                             debug!(
-                                "Retrying - delaying line processing by {} for {:?} seconds at [{}:{}]: {:?}",
+                                "Skipping line by {} at [{}:{}]: {:?}",
                                 name,
-                                metadata_retry_delay,
                                 file!(),
                                 line!(),
                                 line
                             );
-                        });
-                        delayed_lines_send.send_blocking(line).unwrap();
-                        None
-                    } else {
-                        rate_limit!(rate = 1, interval = 10 * 60, {
-                            error!("Pod metadata is missing for line (retries=disabled): {:?}", line);
-                            debug!(
-                                "Retrying disabled, processing line by {} AS-IS at [{}:{}]: {:?}",
-                                name,
-                                file!(),
-                                line!(),
-                                line
-                            );
-                        });
-                        Some(StrictOrLazyLines::Lazy(line))
+                            Metrics::middleware().increment_lines_ignored();
+                            None
+                        }
+                        Err(MiddlewareError::Retry(name)) => {
+                            if delayed_source_enabled {
+                                rate_limit!(rate = 1, interval = 10 * 60, {
+                                    warn!("Pod metadata is missing for line (retries=1): {:?}", line);
+                                    // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
+                                    debug!(
+                                        "Retrying - delaying line processing by {} for {:?} seconds at [{}:{}]: {:?}",
+                                        name,
+                                        metadata_retry_delay,
+                                        file!(),
+                                        line!(),
+                                        line
+                                    );
+                                });
+                                delayed_lines_send.send_blocking(line).unwrap();
+                                Metrics::middleware().increment_lines_delayed();
+                                None
+                            } else {
+                                rate_limit!(rate = 1, interval = 10 * 60, {
+                                    error!("Pod metadata is missing for line (retries=disabled): {:?}", line);
+                                    debug!(
+                                        "Retrying disabled, processing line by {} AS-IS at [{}:{}]: {:?}",
+                                        name,
+                                        file!(),
+                                        line!(),
+                                        line
+                                    );
+                                });
+                                Metrics::middleware().increment_lines_no_k8s_meta();
+                                Some(StrictOrLazyLines::Lazy(line))
+                            }
+                        }
                     }
                 }
-            }
-        }
-        // Lazy already delayed/retried lines (from tailed files, not fetched yet)
-        StrictOrLazyLineBuilder::LazyDelayed(mut line) => {
-            match executor.validate(&line) {
-                Ok(_) => match executor.process(&mut line) {
-                    Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
-                    Err(MiddlewareError::Skip(name)) => {
-                        debug!("Skipping line by {} at [{}:{}]: {:?}", name, file!(), line!(), line);
-                        None
-                    }
-                    Err(e) => {
-                        rate_limit!(rate = 1, interval = 10 * 60, {
-                            error!(
-                                "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
-                                e,
-                                file!(),
-                                line!(),
-                                line
-                            )
-                        });
-                        None
-                    }
-                },
-                Err(MiddlewareError::Skip(name)) => {
-                    debug!("Skipping line by {} at [{}:{}]: {:?}", name, file!(), line!(), line);
-                    None
-                }
-                Err(MiddlewareError::Retry(name)) => {
-                    // no more retries
-                    rate_limit!(rate = 1, interval = 10 * 60, {
-                        error!("Pod metadata is missing for line (retries=0): {:?}", line);
-                        debug!(
-                            "Retries exhausted - processing line by {} AS-IS at [{}:{}]: {:?}",
-                            name,
-                            file!(),
-                            line!(),
-                            line
-                        );
-                    });
-                    match executor.process(&mut line) {
-                        Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
+                // Lazy already delayed/retried lines (from tailed files, not fetched yet)
+                StrictOrLazyLineBuilder::LazyDelayed(mut line) => {
+                    match executor.validate(&line) {
+                        Ok(_) => match executor.process(&mut line) {
+                            Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
+                            Err(MiddlewareError::Skip(name)) => {
+                                debug!("Skipping line by {} at [{}:{}]: {:?}", name, file!(), line!(), line);
+                                Metrics::middleware().increment_lines_ignored();
+                                None
+                            }
+                            Err(e) => {
+                                rate_limit!(rate = 1, interval = 10 * 60, {
+                                    error!(
+                                        "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
+                                        e,
+                                        file!(),
+                                        line!(),
+                                        line
+                                    )
+                                });
+                                Metrics::middleware().increment_lines_ignored();
+                                None
+                            }
+                        },
                         Err(MiddlewareError::Skip(name)) => {
                             debug!("Skipping line by {} at [{}:{}]: {:?}", name, file!(), line!(), line);
+                            Metrics::middleware().increment_lines_ignored();
                             None
                         }
-                        Err(e) => {
+                        Err(MiddlewareError::Retry(name)) => {
+                            // no more retries
                             rate_limit!(rate = 1, interval = 10 * 60, {
-                            error!(
-                                "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
-                                e,
-                                file!(),
-                                line!(),
-                                line
-                            )
-                        });
-                            None
+                                error!("Pod metadata is missing for line (retries=0): {:?}", line);
+                                debug!(
+                                    "Retries exhausted - processing line by {} AS-IS at [{}:{}]: {:?}",
+                                    name,
+                                    file!(),
+                                    line!(),
+                                    line
+                                );
+                            });
+                            match executor.process(&mut line) {
+                                Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
+                                Err(MiddlewareError::Skip(name)) => {
+                                    debug!("Skipping line by {} at [{}:{}]: {:?}", name, file!(), line!(), line);
+                                    Metrics::middleware().increment_lines_ignored();
+                                    None
+                                }
+                                Err(e) => {
+                                    rate_limit!(rate = 1, interval = 10 * 60, {
+                                    error!(
+                                        "Unexpected error - skipping line by {:?} at [{}:{}]: {:?}",
+                                        e,
+                                        file!(),
+                                        line!(),
+                                        line
+                                    )
+                                });
+                                    Metrics::middleware().increment_lines_ignored();
+                                    None
+                                }
+                            }
                         }
                     }
                 }
             }
-        }
-    });
+        });
 
     let body_offsets_stream = lines_stream
-        .filter_map(|l| async { l })
+        .filter_map(|l| async {
+            Metrics::middleware().increment_lines_egress();
+            l
+        })
         // TODO: parameterize the flush frequency
         .timed_request_batches(config.http.body_size, Duration::from_millis(250))
         .map(|b| async { b })
