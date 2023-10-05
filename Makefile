@@ -114,7 +114,7 @@ ifneq ($(WINDOWS),)
 	CARGO_COMMAND:=cargo xwin
 	BIN_SUFFIX=.exe
 else ifeq ($(STATIC), 1)
-	FEATURES?=
+	FEATURES?=jemalloc
 	ARCH_TRIPLE=$(ARCH)-linux-musl
 	TARGET=$(ARCH)-unknown-linux-musl
 	RUSTFLAGS:=-C link-self-contained=yes -Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc -L /usr/local/$(ARCH)-linux-musl/lib/ -l static=stdc++ $(RUSTFLAGS)
@@ -122,7 +122,7 @@ else ifeq ($(STATIC), 1)
 	SYSROOT_USR_DIR=/sysroot/$(ARCH)-musl/usr/$(TARGET)/
 	BUILD_ENVS:=$(BUILD_ENVS) ROCKSDB_LIB_DIR=$(SYSROOT_USR_DIR)/lib/rocksdb-$(ROCKSDB_VERSION)/ ROCKSDB_INCLUDE_DIR=$(SYSROOT_USR_DIR)/include/rocksdb-$(ROCKSDB_VERSION)/ ROCKSDB_STATIC=1 JEMALLOC_SYS_WITH_LG_PAGE=16
 else ifneq ($(MAKECMDGOALS),bench)
-	FEATURES?=libjournald
+	FEATURES?=libjournald jemalloc
 	RUSTFLAGS:=
 endif
 
