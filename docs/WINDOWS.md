@@ -44,7 +44,7 @@ To install specific version:
 ```
 choco install mezmo-agent --version=<VERSION>
 ```
-Get the version from Chocolatey web site at https://community.chocolatey.org/packages/mezmo-agent.
+Get the version from Chocolatey web site at https://community.chocolatey.org/packages/mezmo-agent#versionhistory
 
 ### Advanced configuration
 
