@@ -42,8 +42,9 @@ choco install mezmo-agent [--install-arguments="KEY=<INGESTION_KEY>"]
 To install specific version:
 
 ```
-choco install mezmo-agent --version=3.8.0.31
+choco install mezmo-agent --version=<VERSION>
 ```
+Get the version from Chocolatey web site at https://community.chocolatey.org/packages/mezmo-agent.
 
 ### Advanced configuration
 
