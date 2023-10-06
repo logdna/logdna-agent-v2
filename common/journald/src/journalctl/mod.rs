@@ -1,6 +1,7 @@
 mod error;
 use crate::journalctl::error::JournalCtlError;
 use bytes::{Buf, BytesMut};
+use metrics::Metrics;
 
 use http::types::body::LineBuilder;
 
@@ -170,10 +171,9 @@ impl JournaldExportDecoder {
             })
             .unwrap_or(default_app);
 
-        //Metrics::journald().add_bytes(message.len());
-        Ok(Some(
-            LineBuilder::new().line(message.to_string_lossy()).file(app),
-        ))
+        let line_str = message.to_string_lossy();
+        Metrics::journald().add_bytes(line_str.len());
+        Ok(Some(LineBuilder::new().line(line_str).file(app)))
     }
 }
 

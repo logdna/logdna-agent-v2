@@ -2082,7 +2082,7 @@ dependencies = [
 
 [[package]]
 name = "logdna-agent"
-version = "3.9.0-dev"
+version = "3.9.0-beta.1"
 dependencies = [
  "anyhow",
  "api",
