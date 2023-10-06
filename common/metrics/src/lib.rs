@@ -281,6 +281,7 @@ impl Fs {
     }
 }
 
+#[derive(Default)]
 pub struct Middleware {}
 
 impl Middleware {

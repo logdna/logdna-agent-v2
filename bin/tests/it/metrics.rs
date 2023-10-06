@@ -71,6 +71,82 @@ fn check_fs_lines(samples: &[Sample]) {
 }
 
 #[cfg(any(target_os = "windows", target_os = "linux"))]
+fn check_middleware_lines(samples: &[Sample]) {
+    let ingress_lines = samples
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Counter(raw) if s.metric.as_str() == "logdna_agent_mid_lines_ingress" => {
+                Some(raw)
+            }
+            _ => None,
+        })
+        .collect::<Vec<f64>>();
+    assert!(
+        !ingress_lines.is_empty(),
+        "no logdna_agent_mid_lines_ingress metrics were captured"
+    );
+    let egress_lines = samples
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Counter(raw) if s.metric.as_str() == "logdna_agent_mid_lines_egress" => {
+                Some(raw)
+            }
+            _ => None,
+        })
+        .collect::<Vec<f64>>();
+    assert!(
+        !egress_lines.is_empty(),
+        "no logdna_agent_mid_lines_egress metrics were captured"
+    );
+
+    assert_eq!(
+        *ingress_lines.iter().last().unwrap(),
+        *egress_lines.iter().last().unwrap(),
+        "last ingress_lines and egress_lines shall be equal"
+    );
+
+    let ignored_lines = samples
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Counter(raw) if s.metric.as_str() == "logdna_agent_mid_lines_ignored" => {
+                Some(raw)
+            }
+            _ => None,
+        })
+        .collect::<Vec<f64>>();
+    assert!(
+        ignored_lines.is_empty(),
+        "logdna_agent_mid_lines_ignored metrics were captured"
+    );
+    let delayed_lines = samples
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Counter(raw) if s.metric.as_str() == "logdna_agent_mid_lines_delayed" => {
+                Some(raw)
+            }
+            _ => None,
+        })
+        .collect::<Vec<f64>>();
+    assert!(
+        delayed_lines.is_empty(),
+        "logdna_agent_mid_lines_delayed metrics were captured"
+    );
+    let no_k8s_meta_lines = samples
+        .iter()
+        .filter_map(|s| match s.value {
+            Value::Counter(raw) if s.metric.as_str() == "logdna_agent_mid_lines_no_k8s_meta" => {
+                Some(raw)
+            }
+            _ => None,
+        })
+        .collect::<Vec<f64>>();
+    assert!(
+        no_k8s_meta_lines.is_empty(),
+        "logdna_agent_mid_lines_no_k8s_meta metrics were captured"
+    );
+}
+
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 fn check_fs_events(samples: &[Sample]) {
     // logdna_agent_fs_events
     let fs_events = samples
@@ -233,8 +309,9 @@ fn check_ingest_req_duration(samples: &[Sample]) {
         )))
         .collect::<Vec<((i64, f64), (i64, f64))>>();
 
-    assert!(
-        sums.len() == counts.len(),
+    assert_eq!(
+        sums.len(),
+        counts.len(),
         "should have equal number of count and sum metrics"
     );
 
@@ -294,6 +371,7 @@ async fn test_metrics_endpoint() {
 
     check_fs_bytes(&metrics_result);
     check_fs_lines(&metrics_result);
+    check_middleware_lines(&metrics_result);
     check_fs_events(&metrics_result);
     check_fs_files(&metrics_result);
     check_ingest_req_size(&metrics_result);
