@@ -14,7 +14,7 @@ state = { package = "state", path = "../state", default-features=false }
 rate-limit-macro = { package = "rate-limit-macro", path = "../misc/rate-limit/macro" }
 
 #http
-logdna-client = { git = "https://github.com/logdna/logdna-rust.git", branch="bump-rustls-and-trust-dns-deps", version = "0.7.4" }
+logdna-client = { git = "https://github.com/logdna/logdna-rust.git", branch="0.7.x", version = "0.7.4" }
 
 #io
 tokio = { version = "1", features = ["fs", "io-util", "macros"] }

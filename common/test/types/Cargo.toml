@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 async-trait = "0.1"
 bytes = "1"
-logdna-client = { git = "https://github.com/logdna/logdna-rust.git", branch="bump-rustls-and-trust-dns-deps", version = "0.7.4" }
+logdna-client = { git = "https://github.com/logdna/logdna-rust.git", branch="0.7.x", version = "0.7.4" }
 proptest = "1"
 serde_json = "1"
 state = { package = "state", path = "../../state", default-features=false }
