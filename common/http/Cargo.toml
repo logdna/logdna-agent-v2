@@ -14,14 +14,13 @@ state = { package = "state", path = "../state", default-features=false }
 rate-limit-macro = { package = "rate-limit-macro", path = "../misc/rate-limit/macro" }
 
 #http
-logdna-client = { git = "https://github.com/logdna/logdna-rust.git", branch="0.7.x", version = "0.7.2" }
+logdna-client = { git = "https://github.com/logdna/logdna-rust.git", branch="bump-rustls-and-trust-dns-deps", version = "0.7.4" }
 
 #io
 tokio = { version = "1", features = ["fs", "io-util", "macros"] }
 async-compat = "0.2.1"
 #utils
 tracing = "0.1"
-tracing-subscriber = "0.3"
 bytes = "1"
 crossbeam = "0.8"
 hyper = { version = "0.14", features = ["http1", "server"] }
@@ -33,7 +32,7 @@ time = "0.3"
 futures = "0.3"
 futures-timer = "3"
 prometheus = { version = "0.13", features = ["process"] }
-async-compression = { version = "0.3.8", features = ["tokio"] }
+async-compression = { version = "0.4", features = ["tokio"] }
 
 [dev-dependencies]
 tempfile = "3"

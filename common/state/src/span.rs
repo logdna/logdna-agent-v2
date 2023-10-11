@@ -193,9 +193,9 @@ impl SpanVec {
         fn partition_to_window(len: usize, idx: usize) -> Option<Window> {
             match (idx, len) {
                 // There's vec is empty, no window available
-                (_, len) if len == 0 => None,
+                (_, 0) => None,
                 // We're at the start of the vec
-                (idx, _) if idx == 0 => Some(Window::Pair(idx)),
+                (0, _) => Some(Window::Pair(idx)),
                 // We're at the end of the vec
                 (idx, len) if idx == len => Some(Window::Pair(idx - 1)),
                 (idx, _) => Some(Window::Triple(idx - 1)),

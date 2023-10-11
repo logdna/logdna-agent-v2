@@ -10,7 +10,7 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
-use strum_macros::{Display, EnumString};
+use strum::{Display, EnumString};
 use sysinfo::{RefreshKind, System, SystemExt};
 use tracing::{debug, info, warn};
 

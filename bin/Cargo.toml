@@ -43,10 +43,8 @@ async-trait = "0.1"
 kube = { version = "0.86", default-features = false, features = ["rustls-tls"] }
 env_logger = "0.9"
 anyhow = "1"
-serde_yaml = "0.8"
 futures = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "signal", "time"] }
-tokio-stream = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"]}
 pin-utils = "0.1"
@@ -93,14 +91,12 @@ assert_cmd = "2"
 escargot = "0.5"
 kube = { version = "0.86", default-features = false, features = ["runtime", "rustls-tls"] }
 k8s-openapi = { version = "0.20.0", default_features = false, features = ["v1_22"] }
-pnet = "0.28"
 itertools = "0.10"
-rustls-pemfile = "0.2"
-pnet_datalink = "0.31"
-predicates = "2"
+predicates = "3"
 tempfile = "3"
-rustls = "0.20"
-rcgen = "0.9"
+rustls = "0.21"
+rustls-pemfile = "1"
+rcgen = "0.11"
 logdna_mock_ingester = { package = "logdna-mock-ingester", path = "../common/test/mock-ingester" }
 logdna-metrics-recorder = { package = "logdna-metrics-recorder", path = "../utils/metrics-recorder" }
 test_types = { package = "types", path = "../common/test/types" }
@@ -115,12 +111,10 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 prometheus-parse = { git = "https://github.com/ccakes/prometheus-parse-rs", rev = "a4574e9" }
 float-cmp = "0.9.0"
-serial_test = "0.8"
-chrono = { version = "0.4", features = ["serde"] }
 test-log = { version = "0.2", features = ["trace"] }
 
 [target.'cfg(target_os="linux")'.dev-dependencies]
-pnet = "0.28"
+pnet_datalink = "0.31"
 systemd = { package = "systemd", version = "0.10" }
 
 [build-dependencies]

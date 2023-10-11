@@ -282,7 +282,7 @@ fn test_command_line_arguments_should_set_config() {
         },
         |d| {
             debug!("agent output: {:#?}", d);
-            assert!(contains("tags: \"a,b\"").eval(d));
+            assert!(contains("tags: a,b").eval(d));
             assert!(is_match(r"log:\s+dirs:\s+\- /var/log/\s+\- /d1/\s+\- /d2/")
                 .unwrap()
                 .eval(d));
@@ -365,7 +365,8 @@ fn test_environment_variables_should_set_config() {
                 .env("MZ_RETRY_DISK_LIMIT", "7 KB");
         },
         |d| {
-            assert!(contains("tags: \"d,e,f\"").eval(d));
+            assert!(!d.is_empty());
+            assert!(contains("tags: d,e,f").eval(d), "{}", d);
             assert!(is_match(r"log:\s+dirs:\s+\- /var/log/\s+\- /d3/\s+\- /d4/")
                 .unwrap()
                 .eval(d));
@@ -440,7 +441,7 @@ fn test_logdna_environment_variables_should_set_config() {
                 .env("LOGDNA_RETRY_DISK_LIMIT", "7 KB");
         },
         |d| {
-            assert!(contains("tags: \"d,e,f\"").eval(d));
+            assert!(contains("tags: d,e,f").eval(d));
             assert!(is_match(r"log:\s+dirs:\s+\- /var/log/\s+\- /d3/\s+\- /d4/")
                 .unwrap()
                 .eval(d));
@@ -583,7 +584,7 @@ startup: {{}}
             assert!(is_match(r"include:\s+glob:\s+\- .\*\.log.\s+\- file\.zlog")
                 .unwrap()
                 .eval(d));
-            assert!(contains("tags: \"tag1,tag2,tag3\"").eval(d));
+            assert!(contains("tags: tag1,tag2,tag3").eval(d));
         },
     );
 }
@@ -635,7 +636,7 @@ hostname = some-linux-instance"
             assert!(is_match(r"log:\s+dirs:\s+\- /var/my_log\s+\- /var/my_log2")
                 .unwrap()
                 .eval(d));
-            assert!(contains("tags: \"production,stable\"").eval(d));
+            assert!(contains("tags: production,stable").eval(d));
             assert!(contains("hostname: some-linux-instance").eval(d));
             assert!(is_match(
                 r"exclude:\s+glob:[^:]+- /path/to/exclude/\*\*\s+- /second/path/to/exclude/\*\*"
@@ -683,9 +684,13 @@ line_exclusion_regex = (?i:debug),(?i:trace)"
             assert!(is_match(r"exclude:\s+glob:[^:]+- /var/log/noisy/\*\*/\*")
                 .unwrap()
                 .eval(d));
-            assert!(is_match("line_exclusion_regex:\\s+- \"\\(\\?i:debug\\)\"")
-                .unwrap()
-                .eval(d));
+            assert!(
+                is_match("line_exclusion_regex:\\s+- \\(\\?i:debug\\)")
+                    .unwrap()
+                    .eval(d),
+                "{}",
+                d
+            );
         },
     );
     Ok(())
@@ -802,7 +807,7 @@ where
         let (lock, cvar) = &*d;
         for line in stderr_reader.lines() {
             let line = &line.unwrap();
-            let mut guard = lock.lock().unwrap();
+            let mut guard = lock.lock().unwrap_or_else(|e| e.into_inner());
             let (pending, data) = guard.deref_mut();
             debug!("agent stderr: {}", line);
             data.push_str(line);
@@ -825,7 +830,7 @@ where
 
     // Wait for 30 seconds or until the agent has enabled the filesytem
     let (lock, cvar) = &*data;
-    let guard = lock.lock().unwrap();
+    let guard = lock.lock().unwrap_or_else(|e| e.into_inner());
     let (guard, result) = cvar
         .wait_timeout_while(guard, Duration::from_secs(30), |&mut (pending, _)| pending)
         .unwrap();

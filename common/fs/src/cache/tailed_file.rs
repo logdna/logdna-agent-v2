@@ -463,7 +463,7 @@ impl TailedFile<LineBuilder> {
                     pinned_reader.read_until(b'\n', buf).await
                 };
                 let c = match res {
-                    Ok(c) if c == 0 => return None,
+                    Ok(0) => return None,
                     Ok(n) => n,
                     Err(e) => {
                         warn!("error encountered while tailing file: {}", e);

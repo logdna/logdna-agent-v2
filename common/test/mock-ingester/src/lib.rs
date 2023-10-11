@@ -130,7 +130,7 @@ impl Service<Request<Body>> for Svc {
                         .into_owned()
                         .collect()
                 })
-                .unwrap_or_else(HashMap::new);
+                .unwrap_or_default();
 
             let body = req.into_body();
             let mut body = tokio_util::io::StreamReader::new(
