@@ -15,9 +15,8 @@ proc-macro = true
 integration_tests = []
 
 [dependencies]
-proc-macro2 = "1.0.66"
-quote = "1.0.33"
-syn = { version = "1.0", features = ["full", "extra-traits"] }
+quote = "1"
+syn = { version = "2", features = ["full", "extra-traits"] }
 
 [dev-dependencies]
 

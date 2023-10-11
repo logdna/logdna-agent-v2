@@ -77,7 +77,7 @@ pub struct ArgumentOptions {
 
     /// If compression is enabled, this is the gzip compression level to use. Defaults to 2.
     #[structopt(long, env = env_vars::GZIP_LEVEL)]
-    gzip_level: Option<u32>,
+    gzip_level: Option<i32>,
 
     /// The hostname metadata to attach to lines forwarded from this agent (defaults to
     /// os.hostname())
@@ -467,7 +467,7 @@ impl ArgumentOptions {
         deprecated_env!(endpoint_path, ENDPOINT_DEPRECATED, Option<String>);
         deprecated_env!(use_ssl, USE_SSL_DEPRECATED, Option<bool>);
         deprecated_env!(use_compression, USE_COMPRESSION_DEPRECATED, Option<bool>);
-        deprecated_env!(gzip_level, GZIP_LEVEL_DEPRECATED, Option<u32>);
+        deprecated_env!(gzip_level, GZIP_LEVEL_DEPRECATED, Option<i32>);
         deprecated_env_vec!(log_dirs, LOG_DIRS_DEPRECATED);
         deprecated_env_vec!(exclusion_rules, EXCLUSION_RULES_DEPRECATED);
         deprecated_env_vec!(exclusion_regex, EXCLUSION_REGEX_RULES_DEPRECATED);

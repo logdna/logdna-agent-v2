@@ -10,12 +10,10 @@ integration_tests = []
 [dependencies]
 time = "0.3"
 notify = "5"
-notify-debouncer-mini = "0.2" 
 futures = "0.3"
 async-channel = "1.6"
 tokio = { package = "tokio", version = "1", features = ["rt-multi-thread"] }
 tracing = "0.1"
-tracing-subscriber = "0.3"
 
 [dev-dependencies]
 env_logger = "0.9"
