@@ -294,9 +294,7 @@ fn process_pods(
         let node = translated_pod.node.clone();
         let phase = translated_pod.phase.clone();
 
-        let node_pod_stat = node_pod_counts_map
-            .entry(node.clone())
-            .or_insert_with(NodePodStats::new);
+        let node_pod_stat = node_pod_counts_map.entry(node.clone()).or_default();
         node_pod_stat.inc(&phase);
 
         let controller_key = format!(
@@ -306,9 +304,7 @@ fn process_pods(
             translated_pod.controller.clone()
         );
 
-        let controller = controller_map
-            .entry(controller_key.clone())
-            .or_insert_with(ControllerStats::new);
+        let controller = controller_map.entry(controller_key.clone()).or_default();
 
         let conditions = status.conditions.as_ref().unwrap();
         if conditions
@@ -338,9 +334,7 @@ fn process_pods(
         {
             container_status_map.insert(status.name.clone(), status.clone());
 
-            let controller = controller_map
-                .entry(controller_key.clone())
-                .or_insert_with(ControllerStats::new);
+            let controller = controller_map.entry(controller_key.clone()).or_default();
 
             controller.inc_containers_total();
 
@@ -373,7 +367,7 @@ fn process_pods(
             if let Some(extended_pod_stat) = extended_pod_stat {
                 let node_container_stat = node_container_counts_map
                     .entry(node.to_string())
-                    .or_insert_with(NodeContainerStats::new);
+                    .or_default();
 
                 node_container_stat.inc(
                     &extended_pod_stat.container_stats.state,
@@ -414,7 +408,7 @@ fn process_pods(
             if let Some(extended_pod_stat) = extended_pod_stat {
                 let node_container_stat = node_container_counts_map
                     .entry(node.to_string())
-                    .or_insert_with(NodeContainerStats::new);
+                    .or_default();
 
                 node_container_stat.inc(
                     &extended_pod_stat.container_stats.state,

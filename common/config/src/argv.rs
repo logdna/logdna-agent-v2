@@ -3,7 +3,7 @@ use crate::raw::{Config as RawConfig, JournaldConfig, K8sStartupLeaseConfig, Rul
 use crate::K8sLeaseConf;
 use crate::K8sTrackingConf;
 use fs::lookback::Lookback;
-use http::types::params::{Params, Tags};
+use http::types::params::Params;
 use humanize_rs::bytes::Bytes;
 use std::env::var as env_var;
 use std::ffi::OsString;
@@ -273,7 +273,7 @@ impl ArgumentOptions {
                 .build()
                 .ok()
                 .and_then(|mut p| p.tags.take())
-                .unwrap_or_else(Tags::new);
+                .unwrap_or_default();
             with_csv(self.tags).iter().for_each(|v| {
                 tags.add(v);
             });
@@ -541,12 +541,11 @@ fn combine(escaped: &str, token: &str) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::raw::{self, Config as RawConfig, Rules};
 
-    use crate::raw::{Config as RawConfig, Rules};
-
+    use http::types::params::Tags;
     use humanize_rs::bytes::Unit;
 
-    use crate::raw;
     use std::env::set_var;
 
     #[cfg(unix)]
