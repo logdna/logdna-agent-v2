@@ -10,11 +10,8 @@ name = "throughput"
 path = "bin/throughput.rs"
 
 [dependencies]
-async-channel = "1.6"
 escargot = { version = "0.5", features = ["print"] }
 file-rotate = "0.6"
-futures = "0.3.19"
-hyper = "0.14.16"
 indicatif = "0.16"
 logdna_mock_ingester = { package = "logdna-mock-ingester", path = "../common/test/mock-ingester" }
 logdna-metrics-recorder = { package = "logdna-metrics-recorder", path = "../utils/metrics-recorder" }
@@ -22,7 +19,6 @@ memmap2 = "0.5"
 nix = "0.24"
 owning_ref = "0.4"
 procfs = "0.13"
-prometheus = "0.13.0"
 prometheus-parse = { git = "https://github.com/ccakes/prometheus-parse-rs", rev = "a4574e9" }
 rand = "0.8"
 structopt = "0.3"

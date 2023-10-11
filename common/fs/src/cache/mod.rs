@@ -14,7 +14,7 @@ use std::collections::hash_map::Entry as HashMapEntry;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::ffi::OsString;
-use std::ops::Deref;
+
 use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, SystemTime};
@@ -499,7 +499,7 @@ impl FileSystem {
             let mut _mfs = fs.borrow_mut();
 
             let missing_dirs = _mfs.missing_dirs.clone();
-            let missing_dir_watcher = _mfs.missing_dir_watcher.take().unwrap_or_else(Watcher::new);
+            let missing_dir_watcher = _mfs.missing_dir_watcher.take().unwrap_or_default();
 
             let missing_dir_event_stream = missing_dir_watcher.receive();
             let retry_event_sender = _mfs.retry_events_send.clone();
@@ -1165,11 +1165,11 @@ impl FileSystem {
         let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
         let path = entry.path();
 
-        if let Entry::Symlink { link, .. } = entry.deref() {
+        if let Entry::Symlink { link, .. } = entry {
             if let Some(link) = link {
                 self.symlinks
                     .entry(link.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(entry_key);
             }
         } else {
@@ -1180,7 +1180,7 @@ impl FileSystem {
         info!("watching {:?}", path);
         self.watch_descriptors
             .entry(path.to_path_buf())
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(entry_key);
 
         Ok(())
@@ -1220,7 +1220,7 @@ impl FileSystem {
 
         if let Entry::Symlink {
             link: Some(link), ..
-        } = entry.deref()
+        } = entry
         {
             let entries = match self.symlinks.get_mut(link) {
                 Some(v) => v,
@@ -1292,7 +1292,7 @@ impl FileSystem {
         if let Some(entry) = _entries.get(entry_key) {
             let mut _children = vec![];
             let mut _links = vec![];
-            match entry.deref() {
+            match entry {
                 Entry::Dir { children, .. } => {
                     for child in children.values() {
                         _children.push(*child);
@@ -1412,7 +1412,7 @@ impl FileSystem {
                 self.watch_descriptors.remove(to_path);
                 self.watch_descriptors
                     .entry(to_path.to_path_buf())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(entry_key);
 
                 if let Some(new_parent) = new_parent {
@@ -1659,7 +1659,7 @@ mod tests {
                 let fs = $x.borrow();
                 let entries = fs.entries.borrow();
                 assert!(matches!(
-                    entries.get($y.unwrap()).unwrap().deref(),
+                    entries.get($y.unwrap()).unwrap(),
                     Entry::File { .. }
                 ));
             }
@@ -1854,7 +1854,7 @@ mod tests {
         let fs = fs.borrow();
         let entries = fs.entries.borrow();
         assert!(matches!(
-            entries.get(entry_key.unwrap()).unwrap().deref(),
+            entries.get(entry_key.unwrap()).unwrap(),
             Entry::Dir { .. }
         ));
     }
@@ -1921,13 +1921,13 @@ mod tests {
         let _fs = fs.borrow();
         let _entries = &_fs.entries;
         let _entries = _entries.borrow();
-        match _entries.get(entry_key_dir.unwrap()).unwrap().deref() {
+        match _entries.get(entry_key_dir.unwrap()).unwrap() {
             Entry::Dir { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
         assert!(matches!(
-            _entries.get(entry_key_symlink.unwrap()).unwrap().deref(),
+            _entries.get(entry_key_symlink.unwrap()).unwrap(),
             Entry::Symlink { .. }
         ));
 
@@ -2385,22 +2385,22 @@ mod tests {
         let _fs = fs.borrow();
         let _entries = &_fs.entries;
         let _entries = _entries.borrow();
-        match _entries.get(entry.unwrap()).unwrap().deref() {
+        match _entries.get(entry.unwrap()).unwrap() {
             Entry::Dir { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
-        match _entries.get(entry2.unwrap()).unwrap().deref() {
+        match _entries.get(entry2.unwrap()).unwrap() {
             Entry::File { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
-        match _entries.get(entry3.unwrap()).unwrap().deref() {
+        match _entries.get(entry3.unwrap()).unwrap() {
             Entry::File { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
-        match _entries.get(entry4.unwrap()).unwrap().deref() {
+        match _entries.get(entry4.unwrap()).unwrap() {
             Entry::Symlink { .. } => {}
             _ => panic!("wrong entry type"),
         };
@@ -2489,22 +2489,22 @@ mod tests {
         let _fs = fs.borrow();
         let _entries = &_fs.entries;
         let _entries = _entries.borrow();
-        match _entries.get(entry.unwrap()).unwrap().deref() {
+        match _entries.get(entry.unwrap()).unwrap() {
             Entry::Dir { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
-        match _entries.get(entry2.unwrap()).unwrap().deref() {
+        match _entries.get(entry2.unwrap()).unwrap() {
             Entry::File { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
-        match _entries.get(entry3.unwrap()).unwrap().deref() {
+        match _entries.get(entry3.unwrap()).unwrap() {
             Entry::File { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
-        match _entries.get(entry4.unwrap()).unwrap().deref() {
+        match _entries.get(entry4.unwrap()).unwrap() {
             Entry::Symlink { .. } => {}
             _ => panic!("wrong entry type"),
         };
@@ -2536,7 +2536,7 @@ mod tests {
         let _fs = fs.borrow();
         let _entries = &_fs.entries;
         let _entries = _entries.borrow();
-        match _entries.get(entry.unwrap()).unwrap().deref() {
+        match _entries.get(entry.unwrap()).unwrap() {
             Entry::File { .. } => {}
             _ => panic!("wrong entry type"),
         };
@@ -2604,7 +2604,7 @@ mod tests {
         let _fs = fs.borrow();
         let _entries = &_fs.entries;
         let _entries = _entries.borrow();
-        match _entries.get(entry.unwrap()).unwrap().deref() {
+        match _entries.get(entry.unwrap()).unwrap() {
             Entry::File { .. } => {}
             _ => panic!("wrong entry type"),
         };

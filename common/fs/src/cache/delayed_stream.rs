@@ -92,7 +92,7 @@ impl<T> Eq for DelayedEvent<T> {}
 
 impl<T> PartialOrd for DelayedEvent<T> {
     fn partial_cmp(&self, other: &DelayedEvent<T>) -> Option<Ordering> {
-        self.delayed_until.partial_cmp(&other.delayed_until)
+        Some(self.cmp(other))
     }
 }
 

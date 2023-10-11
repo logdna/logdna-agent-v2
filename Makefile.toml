@@ -1,7 +1,8 @@
 [env]
 CARGO_MAKE_EXTEND_WORKSPACE_MAKEFILE = true
 CARGO_MANIFEST_DIR = "bin/Cargo.toml"
-CARGO_TARGET_DIR= "../target"
+CARGO_TARGET_DIR = "../target"
+RUSTUP_TOOLCHAIN = "1.73"
 
 [config]
 default_to_workspace = false

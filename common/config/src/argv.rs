@@ -3,7 +3,7 @@ use crate::raw::{Config as RawConfig, JournaldConfig, K8sStartupLeaseConfig, Rul
 use crate::K8sLeaseConf;
 use crate::K8sTrackingConf;
 use fs::lookback::Lookback;
-use http::types::params::{Params, Tags};
+use http::types::params::Params;
 use humanize_rs::bytes::Bytes;
 use std::env::var as env_var;
 use std::ffi::OsString;
@@ -77,7 +77,7 @@ pub struct ArgumentOptions {
 
     /// If compression is enabled, this is the gzip compression level to use. Defaults to 2.
     #[structopt(long, env = env_vars::GZIP_LEVEL)]
-    gzip_level: Option<u32>,
+    gzip_level: Option<i32>,
 
     /// The hostname metadata to attach to lines forwarded from this agent (defaults to
     /// os.hostname())
@@ -273,7 +273,7 @@ impl ArgumentOptions {
                 .build()
                 .ok()
                 .and_then(|mut p| p.tags.take())
-                .unwrap_or_else(Tags::new);
+                .unwrap_or_default();
             with_csv(self.tags).iter().for_each(|v| {
                 tags.add(v);
             });
@@ -467,7 +467,7 @@ impl ArgumentOptions {
         deprecated_env!(endpoint_path, ENDPOINT_DEPRECATED, Option<String>);
         deprecated_env!(use_ssl, USE_SSL_DEPRECATED, Option<bool>);
         deprecated_env!(use_compression, USE_COMPRESSION_DEPRECATED, Option<bool>);
-        deprecated_env!(gzip_level, GZIP_LEVEL_DEPRECATED, Option<u32>);
+        deprecated_env!(gzip_level, GZIP_LEVEL_DEPRECATED, Option<i32>);
         deprecated_env_vec!(log_dirs, LOG_DIRS_DEPRECATED);
         deprecated_env_vec!(exclusion_rules, EXCLUSION_RULES_DEPRECATED);
         deprecated_env_vec!(exclusion_regex, EXCLUSION_REGEX_RULES_DEPRECATED);
@@ -541,12 +541,11 @@ fn combine(escaped: &str, token: &str) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::raw::{self, Config as RawConfig, Rules};
 
-    use crate::raw::{Config as RawConfig, Rules};
-
+    use http::types::params::Tags;
     use humanize_rs::bytes::Unit;
 
-    use crate::raw;
     use std::env::set_var;
 
     #[cfg(unix)]
