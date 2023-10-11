@@ -13,8 +13,8 @@ ubi_packages="systemd-libs systemd-devel glibc glibc-devel gcc libstdc++-devel l
 
 apt-get update 1>&2 && apt-get install --no-install-recommends -y dnf 1>&2
 dnf install --releasever="${UBI_MAJOR_VERSION}" --forcearch="${TARGET_ARCH}" \
-            --installroot="$SYSROOT_PATH/" --repo="ubi-${UBI_MAJOR_VERSION}-baseos" \
-            --repo="ubi-${UBI_MAJOR_VERSION}-appstream" --repo="ubi-${UBI_MAJOR_VERSION}-codeready-builder" -y \
+            --installroot="$SYSROOT_PATH/" --repo="ubi-${UBI_MAJOR_VERSION}-baseos-rpms" \
+            --repo="ubi-${UBI_MAJOR_VERSION}-appstream-rpms" --repo="ubi-${UBI_MAJOR_VERSION}-codeready-builder-rpms" -y \
             $ubi_packages 1>&2
 
 # Linker file to hint where the linker can find libgcc_s as the packaged symlink is broken \
