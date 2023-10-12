@@ -794,6 +794,11 @@ pub async fn _main(
                     warn!("failed sending http request, retrying: {}", e);
                 });
             }
+            SendStatus::RetryServerError(e) => {
+                rate_limit!(rate = 1, interval = 1 * 60, {
+                    warn!("failed sending http request, retrying: {}", e);
+                });
+            }
             SendStatus::RetryTimeout => {
                 rate_limit!(rate = 1, interval = 1 * 60, {
                     warn!("failed sending http request, retrying: request timed out!");

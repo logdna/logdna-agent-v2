@@ -25,6 +25,7 @@ pub struct Client {
 pub enum SendStatus {
     Sent,
     Retry(hyper::Error),
+    RetryServerError(String),
     RetryTimeout,
 }
 
@@ -94,6 +95,12 @@ impl Client {
             .send(self.limiter.get_slot(body).await.as_ref().clone())
             .await
         {
+            Ok(Response::Failed(body, s, r)) if (500..=504).contains(&s.as_u16()) => {
+                Metrics::http().add_request_failure(start);
+                warn!("failed request, retrying: {}", r);
+                self.retry.retry(file_offsets, &body).await?;
+                Ok(SendStatus::RetryServerError(r))
+            }
             Ok(Response::Failed(_, s, r)) => {
                 Metrics::http().add_request_failure(start);
                 debug!("Failed request: {}", r);
