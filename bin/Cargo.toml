@@ -54,8 +54,8 @@ miniz_oxide = "0.5"
 rand = "0.8.5"
 shell-words = "1.0"
 async-channel = "1.8"
-
 rlimit = "0.10"
+rate-limit-macro = "1"
 
 [target.'cfg(any(windows))'.dependencies]
 winservice = { git = "https://github.com/dkhokhlov/winservice.git" }

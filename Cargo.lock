@@ -2016,6 +2016,7 @@ dependencies = [
  "prometheus-parse",
  "proptest",
  "rand",
+ "rate-limit-macro",
  "rcgen",
  "regex",
  "rlimit",
