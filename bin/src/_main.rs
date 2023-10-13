@@ -772,11 +772,11 @@ pub async fn _main(
                     error!("bad request, check configuration: {}", s);
                     shutdown_tx.lock().await.take().unwrap().send(()).unwrap();
                 } else {
-                    warn!("bad http request: {}", s);
+                    error!("bad http request: {}", s);
                 }
             }
             ClientError::Http(e) => {
-                warn!("failed sending http request: {}", e);
+                error!("failed sending http request: {}", e);
             }
             ClientError::Retry(r) => {
                 error!("failed to retry request: {}", r);
@@ -794,9 +794,9 @@ pub async fn _main(
                     warn!("failed sending http request, retrying: {}", e);
                 });
             }
-            SendStatus::RetryServerError(e) => {
+            SendStatus::RetryServerError(code, e) => {
                 rate_limit!(rate = 1, interval = 1 * 60, {
-                    warn!("failed sending http request, retrying: {}", e);
+                    warn!("failed sending http request, retrying: {} {}", code, e);
                 });
             }
             SendStatus::RetryTimeout => {

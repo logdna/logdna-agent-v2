@@ -11,7 +11,7 @@ use crate::types::response::Response;
 
 use metrics::Metrics;
 use state::{FileOffsetFlushHandle, FileOffsetWriteHandle, OffsetMap};
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 
 /// Http(s) client used to send logs to the Ingest API
 pub struct Client {
@@ -25,7 +25,7 @@ pub struct Client {
 pub enum SendStatus {
     Sent,
     Retry(hyper::Error),
-    RetryServerError(String),
+    RetryServerError(hyper::StatusCode, String),
     RetryTimeout,
 }
 
@@ -95,20 +95,22 @@ impl Client {
             .send(self.limiter.get_slot(body).await.as_ref().clone())
             .await
         {
-            Ok(Response::Failed(body, s, r)) if (500..=504).contains(&s.as_u16()) => {
+            Ok(Response::Failed(body, s, r))
+                if [500, 501, 502, 503, 504, 507, 429].contains(&s.as_u16()) =>
+            {
                 Metrics::http().add_request_failure(start);
-                warn!("failed request, retrying: {}", r);
+                debug!("failed request, retrying: {} {}", s, r);
                 self.retry.retry(file_offsets, &body).await?;
-                Ok(SendStatus::RetryServerError(r))
+                Ok(SendStatus::RetryServerError(s, r))
             }
             Ok(Response::Failed(_, s, r)) => {
                 Metrics::http().add_request_failure(start);
-                debug!("Failed request: {}", r);
+                debug!("failed request: {} {}", s, r);
                 Err(ClientError::BadRequest(s))
             }
             Err(HttpError::Send(body, e)) => {
                 Metrics::http().add_request_failure(start);
-                warn!("failed sending http request, retrying: {}", e);
+                debug!("failed sending http request, retrying: {}", e);
                 self.retry.retry(file_offsets, &body).await?;
                 Ok(SendStatus::Retry(e))
             }
