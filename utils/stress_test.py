@@ -12,7 +12,7 @@ import signal
 import multiprocessing as mp
 import logging
 from queue import Empty
-
+from timeit import default_timer as timer
 
 class TestSeq:
     def __init__(self, seq_name, total_lines):
@@ -66,13 +66,14 @@ def request_logs_agent():
 def line_processor_loop(queue: mp.Queue, test_name: str, num_files, main_pid: int):
     # request data processing loop
     test_sequences = {}
+    start_ts = timer()
     log = logging.getLogger(test_name)
     while True:
         try:
-            request_data = queue.get(block=True, timeout=5)
+            request_data = queue.get(block=True, timeout=3)
         except Empty:
             if check_test_state(test_sequences, num_files):
-                log.info("FINISHED")
+                log.info(f"FINISHED in {timer() - start_ts:.0f} sec")
                 os.kill(main_pid, signal.SIGINT)
             continue
         data_str = None
