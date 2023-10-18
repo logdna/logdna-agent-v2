@@ -72,7 +72,7 @@ def line_processor_loop(queue: mp.Queue, test_name: str, num_files, main_pid: in
         try:
             request_data = queue.get(block=True, timeout=3)
         except Empty:
-            if check_test_state(test_sequences, num_files):
+            if check_test_state(test_sequences, num_files, start_ts):
                 log.info(f"FINISHED in {timer() - start_ts:.0f} sec")
                 os.kill(main_pid, signal.SIGINT)
             continue
@@ -100,13 +100,14 @@ def line_processor_loop(queue: mp.Queue, test_name: str, num_files, main_pid: in
                 pass
 
 
-def check_test_state(test_sequences: typing.Dict[str, TestSeq], num_files: int) -> bool:
+def check_test_state(test_sequences: typing.Dict[str, TestSeq], num_files: int, start_ts: float) -> bool:
     num_total_seq = num_files
     num_received_seq = 0
     num_completed_seq = 0
     num_total_lines = 0
     num_received_lines = 0
     num_duplicate_lines = 0
+    run_time = timer() - start_ts
     for seq in test_sequences.values():
         num_received_seq = num_received_seq + 1
         num_total_lines = num_total_lines + seq.total_lines
@@ -122,6 +123,7 @@ def check_test_state(test_sequences: typing.Dict[str, TestSeq], num_files: int) 
                 num_duplicate_lines = (
                     num_duplicate_lines + seq.total_lines - len(set(seq.line_ids))
                 )
+    line_rate = num_total_lines / run_time
     g_log.info(f"")
     g_log.info(f"total seq:        {num_total_seq}")
     g_log.info(f"received seq:     {num_received_seq}")
@@ -129,6 +131,8 @@ def check_test_state(test_sequences: typing.Dict[str, TestSeq], num_files: int) 
     g_log.info(f"total lines:      {num_total_lines}")
     g_log.info(f"received lines:   {num_received_lines}")
     g_log.info(f"duplicate lines:  {num_duplicate_lines}")
+    g_log.info(f"line rate:        {line_rate:.0f} per sec")
+    g_log.info(f"run time:         {run_time:.0f} sec")
     return num_total_seq == num_completed_seq
 
 
@@ -139,11 +143,11 @@ def log_writer_loop(seq_name, file_path, num_lines):
     log.debug(f"open {file_path}")
     DELAY_S = 0.1
     try:
-        os.remove(file_path)
+        #os.remove(file_path)
         time.sleep(DELAY_S)
     except Exception as e:
         pass
-    with open(file_path, "w") as f:
+    with open(file_path, "a") as f:
         log.debug(f"start writer loop {file_path}")
         for i in range(1, num_lines + 1):
             line = {"seq_name": seq_name, "total_lines": num_lines, "line_id": i}
