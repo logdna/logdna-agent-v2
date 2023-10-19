@@ -25,7 +25,8 @@ class TestSeq:
 
 
 g_log = None
-g_queue = multiprocessing.Queue(100)
+g_request_queue = multiprocessing.Queue(1000)
+g_report_queue = multiprocessing.Queue()
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)-6s %(message)s",
@@ -62,27 +63,45 @@ def request_logs_agent():
         request_data = gzip.GzipFile(fileobj=compressed_data, mode="r").read()
     else:
         request_data = request.data
-    g_queue.put(request_data, block=True)
+    g_request_queue.put(request_data, block=True)
     return "", 200
 
 
-def request_processor_loop(queue: mp.Queue, test_name: str, num_files, main_pid: int):
+def request_processor_loop(
+    request_queue: mp.Queue,
+    report_queue: mp.Queue,
+    test_name: str,
+    num_files: int,
+    main_pid: int,
+):
     # request data processing loop
     test_sequences = {}
-    unrecognized_lines = 0
+    num_unrecognized_lines = 0
+    writer_reports = {}
     start_ts = timer()
     last_report_ts = timer()
+    first_line_ts = None
     log = logging.getLogger(test_name)
     while True:
         if last_report_ts + 5 < timer():
             last_report_ts = timer()
+            # process reports from writers
+            while not report_queue.empty():
+                report = report_queue.get()
+                writer_reports[report["seq_name"]] = report
+            # check test status, report stats and stop test if completed
             if check_test_state(
-                test_sequences, num_files, start_ts, unrecognized_lines
+                test_sequences,
+                num_files,
+                start_ts,
+                first_line_ts,
+                num_unrecognized_lines,
+                writer_reports,
             ):
                 log.info(f"FINISHED in {timer() - start_ts:.0f} sec")
                 os.kill(main_pid, signal.SIGINT)
         try:
-            request_data = queue.get(block=True, timeout=1)
+            request_data = request_queue.get(block=True, timeout=1)
         except Empty:
             continue
         data_str = None
@@ -95,6 +114,8 @@ def request_processor_loop(queue: mp.Queue, test_name: str, num_files, main_pid:
             log.error(f"line: '{data_str}'")
             continue
         for l in lines:
+            if not first_line_ts:
+                first_line_ts = timer()
             try:
                 line_obj = json.loads(l["line"])
                 seq_name: str = line_obj.get("seq_name")
@@ -105,7 +126,7 @@ def request_processor_loop(queue: mp.Queue, test_name: str, num_files, main_pid:
                         test_sequences[seq_name] = test_seq_obj
                     test_seq_obj.line_ids.append(line_obj["line_id"])
                 else:
-                    unrecognized_lines = unrecognized_lines + 1
+                    num_unrecognized_lines = num_unrecognized_lines + 1
             except Exception as e:
                 log.error(repr(e))
                 pass
@@ -115,7 +136,9 @@ def check_test_state(
     test_sequences: typing.Dict[str, TestSeq],
     num_files: int,
     start_ts: float,
-    unrecognized_lines: int,
+    first_line_ts: float,
+    num_unrecognized_lines: int,
+    writer_reports: dict,
 ) -> bool:
     num_total_seq = num_files
     num_received_seq = 0
@@ -123,7 +146,10 @@ def check_test_state(
     num_total_lines = 0
     num_received_lines = 0
     num_duplicate_lines = 0
+    num_committed_lines = 0
     run_time = timer() - start_ts
+    for report in writer_reports.values():
+        num_committed_lines = num_committed_lines + report["num_committed_lines"]
     for seq in test_sequences.values():
         num_received_seq = num_received_seq + 1
         num_total_lines = num_total_lines + seq.total_lines
@@ -139,22 +165,28 @@ def check_test_state(
                 num_duplicate_lines = (
                     num_duplicate_lines + seq.total_lines - len(set(seq.line_ids))
                 )
-    line_rate = num_received_lines / run_time
+    if first_line_ts:
+        received_line_rate = num_received_lines / (timer() - first_line_ts)
+    else:
+        received_line_rate = 0
+    committed_line_rate = num_committed_lines / run_time
     g_log.info(f"")
     g_log.info(f"total seq:           {num_total_seq}")
     g_log.info(f"received seq:        {num_received_seq}")
     g_log.info(f"completed seq:       {num_completed_seq}")
     g_log.info(f"total lines:         {num_total_lines}")
+    g_log.info(f"committed lines:     {num_committed_lines}")
     g_log.info(f"received lines:      {num_received_lines}")
     g_log.info(f"duplicate lines:     {num_duplicate_lines}")
-    g_log.info(f"unrecognized lines:  {unrecognized_lines}")
-    g_log.info(f"line rate:           {line_rate:.0f} per sec")
+    g_log.info(f"unrecognized lines:  {num_unrecognized_lines}")
+    g_log.info(f"committed line rate: {committed_line_rate:.0f} per sec")
+    g_log.info(f"received line rate:  {received_line_rate:.0f} per sec")
     g_log.info(f"run time:            {run_time:.0f} sec")
     return num_total_seq == num_completed_seq
 
 
 def log_writer_loop(
-    seq_name: str, file_path: str, num_lines: int, override_file: bool, line_rate: int
+    seq_name: str, file_path: str, report_queue: mp.Queue, num_lines: int, override_file: bool, line_rate: int
 ):
     # runs in separate process
     log = logging.getLogger(seq_name)
@@ -167,6 +199,7 @@ def log_writer_loop(
         except Exception:
             pass
     rate_limiter = RateLimiter(max_calls=line_rate, period=1)
+    last_report_ts = timer()
     with open(file_path, "a") as f:
         log.debug(f"start writer loop {file_path}")
         for i in range(1, num_lines + 1):
@@ -174,6 +207,11 @@ def log_writer_loop(
                 line = {"seq_name": seq_name, "total_lines": num_lines, "line_id": i}
                 f.write(f"{json.dumps(line)}\n")
                 f.flush()
+            if timer() - last_report_ts >= 2:
+                report = {"seq_name": seq_name, "num_committed_lines": i}
+                report_queue.put(report)
+                last_report_ts = timer()
+
     log.debug(f"finished writer loop {file_path}")
 
 
@@ -237,6 +275,7 @@ def main():
             args=(
                 seq_name,
                 file_path,
+                g_report_queue,
                 args.num_lines,
                 args.override_files,
                 args.line_rate,
@@ -246,7 +285,13 @@ def main():
     # start request processing
     mp.Process(
         target=request_processor_loop,
-        args=(g_queue, test_name, args.num_log_files, os.getpid()),
+        args=(
+            g_request_queue,
+            g_report_queue,
+            test_name,
+            args.num_log_files,
+            os.getpid(),
+        ),
         daemon=True,
     ).start()
     g_log.info("starting ingestor web server")
