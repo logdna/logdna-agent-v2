@@ -4,6 +4,7 @@ WORKDIR /opt/stress_test
 
 RUN pip install --upgrade pip
 RUN pip install Flask
+RUN pip install ratelimiter
 
 COPY stress_test.py .
 

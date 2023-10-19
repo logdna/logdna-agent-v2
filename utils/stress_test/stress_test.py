@@ -14,6 +14,7 @@ from queue import Empty
 from timeit import default_timer as timer
 import secrets
 import argparse
+from ratelimiter import RateLimiter
 
 
 class TestSeq:
@@ -152,24 +153,27 @@ def check_test_state(
     return num_total_seq == num_completed_seq
 
 
-def log_writer_loop(seq_name, file_path, num_lines):
+def log_writer_loop(
+    seq_name: str, file_path: str, num_lines: int, override_file: bool, line_rate: int
+):
     # runs in separate process
     log = logging.getLogger(seq_name)
     log.setLevel(logging.INFO)
     log.debug(f"open {file_path}")
-    DELAY_S = 0.1
-    try:
-        # os.remove(file_path)
-        time.sleep(DELAY_S)
-    except Exception:
-        pass
+    if override_file:
+        try:
+            os.remove(file_path)
+            time.sleep(0.1)
+        except Exception:
+            pass
+    rate_limiter = RateLimiter(max_calls=line_rate, period=1)
     with open(file_path, "a") as f:
         log.debug(f"start writer loop {file_path}")
         for i in range(1, num_lines + 1):
-            line = {"seq_name": seq_name, "total_lines": num_lines, "line_id": i}
-            f.write(f"{json.dumps(line)}\n")
-            f.flush()
-            time.sleep(DELAY_S)
+            with rate_limiter:
+                line = {"seq_name": seq_name, "total_lines": num_lines, "line_id": i}
+                f.write(f"{json.dumps(line)}\n")
+                f.flush()
     log.debug(f"finished writer loop {file_path}")
 
 
@@ -189,10 +193,36 @@ def assert_positive_integer(value_str: str) -> int:
 def main():
     global g_log
     #
-    parser = argparse.ArgumentParser(description="Agent Stress Test")
-    parser.add_argument("log_dir", type=assert_log_dir, help="Directory where log files are stored.")
-    parser.add_argument("num_log_files", type=assert_positive_integer, help="Number of log files to use.")
-    parser.add_argument("num_lines", type=assert_positive_integer, help="Number of lines to add to each log file.")
+    parser = argparse.ArgumentParser(
+        description="Agent Stress Test",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "log_dir", type=assert_log_dir, help="Directory where log files are stored."
+    )
+    parser.add_argument(
+        "num_log_files",
+        type=assert_positive_integer,
+        help="Number of log files to use.",
+    )
+    parser.add_argument(
+        "num_lines",
+        type=assert_positive_integer,
+        help="Number of lines to add to each log file.",
+    )
+    parser.add_argument(
+        "--line_rate",
+        type=assert_positive_integer,
+        help="Line rate per log file.",
+        default=100,
+    )
+    parser.add_argument(
+        "--override",
+        help="Override existing log files.",
+        dest="override_files",
+        action="store_true",
+        default=False,
+    )
     args = parser.parse_args()
     #
     test_name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
@@ -208,6 +238,8 @@ def main():
                 seq_name,
                 file_path,
                 args.num_lines,
+                args.override_files,
+                args.line_rate,
             ),
             daemon=True,
         ).start()
