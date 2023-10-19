@@ -138,7 +138,7 @@ def check_test_state(
                 num_duplicate_lines = (
                     num_duplicate_lines + seq.total_lines - len(set(seq.line_ids))
                 )
-    line_rate = num_total_lines / run_time
+    line_rate = num_received_lines / run_time
     g_log.info(f"")
     g_log.info(f"total seq:           {num_total_seq}")
     g_log.info(f"received seq:        {num_received_seq}")
