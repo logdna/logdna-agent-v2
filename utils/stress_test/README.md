@@ -1,6 +1,6 @@
 Stress test:
 - produces configurable number of log files and lines (limited by ulimit)
-- acts as ingester endpoint for agent
+- acts as ingester endpoint for agent (0.0.0.0:7080)
 - checks for duplicate and lost lines
 - prints periodic reports until all lines received from agent
 - supports all agent versions
