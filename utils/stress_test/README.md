@@ -19,18 +19,24 @@ export LOGDNA_USE_SSL=false
 
 1.2 start test
 ```
-$ python utils/stress_test.py /home/dmitri/SOURCE/TMP/root/test 800 300
-2023-10-18 05:40:47 INFO   starting ingestor web server
+$ python utils/stress_test/stress_test.py /home/dmitri/SOURCE/TMP/root/test 10 5000
+2023-10-19 22:35:27 INFO   starting ingestor web server
  * Serving Flask app 'stress_test'
  * Debug mode: off
-2023-10-18 05:41:21 INFO
-2023-10-18 05:41:21 INFO   total seq:        800
-2023-10-18 05:41:21 INFO   received seq:     800
-2023-10-18 05:41:21 INFO   completed seq:    800
-2023-10-18 05:41:21 INFO   total lines:      240000
-2023-10-18 05:41:21 INFO   received lines:   240000
-2023-10-18 05:41:21 INFO   duplicate lines:  0
-2023-10-18 05:41:21 INFO   FINISHED in 34 sec
+2023-10-19 22:35:33 INFO
+2023-10-19 22:35:33 INFO   total seq:           10
+2023-10-19 22:35:33 INFO   received seq:        10
+2023-10-19 22:35:33 INFO   completed seq:       10
+2023-10-19 22:35:33 INFO   total lines:         50000
+2023-10-19 22:35:33 INFO   committed lines:     50000
+2023-10-19 22:35:33 INFO   received lines:      50000
+2023-10-19 22:35:33 INFO   duplicate lines:     0
+2023-10-19 22:35:33 INFO   unrecognized lines:  0
+2023-10-19 22:35:33 INFO   committed line rate: 8341 per sec
+2023-10-19 22:35:33 INFO   received line rate:  8643 per sec
+2023-10-19 22:35:33 INFO   received line bytes: 3939 KB
+2023-10-19 22:35:33 INFO   run time:            6 sec
+2023-10-19 22:35:33 INFO   FINISHED in 6 sec
 ```
 
 2. Running in Docker

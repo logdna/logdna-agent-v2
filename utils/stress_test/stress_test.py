@@ -16,6 +16,7 @@ import secrets
 import argparse
 from ratelimiter import RateLimiter
 
+REPORT_INTERVAL_S = 5
 
 class TestSeq:
     def __init__(self, seq_name, total_lines):
@@ -74,16 +75,16 @@ def request_processor_loop(
     num_files: int,
     main_pid: int,
 ):
-    # request data processing loop
     test_sequences = {}
     num_unrecognized_lines = 0
+    received_line_bytes = 0
     writer_reports = {}
     start_ts = timer()
     last_report_ts = timer()
     first_line_ts = None
     log = logging.getLogger(test_name)
     while True:
-        if last_report_ts + 5 < timer():
+        if last_report_ts + REPORT_INTERVAL_S < timer():
             last_report_ts = timer()
             # process reports from writers
             while not report_queue.empty():
@@ -97,6 +98,7 @@ def request_processor_loop(
                 first_line_ts,
                 num_unrecognized_lines,
                 writer_reports,
+                received_line_bytes,
             ):
                 log.info(f"FINISHED in {timer() - start_ts:.0f} sec")
                 os.kill(main_pid, signal.SIGINT)
@@ -117,7 +119,9 @@ def request_processor_loop(
             if not first_line_ts:
                 first_line_ts = timer()
             try:
-                line_obj = json.loads(l["line"])
+                line_str = l["line"]
+                received_line_bytes = received_line_bytes + len(line_str)
+                line_obj = json.loads(line_str)
                 seq_name: str = line_obj.get("seq_name")
                 if seq_name and seq_name.startswith(test_name):
                     test_seq_obj = test_sequences.get(seq_name)
@@ -139,6 +143,7 @@ def check_test_state(
     first_line_ts: float,
     num_unrecognized_lines: int,
     writer_reports: dict,
+    received_line_bytes: int,
 ) -> bool:
     num_total_seq = num_files
     num_received_seq = 0
@@ -181,6 +186,7 @@ def check_test_state(
     g_log.info(f"unrecognized lines:  {num_unrecognized_lines}")
     g_log.info(f"committed line rate: {committed_line_rate:.0f} per sec")
     g_log.info(f"received line rate:  {received_line_rate:.0f} per sec")
+    g_log.info(f"received line bytes: {received_line_bytes / 1000:.0f} KB")
     g_log.info(f"run time:            {run_time:.0f} sec")
     return num_total_seq == num_completed_seq
 
@@ -207,11 +213,13 @@ def log_writer_loop(
                 line = {"seq_name": seq_name, "total_lines": num_lines, "line_id": i}
                 f.write(f"{json.dumps(line)}\n")
                 f.flush()
-            if timer() - last_report_ts >= 2:
+            if timer() - last_report_ts >= REPORT_INTERVAL_S / 2:
                 report = {"seq_name": seq_name, "num_committed_lines": i}
                 report_queue.put(report)
                 last_report_ts = timer()
-
+    # final report
+    report = {"seq_name": seq_name, "num_committed_lines": i}
+    report_queue.put(report)
     log.debug(f"finished writer loop {file_path}")
 
 
@@ -252,7 +260,7 @@ def main():
         "--line_rate",
         type=assert_positive_integer,
         help="Line rate per log file.",
-        default=100,
+        default=1000,
     )
     parser.add_argument(
         "--override",
@@ -263,13 +271,14 @@ def main():
     )
     args = parser.parse_args()
     #
-    test_name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
+    app_name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
+    test_name = f"{app_name}-{secrets.token_hex(2)}"
     g_log = logging.getLogger(test_name)
     g_log.setLevel(logging.INFO)
     # start log writers
     for i in range(1, args.num_log_files + 1):
         seq_name = f"{test_name}-{secrets.token_hex(4)}"
-        file_path = f"{args.log_dir}/{test_name}.{i:03d}.log"
+        file_path = f"{args.log_dir}/{app_name}.{i:03d}.log"
         mp.Process(
             target=log_writer_loop,
             args=(
