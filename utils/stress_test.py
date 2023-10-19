@@ -13,6 +13,7 @@ import logging
 from queue import Empty
 from timeit import default_timer as timer
 import secrets
+import argparse
 
 
 class TestSeq:
@@ -172,36 +173,48 @@ def log_writer_loop(seq_name, file_path, num_lines):
     log.debug(f"finished writer loop {file_path}")
 
 
+def assert_log_dir(log_dir: str) -> str:
+    assert os.path.exists(log_dir), f"Directory does not exist: {log_dir}"
+    assert os.path.isdir(log_dir), f"Path is not a directory: {log_dir}"
+    assert os.access(log_dir, os.W_OK), f"Directory is not writable: {log_dir}"
+    return log_dir
+
+
+def assert_positive_integer(value_str: str) -> int:
+    value_int = int(value_str)
+    assert value_int > 0, f"Value is not a positive integer: {value_str}"
+    return value_int
+
+
 def main():
     global g_log
-    if len(sys.argv) < 4:
-        print(
-            f"\npython {sys.argv[0]}  <log dir>  <number of log files>  <number of lines>\n"
-        )
-        quit()
+    #
+    parser = argparse.ArgumentParser(description="Agent Stress Test")
+    parser.add_argument("log_dir", type=assert_log_dir, help="Directory where log files are stored.")
+    parser.add_argument("num_log_files", type=assert_positive_integer, help="Number of log files to use.")
+    parser.add_argument("num_lines", type=assert_positive_integer, help="Number of lines to create in each log file.")
+    args = parser.parse_args()
+    #
     test_name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
     g_log = logging.getLogger(test_name)
     g_log.setLevel(logging.INFO)
-    log_dir = sys.argv[1]
-    num_files = int(sys.argv[2])
-    num_lines = int(sys.argv[3])
     # start log writers
-    for i in range(1, num_files + 1):
+    for i in range(1, args.num_log_files + 1):
         seq_name = f"{test_name}-{secrets.token_hex(4)}"
-        file_path = f"{log_dir}/{test_name}.{i:03d}.log"
+        file_path = f"{args.log_dir}/{test_name}.{i:03d}.log"
         mp.Process(
             target=log_writer_loop,
             args=(
                 seq_name,
                 file_path,
-                num_lines,
+                args.num_lines,
             ),
             daemon=True,
         ).start()
     # start request processing
     mp.Process(
         target=request_processor_loop,
-        args=(g_queue, test_name, num_files, os.getpid()),
+        args=(g_queue, test_name, args.num_log_files, os.getpid()),
         daemon=True,
     ).start()
     g_log.info("starting ingestor web server")
