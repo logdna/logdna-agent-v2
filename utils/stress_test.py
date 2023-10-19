@@ -13,6 +13,7 @@ import multiprocessing as mp
 import logging
 from queue import Empty
 from timeit import default_timer as timer
+import secrets
 
 class TestSeq:
     def __init__(self, seq_name, total_lines):
@@ -67,14 +68,17 @@ def line_processor_loop(queue: mp.Queue, test_name: str, num_files, main_pid: in
     # request data processing loop
     test_sequences = {}
     start_ts = timer()
+    last_report_ts = timer()
     log = logging.getLogger(test_name)
     while True:
-        try:
-            request_data = queue.get(block=True, timeout=3)
-        except Empty:
+        if last_report_ts + 5 < timer():
+            last_report_ts = timer()
             if check_test_state(test_sequences, num_files, start_ts):
                 log.info(f"FINISHED in {timer() - start_ts:.0f} sec")
                 os.kill(main_pid, signal.SIGINT)
+        try:
+            request_data = queue.get(block=True, timeout=1)
+        except Empty:
             continue
         data_str = None
         try:
@@ -174,7 +178,7 @@ def main():
     num_lines = int(sys.argv[3])
     # start writers
     for i in range(1, num_files + 1):
-        seq_name = f"{test_name}.{i:03d}"
+        seq_name = f"{test_name}-{secrets.token_hex(4)}"
         file_path = f"{log_dir}/{test_name}.{i:03d}.log"
         mp.Process(
             target=log_writer_loop,
