@@ -64,16 +64,17 @@ def request_logs_agent():
     return "", 200
 
 
-def line_processor_loop(queue: mp.Queue, test_name: str, num_files, main_pid: int):
+def request_processor_loop(queue: mp.Queue, test_name: str, num_files, main_pid: int):
     # request data processing loop
     test_sequences = {}
+    unrecognized_lines = 0
     start_ts = timer()
     last_report_ts = timer()
     log = logging.getLogger(test_name)
     while True:
         if last_report_ts + 5 < timer():
             last_report_ts = timer()
-            if check_test_state(test_sequences, num_files, start_ts):
+            if check_test_state(test_sequences, num_files, start_ts, unrecognized_lines):
                 log.info(f"FINISHED in {timer() - start_ts:.0f} sec")
                 os.kill(main_pid, signal.SIGINT)
         try:
@@ -99,12 +100,14 @@ def line_processor_loop(queue: mp.Queue, test_name: str, num_files, main_pid: in
                         test_seq_obj = TestSeq(seq_name, line_obj["total_lines"])
                         test_sequences[seq_name] = test_seq_obj
                     test_seq_obj.line_ids.append(line_obj["line_id"])
+                else:
+                    unrecognized_lines = unrecognized_lines + 1
             except Exception as e:
                 log.error(repr(e))
                 pass
 
 
-def check_test_state(test_sequences: typing.Dict[str, TestSeq], num_files: int, start_ts: float) -> bool:
+def check_test_state(test_sequences: typing.Dict[str, TestSeq], num_files: int, start_ts: float, unrecognized_lines: int) -> bool:
     num_total_seq = num_files
     num_received_seq = 0
     num_completed_seq = 0
@@ -129,14 +132,15 @@ def check_test_state(test_sequences: typing.Dict[str, TestSeq], num_files: int, 
                 )
     line_rate = num_total_lines / run_time
     g_log.info(f"")
-    g_log.info(f"total seq:        {num_total_seq}")
-    g_log.info(f"received seq:     {num_received_seq}")
-    g_log.info(f"completed seq:    {num_completed_seq}")
-    g_log.info(f"total lines:      {num_total_lines}")
-    g_log.info(f"received lines:   {num_received_lines}")
-    g_log.info(f"duplicate lines:  {num_duplicate_lines}")
-    g_log.info(f"line rate:        {line_rate:.0f} per sec")
-    g_log.info(f"run time:         {run_time:.0f} sec")
+    g_log.info(f"total seq:           {num_total_seq}")
+    g_log.info(f"received seq:        {num_received_seq}")
+    g_log.info(f"completed seq:       {num_completed_seq}")
+    g_log.info(f"total lines:         {num_total_lines}")
+    g_log.info(f"received lines:      {num_received_lines}")
+    g_log.info(f"duplicate lines:     {num_duplicate_lines}")
+    g_log.info(f"unrecognized lines:  {unrecognized_lines}")
+    g_log.info(f"line rate:           {line_rate:.0f} per sec")
+    g_log.info(f"run time:            {run_time:.0f} sec")
     return num_total_seq == num_completed_seq
 
 
@@ -191,7 +195,7 @@ def main():
         ).start()
     # start line processing
     mp.Process(
-        target=line_processor_loop, args=(g_queue, test_name, num_files, os.getpid()), daemon=True
+        target=request_processor_loop, args=(g_queue, test_name, num_files, os.getpid()), daemon=True
     ).start()
     g_log.info("starting ingestor web server")
     app.run(host="0.0.0.0", port=7080, threaded=True)
