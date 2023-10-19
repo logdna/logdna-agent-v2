@@ -192,7 +192,7 @@ def main():
     parser = argparse.ArgumentParser(description="Agent Stress Test")
     parser.add_argument("log_dir", type=assert_log_dir, help="Directory where log files are stored.")
     parser.add_argument("num_log_files", type=assert_positive_integer, help="Number of log files to use.")
-    parser.add_argument("num_lines", type=assert_positive_integer, help="Number of lines to create in each log file.")
+    parser.add_argument("num_lines", type=assert_positive_integer, help="Number of lines to add to each log file.")
     args = parser.parse_args()
     #
     test_name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
