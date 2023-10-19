@@ -1,19 +1,19 @@
 import multiprocessing
 
-from flask import Flask, request, Response, json
+from flask import Flask, request, json
 import time
 import gzip
 import io
 import sys
 import os
 import typing
-import threading
 import signal
 import multiprocessing as mp
 import logging
 from queue import Empty
 from timeit import default_timer as timer
 import secrets
+
 
 class TestSeq:
     def __init__(self, seq_name, total_lines):
@@ -74,7 +74,9 @@ def request_processor_loop(queue: mp.Queue, test_name: str, num_files, main_pid:
     while True:
         if last_report_ts + 5 < timer():
             last_report_ts = timer()
-            if check_test_state(test_sequences, num_files, start_ts, unrecognized_lines):
+            if check_test_state(
+                test_sequences, num_files, start_ts, unrecognized_lines
+            ):
                 log.info(f"FINISHED in {timer() - start_ts:.0f} sec")
                 os.kill(main_pid, signal.SIGINT)
         try:
@@ -107,7 +109,12 @@ def request_processor_loop(queue: mp.Queue, test_name: str, num_files, main_pid:
                 pass
 
 
-def check_test_state(test_sequences: typing.Dict[str, TestSeq], num_files: int, start_ts: float, unrecognized_lines: int) -> bool:
+def check_test_state(
+    test_sequences: typing.Dict[str, TestSeq],
+    num_files: int,
+    start_ts: float,
+    unrecognized_lines: int,
+) -> bool:
     num_total_seq = num_files
     num_received_seq = 0
     num_completed_seq = 0
@@ -151,9 +158,9 @@ def log_writer_loop(seq_name, file_path, num_lines):
     log.debug(f"open {file_path}")
     DELAY_S = 0.1
     try:
-        #os.remove(file_path)
+        # os.remove(file_path)
         time.sleep(DELAY_S)
-    except Exception as e:
+    except Exception:
         pass
     with open(file_path, "a") as f:
         log.debug(f"start writer loop {file_path}")
@@ -167,8 +174,6 @@ def log_writer_loop(seq_name, file_path, num_lines):
 
 def main():
     global g_log
-    global own_pid
-    own_pid = os.getpid()
     if len(sys.argv) < 4:
         print(
             f"\npython {sys.argv[0]}  <log dir>  <number of log files>  <number of lines>\n"
@@ -180,7 +185,7 @@ def main():
     log_dir = sys.argv[1]
     num_files = int(sys.argv[2])
     num_lines = int(sys.argv[3])
-    # start writers
+    # start log writers
     for i in range(1, num_files + 1):
         seq_name = f"{test_name}-{secrets.token_hex(4)}"
         file_path = f"{log_dir}/{test_name}.{i:03d}.log"
@@ -193,9 +198,11 @@ def main():
             ),
             daemon=True,
         ).start()
-    # start line processing
+    # start request processing
     mp.Process(
-        target=request_processor_loop, args=(g_queue, test_name, num_files, os.getpid()), daemon=True
+        target=request_processor_loop,
+        args=(g_queue, test_name, num_files, os.getpid()),
+        daemon=True,
     ).start()
     g_log.info("starting ingestor web server")
     app.run(host="0.0.0.0", port=7080, threaded=True)
