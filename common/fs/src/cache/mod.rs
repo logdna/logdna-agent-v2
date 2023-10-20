@@ -302,7 +302,7 @@ impl FileSystem {
         let (resume_events_send, resume_events_recv) = async_channel::unbounded();
         let (retry_events_send, retry_events_recv) = async_channel::unbounded();
 
-        let mut initial_dirs_checked = initial_dirs_original.clone();
+        let mut initial_dirs_checked = initial_dirs_original;
         initial_dirs_checked.iter_mut().for_each(|path| {
             // if postfix is Some then dir does not exists
             // check again if non-existing path exists now
@@ -867,10 +867,8 @@ impl FileSystem {
                 None
             }
         }
-        match self.lookback_config {
-            Lookback::Start => {
-                _lookup_offset(&self.initial_offsets, &inode, path).unwrap_or_default()
-            }
+        let default_offset = match self.lookback_config {
+            Lookback::Start => SpanVec::new(),
             Lookback::SmallFiles => {
                 // Check the actual file len
                 let file_len = path.metadata().map(|m| m.len()).unwrap_or(0);
@@ -879,7 +877,7 @@ impl FileSystem {
                 } else {
                     [Span::new(0, file_len).unwrap()].iter().collect()
                 };
-                _lookup_offset(&self.initial_offsets, &inode, path).unwrap_or(smallfiles_offset)
+                smallfiles_offset
             }
             Lookback::None => path
                 .metadata()
@@ -897,7 +895,7 @@ impl FileSystem {
                     }
                 }
 
-                let smallfiles_offset = if should_lookback {
+                let tail_offset = if should_lookback {
                     if file_len > TAIL_WARN_THRESHOLD_B {
                         warn!("lookback ocurred on larger file {:?}", path);
                     }
@@ -907,9 +905,10 @@ impl FileSystem {
                     [Span::new(0, file_len).unwrap()].iter().collect()
                 };
 
-                _lookup_offset(&self.initial_offsets, &inode, path).unwrap_or(smallfiles_offset)
+                tail_offset
             }
-        }
+        };
+        _lookup_offset(&self.initial_offsets, &inode, path).unwrap_or(default_offset)
     }
 
     pub fn resolve_valid_paths(&self, entry: &Entry, entries: &EntryMap) -> SmallVec<[PathBuf; 4]> {
