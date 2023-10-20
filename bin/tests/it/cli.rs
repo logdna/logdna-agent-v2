@@ -2332,6 +2332,7 @@ fn test_offset_stream_state_gc() {
     let mut settings = AgentSettings::new(dir.to_str().unwrap());
     settings.clear_cache_interval = Some(3);
     settings.state_db_dir = Some(db_dir.as_path());
+    settings.lookback = Some("smallfiles");
 
     let mut agent_handle = common::spawn_agent(settings);
 

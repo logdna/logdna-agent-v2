@@ -1,6 +1,7 @@
 use futures::Stream;
 
 use config::{self, Config, DbPath, K8sLeaseConf, K8sTrackingConf};
+use fs::lookback::Lookback;
 use fs::tail;
 use futures::{stream, StreamExt};
 use http::batch::TimedRequestBatcherStreamExt;
@@ -100,15 +101,17 @@ pub async fn _main(
     let mut _agent_state = None;
     let mut offset_state = None;
 
-    if let DbPath::Path(db_path) = &config.log.db_path {
-        match AgentState::new(db_path) {
-            Ok(agent_state) => {
-                let _offset_state = agent_state.get_offset_state();
-                _agent_state = Some(agent_state);
-                offset_state = Some(_offset_state);
-            }
-            Err(e) => {
-                error!("Failed to open agent state db {}", e);
+    if config.log.lookback != Lookback::None {
+        if let DbPath::Path(db_path) = &config.log.db_path {
+            match AgentState::new(db_path) {
+                Ok(agent_state) => {
+                    let _offset_state = agent_state.get_offset_state();
+                    _agent_state = Some(agent_state);
+                    offset_state = Some(_offset_state);
+                }
+                Err(e) => {
+                    error!("Failed to open agent state db {}", e);
+                }
             }
         }
     }
