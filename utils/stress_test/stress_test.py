@@ -18,9 +18,10 @@ from ratelimiter import RateLimiter
 
 REPORT_INTERVAL_S = 5
 
+
 class TestSeq:
-    def __init__(self, seq_name, total_lines):
-        self.seq_name = seq_name
+    def __init__(self, seq_id, total_lines):
+        self.seq_id = seq_id
         self.total_lines = total_lines
         self.line_ids = []
 
@@ -71,7 +72,7 @@ def request_logs_agent():
 def request_processor_loop(
     request_queue: mp.Queue,
     report_queue: mp.Queue,
-    test_name: str,
+    test_id: str,
     num_files: int,
     main_pid: int,
 ):
@@ -82,16 +83,17 @@ def request_processor_loop(
     start_ts = timer()
     last_report_ts = timer()
     first_line_ts = None
-    log = logging.getLogger(test_name)
+    log = logging.getLogger(test_id)
     while True:
         if last_report_ts + REPORT_INTERVAL_S < timer():
             last_report_ts = timer()
             # process reports from writers
             while not report_queue.empty():
                 report = report_queue.get()
-                writer_reports[report["seq_name"]] = report
+                writer_reports[report["seq_id"]] = report
             # check test status, report stats and stop test if completed
             if check_test_state(
+                test_id,
                 test_sequences,
                 num_files,
                 start_ts,
@@ -122,12 +124,12 @@ def request_processor_loop(
                 line_str = l["line"]
                 received_line_bytes = received_line_bytes + len(line_str)
                 line_obj = json.loads(line_str)
-                seq_name: str = line_obj.get("seq_name")
-                if seq_name and seq_name.startswith(test_name):
-                    test_seq_obj = test_sequences.get(seq_name)
+                seq_id: str = line_obj.get("seq_id")
+                if seq_id and seq_id.startswith(test_id):
+                    test_seq_obj = test_sequences.get(seq_id)
                     if not test_seq_obj:
-                        test_seq_obj = TestSeq(seq_name, line_obj["total_lines"])
-                        test_sequences[seq_name] = test_seq_obj
+                        test_seq_obj = TestSeq(seq_id, line_obj["total_lines"])
+                        test_sequences[seq_id] = test_seq_obj
                     test_seq_obj.line_ids.append(line_obj["line_id"])
                 else:
                     num_unrecognized_lines = num_unrecognized_lines + 1
@@ -137,6 +139,7 @@ def request_processor_loop(
 
 
 def check_test_state(
+    test_id: str,
     test_sequences: typing.Dict[str, TestSeq],
     num_files: int,
     start_ts: float,
@@ -187,15 +190,21 @@ def check_test_state(
     g_log.info(f"committed line rate: {committed_line_rate:.0f} per sec")
     g_log.info(f"received line rate:  {received_line_rate:.0f} per sec")
     g_log.info(f"received line bytes: {received_line_bytes / 1000:.0f} KB")
+    g_log.info(f"test id:             {test_id}")
     g_log.info(f"run time:            {run_time:.0f} sec")
     return num_total_seq == num_completed_seq
 
 
 def log_writer_loop(
-    seq_name: str, file_path: str, report_queue: mp.Queue, num_lines: int, override_file: bool, line_rate: int
+    seq_id: str,
+    file_path: str,
+    report_queue: mp.Queue,
+    num_lines: int,
+    override_file: bool,
+    line_rate: int,
 ):
     # runs in separate process
-    log = logging.getLogger(seq_name)
+    log = logging.getLogger(seq_id)
     log.setLevel(logging.INFO)
     log.debug(f"open {file_path}")
     if override_file:
@@ -210,15 +219,15 @@ def log_writer_loop(
         log.debug(f"start writer loop {file_path}")
         for i in range(1, num_lines + 1):
             with rate_limiter:
-                line = {"seq_name": seq_name, "total_lines": num_lines, "line_id": i}
+                line = {"seq_id": seq_id, "total_lines": num_lines, "line_id": i}
                 f.write(f"{json.dumps(line)}\n")
                 f.flush()
             if timer() - last_report_ts >= REPORT_INTERVAL_S / 2:
-                report = {"seq_name": seq_name, "num_committed_lines": i}
+                report = {"seq_id": seq_id, "num_committed_lines": i}
                 report_queue.put(report)
                 last_report_ts = timer()
     # final report
-    report = {"seq_name": seq_name, "num_committed_lines": i}
+    report = {"seq_id": seq_id, "num_committed_lines": i}
     report_queue.put(report)
     log.debug(f"finished writer loop {file_path}")
 
@@ -272,17 +281,17 @@ def main():
     args = parser.parse_args()
     #
     app_name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
-    test_name = f"{app_name}-{secrets.token_hex(2)}"
-    g_log = logging.getLogger(test_name)
+    test_id = f"{app_name}-{secrets.token_hex(3)}"
+    g_log = logging.getLogger(test_id)
     g_log.setLevel(logging.INFO)
     # start log writers
     for i in range(1, args.num_log_files + 1):
-        seq_name = f"{test_name}-{secrets.token_hex(4)}"
+        seq_id = f"{test_id}-{i}"
         file_path = f"{args.log_dir}/{app_name}.{i:03d}.log"
         mp.Process(
             target=log_writer_loop,
             args=(
-                seq_name,
+                seq_id,
                 file_path,
                 g_report_queue,
                 args.num_lines,
@@ -297,7 +306,7 @@ def main():
         args=(
             g_request_queue,
             g_report_queue,
-            test_name,
+            test_id,
             args.num_log_files,
             os.getpid(),
         ),
