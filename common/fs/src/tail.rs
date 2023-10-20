@@ -191,7 +191,7 @@ pub fn process(
 
     Ok(events
         .then({
-            let fs = state.fs_cache.clone();
+            let fs = state.fs_cache;
 
             move |event_result| {
                 let fs = fs.clone();
