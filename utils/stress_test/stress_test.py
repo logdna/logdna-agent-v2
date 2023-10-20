@@ -156,8 +156,10 @@ def check_test_state(
     num_duplicate_lines = 0
     num_committed_lines = 0
     run_time = timer() - start_ts
+    last_commit_ts = 0.0
     for report in writer_reports.values():
         num_committed_lines = num_committed_lines + report["num_committed_lines"]
+        last_commit_ts = max(last_commit_ts, report["timestamp"])
     for seq in test_sequences.values():
         num_received_seq = num_received_seq + 1
         num_total_lines = num_total_lines + seq.total_lines
@@ -177,7 +179,7 @@ def check_test_state(
         received_line_rate = num_received_lines / (timer() - first_line_ts)
     else:
         received_line_rate = 0
-    committed_line_rate = num_committed_lines / run_time
+    committed_line_rate = num_committed_lines / (last_commit_ts - start_ts)
     g_log.info(f"")
     g_log.info(f"total seq:           {num_total_seq}")
     g_log.info(f"received seq:        {num_received_seq}")
@@ -223,11 +225,19 @@ def log_writer_loop(
                 f.write(f"{json.dumps(line)}\n")
                 f.flush()
             if timer() - last_report_ts >= REPORT_INTERVAL_S / 2:
-                report = {"seq_id": seq_id, "num_committed_lines": i}
+                report = {
+                    "seq_id": seq_id,
+                    "num_committed_lines": i,
+                    "timestamp": timer(),
+                }
                 report_queue.put(report)
                 last_report_ts = timer()
     # final report
-    report = {"seq_id": seq_id, "num_committed_lines": i}
+    report = {
+        "seq_id": seq_id,
+        "num_committed_lines": i,
+        "timestamp": timer(),
+    }
     report_queue.put(report)
     log.debug(f"finished writer loop {file_path}")
 
