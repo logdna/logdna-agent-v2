@@ -23,7 +23,6 @@ static ALLOC: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 #[cfg(all(feature = "dhat-heap", feature = "jemalloc"))]
 compile_error!("feature \"dhat-heap\" and feature \"jemalloc\" cannot be enabled at the same time");
-
 fn main() -> anyhow::Result<()> {
     #[cfg(feature = "dhat-heap")]
     let _profiler = dhat::Profiler::new_heap();
@@ -81,7 +80,11 @@ fn main() -> anyhow::Result<()> {
         .enable_all()
         .build()
         .unwrap()
-        .block_on(_main(shutdown_tx, shutdown_rx))
+        .block_on(_main(shutdown_tx, shutdown_rx))?;
+
+    info!("Reached end of main");
+
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]

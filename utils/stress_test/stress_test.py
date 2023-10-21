@@ -1,5 +1,3 @@
-import multiprocessing
-
 from flask import Flask, request, json
 import time
 import gzip
@@ -27,8 +25,8 @@ class TestSeq:
 
 
 g_log = None
-g_request_queue = multiprocessing.Queue(1000)
-g_report_queue = multiprocessing.Queue()
+g_request_queue = mp.Queue(1000)
+g_report_queue = mp.Queue()
 
 logging.basicConfig(
     format="%(asctime)s %(levelname)-6s %(message)s",
