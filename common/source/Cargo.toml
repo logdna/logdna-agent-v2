@@ -6,6 +6,6 @@ edition = "2018"
 
 [dependencies]
 #local
-http = { package = "http", path = "../http" }
+http = { package = "mz-http", path = "../http" }
 
 tokio = "1"

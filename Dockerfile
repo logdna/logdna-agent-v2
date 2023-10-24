@@ -25,7 +25,7 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     sccache --show-stats
 
 # Use Red Hat Universal Base Image Minimal as the final base image
-FROM registry.access.redhat.com/ubi8/ubi-minimal:8.3
+FROM registry.access.redhat.com/ubi8/ubi-minimal:8.8
 
 ARG REPO
 ARG BUILD_TIMESTAMP
