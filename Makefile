@@ -3,7 +3,7 @@ REPO := logdna-agent-v2
 # The image repo and tag can be modified e.g.
 # `make build RUST_IMAGE=docker.io/rust:latest
 RUST_IMAGE_REPO ?= docker.io/logdna/build-images
-RUST_IMAGE_TAG ?= rust-buster-stable
+RUST_IMAGE_TAG ?= rust-bullseye-1-stable-x86_64
 RUST_IMAGE ?= $(RUST_IMAGE_REPO):$(RUST_IMAGE_TAG)
 RUST_IMAGE := $(RUST_IMAGE)
 
@@ -129,7 +129,9 @@ lint-clippy: ## Checks for code errors
 
 .PHONY:lint-audit
 lint-audit: ## Audits packages for issues
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo audit --ignore RUSTSEC-2021-0020 --ignore RUSTSEC-2021-0078 --ignore RUSTSEC-2021-0079 --ignore RUSTSEC-2020-0071 --ignore RUSTSEC-2019-0033 --ignore RUSTSEC-2019-0034"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo audit \
+		--ignore RUSTSEC-2020-0071 \
+		--ignore RUSTSEC-2023-0052"
 
 .PHONY:lint-docker
 lint-docker: ## Lint the Dockerfile for issues

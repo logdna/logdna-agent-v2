@@ -6,5 +6,5 @@ edition = "2018"
 
 [dependencies]
 #local
-http = { package = "http", path = "../http" }
+http = { package = "mz-http", path = "../http" }
 memoffset = "0.5"
