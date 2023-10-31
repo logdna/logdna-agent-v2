@@ -102,6 +102,14 @@ impl Client {
             .send(self.limiter.get_slot(body).as_ref().clone())
             .await
         {
+            Ok(Response::Failed(body, s, r))
+                if [500, 501, 502, 503, 504, 507, 429].contains(&s.as_u16()) =>
+            {
+                warn!("failed sending http request, retrying: {} {}", s, r);
+                if let Err(e) = retry.retry(&body) {
+                    error!("failed to retry request: {}", e)
+                }
+            }
             Ok(Response::Failed(_, s, r)) => warn!("bad response {}: {}", s, r),
             Err(HttpError::Send(body, e)) => {
                 warn!("failed sending http request, retrying: {}", e);
