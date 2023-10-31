@@ -3,7 +3,12 @@ def PROJECT_NAME = 'logdna-agent-v2'
 def TRIGGER_PATTERN = '.*@logdnabot.*'
 
 pipeline {
-    agent any
+    agent {
+        node {
+            label "rust-x86_64"
+            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
+        }
+    }
     options {
         timestamps()
         ansiColor 'xterm'
