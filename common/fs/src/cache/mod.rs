@@ -1458,8 +1458,10 @@ impl FileSystem {
                     .entry(component)
                 {
                     HashMapEntry::Vacant(v) => Ok(*v.insert(new_key)),
-                    // TODO: Maybe consider to silently replace
-                    _ => Err(Error::Existing),
+                    HashMapEntry::Occupied(mut o) => {
+                        o.insert(new_key);
+                        Ok(*o.into_mut())
+                    }
                 };
             } else {
                 trace!("parent with path {:?} not found", parent_path);
