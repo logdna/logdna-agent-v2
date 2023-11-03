@@ -44,7 +44,7 @@ tokio = {version= "1", features= ["fs", "io-util"]}
 tokio-util = {version= "0.7", features= ["compat"]}
 tokio-stream = "0.1"
 futures = "0.3"
-os_str_bytes = "6"
+os_str_bytes = { version= "6", features = ["conversions"]}
 
 countme = {version = "3.0.1", features=["enable"]}
 
