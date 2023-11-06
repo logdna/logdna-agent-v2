@@ -6,7 +6,7 @@ authors = ["Dmitri Khokhlov <dkhokhlov@gmail.com>"]
 edition = "2018"
 license = "MIT"
 readme = "README.md"
-repository = "https://github.com/logdna/logdna-agent-v2/common/msic/rate-limit/macro"
+repository = "https://github.com/logdna/logdna-agent-v2/tree/master/common/misc/rate-limit"
 
 [lib]
 proc-macro = true
