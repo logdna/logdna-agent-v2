@@ -36,6 +36,7 @@ priority-queue = "1"
 #logging
 lazy_static = "1"
 tracing = "0.1"
+tracing-futures = { version = "0.2", features = ["futures-03"] }
 
 #async
 async-trait = "0.1"

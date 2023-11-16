@@ -10,7 +10,7 @@ use metrics::Metrics;
 use state::{FileId, SpanVec};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
-use tracing::{debug, info, warn};
+use tracing::{debug, info, instrument, warn};
 
 use futures::{ready, Future, Stream, StreamExt};
 
@@ -42,10 +42,25 @@ fn get_file_for_path(fs: &FileSystem, next_path: &std::path::Path) -> Option<Ent
 }
 
 #[allow(clippy::await_holding_refcell_ref)]
+#[instrument(level = "debug", skip_all, fields(file_path))]
 async fn handle_event(
     event: Event,
     fs: &FileSystem,
 ) -> Option<impl Stream<Item = LazyLineSerializer>> {
+    match event {
+        Event::Initialize(entry_ptr)
+        | Event::New(entry_ptr)
+        | Event::Write(entry_ptr)
+        | Event::Delete(entry_ptr) => {
+            let entries = fs.entries.borrow();
+            let entry = entries.get(entry_ptr)?;
+            let paths = fs.resolve_valid_paths(entry, &entries);
+            if !paths.is_empty() {
+                tracing::Span::current().record("file_path", paths[0].as_path().to_str().unwrap());
+            }
+        }
+    }
+
     match event {
         Event::Initialize(entry_ptr) => {
             debug!("Initialize Event");
