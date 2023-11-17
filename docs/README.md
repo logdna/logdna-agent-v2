@@ -228,6 +228,7 @@ For backward compatibility agent v1 configuration file format is still supported
 |`LOGDNA_META_JSON`||Overrides/omits `META` filed in log line metadata.||
 |`LOGDNA_META_ANNOTATIONS`||Overrides specific kay-value-pairs inside `ANNOTATIONS` field in log line metadata.||
 |`LOGDNA_META_LABELS`||Overrides specific kay-value-pairs inside `LABELS` field in log line metadata.||
+|`MZ_METADATA_RETRY_DELAY`||The number of seconds to wait for Pod label availability before sending log lines.|0|
 
 
 All regular expressions use [Perl-style syntax][regex-syntax] with case sensitivity by default. If you don't
@@ -339,7 +340,7 @@ The agent is deployed as a Kubernetes DaemonSet, creating one pod per node selec
 the pods in the node. The resource requirements of the agent are in direct relation to the amount of pods per node,
 and the amount of logs producer per pod.
 
-The agent requires at least 128Mib and no more than 512Mib of memory. It requires at least
+The agent requires at least 128Mib of memory and
 [twenty millicpu (`20m`)][k8s-cpu-usage].
 
 Different features can also increase resource utilization. When line exclusion/inclusion or redaction rules
