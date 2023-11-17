@@ -48,6 +48,7 @@ kubectl apply -f https://assets.logdna.com/clients/logdna-agent/3/agent-resource
   * [Enabling Journald on the Node](#enabling-journald-on-the-node)
   * [Enabling Journald Monitoring on the Agent](#enabling-journald-monitoring-on-the-agent)
 * [Configuration for Kubernetes Metadata Filtering](#configuration-for-kubernetes-metadata-filtering)
+* [Configuration for Kubernetes Metadata Retry Delay](#configuration-for-kubernetes-metadata-retry-delay)
 * [Enabling K8 Events](#enabling-k8-events)
 * [Enabling Metrics Reporter Statistics](#enabling-metrics-reporter-statistics)
 * [GKE Autopilot](#gke-autopilot)
@@ -300,6 +301,19 @@ The following is a sample configuration:
 * For the key/value files, only integers [0-9], lower case letters [a-z] and the characters `.`, `/`, `-` are supported.
 * We do not support nested label or annotation structures; only simple key/value pairs.
 
+## Configuration for Kubernetes Metadata Retry Delay
+
+When the system is busy it is possible that the kubernetes apiserver will not respond to the agent. Under these circumstances, to avoid delays in the log processing, the agent will forward the log without associated metadata labels.
+
+The `MZ_METADATA_RETRY_DELAY` can be used to control the amount of time, in seconds, to wait for a response from the apiserver before sending the log lines. Enabling this parameter places additional load upon the agent as lines are buffered for the time period selected. Bear in mind that down stream services such as live-tail and alerting, can be delayed by at least the period specified.
+
+If the agent detects a line is being sent without matching kubernetes metadata, the following line will be emitted in the logs:
+> Pod metadata is missing for line:
+
+**Note:**
+
+* We recommend keeping this value as low as possible to reduce the possible downstream side effects.
+* If kubernetes metadata is always required, we recommended to monitor the agent logs for a week to see the typical size of delays and then set this parameter to cover the majority of cases.
 
 
 
