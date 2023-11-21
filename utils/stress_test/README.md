@@ -44,13 +44,21 @@ $ python utils/stress_test/stress_test.py /home/dmitri/SOURCE/TMP/root/test 10 5
 2.1 build test image
 ```
 cd utils/stress-test
-docker build -t  logdna-agent-stress-test
+docker build -t logdna-agent-stress-test .
 ```
 
 2.2 run test and agent images
 ```
+# create network
 docker network create stress_test
-docker run --rm --net stress_test --name stress-test -v $(pwd)/logs:/var/log logdna-agent-stress-test:latest /var/log 50 1000000
+
+# create folder for log file
+mkdir logs
+
+# start stress test
+docker run --rm --net stress_test --name stress-test  -v $(pwd)/logs:/var/log logdna-agent-stress-test:latest /var/log 50 1000000
+
+# start agent against stress test ingestor
 docker run -it --net stress_test -e MZ_INGESTION_KEY=blah -e LOGDNA_LOG_DIRS=/var/log -e LOGDNA_HOST=stress-test:7080 -e LOGDNA_USE_SSL=false -it -v $(pwd)/logs:/var/log logdna/logdna-agent:3.9.0-dev
 ```
 
