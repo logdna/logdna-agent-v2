@@ -280,6 +280,12 @@ def main():
         default=1000,
     )
     parser.add_argument(
+        "--port",
+        type=assert_positive_integer,
+        help="Ingestor web server port.",
+        default=7080,
+    )
+    parser.add_argument(
         "--override",
         help="Override existing log files.",
         dest="override_files",
@@ -321,7 +327,8 @@ def main():
         daemon=True,
     ).start()
     g_log.info("starting ingestor web server")
-    app.run(host="0.0.0.0", port=7080, threaded=True)
+    g_log.info(f"listening on port: {args.port}")
+    app.run(host="0.0.0.0", port=args.port, threaded=True)
 
 
 if __name__ == "__main__":

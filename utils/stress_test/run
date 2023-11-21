@@ -1,0 +1,4 @@
+docker network create stress_test | true
+docker build -t logdna-agent-stress-test .
+mkdir -p logs
+docker run --rm --net stress_test --name stress-test -u $(id -u):$(id -g) -v $(pwd)/logs:/var/logs logdna-agent-stress-test:latest /var/logs 50 1000000
