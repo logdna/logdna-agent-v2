@@ -1,7 +1,7 @@
 REPO := logdna-agent-v2
 
 # for testing
-TESTS=metrics::test_metrics_endpoint
+TESTS=foo
 
 SHELLFLAGS := -ic
 .DEFAULT_GOAL := test
