@@ -212,7 +212,7 @@ unit-test:
 
 .PHONY:unit-test-coverage
 unit-code-coverage: ## Run code coverage report and output to HTML
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo llvm-cov --ignore-filename-regex=vendor/* --html --output-dir=target/llvm-cov"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo llvm-cov nextest --ignore-filename-regex=vendor/* --html --output-dir=target/llvm-cov"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools

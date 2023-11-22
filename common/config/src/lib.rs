@@ -12,7 +12,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use strum::{Display, EnumString};
 use sysinfo::{RefreshKind, System, SystemExt};
-use tracing::{debug, info, warn};
+use tracing::{error, info, warn};
 
 use async_compression::Level;
 
@@ -156,60 +156,50 @@ impl Config {
         I::Item: Into<OsString> + Clone,
     {
         let argv_options = ArgumentOptions::from_args_with_all_env_vars(args);
-        let list_settings = argv_options.list_settings;
+        let print_settings_and_exit = argv_options.list_settings;
         let config_path = argv_options.config.clone();
-        let raw_config = match RawConfig::parse(&config_path) {
-            Ok(v) => {
-                info!("using settings defined in config file, env vars and command line options");
-                v
+
+        let config_path_str = config_path.to_string_lossy();
+        let is_default_path =
+            config_path_str == argv::DEFAULT_YAML_FILE || config_path == argv::default_conf_file();
+        let does_default_exist =
+            Path::new(argv::DEFAULT_YAML_FILE).exists() || argv::default_conf_file().exists();
+        let raw_config = if is_default_path {
+            if does_default_exist {
+                info!("using settings from default config file, env vars and command line options");
+                RawConfig::parse(&config_path).unwrap_or_else(|e| {
+                    error!(
+                        "config file {} could not be parsed: {:?}",
+                        config_path.display(),
+                        e
+                    );
+                    std::process::exit(consts::exit_codes::EINVAL);
+                })
+            } else {
+                info!("using settings from env vars and command line options");
+                // Non-existing default config yields default RawConfig
+                RawConfig::default()
             }
-            Err(e) => {
-                debug!("config file could not be parsed: {:?}", e);
+        } else {
+            info!("using settings from config file, env vars and command line options");
+            RawConfig::parse(&config_path).unwrap_or_else(|e| {
+                error!(
+                    "config file {} could not be parsed: {:?}",
+                    config_path.display(),
+                    e
+                );
                 std::process::exit(consts::exit_codes::EINVAL);
-            }
+            })
         };
 
-        // Merge with cmd line and env options
+        // Merge with cmd line and env options into raw_config
         let raw_config = argv_options.merge(raw_config);
 
-        // Get a copy of the yaml with the merge values
-        let mut tmp_config = raw_config.clone();
-        if let Some(ref mut key) = tmp_config.http.ingestion_key {
-            *key = "REDACTED".to_string();
+        // print effective config
+        print_settings(&raw_config)?;
+        if print_settings_and_exit {
+            std::process::exit(0);
         }
-
-        let yaml_str = match serde_yaml::to_string(&tmp_config) {
-            Ok(v) => v,
-            Err(e) => {
-                return Err(ConfigError::Serde(e));
-            }
-        };
-
-        if list_settings {
-            print_settings(&yaml_str, &config_path);
-        }
-
-        let env_config: String = env_vars::ENV_VARS_LIST
-            .iter()
-            .chain(env_vars::DEPRECATED_ENV_VARS_LIST.iter())
-            .chain(["RUST_LOG"].iter())
-            .filter_map(|&key| {
-                std::env::var(key).ok().map(|value| {
-                    if key.contains("KEY") || key.contains("PIN") {
-                        format!("{}: REDACTED", key)
-                    } else {
-                        format!("{}: {}", key, value)
-                    }
-                })
-            })
-            .collect::<Vec<String>>()
-            .join("\n");
-        info!("env config: \n{}", env_config);
-
-        info!(
-            "effective configuration collected from cli, env and config:\n{}",
-            yaml_str
-        );
 
         Config::try_from(raw_config)
     }
@@ -236,9 +226,16 @@ impl TryFrom<RawConfig> for Config {
     fn try_from(raw: RawConfig) -> Result<Self, Self::Error> {
         let mut template_builder = RequestTemplate::builder();
 
-        template_builder.api_key(raw.http.ingestion_key.filter(|s| !s.is_empty()).ok_or(
-            ConfigError::MissingFieldOrEnvVar("http.ingestion_key", env_vars::INGESTION_KEY),
-        )?);
+        let ingestion_key = match raw.http.ingestion_key {
+            Some(ref key) if !key.is_empty() => key,
+            _ => {
+                return Err(ConfigError::MissingFieldOrEnvVar(
+                    "http.ingestion_key",
+                    env_vars::INGESTION_KEY,
+                ))
+            }
+        };
+        template_builder.api_key(ingestion_key);
 
         let use_ssl = raw.http.use_ssl.ok_or(ConfigError::MissingFieldOrEnvVar(
             "http.use_ssl",
@@ -491,27 +488,37 @@ pub fn get_hostname() -> Option<String> {
     System::new_with_specifics(RefreshKind::new()).host_name()
 }
 
-fn print_settings(yaml: &str, config_path: &Path) {
-    print!("Listing current settings ");
-
-    let config_path_str = config_path.to_string_lossy();
-    let is_default_path =
-        config_path_str == argv::DEFAULT_YAML_FILE || config_path == argv::default_conf_file();
-    let does_default_exist =
-        Path::new(argv::DEFAULT_YAML_FILE).exists() || argv::default_conf_file().exists();
-
-    if is_default_path && does_default_exist {
-        print!("from default conf, ");
-    } else if config_path.exists() {
-        print!("from config ({}), ", config_path.display());
-    } else {
-        print!("from ")
+fn print_settings(raw_config: &RawConfig) -> Result<(), ConfigError> {
+    // print agent env vars
+    let env_config: String = env_vars::ENV_VARS_LIST
+        .iter()
+        .chain(env_vars::DEPRECATED_ENV_VARS_LIST.iter())
+        .chain(["RUST_LOG"].iter())
+        .filter_map(|&key| {
+            std::env::var(key).ok().map(|value| {
+                if key.contains("KEY") || key.contains("PIN") {
+                    format!("{}=REDACTED", key)
+                } else {
+                    format!("{}={}", key, value)
+                }
+            })
+        })
+        .collect::<Vec<String>>()
+        .join("\n");
+    info!("env vars: \n{}\n", env_config);
+    // get config as yaml string
+    let mut tmp_config = raw_config.clone();
+    if let Some(ref mut key) = tmp_config.http.ingestion_key {
+        *key = "REDACTED".to_string();
     }
-
-    println!("environment variables and command line options in yaml format");
-
-    println!("{}", yaml);
-    std::process::exit(0);
+    let yaml_str = match serde_yaml::to_string(&tmp_config) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(ConfigError::Serde(e));
+        }
+    };
+    info!("effective configuration:\n{}", yaml_str);
+    Ok(())
 }
 
 fn parse_k8s_enum_config_or_warn<T: FromStr + std::fmt::Display + std::fmt::Debug>(
@@ -753,22 +760,24 @@ mod tests {
             .open(&path)
             .unwrap();
 
+        env::remove_var("LOGDNA_INGESTION_KEY");
+        env::remove_var("MZ_INGESTION_KEY");
+        env::remove_var(env_vars::INGESTION_KEY_ALTERNATE);
+        env::remove_var(env_vars::INCLUSION_RULES_DEPRECATED);
+
         let _ = guard(file, |mut file| {
             let args = vec![OsString::new()];
             serde_yaml::to_writer(&mut file, &RawConfig::default()).unwrap();
             file.flush().unwrap();
 
-            env::remove_var(env_vars::INGESTION_KEY);
-            env::remove_var(env_vars::INGESTION_KEY_ALTERNATE);
-            env::remove_var(env_vars::INCLUSION_RULES_DEPRECATED);
             env::set_var(env_vars::CONFIG_FILE, path);
 
-            Config::process_logdna_env_vars();
-
+            // invalid config - no key
             assert!(Config::new(args.clone()).is_err());
 
             env::set_var(env_vars::INGESTION_KEY, "ingestion_key_test");
 
+            // valid config
             assert!(Config::new(args.clone()).is_ok());
 
             let old_len = Config::new(args.clone())
