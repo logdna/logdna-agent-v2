@@ -12,6 +12,7 @@ members = [
     "common/notify_stream",
     "common/misc/rate-limit",
     "common/misc/rate-limit/macro",
+    "common/consts",
     "api",
     "utils/metrics-recorder",
 ]

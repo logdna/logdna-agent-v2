@@ -11,6 +11,7 @@ integration_tests = []
 #local
 fs = { package = "fs", path = "../fs" }
 http = { package = "mz-http", path = "../http" }
+consts  = { package = "consts", path = "../consts" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"

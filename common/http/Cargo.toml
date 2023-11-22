@@ -10,6 +10,7 @@ integration_tests = []
 [dependencies]
 #local
 metrics = { package = "metrics", path = "../metrics" }
+consts = { package = "consts", path = "../consts" }
 state = { package = "state", path = "../state", default-features=false }
 rate-limit-macro = { package = "rate-limit-macro", path = "../misc/rate-limit/macro" }
 

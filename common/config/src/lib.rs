@@ -165,8 +165,7 @@ impl Config {
             }
             Err(e) => {
                 debug!("config file could not be parsed: {:?}", e);
-                info!("using settings defined in env variables and command line options");
-                RawConfig::default()
+                std::process::exit(consts::exit_codes::EINVAL);
             }
         };
 

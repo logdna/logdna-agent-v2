@@ -10,6 +10,7 @@ integration_tests = []
 [dependencies]
 #local
 http = { package = "mz-http", path = "../http" }
+consts = { package = "consts", path = "../consts" }
 metrics = { package = "metrics", path = "../metrics" }
 state = { package = "state", path = "../state", default-features=false }
 notify_stream = { package = "notify_stream", path = "../notify_stream" }

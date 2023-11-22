@@ -254,7 +254,7 @@ pub async fn _main(
             Ok(v) => executor.register(v),
             Err(e) => {
                 error!("k8s line rule is invalid {}", e);
-                std::process::exit(1);
+                std::process::exit(consts::exit_codes::EINVAL);
             }
         }
     }
@@ -877,7 +877,7 @@ pub async fn _main(
                             "Agent process has hit the limit of maximum number of open files. \
                             Try to increase the Open Files system limit."
                                     );
-                                    std::process::exit(24);
+                                    std::process::exit(consts::exit_codes::EMFILE);
                                 }
                             }
                         }
