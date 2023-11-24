@@ -107,7 +107,7 @@ fn test_list_config_from_conf() -> io::Result<()> {
     let output = from_utf8(&output.stderr).unwrap();
 
     [
-        "using settings from config file, env vars and command line options",
+        "using settings from config file, environment variables and command line options",
         "ingestion_key: REDACTED",
         "tags: production",
         config_file_path.to_string_lossy().as_ref(),
@@ -170,10 +170,10 @@ startup: {{}}
     assert!(output.status.success());
 
     let output = from_utf8(&output.stderr).unwrap();
-    assert!(
-        contains("using settings from default config file, env vars and command line options")
-            .eval(output)
-    );
+    assert!(contains(
+        "using settings from default config file, environment variables and command line options"
+    )
+    .eval(output));
     assert!(contains("host: newhost.logdna.test").eval(output));
     assert!(contains("- /a/regex/exclude").eval(output));
 
@@ -208,7 +208,9 @@ fn test_list_config_from_env() -> io::Result<()> {
         .unwrap();
     assert!(output.status.success());
     let output = from_utf8(&output.stderr).unwrap();
-    assert!(contains("using settings from env vars and command line options").eval(output));
+    assert!(
+        contains("using settings from environment variables and command line options").eval(output)
+    );
     assert!(contains("ingestion_key: REDACTED").eval(output));
     assert!(contains("tags: sample_env_tag").eval(output));
 
@@ -220,12 +222,14 @@ fn test_list_config_from_env() -> io::Result<()> {
 fn test_list_config_no_options() -> io::Result<()> {
     let mut cmd = get_bin_command();
     let result = cmd.env_clear().arg("-l").output();
-    assert!(!result.is_err());
+    assert!(result.is_ok());
     let output = result.unwrap();
     // config is missing key
     assert!(!output.status.success());
     let output = from_utf8(&output.stderr).unwrap();
-    assert!(contains("using settings from env vars and command line options").eval(output));
+    assert!(
+        contains("using settings from environment variables and command line options").eval(output)
+    );
     assert!(contains("Configuration error: http.ingestion_key is missing").eval(output));
 
     Ok(())
@@ -245,10 +249,10 @@ fn test_list_default_conf() -> io::Result<()> {
 
     assert!(output.status.success());
     let output = from_utf8(&output.stderr).unwrap();
-    assert!(
-        contains("using settings from default config file, env vars and command line options")
-            .eval(output)
-    );
+    assert!(contains(
+        "using settings from default config file, environment variables and command line options"
+    )
+    .eval(output));
     assert!(contains("ingestion_key: REDACTED").eval(output));
     assert!(contains("tags: sample_tag_on_conf").eval(output));
 

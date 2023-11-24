@@ -160,15 +160,17 @@ impl Config {
             Path::new(argv::DEFAULT_YAML_FILE).exists() || argv::default_conf_file().exists();
         let raw_config = if is_default_path {
             if does_default_exist {
-                info!("using settings from default config file, env vars and command line options");
+                info!("using settings from default config file, environment variables and command line options");
                 RawConfig::parse(&config_path).map_err(ConfigError::MultipleErrors)?
             } else {
-                info!("using settings from env vars and command line options");
+                info!("using settings from environment variables and command line options");
                 // Non-existing default config yields default RawConfig
                 RawConfig::default()
             }
         } else {
-            info!("using settings from config file, env vars and command line options");
+            info!(
+                "using settings from config file, environment variables and command line options"
+            );
             RawConfig::parse(&config_path).map_err(ConfigError::MultipleErrors)?
         };
 
@@ -491,7 +493,7 @@ fn print_settings(raw_config: &RawConfig) -> Result<(), ConfigError> {
         })
         .collect::<Vec<String>>()
         .join("\n");
-    info!("env vars: \n{}\n", env_config);
+    info!("environment variables: \n{}\n", env_config);
     // get config as yaml string
     let mut tmp_config = raw_config.clone();
     if let Some(ref mut key) = tmp_config.http.ingestion_key {
