@@ -184,14 +184,15 @@ startup: {{}}
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_ibm_legacy_host_env_var() {
     let mut cmd = get_bin_command();
-    let output: Output = cmd
+    let result = cmd
         .env_clear()
         .env("LOGDNA_LOGHOST", "other.api.logdna.test")
         .arg("-l")
-        .unwrap();
-
-    assert!(output.status.success());
-
+        .output();
+    assert!(result.is_ok());
+    let output = result.unwrap();
+    // config is missing key
+    assert!(!output.status.success());
     let output = from_utf8(&output.stderr).unwrap();
     assert!(contains("host: other.api.logdna.test").eval(output));
 }
