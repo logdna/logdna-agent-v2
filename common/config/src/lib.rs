@@ -12,7 +12,7 @@ use std::str::FromStr;
 use std::time::Duration;
 use strum::{Display, EnumString};
 use sysinfo::{RefreshKind, System, SystemExt};
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 use async_compression::Level;
 
@@ -22,7 +22,7 @@ use fs::tail::DirPathBuf;
 use http::types::params::Params;
 use http::types::request::{Encoding, RequestTemplate, Schema};
 
-use crate::argv::ArgumentOptions;
+pub use crate::argv::ArgumentOptions;
 use crate::error::ConfigError;
 use crate::raw::Config as RawConfig;
 
@@ -150,13 +150,7 @@ const LOGDNA_PREFIX: &str = "LOGDNA_";
 const MEZMO_PREFIX: &str = "MZ_";
 
 impl Config {
-    pub fn new<I>(args: I) -> Result<Self, ConfigError>
-    where
-        I: IntoIterator,
-        I::Item: Into<OsString> + Clone,
-    {
-        let argv_options = ArgumentOptions::from_args_with_all_env_vars(args);
-        let print_settings_and_exit = argv_options.list_settings;
+    pub fn new_from_options(argv_options: ArgumentOptions) -> Result<Self, ConfigError> {
         let config_path = argv_options.config.clone();
 
         let config_path_str = config_path.to_string_lossy();
@@ -167,14 +161,7 @@ impl Config {
         let raw_config = if is_default_path {
             if does_default_exist {
                 info!("using settings from default config file, env vars and command line options");
-                RawConfig::parse(&config_path).unwrap_or_else(|e| {
-                    error!(
-                        "config file {} could not be parsed: {:?}",
-                        config_path.display(),
-                        e
-                    );
-                    std::process::exit(consts::exit_codes::EINVAL);
-                })
+                RawConfig::parse(&config_path).map_err(ConfigError::MultipleErrors)?
             } else {
                 info!("using settings from env vars and command line options");
                 // Non-existing default config yields default RawConfig
@@ -182,14 +169,7 @@ impl Config {
             }
         } else {
             info!("using settings from config file, env vars and command line options");
-            RawConfig::parse(&config_path).unwrap_or_else(|e| {
-                error!(
-                    "config file {} could not be parsed: {:?}",
-                    config_path.display(),
-                    e
-                );
-                std::process::exit(consts::exit_codes::EINVAL);
-            })
+            RawConfig::parse(&config_path).map_err(ConfigError::MultipleErrors)?
         };
 
         // Merge with cmd line and env options into raw_config
@@ -197,11 +177,17 @@ impl Config {
 
         // print effective config
         print_settings(&raw_config)?;
-        if print_settings_and_exit {
-            std::process::exit(0);
-        }
 
         Config::try_from(raw_config)
+    }
+
+    pub fn new<I>(args: I) -> Result<Self, ConfigError>
+    where
+        I: IntoIterator,
+        I::Item: Into<OsString> + Clone,
+    {
+        let argv_options = ArgumentOptions::from_args_with_all_env_vars(args);
+        Config::new_from_options(argv_options)
     }
 
     pub fn process_logdna_env_vars() {

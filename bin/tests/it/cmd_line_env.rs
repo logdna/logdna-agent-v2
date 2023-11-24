@@ -219,10 +219,14 @@ fn test_list_config_from_env() -> io::Result<()> {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_list_config_no_options() -> io::Result<()> {
     let mut cmd = get_bin_command();
-    let output: Output = cmd.env_clear().arg("-l").unwrap();
-    assert!(output.status.success());
+    let result = cmd.env_clear().arg("-l").output();
+    assert!(!result.is_err());
+    let output = result.unwrap();
+    // config is missing key
+    assert!(!output.status.success());
     let output = from_utf8(&output.stderr).unwrap();
     assert!(contains("using settings from env vars and command line options").eval(output));
+    assert!(contains("Configuration error: http.ingestion_key is missing").eval(output));
 
     Ok(())
 }

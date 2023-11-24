@@ -1,6 +1,6 @@
 use futures::Stream;
 
-use config::{self, Config, DbPath, K8sLeaseConf, K8sTrackingConf};
+use config::{self, ArgumentOptions, Config, DbPath, K8sLeaseConf, K8sTrackingConf};
 use fs::lookback::Lookback;
 use fs::tail;
 use futures::{stream, StreamExt};
@@ -79,10 +79,17 @@ pub async fn _main(
     dep_audit::get_auditable_dependency_list()
         .map_or_else(|e| trace!("{}", e), |d| trace!("{}", d));
 
-    let config = Config::new(std::env::args_os()).map_err(|e| {
-        error!("config error: {}", e);
-        e
-    })?;
+    let args = std::env::args_os();
+    let argv_options = ArgumentOptions::from_args_with_all_env_vars(args);
+    let print_settings_and_exit = argv_options.list_settings;
+    let config = Config::new_from_options(argv_options).unwrap_or_else(|e| {
+        error!("Configuration error: {}", e);
+        // config errors are fatal
+        std::process::exit(consts::exit_codes::EINVAL);
+    });
+    if print_settings_and_exit {
+        std::process::exit(0);
+    }
 
     tokio::spawn(async {
         Metrics::log_periodically().await;
