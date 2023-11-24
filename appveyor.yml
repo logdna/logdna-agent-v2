@@ -25,9 +25,10 @@ install:
   - cargo -vV
   - rustup component add llvm-tools-preview --toolchain stable-x86_64-pc-windows-msvc
   - cargo install cargo-llvm-cov
+  - cargo install cargo-nextest
 
 test_script:
-  - cargo llvm-cov --html
+  - cargo llvm-cov nextest --html
 
 artifacts:
   - path: target/llvm-cov/html/index.html
