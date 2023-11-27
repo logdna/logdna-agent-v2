@@ -107,7 +107,7 @@ impl Retry {
                     "Invalid Retry Directory: '{:?}'. Check configuration!",
                     self.directory
                 );
-                std::process::exit(e.raw_os_error().unwrap_or(255));
+                std::process::exit(consts::exit_codes::ENOTDIR);
             }
             Ok(mut files) => {
                 while let Some(file) = files.next_entry().await? {

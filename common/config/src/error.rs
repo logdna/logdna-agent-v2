@@ -5,6 +5,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
+    MultipleErrors(Vec<ConfigError>),
     MissingField(&'static str),
     MissingFieldOrEnvVar(&'static str, &'static str),
     Io(io::Error),
@@ -21,6 +22,7 @@ pub enum ConfigError {
 impl Display for ConfigError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         match self {
+            ConfigError::MultipleErrors(vector) => write!(f, "{:?}", vector),
             ConfigError::MissingField(field) => write!(f, "{} is a required field", field),
             ConfigError::MissingFieldOrEnvVar(field, vars) => {
                 write!(

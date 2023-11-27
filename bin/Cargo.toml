@@ -36,6 +36,7 @@ journald = { package = "journald", path = "../common/journald" }
 state = { package = "state", path = "../common/state" }
 api = { package = "api", path = "../api" }
 rate-limit-macro = { package = "rate-limit-macro", path = "../common/misc/rate-limit/macro" }
+consts = { package = "consts", path = "../common/consts" }
 
 bytes = "1"
 time = "0.3"

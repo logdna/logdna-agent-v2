@@ -24,8 +24,8 @@ fn test_command_line_arguments_help() {
     let mut cmd = get_bin_command();
     let output: Output = cmd.env_clear().arg("--help").unwrap();
     assert!(output.status.success());
-    let stdout = from_utf8(&output.stdout).unwrap();
-    debug!("agent stdout:\n{:?}", stdout);
+    let output = from_utf8(&output.stdout).unwrap();
+    debug!("agent output:\n{:?}", output);
 
     vec![
         // Check the version is printed in the help
@@ -71,7 +71,7 @@ fn test_command_line_arguments_help() {
     ]
     .iter()
     .for_each(|m| {
-        assert!(contains(*m).eval(stdout), "Not found: {}", *m);
+        assert!(contains(*m).eval(output), "Not found: {}", *m);
     });
 }
 
@@ -81,9 +81,9 @@ fn test_version_is_included() {
     let mut cmd = get_bin_command();
     let output = cmd.env_clear().arg("--version").unwrap();
     assert!(output.status.success());
-    let stdout = from_utf8(&output.stdout).unwrap();
+    let output = from_utf8(&output.stdout).unwrap();
     assert_eq!(
-        stdout,
+        output,
         format!("LogDNA Agent {}\n", env!("CARGO_PKG_VERSION"))
     );
 }
@@ -104,18 +104,17 @@ fn test_list_config_from_conf() -> io::Result<()> {
         .arg("-l")
         .unwrap();
     assert!(output.status.success());
-    let stdout = from_utf8(&output.stdout).unwrap();
+    let output = from_utf8(&output.stderr).unwrap();
 
     [
-        "Listing current settings from config",
-        ", environment variables and command line options in yaml format",
+        "using settings from config file, environment variables and command line options",
         "ingestion_key: REDACTED",
         "tags: production",
         config_file_path.to_string_lossy().as_ref(),
     ]
     .iter()
     .for_each(|m| {
-        assert!(contains(*m).eval(stdout));
+        assert!(contains(*m).eval(output));
     });
 
     Ok(())
@@ -170,10 +169,13 @@ startup: {{}}
     let output: Output = cmd.env_clear().arg("-l").unwrap();
     assert!(output.status.success());
 
-    let stdout = from_utf8(&output.stdout).unwrap();
-    assert!(contains("Listing current settings from default conf, environment variables and command line options in yaml format").eval(stdout));
-    assert!(contains("host: newhost.logdna.test").eval(stdout));
-    assert!(contains("- /a/regex/exclude").eval(stdout));
+    let output = from_utf8(&output.stderr).unwrap();
+    assert!(contains(
+        "using settings from default config file, environment variables and command line options"
+    )
+    .eval(output));
+    assert!(contains("host: newhost.logdna.test").eval(output));
+    assert!(contains("- /a/regex/exclude").eval(output));
 
     Ok(())
 }
@@ -182,16 +184,17 @@ startup: {{}}
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_ibm_legacy_host_env_var() {
     let mut cmd = get_bin_command();
-    let output: Output = cmd
+    let result = cmd
         .env_clear()
         .env("LOGDNA_LOGHOST", "other.api.logdna.test")
         .arg("-l")
-        .unwrap();
-
-    assert!(output.status.success());
-
-    let stdout = from_utf8(&output.stdout).unwrap();
-    assert!(contains("host: other.api.logdna.test").eval(stdout));
+        .output();
+    assert!(result.is_ok());
+    let output = result.unwrap();
+    // config is missing key
+    assert!(!output.status.success());
+    let output = from_utf8(&output.stderr).unwrap();
+    assert!(contains("host: other.api.logdna.test").eval(output));
 }
 
 #[test]
@@ -205,10 +208,12 @@ fn test_list_config_from_env() -> io::Result<()> {
         .arg("-l")
         .unwrap();
     assert!(output.status.success());
-    let stdout = from_utf8(&output.stdout).unwrap();
-    assert!(contains("Listing current settings from environment variables and command line options in yaml format").eval(stdout));
-    assert!(contains("ingestion_key: REDACTED").eval(stdout));
-    assert!(contains("tags: sample_env_tag").eval(stdout));
+    let output = from_utf8(&output.stderr).unwrap();
+    assert!(
+        contains("using settings from environment variables and command line options").eval(output)
+    );
+    assert!(contains("ingestion_key: REDACTED").eval(output));
+    assert!(contains("tags: sample_env_tag").eval(output));
 
     Ok(())
 }
@@ -217,10 +222,16 @@ fn test_list_config_from_env() -> io::Result<()> {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_list_config_no_options() -> io::Result<()> {
     let mut cmd = get_bin_command();
-    let output: Output = cmd.env_clear().arg("-l").unwrap();
-    assert!(output.status.success());
-    let stdout = from_utf8(&output.stdout).unwrap();
-    assert!(contains("Listing current settings from environment variables and command line options in yaml format").eval(stdout));
+    let result = cmd.env_clear().arg("-l").output();
+    assert!(result.is_ok());
+    let output = result.unwrap();
+    // config is missing key
+    assert!(!output.status.success());
+    let output = from_utf8(&output.stderr).unwrap();
+    assert!(
+        contains("using settings from environment variables and command line options").eval(output)
+    );
+    assert!(contains("Configuration error: http.ingestion_key is missing").eval(output));
 
     Ok(())
 }
@@ -238,10 +249,13 @@ fn test_list_default_conf() -> io::Result<()> {
     fs::remove_file(file_path)?;
 
     assert!(output.status.success());
-    let stdout = from_utf8(&output.stdout).unwrap();
-    assert!(contains("Listing current settings from default conf, environment variables and command line options in yaml format").eval(stdout));
-    assert!(contains("ingestion_key: REDACTED").eval(stdout));
-    assert!(contains("tags: sample_tag_on_conf").eval(stdout));
+    let output = from_utf8(&output.stderr).unwrap();
+    assert!(contains(
+        "using settings from default config file, environment variables and command line options"
+    )
+    .eval(output));
+    assert!(contains("ingestion_key: REDACTED").eval(output));
+    assert!(contains("tags: sample_tag_on_conf").eval(output));
 
     Ok(())
 }
