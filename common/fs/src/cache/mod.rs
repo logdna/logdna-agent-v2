@@ -705,7 +705,7 @@ impl FileSystem {
                             "Agent process has hit the limit of maximum number of open files. \
                             Try to increase the Open Files system limit."
                         );
-                        std::process::exit(24);
+                        std::process::exit(consts::exit_codes::EMFILE);
                     }
                 }
                 Error::Rescan => {
@@ -1051,7 +1051,7 @@ impl FileSystem {
                                     error!(
                             "Agent process has hit the upper limit of files it's allowed to open"
                         );
-                                    std::process::exit(24);
+                                    std::process::exit(consts::exit_codes::EMFILE);
                                 }
                             }
                             _ => {

@@ -520,6 +520,7 @@ name = "config"
 version = "0.1.0"
 dependencies = [
  "async-compression",
+ "consts",
  "fs",
  "glob",
  "humanize-rs",
@@ -558,6 +559,10 @@ dependencies = [
  "once_cell",
  "tiny-keccak",
 ]
+
+[[package]]
+name = "consts"
+version = "1.0.0"
 
 [[package]]
 name = "core-foundation"
@@ -1062,6 +1067,7 @@ dependencies = [
  "async-channel",
  "async-trait",
  "bytes",
+ "consts",
  "countme 3.0.1",
  "env_logger",
  "futures",
@@ -1953,6 +1959,7 @@ dependencies = [
  "bytes",
  "capctl",
  "config",
+ "consts",
  "dhat",
  "env_logger",
  "escargot",
@@ -2232,6 +2239,7 @@ dependencies = [
  "async-compat",
  "async-compression",
  "bytes",
+ "consts",
  "crossbeam",
  "futures",
  "futures-timer",

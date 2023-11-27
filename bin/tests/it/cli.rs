@@ -38,7 +38,7 @@ fn api_key_missing() {
         .env("RUST_LOG", "debug")
         .assert()
         .stderr(predicate::str::contains(
-            "config error: http.ingestion_key is missing",
+            "Configuration error: http.ingestion_key is missing",
         ))
         .failure();
 }

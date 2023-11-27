@@ -11,7 +11,7 @@ use std::fs::File;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::vec::Vec;
-use tracing::{debug, error};
+use tracing::{error, info};
 
 pub fn filesize_deser<'de, D>(d: D) -> Result<Option<u64>, D::Error>
 where
@@ -97,10 +97,10 @@ fn try_load_confs<'a>(
     paths.iter().map(|path| {
         let conf_file = File::open(path)?;
         if let Ok(legacy_conf) = properties::read_file(&conf_file) {
-            debug!("loading {} as a properties file", path.display());
+            info!("loading {} as a properties file", path.display());
             return Ok(legacy_conf);
         }
-        debug!("loading {} as a yaml file", path.display());
+        info!("loading {} as a yaml file", path.display());
         let config_path = path.to_slash_lossy();
         let subst_vars = [("THIS_CONFIG_FILE".to_string(), config_path.to_string())];
         let content = std::fs::read_to_string(path)?;

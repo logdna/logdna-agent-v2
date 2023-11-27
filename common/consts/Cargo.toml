@@ -1,0 +1,11 @@
+[package]
+name = "consts"
+description = "Various common constants"
+version = "1.0.0"
+authors = ["Dmitri Khokhlov <dkhokhlov@gmail.com>"]
+edition = "2018"
+license = "MIT"
+
+[dependencies]
+
+[dev-dependencies]
