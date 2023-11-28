@@ -262,6 +262,79 @@ fn test_append_and_move() {
     agent_handle.kill().expect("Could not kill process");
 }
 
+#[tokio::test]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+async fn test_reuse_inode() {
+    let dir1 = tempdir().expect("Could not create temp dir").into_path();
+    let dir2 = tempdir().expect("Could not create temp dir").into_path();
+    let file_path = dir1.join("file1.log");
+    let mv_path = dir2.join("file1.log");
+    let total_lines = 500;
+
+    let db_dir = tempdir().unwrap().into_path();
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+
+    let mut settings = AgentSettings::with_mock_ingester(dir1.to_str().unwrap(), &addr);
+    settings.state_db_dir = Some(&db_dir);
+    settings.lookback = Some("start");
+    settings.exclusion_regex = Some(r"/var\w*");
+    settings.log_level = Some("info,fs::cache=trace");
+
+    let (server_result, _) = tokio::join!(server, async {
+        let mut agent_handle = common::spawn_agent(settings);
+        let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
+
+        let _ = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(&file_path)
+            .unwrap();
+        common::wait_for_file_event("initialize", &file_path, &mut stderr_reader);
+        common::append_to_file(&file_path, 300, 300).expect("Could not append");
+        common::force_client_to_flush(&dir1).await;
+
+        // Move the file and truncate+append to simulate creating a new file with the same inode
+        fs::rename(&file_path, &mv_path).expect("Could not rename file");
+        common::truncate_file(&mv_path).expect("Could not truncate file");
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        common::append_to_file(&mv_path, 200, 200).expect("Could not append");
+        fs::rename(&mv_path, &file_path).expect("Could not rename file");
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        common::force_client_to_flush(&dir1).await;
+        consume_output(stderr_reader.into_inner());
+
+        // Wait for agent to process lines
+        tokio::time::sleep(tokio::time::Duration::from_millis(1_500)).await;
+
+        let mut file_info = FileInfo::default();
+        let map_key = file_path.to_str().unwrap();
+
+        for _ in 0..10 {
+            let map = received.lock().await;
+            file_info = map.get(map_key).unwrap_or(&file_info).clone();
+            // Avoid awaiting while holding the lock
+            drop(map);
+
+            if file_info.lines < total_lines {
+                // Wait for the data to be received by the mock ingester
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                continue;
+            }
+            break;
+        }
+
+        assert_eq!(file_info.values.len(), total_lines);
+
+        common::assert_agent_running(&mut agent_handle);
+
+        agent_handle.kill().expect("Could not kill process");
+        shutdown_handle();
+    });
+    server_result.unwrap()
+}
+
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]

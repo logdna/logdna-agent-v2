@@ -867,11 +867,11 @@ impl FileSystem {
                 None
             }
         }
+        let file_len = path.metadata().map(|m| m.len()).unwrap_or(0);
         let default_offset = match self.lookback_config {
             Lookback::Start => SpanVec::new(),
             Lookback::SmallFiles => {
                 // Check the actual file len
-                let file_len = path.metadata().map(|m| m.len()).unwrap_or(0);
                 let smallfiles_offset = if file_len < 8192 {
                     SpanVec::new()
                 } else {
@@ -885,7 +885,6 @@ impl FileSystem {
                 .unwrap_or_default(),
             Lookback::Tail => {
                 let mut should_lookback = false;
-                let file_len = path.metadata().map(|m| m.len()).unwrap_or(0);
 
                 if let Ok(metadata) = path.metadata() {
                     if let Ok(file_create_time) = metadata.created() {
@@ -908,7 +907,24 @@ impl FileSystem {
                 tail_offset
             }
         };
-        _lookup_offset(&self.initial_offsets, &inode, path).unwrap_or(default_offset)
+
+        let offsets = match _lookup_offset(&self.initial_offsets, &inode, path) {
+            Some(saved_offset) => {
+                if saved_offset[0].end > file_len {
+                    warn!("inconsistent saved offsets");
+                    default_offset
+                } else {
+                    saved_offset
+                }
+            }
+            None => default_offset,
+        };
+
+        info!(
+            "initializing offset for {:?} to {:?} ({})",
+            path, offsets, self.lookback_config
+        );
+        offsets
     }
 
     pub fn resolve_valid_paths(&self, entry: &Entry, entries: &EntryMap) -> SmallVec<[PathBuf; 4]> {

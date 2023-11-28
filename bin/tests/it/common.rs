@@ -62,10 +62,9 @@ pub async fn force_client_to_flush(dir_path: &Path) {
 #[cfg(not(target_os = "macos"))]
 pub fn truncate_file(file_path: &Path) -> Result<(), std::io::Error> {
     OpenOptions::new()
-        .read(true)
         .write(true)
-        .open(file_path)?
-        .set_len(0)?;
+        .truncate(true)
+        .open(file_path)?;
     Ok(())
 }
 
