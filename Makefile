@@ -450,8 +450,8 @@ build-image-debug: ## Build a docker image as specified in the Dockerfile.debug
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
 		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
 
-.PHONY:build-image-stress-test
-build-image-stress-test: ## Build a docker image as specified in the Dockerfile
+.PHONY:build-stress-test-image
+build-stress-test-image: ## Build a docker image as specified in the Dockerfile
 	$(DOCKER) build ./utils/stress_test -t $(REPO)-stress-test:$(IMAGE_TAG) \
 		$(PULL_OPTS) \
 		--progress=plain \
@@ -644,12 +644,12 @@ define publish_images
 	$(eval VCS_REF_BUILD_NUMBER_SHA:=$(shell echo "$(VCS_REF)$(BUILD_NUMBER)" | sha256sum | head -c 16))
 	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(VCS_REF_BUILD_NUMBER_SHA) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
 	@set -e; \
-	arch=$(shell docker inspect --format "{{.Architecture}}" $(REPO):$(IMAGE_TAG)); \
+	arch=$(shell docker inspect --format "{{.Architecture}}" $(REPO)$(2):$(IMAGE_TAG)); \
 	arr=($(TARGET_VERSIONS)); \
 	for version in $${arr[@]}; do \
-		echo "$(REPO):$(IMAGE_TAG) -> $(1):$${version}-$${arch}"; \
-		$(DOCKER) tag $(REPO):$(IMAGE_TAG) $(1):$${version}-$${arch}; \
-		$(DOCKER) push $(1):$${version}-$${arch}; \
+		echo "$(REPO)$(2):$(IMAGE_TAG) -> $(1)$(2):$${version}-$${arch}"; \
+		$(DOCKER) tag $(REPO):$(IMAGE_TAG) $(1)$(2):$${version}-$${arch}; \
+		$(DOCKER) push $(1)$(2):$${version}-$${arch}; \
 	done;
 endef
 
@@ -659,11 +659,11 @@ define publish_images_multi
 	@set -e; \
 	arr=($(TARGET_VERSIONS)); \
 	for version in $${arr[@]}; do \
-		echo "$(REPO):$(IMAGE_TAG) -> $(1):$${version}"; \
-		$(DOCKER) manifest create $(1):$${version} \
-			--amend $(1):$${version}-arm64 \
-			--amend $(1):$${version}-amd64; \
-		$(DOCKER) manifest push $(1):$${version}; \
+		echo "$(REPO)$(2):$(IMAGE_TAG) -> $(1)$(2):$${version}"; \
+		$(DOCKER) manifest create $(1)$(2):$${version} \
+			--amend $(1)$(2):$${version}-arm64 \
+			--amend $(1)$(2):$${version}-amd64; \
+		$(DOCKER) manifest push $(1)$(2):$${version}; \
 	done;
 endef
 
@@ -696,6 +696,38 @@ publish-image-multi-docker: ## Publish multi-arch container images to docker hub
 .PHONY:publish-image-multi-ibm
 publish-image-multi-ibm: ## Publish multi-arch container images to icr
 	$(call publish_images_multi,$(DOCKER_IBM_IMAGE))
+
+
+.PHONY: publish-stress-test-image
+publish-stress-test-image: publish-stress-test-image-gcr publish-stress-test-image-docker # publish-stress-test-image-multi-ibm ## Publish SemVer compliant releases to our registries
+
+.PHONY:publish-stress-test-image-gcr
+publish-image-gcr: ## Publish SemVer compliant releases to gcr
+	$(call publish_images,$(DOCKER_PRIVATE_IMAGE),'-stress-test')
+
+.PHONY:publish-stress-test-image-docker
+publish-image-docker: ## Publish SemVer compliant releases to docker hub
+	$(call publish_images,$(DOCKER_PUBLIC_IMAGE),'-stress-test')
+
+.PHONY:publish-stress-test-image-ibm
+publish-image-ibm: ## Publish SemVer compliant releases to icr
+	$(call publish_images,$(DOCKER_IBM_IMAGE),'-stress-test')
+
+.PHONY: publish-stress-test-image-multi
+publish-stress-test-image-multi: publish-stress-test-image-multi-gcr publish-stress-test-image-multi-docker # publish-stress-test-image-multi-ibm ## Publish multi-arch SemVer compliant releases to our registries
+
+.PHONY:publish-image-multi-gcr
+publish-image-multi-gcr: ## Publish multi-arch container images to gcr
+	$(call publish_images_multi,$(DOCKER_PRIVATE_IMAGE),'-stress-test')
+
+.PHONY:publish-stress-test-image-multi-docker
+publish-stress-test-image-multi-docker: ## Publish multi-arch container images to docker hub
+	$(call publish_images_multi,$(DOCKER_PUBLIC_IMAGE),'-stress-test')
+
+.PHONY:publish-stress-test-image-multi-ibm
+publish-stress-test-image-multi-ibm: ## Publish multi-arch container images to icr
+	$(call publish_images_multi,$(DOCKER_IBM_IMAGE),'-stress-test')
+
 
 .PHONY:run
 run: ## Run the debug version of the agent
