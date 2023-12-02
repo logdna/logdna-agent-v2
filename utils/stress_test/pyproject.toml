@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "logdna-agent-stress-test"
+version = "0.1.0"
+description = ""
+authors = ["Dmitri Khokhlov <dkhokhlov@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+flask = "~2"
+pyjson = "~1"
+ratelimiter = "~1"
+environs = "~8"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -13,6 +13,7 @@ from timeit import default_timer as timer
 import secrets
 import argparse
 from ratelimiter import RateLimiter
+from environs import Env
 
 REPORT_INTERVAL_S = 5
 
@@ -68,11 +69,11 @@ def request_logs_agent():
 
 
 def request_processor_loop(
-    request_queue: mp.Queue,
-    report_queue: mp.Queue,
-    test_id: str,
-    num_files: int,
-    main_pid: int,
+        request_queue: mp.Queue,
+        report_queue: mp.Queue,
+        test_id: str,
+        num_files: int,
+        main_pid: int,
 ):
     test_sequences = {}
     num_unrecognized_lines = 0
@@ -91,14 +92,14 @@ def request_processor_loop(
                 writer_reports[report["seq_id"]] = report
             # check test status, report stats and stop test if completed
             if check_test_state(
-                test_id,
-                test_sequences,
-                num_files,
-                start_ts,
-                first_line_ts,
-                num_unrecognized_lines,
-                writer_reports,
-                received_line_bytes,
+                    test_id,
+                    test_sequences,
+                    num_files,
+                    start_ts,
+                    first_line_ts,
+                    num_unrecognized_lines,
+                    writer_reports,
+                    received_line_bytes,
             ):
                 log.info(f"FINISHED in {timer() - start_ts:.0f} sec")
                 os.kill(main_pid, signal.SIGINT)
@@ -137,14 +138,14 @@ def request_processor_loop(
 
 
 def check_test_state(
-    test_id: str,
-    test_sequences: typing.Dict[str, TestSeq],
-    num_files: int,
-    start_ts: float,
-    first_line_ts: float,
-    num_unrecognized_lines: int,
-    writer_reports: dict,
-    received_line_bytes: int,
+        test_id: str,
+        test_sequences: typing.Dict[str, TestSeq],
+        num_files: int,
+        start_ts: float,
+        first_line_ts: float,
+        num_unrecognized_lines: int,
+        writer_reports: dict,
+        received_line_bytes: int,
 ) -> bool:
     num_total_seq = num_files
     num_received_seq = 0
@@ -164,14 +165,14 @@ def check_test_state(
         num_received_lines = num_received_lines + len(seq.line_ids)
         if len(seq.line_ids) >= seq.total_lines:
             if (
-                len(set(seq.line_ids)) == seq.total_lines
-                and len(seq.line_ids) == seq.total_lines
+                    len(set(seq.line_ids)) == seq.total_lines
+                    and len(seq.line_ids) == seq.total_lines
             ):
                 num_completed_seq = num_completed_seq + 1
                 continue
             if len(set(seq.line_ids)) <= seq.total_lines:
                 num_duplicate_lines = (
-                    num_duplicate_lines + seq.total_lines - len(set(seq.line_ids))
+                        num_duplicate_lines + seq.total_lines - len(set(seq.line_ids))
                 )
     if first_line_ts:
         received_line_rate = num_received_lines / (timer() - first_line_ts)
@@ -196,12 +197,12 @@ def check_test_state(
 
 
 def log_writer_loop(
-    seq_id: str,
-    file_path: str,
-    report_queue: mp.Queue,
-    num_lines: int,
-    override_file: bool,
-    line_rate: int,
+        seq_id: str,
+        file_path: str,
+        report_queue: mp.Queue,
+        num_lines: int,
+        override_file: bool,
+        line_rate: int,
 ):
     # runs in separate process
     log = logging.getLogger(seq_id)
@@ -255,42 +256,48 @@ def assert_positive_integer(value_str: str) -> int:
 
 def main():
     global g_log
-    #
+    # get env vars
+    env = Env()
+    env.read_env()
+    # create arg parser
     parser = argparse.ArgumentParser(
         description="Agent Stress Test",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "log_dir", type=assert_log_dir, help="Directory where log files are stored."
+        "log_dir", type=assert_log_dir, help="Directory where log files are stored.",
+        default=env.path("ST_LOG_DIR", None),
     )
     parser.add_argument(
         "num_log_files",
         type=assert_positive_integer,
         help="Number of log files to use.",
+        default=env.int("ST_NUM_LOG_FILES", None),
     )
     parser.add_argument(
         "num_lines",
         type=assert_positive_integer,
         help="Number of lines to add to each log file.",
+        default=env.int("ST_NUM_LINES", None),
     )
     parser.add_argument(
         "--line_rate",
         type=assert_positive_integer,
-        help="Line rate per log file.",
-        default=1000,
+        help="Line rate per second per log file.",
+        default=env.int("ST_LINE_RATE", 1000),
     )
     parser.add_argument(
         "--port",
         type=assert_positive_integer,
         help="Ingestor web server port.",
-        default=7080,
+        default=env.int("ST_PORT", 7080),
     )
     parser.add_argument(
         "--override",
         help="Override existing log files.",
         dest="override_files",
         action="store_true",
-        default=False,
+        default=env.bool("ST_OVERRIDE_LOGS", False),
     )
     args = parser.parse_args()
     #
@@ -328,6 +335,7 @@ def main():
     ).start()
     g_log.info("starting ingestor web server")
     g_log.info(f"listening on port: {args.port}")
+    g_log.info(f"log dir: {args.log_dir}")
     app.run(host="0.0.0.0", port=args.port, threaded=True)
 
 

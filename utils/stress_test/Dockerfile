@@ -1,12 +1,12 @@
-FROM python:3.8-slim AS base
+FROM python:3.9-slim AS base
 
 WORKDIR /opt/stress_test
 
-RUN pip install --upgrade pip
-RUN pip install Flask
-RUN pip install ratelimiter
+COPY . .
 
-COPY stress_test.py .
+RUN pip install --upgrade pip
+RUN pip install poetry
+RUN poetry update
 
 # Create new user
 RUN groupadd -r appuser && useradd -r -g appuser appuser
