@@ -12,9 +12,9 @@ Stress test:
 
 1.1 start agent with env vars:
 ```
-export LOGDNA_LOG_DIRS=/home/dmitri/SOURCE/TMP/root/test
-export LOGDNA_HOST=localhost:7080
-export LOGDNA_USE_SSL=false
+export MZ_LOG_DIRS=/home/dmitri/SOURCE/TMP/root/test
+export MZ_HOST=localhost:7080
+export MZ_USE_SSL=false
 ```
 
 1.2 start test

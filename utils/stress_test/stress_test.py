@@ -201,14 +201,14 @@ def log_writer_loop(
         file_path: str,
         report_queue: mp.Queue,
         num_lines: int,
-        override_file: bool,
+        override: bool,
         line_rate: int,
 ):
     # runs in separate process
     log = logging.getLogger(seq_id)
     log.setLevel(logging.INFO)
     log.debug(f"open {file_path}")
-    if override_file:
+    if override:
         try:
             os.remove(file_path)
             time.sleep(0.1)
@@ -265,39 +265,39 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "log_dir", type=assert_log_dir, help="Directory where log files are stored.",
+        "log_dir", type=assert_log_dir, help="Directory where log files are stored. Env var ST_LOG_DIR.",
         default=env.path("ST_LOG_DIR", None),
     )
     parser.add_argument(
         "num_log_files",
         type=assert_positive_integer,
-        help="Number of log files to use.",
+        help="Number of log files to use. Env var ST_NUM_LOG_FILES.",
         default=env.int("ST_NUM_LOG_FILES", None),
     )
     parser.add_argument(
         "num_lines",
         type=assert_positive_integer,
-        help="Number of lines to add to each log file.",
+        help="Number of lines to add to each log file. Env var ST_NUM_LINES.",
         default=env.int("ST_NUM_LINES", None),
     )
     parser.add_argument(
         "--line_rate",
         type=assert_positive_integer,
-        help="Line rate per second per log file.",
+        help="Line rate per second per log file. Env var ST_LINE_RATE.",
         default=env.int("ST_LINE_RATE", 1000),
     )
     parser.add_argument(
         "--port",
         type=assert_positive_integer,
-        help="Ingestor web server port.",
+        help="Ingestor web server port. Env var ST_PORT.",
         default=env.int("ST_PORT", 7080),
     )
     parser.add_argument(
         "--override",
-        help="Override existing log files.",
-        dest="override_files",
+        help="Override existing log files. Env var ST_OVERRIDE.",
+        dest="override",
         action="store_true",
-        default=env.bool("ST_OVERRIDE_LOGS", False),
+        default=env.bool("ST_OVERRIDE", False),
     )
     args = parser.parse_args()
     #
@@ -316,7 +316,7 @@ def main():
                 file_path,
                 g_report_queue,
                 args.num_lines,
-                args.override_files,
+                args.override,
                 args.line_rate,
             ),
             daemon=True,
