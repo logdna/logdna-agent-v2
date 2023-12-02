@@ -634,7 +634,7 @@ define publish_images
 	arr=($(TARGET_VERSIONS)); \
 	for version in $${arr[@]}; do \
 		echo "$(REPO)$(2):$(IMAGE_TAG) -> $(1)$(2):$${version}-$${arch}"; \
-		$(DOCKER) tag $(REPO):$(IMAGE_TAG) $(1)$(2):$${version}-$${arch}; \
+		$(DOCKER) tag $(REPO)$(2):$(IMAGE_TAG) $(1)$(2):$${version}-$${arch}; \
 		$(DOCKER) push $(1)$(2):$${version}-$${arch}; \
 	done;
 endef
@@ -688,31 +688,31 @@ publish-image-multi-ibm: ## Publish multi-arch container images to icr
 publish-stress-test-image: publish-stress-test-image-gcr publish-stress-test-image-docker # publish-stress-test-image-multi-ibm ## Publish SemVer compliant releases to our registries
 
 .PHONY:publish-stress-test-image-gcr
-publish-image-gcr: ## Publish SemVer compliant releases to gcr
-	$(call publish_images,$(DOCKER_PRIVATE_IMAGE),'-stress-test')
+publish-stress-test-image-gcr: ## Publish SemVer compliant releases to gcr
+	$(call publish_images,$(DOCKER_PRIVATE_IMAGE),"-stress-test")
 
 .PHONY:publish-stress-test-image-docker
-publish-image-docker: ## Publish SemVer compliant releases to docker hub
-	$(call publish_images,$(DOCKER_PUBLIC_IMAGE),'-stress-test')
+publish-stress-test-image-docker: ## Publish SemVer compliant releases to docker hub
+	$(call publish_images,$(DOCKER_PUBLIC_IMAGE),"-stress-test")
 
 .PHONY:publish-stress-test-image-ibm
-publish-image-ibm: ## Publish SemVer compliant releases to icr
-	$(call publish_images,$(DOCKER_IBM_IMAGE),'-stress-test')
+publish-stress-test-image-ibm: ## Publish SemVer compliant releases to icr
+	$(call publish_images,$(DOCKER_IBM_IMAGE),"-stress-test")
 
 .PHONY: publish-stress-test-image-multi
 publish-stress-test-image-multi: publish-stress-test-image-multi-gcr publish-stress-test-image-multi-docker # publish-stress-test-image-multi-ibm ## Publish multi-arch SemVer compliant releases to our registries
 
-.PHONY:publish-image-multi-gcr
-publish-image-multi-gcr: ## Publish multi-arch container images to gcr
-	$(call publish_images_multi,$(DOCKER_PRIVATE_IMAGE),'-stress-test')
+.PHONY:publish-stress-test-image-multi-gcr
+publish-stress-test-image-multi-gcr: ## Publish multi-arch container images to gcr
+	$(call publish_images_multi,$(DOCKER_PRIVATE_IMAGE),"-stress-test")
 
 .PHONY:publish-stress-test-image-multi-docker
 publish-stress-test-image-multi-docker: ## Publish multi-arch container images to docker hub
-	$(call publish_images_multi,$(DOCKER_PUBLIC_IMAGE),'-stress-test')
+	$(call publish_images_multi,$(DOCKER_PUBLIC_IMAGE),"-stress-test")
 
 .PHONY:publish-stress-test-image-multi-ibm
 publish-stress-test-image-multi-ibm: ## Publish multi-arch container images to icr
-	$(call publish_images_multi,$(DOCKER_IBM_IMAGE),'-stress-test')
+	$(call publish_images_multi,$(DOCKER_IBM_IMAGE),"-stress-test")
 
 
 .PHONY:run
