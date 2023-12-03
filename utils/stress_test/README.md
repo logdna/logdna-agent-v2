@@ -10,15 +10,15 @@ Stress test:
 
 1. Running from shell
 
-1.1 start agent with env vars:
-```
+1.1 start agent with following env vars:
+```bash
 export MZ_LOG_DIRS=/home/dmitri/SOURCE/TMP/root/test
 export MZ_HOST=localhost:7080
 export MZ_USE_SSL=false
 ```
 
 1.2 start test
-```
+```bash
 $ python utils/stress_test/stress_test.py /home/dmitri/SOURCE/TMP/root/test 10 5000
 2023-10-19 22:35:27 INFO   starting ingestor web server
  * Serving Flask app 'stress_test'
@@ -42,13 +42,13 @@ $ python utils/stress_test/stress_test.py /home/dmitri/SOURCE/TMP/root/test 10 5
 2. Running in Docker
 
 2.1 build test image
-```
+```bash
 cd utils/stress-test
 docker build -t logdna-agent-stress-test .
 ```
 
 2.2 run test and agent images
-```
+```bash
 # create network
 docker network create stress_test
 
@@ -59,24 +59,43 @@ mkdir logs
 docker run --rm --net stress_test --name stress-test -u $(id -u):$(id -g) -v $(pwd)/logs:/var/log logdna-agent-stress-test:latest /var/log 50 1000000
 
 # start agent against stress test ingestor
-docker run -it --net stress_test -e MZ_INGESTION_KEY=blah -e LOGDNA_LOG_DIRS=/var/log -e LOGDNA_HOST=stress-test:7080 -e LOGDNA_USE_SSL=false -it -v $(pwd)/logs:/var/log logdna/logdna-agent:3.9.0-dev
+docker run -it --net stress_test -e MZ_INGESTION_KEY=blah -e MZ_LOG_DIRS=/var/log -e MZ_HOST=stress-test:7080 -e MZ_USE_SSL=false -it -v $(pwd)/logs:/var/log logdna/logdna-agent:3.9.0-dev
+```
+
+2. Running in K8s
+Test can run as a pod (Daemon Set), teh same way as agent runs. One test pod includes 2 containers:
+- stress test
+- regular agent
+Bot containers share one volume used as log directory. This test can be used to simulate specific log volume and line rate and then to find proper cpu and memory resources for traget system setup.   
+
+```bash
+cd k8s
+kubectl apply -f agent-namespace.yaml
+kubectl apply -f agent-stress-test.yaml
 ```
 
 4. Help
-```
+```bash
 $ python utils/stress_test/stress_test.py -h
-usage: stress_test.py [-h] [--line_rate LINE_RATE] [--override] log_dir num_log_files num_lines
+usage: stress_test.py [-h] [--line_rate LINE_RATE] [--port PORT] [--override]
+                      log_dir num_log_files num_lines
 
 Agent Stress Test
 
 positional arguments:
-  log_dir               Directory where log files are stored.
-  num_log_files         Number of log files to use.
-  num_lines             Number of lines to add to each log file.
+  log_dir               Directory where log files are stored. Env var
+                        ST_LOG_DIR.
+  num_log_files         Number of log files to use. Env var ST_NUM_LOG_FILES.
+  num_lines             Number of lines to add to each log file. Env var
+                        ST_NUM_LINES.
 
 optional arguments:
   -h, --help            show this help message and exit
   --line_rate LINE_RATE
-                        Line rate per log file. (default: 100)
-  --override            Override existing log files. (default: False)
+                        Line rate per second per log file. Env var
+                        ST_LINE_RATE. (default: 1000)
+  --port PORT           Ingestor web server port. Env var ST_PORT. (default:
+                        7080)
+  --override            Override existing log files. Env var ST_OVERRIDE.
+                        (default: False)
 ```

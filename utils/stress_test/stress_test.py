@@ -259,8 +259,10 @@ def main():
     # get env vars
     env = Env()
     if len(sys.argv) == 1:
-        sys.argv.extend(
-            [os.environ.get('ST_LOG_DIR'), os.environ.get('ST_NUM_LOG_FILES'), os.environ.get('ST_NUM_LINES')])
+        positional_args =[os.environ.get('ST_LOG_DIR'), os.environ.get('ST_NUM_LOG_FILES'), os.environ.get('ST_NUM_LINES')]
+        if all(arg is not None for arg in positional_args):
+            sys.argv.extend(positional_args)
+
     # create arg parser
     parser = argparse.ArgumentParser(
         description="Agent Stress Test",
