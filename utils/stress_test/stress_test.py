@@ -114,7 +114,7 @@ def request_processor_loop(
             lines = data_json["lines"]
         except Exception as e:
             log.error(repr(e))
-            log.error(f"line: '{data_str}'")
+            log.error(f"payload(1): '{data_str}'")
             continue
         for l in lines:
             if not first_line_ts:
@@ -134,6 +134,7 @@ def request_processor_loop(
                     num_unrecognized_lines = num_unrecognized_lines + 1
             except Exception as e:
                 log.error(repr(e))
+                log.error(f"payload(2): '{data_str}'")
                 pass
 
 
