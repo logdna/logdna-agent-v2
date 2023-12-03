@@ -1,4 +1,8 @@
+script_path=$(readlink -f "$0" || realpath "$0")
+script_dir=$(dirname "$script_path")
+cd "$script_dir"
 docker network create stress_test | true
 docker build -t logdna-agent-stress-test .
-mkdir -p logs
-docker run --rm --net stress_test --name stress-test -p 7080:7080 -u $(id -u):$(id -g) -v $(pwd)/logs:/var/logs logdna-agent-stress-test:latest /var/logs 50 10000 $*
+mkdir -p /tmp/stress_test
+rm -rf /tmp/stress_test/*
+docker run --rm --net stress_test --name stress-test -p 7080:7080 -u $(id -u):$(id -g) -v /tmp/stress_test:/tmp/stress_test logdna-agent-stress-test:latest /tmp/stress_test $*

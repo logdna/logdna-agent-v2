@@ -203,7 +203,7 @@ def log_writer_loop(
         report_queue: mp.Queue,
         num_lines: int,
         override: bool,
-        line_rate: int,
+        file_line_rate: int,
 ):
     # runs in separate process
     log = logging.getLogger(seq_id)
@@ -215,7 +215,7 @@ def log_writer_loop(
             time.sleep(0.1)
         except Exception:
             pass
-    rate_limiter = RateLimiter(max_calls=line_rate, period=1)
+    rate_limiter = RateLimiter(max_calls=file_line_rate, period=1)
     last_report_ts = timer()
     with open(file_path, "a") as f:
         log.debug(f"start writer loop {file_path}")
@@ -260,7 +260,7 @@ def main():
     # get env vars
     env = Env()
     if len(sys.argv) == 1:
-        positional_args =[os.environ.get('ST_LOG_DIR'), os.environ.get('ST_NUM_LOG_FILES'), os.environ.get('ST_NUM_LINES')]
+        positional_args = [os.environ.get('ST_LOG_DIR')]
         if all(arg is not None for arg in positional_args):
             sys.argv.extend(positional_args)
 
@@ -270,33 +270,41 @@ def main():
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "log_dir", type=assert_log_dir, help="Directory where log files are stored. Env var ST_LOG_DIR.",
+        "log_dir",
+        type=assert_log_dir,
+        help="Directory for test log files. [ST_LOG_DIR]",
     )
     parser.add_argument(
-        "num_log_files",
+        "--files",
         type=assert_positive_integer,
-        help="Number of log files to use. Env var ST_NUM_LOG_FILES.",
+        help="Number of log files. [ST_NUM_LOG_FILES]",
+        dest="num_log_files",
+        default=env.int("ST_NUM_LOG_FILES", 10),
     )
     parser.add_argument(
-        "num_lines",
+        "--lines",
         type=assert_positive_integer,
-        help="Number of lines to add to each log file. Env var ST_NUM_LINES.",
+        help="Number of lines to add to each log file. [ST_LINES_PER_FILE]",
+        dest="num_lines",
+        default=env.int("ST_LINES_PER_FILE", 1000),
     )
     parser.add_argument(
-        "--line_rate",
+        "--line-rate",
         type=assert_positive_integer,
-        help="Line rate per second per log file. Env var ST_LINE_RATE.",
-        default=env.int("ST_LINE_RATE", 1000),
+        help="Line rate (per second) per each file. [ST_FILE_LINE_RATE]",
+        dest="file_line_rate",
+        default=env.int("ST_FILE_LINE_RATE", 50),
     )
     parser.add_argument(
         "--port",
         type=assert_positive_integer,
-        help="Ingestor web server port. Env var ST_PORT.",
+        help="Ingestor web server port. [ST_PORT]",
+        dest="port",
         default=env.int("ST_PORT", 7080),
     )
     parser.add_argument(
         "--override",
-        help="Override existing log files. Env var ST_OVERRIDE.",
+        help="Override existing log files. [ST_OVERRIDE]",
         dest="override",
         action="store_true",
         default=env.bool("ST_OVERRIDE", False),
@@ -319,7 +327,7 @@ def main():
                 g_report_queue,
                 args.num_lines,
                 args.override,
-                args.line_rate,
+                args.file_line_rate,
             ),
             daemon=True,
         ).start()
@@ -335,9 +343,9 @@ def main():
         ),
         daemon=True,
     ).start()
+    for arg in vars(args):
+        g_log.info(f'{arg}: {getattr(args, arg)}')
     g_log.info("starting ingestor web server")
-    g_log.info(f"listening on port: {args.port}")
-    g_log.info(f"log dir: {args.log_dir}")
     app.run(host="0.0.0.0", port=args.port, threaded=True)
 
 
