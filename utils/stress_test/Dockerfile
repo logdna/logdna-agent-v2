@@ -14,9 +14,6 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 # Switch to a non-root user
 USER appuser
 
-# Expose the port the app runs on
 EXPOSE 7080
 
-# Specify the entrypoint and default command-line arguments
 ENTRYPOINT ["python", "stress_test.py"]
-CMD ["--help"]

@@ -180,7 +180,7 @@ spec:
         - name: stress-test
           image: logdna/logdna-agent-stress-test:3.9.0-dev
           env:
-            - name: ST_DIR
+            - name: ST_LOG_DIR
               value: "/var/log/stress-test"
             - name: ST_NUM_LOG_FILES
               value: "50"
@@ -192,7 +192,6 @@ spec:
               value: "7080"
           ports:
             - containerPort: 7080
-          args: ["/bin/sh", "-c", "python stress_test.py $ST_LOG_DIR $ST_NUM_LOG_FILES $ST_NUM_LINES"]
           resources:
             requests:
               cpu: 20m

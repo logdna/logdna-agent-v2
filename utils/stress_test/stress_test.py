@@ -258,7 +258,9 @@ def main():
     global g_log
     # get env vars
     env = Env()
-    env.read_env()
+    if len(sys.argv) == 1:
+        sys.argv.extend(
+            [os.environ.get('ST_LOG_DIR'), os.environ.get('ST_NUM_LOG_FILES'), os.environ.get('ST_NUM_LINES')])
     # create arg parser
     parser = argparse.ArgumentParser(
         description="Agent Stress Test",
@@ -266,19 +268,16 @@ def main():
     )
     parser.add_argument(
         "log_dir", type=assert_log_dir, help="Directory where log files are stored. Env var ST_LOG_DIR.",
-        default=env.path("ST_LOG_DIR", None),
     )
     parser.add_argument(
         "num_log_files",
         type=assert_positive_integer,
         help="Number of log files to use. Env var ST_NUM_LOG_FILES.",
-        default=env.int("ST_NUM_LOG_FILES", None),
     )
     parser.add_argument(
         "num_lines",
         type=assert_positive_integer,
         help="Number of lines to add to each log file. Env var ST_NUM_LINES.",
-        default=env.int("ST_NUM_LINES", None),
     )
     parser.add_argument(
         "--line_rate",
