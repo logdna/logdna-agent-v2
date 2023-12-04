@@ -457,6 +457,8 @@ build-stress-test-image: ## Build a docker image as specified in the Dockerfile
 		--progress=plain \
 		--platform=linux/${DEB_ARCH_NAME_${ARCH}} \
 		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
+		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
+		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
 		--rm
 
 .PHONY:build-deb
