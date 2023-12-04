@@ -10,18 +10,16 @@
 - Todo: add https support
 
 <!-- TOC -->
-
-* [Stress test:](#stress-test)
-    * [Quick start](#quick-start)
-        * [Start Agent with following env vars:](#start-agent-with-following-env-vars)
-        * [Start Test](#start-test)
-    * [Running in Docker](#running-in-docker)
-        * [Build Test image](#build-test-image)
-        * [Run Test and Agent Docker images](#run-test-and-agent-docker-images)
-    * [Running in K8s](#running-in-k8s)
-    * [Testing strategies](#testing-strategies)
-    * [Help](#help)
-
+* [Agent Stress Test:](#agent-stress-test)
+  * [Quick start](#quick-start)
+    * [Start Agent with following env vars:](#start-agent-with-following-env-vars)
+    * [Start Test](#start-test)
+  * [Running in Docker](#running-in-docker)
+    * [Build Test image](#build-test-image)
+    * [Run Test and Agent Docker images](#run-test-and-agent-docker-images)
+  * [Running in K8s](#running-in-k8s)
+  * [Testing strategies](#testing-strategies)
+  * [Help](#help)
 <!-- TOC -->
 
 ## Quick start
@@ -38,7 +36,7 @@ export MZ_USE_SSL=false
 
 ### Start Test
 
-Supplied script [utils/stress_test/run](./run) runs short low log volume test:
+Use script [utils/stress_test/run](./run) to run a short low log volume test:
 
 ```bash
 $ python utils/stress_test/run
