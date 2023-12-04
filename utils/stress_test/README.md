@@ -180,14 +180,13 @@ positional arguments:
 optional arguments:
   -h, --help            show this help message and exit
   --files NUM_LOG_FILES
-                        Number of log files. [ST_NUM_LOG_FILES] (default: 50)
+                        Number of log files. [ST_NUM_LOG_FILES] (default: 10)
   --lines NUM_LINES     Number of lines to add to each log file.
-                        [ST_LINES_PER_FILE] (default: 10000)
+                        [ST_LINES_PER_FILE] (default: 1000)
   --line-rate FILE_LINE_RATE
                         Line rate (per second) per each file.
-                        [ST_FILE_LINE_RATE] (default: 1000)
+                        [ST_FILE_LINE_RATE] (default: 50)
   --port PORT           Ingestor web server port. [ST_PORT] (default: 7080)
   --override            Override existing log files. [ST_OVERRIDE] (default:
                         False)
-                        (default: False)
 ```
