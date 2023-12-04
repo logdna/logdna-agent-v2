@@ -138,9 +138,8 @@ docker run -it --net stress_test -e MZ_INGESTION_KEY=blah -e MZ_LOG_DIRS=/var/lo
 
 ## Running in K8s
 
-Test can run as a separate container in a pod that is part Daemon Set, that is based agent DS.
-One test pod includes 2 containers:
-
+Test can run as a separate container in a pod that is part DaemonSet, which is based Agent DaemonSet. Test DS is running **logdna-agent--stress-test** namespace.
+Each test pod includes 2 containers:
 - stress-test
 - logdna-agent
 
@@ -149,8 +148,27 @@ See yaml file: [k8s/agent-stress-test.yaml](../../k8s/agent-stress-test.yaml)
 
 ```bash
 cd k8s
-kubectl apply -f agent-namespace.yaml
+kubectl apply -f agent-stress-test-namespace.yaml
 kubectl apply -f agent-stress-test.yaml
+```
+
+To limit test DS pods running on specific cluster nodes you can use Node Labels and Node Affinity:
+1) Label the nodes where you want the DaemonSet to run. For example:
+```bash
+kubectl label nodes <node-name> key=value.
+```
+2) Specify node affinity in test DaemonSet configuration to match these labels:
+```yaml
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: key
+                    operator: In
+                    values:
+                      - value
 ```
 
 ## Testing strategies
