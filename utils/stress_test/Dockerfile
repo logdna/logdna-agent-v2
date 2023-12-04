@@ -6,7 +6,7 @@ COPY . .
 
 RUN pip install --upgrade pip
 RUN pip install poetry
-RUN poetry update
+RUN poetry install
 
 # Create new user
 RUN groupadd -r appuser && useradd -r -g appuser appuser
