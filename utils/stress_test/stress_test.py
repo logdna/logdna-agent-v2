@@ -14,9 +14,11 @@ import secrets
 import argparse
 from ratelimiter import RateLimiter
 from environs import Env
+import re
 
 REPORT_INTERVAL_S = 5
 
+JSON_PATTERN = re.compile(r'^\s*(\{.*\}|\[.*\])\s*$')
 
 class TestSeq:
     def __init__(self, seq_id, total_lines):
@@ -122,19 +124,25 @@ def request_processor_loop(
             try:
                 line_str = l["line"]
                 received_line_bytes = received_line_bytes + len(line_str)
-                line_obj = json.loads(line_str)
-                seq_id: str = line_obj.get("seq_id")
-                if seq_id and seq_id.startswith(test_id):
-                    test_seq_obj = test_sequences.get(seq_id)
-                    if not test_seq_obj:
-                        test_seq_obj = TestSeq(seq_id, line_obj["total_lines"])
-                        test_sequences[seq_id] = test_seq_obj
-                    test_seq_obj.line_ids.append(line_obj["line_id"])
-                else:
+                # test line is json
+                if not JSON_PATTERN.match(line_str):
                     num_unrecognized_lines = num_unrecognized_lines + 1
+                    continue
+                line_obj = json.loads(line_str)
+                # test line has seq_id that starts with test_id
+                seq_id: str = line_obj.get("seq_id")
+                if not seq_id or not seq_id.startswith(test_id):
+                    num_unrecognized_lines = num_unrecognized_lines + 1
+                    continue
+                test_seq_obj = test_sequences.get(seq_id)
+                if not test_seq_obj:
+                    test_seq_obj = TestSeq(seq_id, line_obj["total_lines"])
+                    test_sequences[seq_id] = test_seq_obj
+                test_seq_obj.line_ids.append(line_obj["line_id"])
             except Exception as e:
-                log.error(repr(e))
-                log.error(f"payload(2): '{data_str}'")
+                log.warning(repr(e))
+                log.warning(f"payload(2): '{data_str}'")
+                num_unrecognized_lines = num_unrecognized_lines + 1
                 pass
 
 
