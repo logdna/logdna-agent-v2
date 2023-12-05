@@ -1,0 +1,219 @@
+---
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: logdna-agent-ds-priority
+  namespace: logdna-agent-stress-test
+value: 1000000
+preemptionPolicy: PreemptLowerPriority
+globalDefault: false
+description: "Logdna Agent Stress Test"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: logdna-agent
+  namespace: logdna-agent-stress-test
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 3.9.0-dev
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: logdna-agent-stress-test
+  name: logdna-agent
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 3.9.0-dev
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get","list", "create", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: logdna-agent
+  namespace: logdna-agent-stress-test
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 3.9.0-dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: logdna-agent
+subjects:
+  - kind: ServiceAccount
+    name: logdna-agent
+    namespace: logdna-agent-stress-test
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: logdna-agent
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 3.9.0-dev
+rules:
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get","list", "create", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get","list", "watch"]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get","list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get","list", "watch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["nodes"]
+    verbs: ["get","list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: logdna-agent
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 3.9.0-dev
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: logdna-agent
+subjects:
+  - kind: ServiceAccount
+    name: logdna-agent
+    namespace: logdna-agent-stress-test
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: logdna-agent-stress-test
+  namespace: logdna-agent-stress-test
+  labels:
+    app.kubernetes.io/name: logdna-agent
+    app.kubernetes.io/instance: logdna-agent
+    app.kubernetes.io/version: 3.9.0-dev
+spec:
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 100%
+  selector:
+    matchLabels:
+      app: logdna-agent
+  template:
+    metadata:
+      labels:
+        app: logdna-agent
+        app.kubernetes.io/name: logdna-agent
+        app.kubernetes.io/instance: logdna-agent
+        app.kubernetes.io/version: 3.9.0-dev
+    spec:
+      serviceAccountName: logdna-agent
+      priorityClassName: logdna-agent-ds-priority
+      containers:
+        - name: logdna-agent
+          image: logdna/logdna-agent:3.9.0-dev
+          imagePullPolicy: Always
+          securityContext:
+            capabilities:
+              add:
+                - DAC_READ_SEARCH
+              drop:
+                - all
+          env:
+            - name: MZ_INGESTION_KEY
+              value: any_key_value_accepted
+            - name: MZ_LOOKBACK
+              value: smallfiles
+            - name: MZ_DB_PATH
+              value: /var/lib/logdna
+            - name: POD_APP_LABEL
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['app.kubernetes.io/name']
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: MZ_LOG_DIRS
+              value: "/var/log/stress-test"
+            - name: MZ_HOST
+              value: "localhost:7080"
+            - name: MZ_USE_SSL
+              value: "false"
+          resources:
+            requests:
+              cpu: 20m
+            limits:
+              memory: 2500Mi
+          volumeMounts:
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            - name: mnt
+              mountPath: /mnt
+              readOnly: true
+            - name: osrelease
+              mountPath: /etc/os-release
+            - name: logdnahostname
+              mountPath: /etc/logdna-hostname
+            - name: testlogdir
+              mountPath: /var/log/stress-test
+        - name: stress-test
+          image: logdna/logdna-agent-stress-test:3.9.0-dev
+          env:
+            - name: ST_LOG_DIR
+              value: "/var/log/stress-test"
+            - name: ST_NUM_LOG_FILES
+              value: "50"
+            - name: ST_NUM_LINES
+              value: "10000"
+            - name: ST_LINE_RATE
+              value: "1000"
+            - name: ST_PORT
+              value: "7080"
+            - name: ST_STARTUP_DELAY
+              value: "5"
+          ports:
+            - containerPort: 7080
+          resources:
+            requests:
+              cpu: 20m
+            limits:
+              memory: 500Mi
+          volumeMounts:
+            - name: testlogdir
+              mountPath: /var/log/stress-test
+      volumes:
+        - name: testlogdir
+          emptyDir: {}
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+        - name: mnt
+          hostPath:
+            path: /mnt
+        - name: osrelease
+          hostPath:
+            path: /etc/os-release
+        - name: logdnahostname
+          hostPath:
+            path: /etc/hostname
