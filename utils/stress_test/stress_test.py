@@ -15,10 +15,12 @@ import argparse
 from ratelimiter import RateLimiter
 from environs import Env
 import re
+import time
 
 REPORT_INTERVAL_S = 5
 
 JSON_PATTERN = re.compile(r'^\s*(\{.*\}|\[.*\])\s*$')
+
 
 class TestSeq:
     def __init__(self, seq_id, total_lines):
@@ -263,6 +265,12 @@ def assert_positive_integer(value_str: str) -> int:
     return value_int
 
 
+def assert_non_negative_integer(value_str: str) -> int:
+    value_int = int(value_str)
+    assert value_int >= 0, f"Value is not non-negative integer: {value_str}"
+    return value_int
+
+
 def main():
     global g_log
     # get env vars
@@ -317,12 +325,26 @@ def main():
         action="store_true",
         default=env.bool("ST_OVERRIDE", False),
     )
+    parser.add_argument(
+        "--startup-delay",
+        type=assert_non_negative_integer,
+        help="Number of seconds to delay the startup. [ST_STARTUP_DELAY]",
+        dest="startup_delay",
+        default=env.int("ST_STARTUP_DELAY", 0),
+    )
     args = parser.parse_args()
     #
     app_name = os.path.splitext(os.path.basename(sys.argv[0]))[0]
     test_id = f"{app_name}-{secrets.token_hex(3)}"
     g_log = logging.getLogger(test_id)
     g_log.setLevel(logging.INFO)
+    # print config
+    for arg in vars(args):
+        g_log.info(f'{arg}: {getattr(args, arg)}')
+    # delay startup
+    if args.startup_delay:
+        g_log.info(f'delaying startup for {args.startup_delay} seconds ...')
+        time.sleep(args.startup_delay)
     # start log writers
     for i in range(1, args.num_log_files + 1):
         seq_id = f"{test_id}-{i}"
@@ -351,8 +373,6 @@ def main():
         ),
         daemon=True,
     ).start()
-    for arg in vars(args):
-        g_log.info(f'{arg}: {getattr(args, arg)}')
     g_log.info("starting ingestor web server")
     app.run(host="0.0.0.0", port=args.port, threaded=True)
 

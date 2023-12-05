@@ -190,6 +190,8 @@ spec:
               value: "1000"
             - name: ST_PORT
               value: "7080"
+            - name: ST_STARTUP_DELAY
+              value: "5"
           ports:
             - containerPort: 7080
           resources:
