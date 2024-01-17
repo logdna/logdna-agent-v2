@@ -69,7 +69,7 @@ pipeline {
                 stage('Lint') {
                     steps {
                         sh '''
-                            make lint
+                            make lint-audit
                         '''
                     }
                 }
