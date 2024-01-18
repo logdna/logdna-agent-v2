@@ -42,7 +42,7 @@ impl MetricsStatsStream {
     }
 
     pub async fn start_metrics_call_task(self) -> impl Stream<Item = LineBuilder> {
-        info!("Starting metics reporting task.");
+        info!("Starting metrics reporting task.");
         stream::unfold((self.client, self.leader), |params| async {
             sleep(Duration::from_millis(GENERATE_REPORT_INTERVAL_MS)).await;
             let is_renewed = params.1.renew_feature_leader().await;
