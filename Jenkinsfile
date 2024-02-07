@@ -15,7 +15,10 @@ pipeline {
     }
     triggers {
         issueCommentTrigger(TRIGGER_PATTERN)
-        parameterizedCron(env.BRANCH_NAME ==~ /\d\.\d/ ? 'H 8 * * 1 % PUBLISH_IMAGE=true' : '')
+        parameterizedCron(
+            env.BRANCH_NAME ==~ /\d\.\d/ ? 'H 8 * * 1 % PUBLISH_IMAGE=true;AUDIT=false;TASK_NAME=image-vulnerability-update' : '' +
+            env.BRANCH_NAME ==~ /\d\.\d/ ? 'H 12 * * 1 % AUDIT=true;TASK_NAME=audit' : ''
+        )
     }
     environment {
         RUST_IMAGE_REPO = 'us.gcr.io/logdna-k8s/rust'
@@ -26,6 +29,8 @@ pipeline {
     }
     parameters {
         booleanParam(name: 'PUBLISH_IMAGE', description: 'Publish docker images', defaultValue: false)
+        booleanParam(name: 'AUDIT', description: 'Check for application vulnerabilities with cargo audit', defaultValue: true)
+        choice(name: 'TASK_NAME', choices: ['n/a', 'audit', 'image-vulnerability-update'], description: 'The name of the task being handled in this build, if applicable')
     }
     stages {
         stage('Validate PR Source') {
@@ -48,6 +53,9 @@ pipeline {
             environment {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
+            }
+            when {
+                environment name: 'AUDIT', value: 'true'
             }
             steps {
                 sh """
@@ -155,6 +163,31 @@ pipeline {
             post {
                 always {
                     sh 'make clean-all'
+                }
+            }
+        }
+    }
+    post {
+        success {
+            script {
+                if (params.TASK_NAME == 'image-vulnerability-update') {
+                    //TODO: change channel to #ibm-mezmo-agent after testing
+                    notifySlack(
+                        currentBuild.currentResult,
+                        [channel: '#proj-agent'],
+                        "`${PROJECT_NAME}` ${params.TASK_NAME} build took ${currentBuild.durationString.replaceFirst(' and counting', '')}."
+                    )
+                }
+            }
+        }
+        unsuccessful {
+            script {
+                if (params.TASK_NAME == 'audit' || params.TASK_NAME == 'image-vulnerability-update') {
+                    notifySlack(
+                        currentBuild.currentResult,
+                        [channel: '#proj-agent'],
+                        "`${PROJECT_NAME}` ${params.TASK_NAME} build took ${currentBuild.durationString.replaceFirst(' and counting', '')}."
+                    )
                 }
             }
         }
