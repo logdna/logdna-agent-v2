@@ -1465,7 +1465,7 @@ impl FileSystem {
         // Try to find parent
         if let Some(parent_path) = parent_path {
             if let Some(parent_key) = self.watch_descriptors.get(&parent_path) {
-                let parent_key = parent_key.get(0).copied().ok_or(Error::ParentLookup)?;
+                let parent_key = parent_key.first().copied().ok_or(Error::ParentLookup)?;
                 return match entries
                     .get_mut(parent_key)
                     .ok_or(Error::ParentLookup)?
