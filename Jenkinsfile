@@ -19,7 +19,8 @@ pipeline {
     triggers {
         issueCommentTrigger(TRIGGER_PATTERN)
         parameterizedCron(
-            env.BRANCH_NAME ==~ /\d\.\d/ ? 'H 8 * * 1 % PUBLISH_GCR_IMAGE=true;PUBLISH_ICR_IMAGE=true' : ''
+            env.BRANCH_NAME ==~ /\d\.\d/ ? 'H 8 * * 1 % PUBLISH_GCR_IMAGE=true;PUBLISH_ICR_IMAGE=true;AUDIT=false;TASK_NAME=image-vulnerability-update' : '' +
+            env.BRANCH_NAME ==~ /\d\.\d/ ? 'H 12 * * 1 % AUDIT=true;TASK_NAME=audit' : ''
         )
     }
     environment {
@@ -37,7 +38,9 @@ pipeline {
         booleanParam(name: 'PUBLISH_ICR_IMAGE', description: 'Publish docker image to IBM Container Registry (ICR) and Dockerhub', defaultValue: false)
         booleanParam(name: 'PUBLISH_BINARIES', description: 'Publish executable binaries to S3 bucket s3://logdna-agent-build-bin', defaultValue: false)
         booleanParam(name: 'PUBLISH_INSTALLERS', description: 'Publish Choco installer', defaultValue: false)
+        booleanParam(name: 'AUDIT', description: 'Check for application vulnerabilities with cargo audit', defaultValue: true)
         string(name: 'RUST_IMAGE_SUFFIX', description: 'Build image tag suffix', defaultValue: "")
+        choice(name: 'TASK_NAME', choices: ['n/a', 'audit', 'image-vulnerability-update'], description: 'The name of the task being handled in this build, if applicable')
     }
     stages {
         stage('Validate PR Source') {
@@ -64,12 +67,22 @@ pipeline {
                 """
             }
         }
-        stage('Lint and Unit Test') {
+        stage('Lint, Audit, and Unit Test') {
             parallel {
                 stage('Lint') {
                     steps {
                         sh '''
-                            make lint
+                            make lint -o lint-audit
+                        '''
+                    }
+                }
+                stage('Audit') {
+                    when {
+                        environment name: 'AUDIT', value: 'true'
+                    }
+                    steps {
+                        sh '''
+                            make lint-audit
                         '''
                     }
                 }
@@ -549,6 +562,31 @@ pipeline {
                             notFailBuild: true,
                             patterns: [[pattern: '.gitignore', type: 'INCLUDE'],
                                        [pattern: '.propsfile', type: 'EXCLUDE']])
+                }
+            }
+        }
+    }
+    post {
+        success {
+            script {
+                if (params.TASK_NAME == 'image-vulnerability-update') {
+                    //TODO: change channel to #ibm-mezmo-agent after testing
+                    notifySlack(
+                        currentBuild.currentResult,
+                        [channel: '#proj-agent'],
+                        "`${PROJECT_NAME}` ${params.TASK_NAME} build took ${currentBuild.durationString.replaceFirst(' and counting', '')}."
+                    )
+                }
+            }
+        }
+        unsuccessful {
+            script {
+                if (params.TASK_NAME == 'audit' || params.TASK_NAME == 'image-vulnerability-update') {
+                    notifySlack(
+                        currentBuild.currentResult,
+                        [channel: '#proj-agent'],
+                        "`${PROJECT_NAME}` ${params.TASK_NAME} build took ${currentBuild.durationString.replaceFirst(' and counting', '')}."
+                    )
                 }
             }
         }

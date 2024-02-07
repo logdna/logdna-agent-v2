@@ -176,6 +176,8 @@ async fn handle_event(
 }
 
 /// Runs the main logic of the tailer, this can only be run once so Tailer is consumed
+//TODO: evaluate how to best handle this clippy error
+#[allow(clippy::await_holding_refcell_ref)]
 pub fn process(
     state: Tailer,
 ) -> Result<impl Stream<Item = Result<LazyLineSerializer, CacheError>>, std::io::Error> {
