@@ -202,7 +202,7 @@ fn ingester_public_addr(ingester_addr: impl ToSocketAddrs) -> SocketAddr {
         .find(|e| e.is_up() && !e.is_loopback() && !e.ips.is_empty())
         .expect("container should have an interface")
         .ips
-        .get(0)
+        .first()
         .expect("container should have an IP")
         .ip();
     let ingester_addr = ingester_addr

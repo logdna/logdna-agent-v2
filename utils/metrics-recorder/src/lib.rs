@@ -31,9 +31,9 @@ fn stream_agent_metrics(
     scrape_delay: Option<Duration>,
 ) -> impl Stream<Item = Sample> {
     stream::unfold(Vec::new(), move |state| async move {
-        let mut state = loop {
+        let mut state = 'ret: {
             if !state.is_empty() {
-                break state;
+                break 'ret state;
             }
 
             // Hitting the metrics endpoint too quick may result in subsequent queries without
@@ -46,7 +46,7 @@ fn stream_agent_metrics(
             match fetch_agent_metrics(metrics_port).await {
                 Ok((StatusCode::OK, Some(body))) => {
                     let body = body.lines().map(|l| Ok(l.to_string()));
-                    break Scrape::parse(body)
+                    break 'ret Scrape::parse(body)
                         .expect("failed to parse the metrics response")
                         .samples;
                 }
