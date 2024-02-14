@@ -6,7 +6,6 @@ edition = "2018"
 
 [dependencies]
 http = { package = "mz-http", path = "../common/http" }
-middleware = { package = "middleware", path = "../common/middleware" }
 
 tokio = { package = "tokio", version = "1", features = ["macros", "process", "rt-multi-thread", "time"] }
 futures = "0.3"
@@ -27,9 +26,6 @@ win32job = { package = "win32job", version = "1" }
 
 [dev-dependencies]
 env_logger = "0.9"
-partial_io = { package = "partial-io", version = "0.5", features = ["tokio1"]}
-tokio-test = "0.4"
-tracing-test = "0.2"
 
 [features]
 default = []

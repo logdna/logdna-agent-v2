@@ -1,14 +1,19 @@
 use futures::future::{AbortHandle, Abortable};
 use futures::stream;
 use futures::stream::{Stream, StreamExt};
-use hyper::{Client, StatusCode};
+use http_body_util::{BodyExt, Full};
+use hyper::{body::Bytes, StatusCode};
+use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::client::legacy::Client;
 use prometheus_parse::{Sample, Scrape};
 use std::time::Duration;
 
 pub async fn fetch_agent_metrics(
     metrics_port: u16,
-) -> Result<(StatusCode, Option<String>), hyper::Error> {
-    let client = Client::new();
+) -> Result<(StatusCode, Option<String>), Box<dyn std::error::Error>> {
+    let client: Client<_, Full<Bytes>> =
+        Client::builder(hyper_util::rt::TokioExecutor::new()).build(HttpConnector::new());
+
     let url = format!("http://127.0.0.1:{}/metrics", metrics_port)
         .parse()
         .unwrap();
@@ -16,7 +21,7 @@ pub async fn fetch_agent_metrics(
     let resp = client.get(url).await?;
     let status = resp.status();
     let body = if status == StatusCode::OK {
-        let buf = hyper::body::to_bytes(resp).await?;
+        let buf = resp.into_body().collect().await?.to_bytes();
         let body_str = std::str::from_utf8(&buf).unwrap().to_string();
         Some(body_str)
     } else {
@@ -89,7 +94,7 @@ impl MetricsRecorder {
         self.abort_handle.abort();
         match self.server.await {
             Ok(data) => data,
-            Err(e) => panic!("error waiting for thread: {}", e),
+            Err(e) => panic!("error waiting for thread: {:#?}", e),
         }
     }
 }

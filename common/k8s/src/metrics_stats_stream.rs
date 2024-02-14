@@ -512,6 +512,8 @@ mod tests {
 
     use std::collections::HashMap;
 
+    use kube::api::TypeMeta;
+
     use k8s_openapi::api::core::v1::{Node, Pod};
     use kube::api::{ListMeta, ObjectList};
     use serde_json::Value;
@@ -589,6 +591,7 @@ mod tests {
                 self_link: None,
             },
             items: Vec::new(),
+            types: TypeMeta::list::<Pod>(),
         };
 
         let mut controller_map: HashMap<String, ControllerStats> = HashMap::new();
@@ -618,6 +621,7 @@ mod tests {
                 self_link: None,
             },
             items: Vec::new(),
+            types: TypeMeta::list::<Node>(),
         };
 
         let mut node_pod_counts_map: HashMap<String, NodePodStats> = HashMap::new();

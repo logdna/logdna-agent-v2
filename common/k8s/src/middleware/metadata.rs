@@ -354,7 +354,7 @@ impl K8sMetadata {
                         let next_event = watcher.next().await;
                         if let Some(Ok(event)) = next_event {
                             let pod_container: Option<PodContainers> =
-                                if let WatcherEvent::Deleted(ref pod) = event {
+                                if let WatcherEvent::Delete(ref pod) = event {
                                     Some(pod.into())
                                 } else {
                                     None
@@ -409,7 +409,7 @@ impl K8sMetadata {
         event: &WatcherEvent<Pod>,
     ) -> Result<(), K8sError> {
         match event {
-            WatcherEvent::Applied(pod) => {
+            WatcherEvent::InitApply(pod) | WatcherEvent::Apply(pod) => {
                 let obj_ref = ObjectRef::from_obj(pod);
                 if reader.get(&obj_ref).is_none() {
                     Metrics::k8s().increment_creates();
@@ -418,17 +418,11 @@ impl K8sMetadata {
                     log_watcher_pod(LogEvent::Update, pod)
                 }
             }
-            WatcherEvent::Deleted(pod) => {
+            WatcherEvent::Delete(pod) => {
                 Metrics::k8s().increment_deletes();
                 log_watcher_pod(LogEvent::Delete, pod)
             }
-            WatcherEvent::Restarted(pods) => {
-                trace!("registering all pods...");
-                for pod in pods {
-                    Metrics::k8s().increment_creates();
-                    log_watcher_pod(LogEvent::New, pod)
-                }
-            }
+            _ => {}
         }
         Ok(())
     }
@@ -735,7 +729,7 @@ mod tests {
                 spec: None,
                 status: None,
             };
-            store_w.apply_watcher_event(&WatcherEvent::Applied(pod));
+            store_w.apply_watcher_event(&WatcherEvent::Apply(pod));
         }
         K8sMetadata::with_store(async_channel::unbounded().1, store_w.as_reader())
     }

@@ -3,6 +3,7 @@ use core::time;
 use rand::seq::IteratorRandom;
 
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::fs::OpenOptions;
 use std::io::{BufRead, Write};
 use std::path::Path;
@@ -377,19 +378,32 @@ pub fn self_signed_https_ingester(
     tempfile::NamedTempFile,
     String,
 ) {
+    if rustls::crypto::CryptoProvider::get_default().is_none() {
+        rustls::crypto::ring::default_provider()
+            .install_default()
+            .expect("Failed to install rustls crypto provider");
+    }
     let subject_alt_names = vec!["logdna.com".to_string(), "localhost".to_string()];
 
     let cert = generate_simple_self_signed(subject_alt_names).unwrap();
 
-    let cert_bytes = cert.serialize_pem().unwrap();
+    let cert_bytes = cert.cert.pem();
     let certs = rustls_pemfile::certs(&mut std::io::BufReader::new(cert_bytes.as_bytes()))
-        .map(|certs| certs.into_iter().map(rustls::Certificate).collect())
-        .unwrap();
+        .flat_map(|certs| {
+            certs
+                .into_iter()
+                .map(rustls_pki_types::CertificateDer::from)
+        })
+        .collect();
 
-    let key_bytes = cert.serialize_private_key_pem();
-    let keys: Vec<rustls::PrivateKey> =
+    let key_bytes = cert.key_pair.serialize_pem();
+    let keys: Vec<rustls_pki_types::PrivateKeyDer> =
         rustls_pemfile::pkcs8_private_keys(&mut std::io::BufReader::new(key_bytes.as_bytes()))
-            .map(|keys| keys.into_iter().map(rustls::PrivateKey).collect())
+            .flat_map(|keys| {
+                keys.into_iter()
+                    .map(rustls_pki_types::PrivateKeyDer::try_from)
+            })
+            .collect::<Result<_, _>>()
             .unwrap();
 
     let port = get_available_port().expect("No ports free");
@@ -398,13 +412,13 @@ pub fn self_signed_https_ingester(
 
     let mut cert_file = tempfile::NamedTempFile::new().expect("Couldn't create cert file");
     cert_file
-        .write_all(cert.serialize_pem().unwrap().as_bytes())
+        .write_all(cert.cert.pem().as_bytes())
         .expect("Couldn't write cert file");
 
     let (server, received, shutdown_handle) = https_ingester_with_processors(
         addr,
         certs,
-        keys[0].clone(),
+        keys[0].clone_key(),
         http_version,
         req_fn.unwrap_or_else(|| Box::new(|_| None)),
         process_fn.unwrap_or_else(|| Box::new(|_| None)),

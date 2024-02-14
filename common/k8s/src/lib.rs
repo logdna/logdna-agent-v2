@@ -4,8 +4,7 @@ extern crate lazy_static;
 use std::env;
 
 use errors::K8sError;
-use hyper::{client::HttpConnector, Body};
-use hyper_timeout::TimeoutConnector;
+use hyper_util::rt::TokioExecutor;
 use kube::client::ConfigExt;
 use kube::{config::Config, Client};
 use tower::ServiceBuilder;
@@ -31,21 +30,11 @@ fn create_k8s_client(
 ) -> Result<Client, kube::Error> {
     let default_ns = config.default_namespace.clone();
 
-    let client: hyper::Client<_, Body> = {
-        let mut connector = HttpConnector::new();
-        connector.enforce_http(false);
-
-        let connector = hyper_rustls::HttpsConnector::from((
-            connector,
-            std::sync::Arc::new(config.rustls_client_config()?),
-        ));
-
-        let mut connector = TimeoutConnector::new(connector);
-        connector.set_connect_timeout(config.connect_timeout);
-        connector.set_read_timeout(config.read_timeout);
-
-        hyper::Client::builder().build(connector)
-    };
+    let https = config.rustls_https_connector()?;
+    let client = ServiceBuilder::new()
+        .layer(config.base_uri_layer())
+        .option_layer(config.auth_layer()?)
+        .service(hyper_util::client::legacy::Client::builder(TokioExecutor::new()).build(https));
 
     let stack = ServiceBuilder::new()
         .layer(config.base_uri_layer())
@@ -67,6 +56,7 @@ fn create_k8s_client(
         .option_layer(config.auth_layer()?)
         .layer(config.extra_headers_layer()?)
         .service(client);
+
     Ok(Client::new(service, default_ns))
 }
 

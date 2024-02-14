@@ -27,6 +27,10 @@ fn main() -> anyhow::Result<()> {
     #[cfg(feature = "dhat-heap")]
     let _profiler = dhat::Profiler::new_heap();
 
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     // covert logdna env vars to mezmo ones
     Config::process_logdna_env_vars();
 

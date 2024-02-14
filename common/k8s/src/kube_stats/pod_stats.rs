@@ -243,6 +243,7 @@ mod tests {
             node_name: Some("node_name".to_string()),
             node_selector: None,
             overhead: None,
+            os: None,
             preemption_policy: None,
             priority: Some(222),
             priority_class_name: Some("p_class".to_string()),
