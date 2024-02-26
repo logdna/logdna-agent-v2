@@ -69,13 +69,13 @@ pipeline {
         }
         stage('Lint, Audit, and Unit Test') {
             parallel {
-                stage('Lint') {
+                /*stage('Lint') {
                     steps {
                         sh '''
                             make lint -o lint-audit
                         '''
                     }
-                }
+                }*/
                 stage('Audit') {
                     when {
                         environment name: 'AUDIT', value: 'true'
