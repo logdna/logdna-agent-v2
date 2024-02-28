@@ -18,9 +18,10 @@ pipeline {
     }
     triggers {
         issueCommentTrigger(TRIGGER_PATTERN)
-        parameterizedCron(
-            env.BRANCH_NAME ==~ /\d\.\d/ ? 'H 8 * * 1 % PUBLISH_GCR_IMAGE=true;PUBLISH_ICR_IMAGE=true;AUDIT=false;TASK_NAME=image-vulnerability-update' : '' +
-            env.BRANCH_NAME ==~ /\d\.\d/ ? 'H 12 * * 1 % AUDIT=true;TASK_NAME=audit' : ''
+        parameterizedCron(env.BRANCH_NAME ==~ /\d\.\d/ ? '''
+            H 8 * * 1 % PUBLISH_GCR_IMAGE=true;PUBLISH_ICR_IMAGE=true;AUDIT=false;TASK_NAME=image-vulnerability-update
+            H 12 * * 1 % AUDIT=true;TASK_NAME=audit
+            ''' : ''
         )
     }
     environment {
