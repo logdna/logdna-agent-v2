@@ -394,7 +394,7 @@ impl K8sEventStream {
                 }
             })
             .map(move |event| {
-                match event.map(|e| {
+                let event_time = event.map(|e| {
                     let latest_event_time = latest_event_time_w.clone();
                     let this_event_time = e
                         .creation_timestamp()
@@ -410,7 +410,8 @@ impl K8sEventStream {
                         latest_event_time.store(this_event_time);
                     };
                     ret
-                }) {
+                });
+                match event_time {
                     Ok(Ok(l)) => Ok(StreamElem::Event(l)),
                     Ok(Err(e)) => {
                         latest_event_time_w.store(NonZeroI64::new(Utc::now().timestamp()));
