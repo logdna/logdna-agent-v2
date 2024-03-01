@@ -16,11 +16,11 @@ use tracing::{info, warn};
 
 use async_compression::Level;
 
-use fs::lookback::Lookback;
-use fs::rule::{RuleDef, Rules};
-use fs::tail::DirPathBuf;
 use http::types::params::Params;
 use http::types::request::{Encoding, RequestTemplate, Schema};
+use types::dir_path::DirPathBuf;
+use types::lookback::Lookback;
+use types::rule::{RuleDef, Rules};
 
 pub use crate::argv::ArgumentOptions;
 use crate::error::ConfigError;
@@ -743,6 +743,7 @@ mod tests {
 
         let file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .read(true)
             .open(&path)
