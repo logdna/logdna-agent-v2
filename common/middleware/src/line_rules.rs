@@ -66,7 +66,7 @@ impl LineRules {
         value: Vec<u8>,
         line: &'a mut dyn LineBufferMut,
     ) -> Status<&'a mut dyn LineBufferMut> {
-        let mut matches: Vec<(usize, usize)> = vec![];
+        let mut matches: Vec<(usize, usize)> = Vec::new();
         for r in self.redact.iter() {
             for m in r.find_iter(&value) {
                 let mut overlapping_match = None;
@@ -197,7 +197,7 @@ mod tests {
 
     #[test]
     fn should_exclude_lines() {
-        let exclusion = &vec![s!("DEBUG"), s!("(?i:TRACE)")];
+        let exclusion = &[s!("DEBUG"), s!("(?i:TRACE)")];
         let p = LineRules::new(exclusion, &[], &[]).unwrap();
         // Not containing any excluded value
         is_match!(p, "Hello INFO something", Status::Ok(_));
@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn should_filter_by_inclusion() {
         // Only include lines with "WARN" (case sensitive) and "error" (case insensitive)
-        let inclusion = &vec![s!("WARN"), s!("(?i:error)")];
+        let inclusion = &[s!("WARN"), s!("(?i:error)")];
         let p = LineRules::new(&[], inclusion, &[]).unwrap();
 
         // Should match
@@ -237,8 +237,8 @@ mod tests {
     fn should_use_exclusion_last() {
         // Only include lines with "WARN" and "error"
         // And exclude messages with the text "VERBOSE"
-        let inclusion = &vec![s!("WARN"), s!("(?i:error)")];
-        let exclusion = &vec![s!("VERBOSE")];
+        let inclusion = &[s!("WARN"), s!("(?i:error)")];
+        let exclusion = &[s!("VERBOSE")];
         let p = LineRules::new(exclusion, inclusion, &[]).unwrap();
 
         // Should match
@@ -254,7 +254,7 @@ mod tests {
 
     #[test]
     fn should_redact_lines() {
-        let redact = &vec![
+        let redact = &[
             s!(r"\S+@\S+\.\S+"),
             s!("(?i:SENSITIVE)"),
             s!(r"\d{1,2}-\d{1,2}-\d{4}"),
@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn should_support_overlapping_redactions() {
-        let redact = &vec![
+        let redact = &[
             s!(r"(?i:SI)"),
             s!(r"(?i:SUPERSENSITIVE)"),
             s!(r"(?i:SENSITIVE)"),
@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn should_support_redactions_changing_length() {
-        let redact = &vec![s!(r"(?:123)"), s!(r"(?:def)")];
+        let redact = &[s!(r"(?:123)"), s!(r"(?:def)")];
         let p = LineRules::new(&[], &[], redact).unwrap();
         redact_match!(p, "Hello INFO not redacted", "Hello INFO not redacted");
         redact_match!(
@@ -313,7 +313,7 @@ mod tests {
 
     #[test]
     fn should_support_unordered_redactions() {
-        let redact = &vec![s!(r"(?i:AB)"), s!(r"(?i:CD)")];
+        let redact = &[s!(r"(?i:AB)"), s!(r"(?i:CD)")];
         let p = LineRules::new(&[], &[], redact).unwrap();
         redact_match!(p, "AB CD", "[REDACTED] [REDACTED]");
         redact_match!(
@@ -330,7 +330,7 @@ mod tests {
 
     #[test]
     fn should_support_unordered_overlapping_redactions() {
-        let redact = &vec![s!(r"(?i:AB)"), s!(r"(?i:CD)"), s!(r"\w{2}"), s!(r"\w{3}")];
+        let redact = &[s!(r"(?i:AB)"), s!(r"(?i:CD)"), s!(r"\w{2}"), s!(r"\w{3}")];
         let p = LineRules::new(&[], &[], redact).unwrap();
         redact_match!(
             p,
@@ -341,7 +341,7 @@ mod tests {
 
     #[test]
     fn should_apply_rules_and_redact_lines() {
-        let redact = &vec![s!("(?i:SENSITIVE)")];
+        let redact = &[s!("(?i:SENSITIVE)")];
         let p = LineRules::new(&[s!("DEBUG")], &[s!("WARN"), s!("ERROR")], redact).unwrap();
         redact_match!(p, "Hello WARN not redacted", "Hello WARN not redacted");
         redact_match!(
