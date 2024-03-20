@@ -71,6 +71,12 @@ Specify each parameter using the `--set key=value[,key=value]` argument to `helm
 $ helm install --set logdna.key=LOGDNA_INGESTION_KEY,logdna.tags=production my-release logdna/agent
 ```
 
+In special cases like `extraEnv`, you will need to set each individual item in the array when using `set`:
+
+```bash
+$ helm install --set logdna.key=LOGDNA_INGESTION_KEY,logdna.tags=production,extraEnv[0].name=LOGDNA_LOG_K8S_EVENTS,extraEnv[0].value=true my-release logdna/agent
+```
+
 Alternatively, create a YAML file that specifies the values for the above parameters. Specify the name of the file
 with the values during the chart installation. For example, using a file named `values.yaml`:
 
