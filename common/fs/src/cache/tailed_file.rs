@@ -32,7 +32,8 @@ use serde_json::Value;
 use time::OffsetDateTime;
 use tokio::io::{AsyncSeekExt, BufReader, SeekFrom};
 use tokio_util::compat::{Compat, TokioAsyncReadCompatExt};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, instrument, warn};
+use tracing_futures::Instrument;
 
 #[derive(Debug)]
 pub struct LazyLineSerializer {
@@ -567,6 +568,7 @@ impl LazyLines {
 
 impl TailedFile<LazyLineSerializer> {
     // tail a file for new line(s)
+    #[instrument(level = "debug", skip_all, fields(file_path = &paths[0].as_path().to_str().unwrap()))]
     pub(crate) async fn tail(
         &mut self,
         paths: &[PathBuf],
@@ -601,6 +603,8 @@ impl TailedFile<LazyLineSerializer> {
             };
 
             let target_read = inner.initial_offsets.first().map(|offsets| offsets.start);
+
+            debug!("tailing from {} to {}", inner.offset, len);
 
             // if we are at the end of the file there's no work to do
             if inner.offset == len {
@@ -780,7 +784,8 @@ impl TailedFile<LazyLineSerializer> {
                 // Discard errors
                 line_res.ok()
             })
-            .flatten(),
+            .flatten()
+            .in_current_span(),
         )
     }
 }

@@ -1,5 +1,8 @@
 REPO := logdna-agent-v2
 
+# for testing
+TESTS=foo
+
 SHELLFLAGS := -ic
 .DEFAULT_GOAL := test
 

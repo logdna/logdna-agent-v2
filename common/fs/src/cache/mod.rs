@@ -637,10 +637,21 @@ impl FileSystem {
     }
 
     /// Handles inotify events and may produce Event(s) that are returned upstream through sender
-    #[instrument(level = "debug", skip_all)]
+    #[instrument(level = "debug", skip_all, fields(file_path))]
     fn process(&mut self, watch_event: &WatchEvent) -> FsResult<SmallVec<[Event; 2]>> {
         let _entries = self.entries.clone();
         let mut _entries = _entries.borrow_mut();
+
+        match watch_event {
+            // jakedipity: ignoring the second path in a rename isn't ideal
+            WatchEvent::Create(path)
+            | WatchEvent::Write(path)
+            | WatchEvent::Remove(path)
+            | WatchEvent::Rename(path, _) => {
+                tracing::Span::current().record("file_path", path.as_path().to_str().unwrap());
+            }
+            _ => {}
+        };
 
         debug!("handling notify event {:#?}", watch_event);
 
@@ -1536,7 +1547,7 @@ impl FileSystem {
 
     /// Determines whether the path is within the initial dir
     /// and either passes the master rules (e.g. "*.log") or it's a directory
-    #[instrument(level = "debug", skip_all)]
+    #[instrument(level = "debug", skip(self, path), fields(file_path = path.to_str().unwrap()))]
     pub(crate) fn is_initial_dir_target(&self, path: &Path) -> bool {
         // Must be within the initial dir
         if self.initial_dir_rules.passes(path) != Status::Ok {
