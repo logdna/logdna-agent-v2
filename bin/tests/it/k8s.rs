@@ -1369,6 +1369,7 @@ async fn test_k8s_enrichment() {
                 // in normal case this delay is not going be triggered as
                 // all pod metadata shall be always available in this setup (good case)
                 (config::env_vars::METADATA_RETRY_DELAY, "5"),
+                (config::env_vars::FLUSH_DURATION, "250"),
             ]),
         )
         .await;

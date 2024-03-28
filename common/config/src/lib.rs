@@ -90,6 +90,7 @@ pub struct HttpConfig {
     pub require_ssl: bool,
     pub retry_dir: PathBuf,
     pub retry_disk_limit: Option<u64>,
+    pub flush_duration: Duration,
 
     // Development only settings
     pub retry_base_delay: Duration,
@@ -334,6 +335,7 @@ impl TryFrom<RawConfig> for Config {
                 raw.http.retry_step_delay_ms.unwrap_or(50) as u64
             ),
             require_ssl: raw.http.use_ssl.unwrap_or(true),
+            flush_duration: Duration::from_millis(raw.http.flush_duration.unwrap_or(5_000)),
         };
 
         let mut log = LogConfig {

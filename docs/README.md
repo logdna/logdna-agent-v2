@@ -229,6 +229,7 @@ For backward compatibility agent v1 configuration file format is still supported
 |`LOGDNA_META_ANNOTATIONS`||Overrides specific kay-value-pairs inside `ANNOTATIONS` field in log line metadata.||
 |`LOGDNA_META_LABELS`||Overrides specific kay-value-pairs inside `LABELS` field in log line metadata.||
 |`MZ_METADATA_RETRY_DELAY`||The number of seconds to wait for Pod label availability before sending log lines.|0|
+|`MZ_FLUSH_DURATION`|`http.flush_duration`|The number of milliseconds to wait before flushing captured logs to the ingestion API.|`5000`|
 
 
 All regular expressions use [Perl-style syntax][regex-syntax] with case sensitivity by default. If you don't
