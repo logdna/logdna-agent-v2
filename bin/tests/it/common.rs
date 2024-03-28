@@ -177,6 +177,7 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
         .env("RUST_BACKTRACE", "full")
         .env("LOGDNA_LOG_DIRS", settings.log_dirs)
         .env("LOGDNA_INGESTION_KEY", ingestion_key)
+        .env("MZ_FLUSH_DURATION", "250") // LOG-19388: always use short flush intervals
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 

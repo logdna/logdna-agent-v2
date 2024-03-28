@@ -765,8 +765,7 @@ pub async fn _main(
             Metrics::middleware().increment_lines_egress();
             l
         })
-        // TODO: parameterize the flush frequency
-        .timed_request_batches(config.http.body_size, Duration::from_millis(250))
+        .timed_request_batches(config.http.body_size, config.http.flush_duration)
         .map(|b| async { b })
         .buffered(10);
 
