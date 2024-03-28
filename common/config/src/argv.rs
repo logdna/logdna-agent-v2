@@ -207,6 +207,11 @@ pub struct ArgumentOptions {
     #[structopt(long, env = env_vars::INGEST_BUFFER_SIZE)]
     ingest_buffer_size: Option<usize>,
 
+    /// The time to wait before flushing captured logs to the ingestion API.
+    /// Defaults to 5000 ms.
+    #[structopt(long, env = env_vars::FLUSH_DURATION)]
+    flush_duration: Option<u64>,
+
     /// The location where retry data is stored before successfully sent to the ingestion API.
     /// Defaults to /tmp/logdna.
     #[structopt(long, env = env_vars::RETRY_DIR)]
@@ -283,6 +288,10 @@ impl ArgumentOptions {
 
         if self.ingest_timeout.is_some() {
             raw.http.timeout = self.ingest_timeout;
+        }
+
+        if self.flush_duration.is_some() {
+            raw.http.flush_duration = self.flush_duration;
         }
 
         if self.ingest_buffer_size.is_some() {

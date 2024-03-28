@@ -58,6 +58,7 @@ from_env_name!(RETRY_DIR);
 from_env_name!(RETRY_DISK_LIMIT);
 from_env_name!(CLEAR_CACHE_INTERVAL);
 from_env_name!(METADATA_RETRY_DELAY);
+from_env_name!(FLUSH_DURATION);
 
 enum Key {
     FromEnv(&'static str),
@@ -189,6 +190,12 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
     if let Some(value) = map.get(&INGEST_BUFFER_SIZE) {
         result.http.body_size = Some(value.parse().map_err(|e| {
             ConfigError::PropertyInvalid(format!("ingest_buffer_size is invalid: {}", e))
+        })?);
+    }
+
+    if let Some(value) = map.get(&FLUSH_DURATION) {
+        result.http.flush_duration = Some(value.parse().map_err(|e| {
+            ConfigError::PropertyInvalid(format!("flush_duration is invalid: {e}"))
         })?);
     }
 

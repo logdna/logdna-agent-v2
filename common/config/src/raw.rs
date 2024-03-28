@@ -280,6 +280,7 @@ pub struct HttpConfig {
         default
     )]
     pub retry_disk_limit: Option<u64>,
+    pub flush_duration: Option<u64>,
 
     // Mostly for development, these settings are hidden from the user
     // There's no guarantee that these settings will exist in the future
@@ -404,6 +405,7 @@ impl Default for HttpConfig {
             body_size: Some(2 * 1024 * 1024),
             retry_dir: Some(tmp),
             retry_disk_limit: None,
+            flush_duration: None,
             retry_base_delay_ms: None,
             retry_step_delay_ms: None,
         }
@@ -431,6 +433,8 @@ impl Merge for HttpConfig {
             .merge(&other.retry_base_delay_ms, &default.retry_base_delay_ms);
         self.retry_step_delay_ms
             .merge(&other.retry_step_delay_ms, &default.retry_step_delay_ms);
+        self.flush_duration
+            .merge(&other.flush_duration, &default.flush_duration);
     }
 }
 
@@ -771,6 +775,7 @@ http:
     now: 0
   body_size: 2097152
   retry_disk_limit: 3 MiB
+  flush_duration: 9000
 log:
   dirs:
     - /var/log1/
@@ -787,6 +792,7 @@ journald: {}
         assert_eq!(config.http.use_compression, Some(true));
         assert_eq!(config.http.timeout, Some(12000));
         assert_eq!(config.http.retry_disk_limit, Some(3_145_728));
+        assert_eq!(config.http.flush_duration, Some(9_000));
         let params = config.http.params.unwrap().build().unwrap();
         assert_eq!(params.tags, Some(Tags::from("tag1,tag2")));
         assert_eq!(
@@ -1152,6 +1158,7 @@ ingest_buffer_size = 3145728
             retry_disk_limit: Some(12345),
             retry_base_delay_ms: Some(10_000),
             retry_step_delay_ms: Some(10_000),
+            flush_duration: Some(1_111),
         };
 
         let mut right_params = Params::builder();
@@ -1170,6 +1177,7 @@ ingest_buffer_size = 3145728
             retry_disk_limit: Some(98765),
             retry_base_delay_ms: Some(2_000),
             retry_step_delay_ms: Some(2_000),
+            flush_duration: Some(2_222),
         };
 
         left_conf.merge(&right_conf, &HttpConfig::default());
@@ -1196,6 +1204,7 @@ ingest_buffer_size = 3145728
         assert_eq!(left_conf.retry_disk_limit, Some(98765));
         assert_eq!(left_conf.retry_base_delay_ms, Some(2_000));
         assert_eq!(left_conf.retry_step_delay_ms, Some(2_000));
+        assert_eq!(left_conf.flush_duration, Some(2_222));
     }
 
     #[test]
