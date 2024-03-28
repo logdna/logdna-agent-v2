@@ -127,7 +127,7 @@ impl Retry {
                             .split('_')
                             .map(|s| s.to_string())
                             .collect::<Vec<String>>()
-                            .get(0)
+                            .first()
                             .and_then(|s| FromStr::from_str(s).ok())
                             .ok_or_else(|| Error::InvalidFileName(file_name.clone()))?;
 
