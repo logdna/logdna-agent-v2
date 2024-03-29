@@ -553,18 +553,6 @@ pipeline {
                     }
                 }
             }
-            post {
-                always {
-                    sh 'ARCH=x86_64 make clean-all'
-                    sh 'ARCH=aarch64 make clean-all'
-                    cleanWs(deleteDirs: true,
-                            // Uncomment the 'cleanWhenFailure: false,' line for debug
-                            // cleanWhenFailure: false,
-                            notFailBuild: true,
-                            patterns: [[pattern: '.gitignore', type: 'INCLUDE'],
-                                       [pattern: '.propsfile', type: 'EXCLUDE']])
-                }
-            }
         }
     }
     post {
@@ -590,6 +578,16 @@ pipeline {
                     )
                 }
             }
+        }
+        always {
+            sh 'ARCH=x86_64 make clean-all'
+            sh 'ARCH=aarch64 make clean-all'
+            cleanWs(deleteDirs: true,
+                    // Uncomment the 'cleanWhenFailure: false,' line for debug
+                    // cleanWhenFailure: false,
+                    notFailBuild: true,
+                    patterns: [[pattern: '.gitignore', type: 'INCLUDE'],
+                                [pattern: '.propsfile', type: 'EXCLUDE']])
         }
     }
 }
