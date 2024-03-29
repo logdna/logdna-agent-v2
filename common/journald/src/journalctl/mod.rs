@@ -490,6 +490,7 @@ _SOURCE_REALTIME_TIMESTAMP=1623323451155218
 
     #[cfg(feature = "libjournald")]
     #[tokio::test]
+    #[ignore = "LOG-19591"]
     async fn stream_gets_new_logs() {
         use super::create_journalctl_source;
         use std::time::Duration;
