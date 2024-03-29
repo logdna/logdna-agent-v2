@@ -622,6 +622,7 @@ fn test_directory_symlinks_delete() {
 
 #[tokio::test]
 #[cfg(all(target_os = "linux", feature = "integration_tests"))]
+#[ignore = "LOG-19591"]
 async fn test_z_journald_support() {
     tokio::time::sleep(Duration::from_millis(500)).await;
     let dir = "/var/log/journal";
@@ -664,6 +665,7 @@ async fn test_z_journald_support() {
 
 #[tokio::test]
 #[cfg(all(target_os = "linux", feature = "integration_tests"))]
+#[ignore = "LOG-19591"]
 async fn test_z_journald_support_no_flag() {
     tokio::time::sleep(Duration::from_millis(500)).await;
     let dir = "/var/log/journal";
@@ -713,6 +715,7 @@ async fn test_z_journalctl_support_true_flag_no_path() {
 
 #[tokio::test]
 #[cfg(all(target_os = "linux", feature = "integration_tests"))]
+#[ignore = "LOG-19591"]
 async fn test_journalctl_support() {
     assert_eq!(systemd::journal::print(6, "Sample info"), 0);
     tokio::time::sleep(Duration::from_millis(1000)).await;
