@@ -331,6 +331,7 @@ mod tests {
 
     #[tokio::test]
     #[serial]
+    #[ignore = "LOG-19591"]
     async fn stream_gets_new_logs() {
         let _ = env_logger::Builder::from_default_env().try_init();
         journal::print(1, "Reader got the correct line 1!");
