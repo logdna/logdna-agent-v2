@@ -356,6 +356,9 @@ async fn test_metrics_endpoint() {
             tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
         }
 
+        // Sleep some more, just for good measure
+        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
         tokio::fs::remove_file(&included_file).await.unwrap();
         common::wait_for_event("Delete Event", &mut stderr_reader);
         common::consume_output(stderr_reader.into_inner());

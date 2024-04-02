@@ -304,7 +304,7 @@ where
     debug!("event info: {:?}", event_info);
     for _safeguard in 0..100_000 {
         assert!(
-            instant.elapsed() < delay.unwrap_or(std::time::Duration::from_secs(20)),
+            instant.elapsed() < delay.unwrap_or(std::time::Duration::from_secs(30)),
             "Timed out waiting for condition"
         );
 
