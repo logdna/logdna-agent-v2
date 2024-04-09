@@ -132,7 +132,13 @@ pipeline {
                 stage('Scanning Images') {
                     steps {
                         sh 'make sysdig_secure_images'
-                        sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
+                        script {
+                            def imageNames = readFile('sysdig_secure_images').trim().split('\n')
+                            for(img in imageNames){
+                                echo "Scanning image ${img}"
+                                sysdigImageScan engineCredentialsId: 'sysdig-secure-api-token', imageName: img
+                            }
+                        }
                     }
                 }
                 stage('Publish Images') {
