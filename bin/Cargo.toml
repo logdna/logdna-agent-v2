@@ -40,7 +40,7 @@ consts = { package = "consts", path = "../common/consts" }
 types = { package = "shared_types", path = "../common/misc/shared_types" }
 
 bytes = "1"
-time = "0.3"
+time = "0.3.31"
 async-trait = "0.1"
 kube = { version = "0.87", default-features = false, features = ["rustls-tls"] }
 env_logger = "0.9"
