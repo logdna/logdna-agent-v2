@@ -478,9 +478,12 @@ pipeline {
                 }
                 stage('Publish MAC binaries to S3') {
                     when {
-                        anyOf {
-                            branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
-                            environment name: 'PUBLISH_BINARIES', value: 'true'
+                        allOf {
+                            environment name: 'BUILD_MAC_RELEASE', value: 'true'
+                            anyOf {
+                                branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
+                                environment name: 'PUBLISH_BINARIES', value: 'true'
+                            }
                         }
                     }
                     agent {
