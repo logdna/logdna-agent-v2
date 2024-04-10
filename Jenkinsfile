@@ -39,6 +39,7 @@ pipeline {
         booleanParam(name: 'PUBLISH_ICR_IMAGE', description: 'Publish docker image to IBM Container Registry (ICR) and Dockerhub', defaultValue: false)
         booleanParam(name: 'PUBLISH_BINARIES', description: 'Publish executable binaries to S3 bucket s3://logdna-agent-build-bin', defaultValue: false)
         booleanParam(name: 'PUBLISH_INSTALLERS', description: 'Publish Choco installer', defaultValue: false)
+        booleanParam(name: 'BUILD_MAC_RELEASE', description: 'Build Mac Release', defaultValue: true)
         booleanParam(name: 'TEST_MAC', description: 'Test on Mac', defaultValue: true)
         booleanParam(name: 'AUDIT', description: 'Check for application vulnerabilities with cargo audit', defaultValue: true)
         string(name: 'RUST_IMAGE_SUFFIX', description: 'Build image tag suffix', defaultValue: "")
@@ -364,6 +365,9 @@ pipeline {
                     }
                 }
                 stage('Build Mac OSX release binary X86_64') {
+                    when {
+                        environment name: 'BUILD_MAC_RELEASE', value: 'true'
+                    }
                     agent {
                         node {
                             label "osx-node"
