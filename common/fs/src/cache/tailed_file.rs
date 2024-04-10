@@ -563,12 +563,7 @@ impl RetryableLine for LazyLineSerializer {
                 inner.retrying_until = Some(delay);
                 if let Some(retry_events_send) = self.retry_events_send.as_ref() {
                     retry_events_send
-                        .send_blocking((
-                            event,
-                            delay,
-                            inner.retries,
-                            Some(self.file_offset.1),
-                        ))
+                        .send_blocking((event, delay, inner.retries, Some(self.file_offset.1)))
                         .unwrap();
                 }
             }
@@ -675,16 +670,23 @@ impl TailedFile<LazyLineSerializer> {
                 // else we're on a normal read
 
                 if let Some(retrying_until) = inner.retrying_until {
-                    if retrying_until >= OffsetDateTime::now_utc() - std::time::Duration::from_millis(100) {
+                    if retrying_until
+                        >= OffsetDateTime::now_utc() - std::time::Duration::from_millis(100)
+                    {
                         debug!("waiting to retry, skipping read on {:#?}", paths);
                         if inner.retries >= 5 {
-                            debug!("queuing a retry for {:?} after {:#?}", paths, retrying_until - OffsetDateTime::now_utc() + std::time::Duration::from_millis(1000));
+                            debug!(
+                                "queuing a retry for {:?} after {:#?}",
+                                paths,
+                                retrying_until - OffsetDateTime::now_utc()
+                                    + std::time::Duration::from_millis(1000)
+                            );
                             if let Some(retry_events_send) = self.retry_events_sender.as_ref() {
                                 let event = WatchEvent::Write(paths[0].clone());
                                 retry_events_send
                                     .send_blocking((
                                         event,
-                                        retrying_until + std::time::Duration::from_millis(1000) ,
+                                        retrying_until + std::time::Duration::from_millis(1000),
                                         0,
                                         None,
                                     ))
@@ -702,7 +704,10 @@ impl TailedFile<LazyLineSerializer> {
                             {
                                 warn!("Couldn't send tailer continuation event: {}", e);
                             } else {
-                                debug!("sending resume event for {:#?} at offset {:#?}", paths, inner.offset);
+                                debug!(
+                                    "sending resume event for {:#?} at offset {:#?}",
+                                    paths, inner.offset
+                                );
                             };
                         }
                     }

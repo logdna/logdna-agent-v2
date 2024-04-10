@@ -2169,7 +2169,10 @@ async fn test_retry_line_with_missing_pod_metadata() {
                 (config::env_vars::METADATA_RETRY_DELAY, "1"),
                 (config::env_vars::LOOKBACK, "start"),
                 (config::env_vars::MOCK_NO_PODS, "true"), // k8s log lines will not have metadata
-                (config::env_vars::EXCLUSION_REGEX_RULES, ".*test-retry-line-agent.*"),
+                (
+                    config::env_vars::EXCLUSION_REGEX_RULES,
+                    ".*test-retry-line-agent.*",
+                ),
             ]),
         )
         .await;
