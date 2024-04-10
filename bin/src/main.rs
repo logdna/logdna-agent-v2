@@ -1,3 +1,4 @@
+//#![feature(type_alias_impl_trait)]
 use config::{self, Config};
 use std::sync::Arc;
 use tokio::sync::Mutex;

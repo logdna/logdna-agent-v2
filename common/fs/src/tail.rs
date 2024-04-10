@@ -1,16 +1,16 @@
 use crate::cache::entry::Entry;
 use crate::cache::event::Event;
 use crate::cache::tailed_file::LazyLineSerializer;
-pub use crate::cache::DirPathBuf;
 use crate::cache::{EntryKey, Error as CacheError, FileSystem};
-use crate::lookback::Lookback;
-use crate::rule::Rules;
+use types::lookback::Lookback;
+use types::rule::Rules;
 
 use metrics::Metrics;
 use state::{FileId, SpanVec};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use tracing::{debug, info, warn};
+use types::dir_path::DirPathBuf;
 
 use futures::{ready, Future, Stream, StreamExt};
 
@@ -59,7 +59,7 @@ async fn handle_event(
                     // If the file's passes the rules tail it
                     info!("initialize event for file {}", path_display);
                     if fs.is_initial_dir_target(entry.path()) {
-                        return data.borrow_mut().tail(&paths).await;
+                        return data.borrow_mut().tail(&paths, None).await;
                     }
                 }
                 Entry::Symlink { link, path } => {
@@ -87,7 +87,7 @@ async fn handle_event(
                                 final_target
                             );
                             let mut data = data.borrow_mut();
-                            return data.tail(&paths).await;
+                            return data.tail(&paths, None).await;
                         }
                     }
                 }
@@ -106,7 +106,26 @@ async fn handle_event(
             }
             if let Entry::File { data, .. } = entry {
                 info!("added {:?}", paths[0]);
-                return data.borrow_mut().tail(&paths).await;
+                return data.borrow_mut().tail(&paths, None).await;
+            }
+        }
+        Event::RetryWrite((entry_ptr, retry_offset)) => {
+            Metrics::fs().increment_writes();
+            debug!("Write Event");
+            let entries = fs.entries.borrow();
+            let entry = entries.get(entry_ptr)?;
+
+            let paths = fs.resolve_valid_paths(entry, &entries);
+            if paths.is_empty() {
+                return None;
+            }
+
+            if let Entry::File { data, .. } = entry {
+                return data
+                    .borrow_mut()
+                    .deref_mut()
+                    .tail(&paths, Some(retry_offset))
+                    .await;
             }
         }
         Event::Write(entry_ptr) => {
@@ -121,7 +140,7 @@ async fn handle_event(
             }
 
             if let Entry::File { data, .. } = entry {
-                return data.borrow_mut().deref_mut().tail(&paths).await;
+                return data.borrow_mut().deref_mut().tail(&paths, None).await;
             }
         }
         Event::Delete(entry_ptr) => {
@@ -149,7 +168,7 @@ async fn handle_event(
                     }
                     if let Entry::File { data, .. } = entry {
                         let mut tailed_file = data.borrow_mut();
-                        tailed_file.deref_mut().tail(&paths).await
+                        tailed_file.deref_mut().tail(&paths, None).await
                     } else {
                         None
                     }
@@ -326,7 +345,6 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::rule::{RuleDef, Rules};
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     use pin_utils::pin_mut;
     use std::cell::Cell;
@@ -340,6 +358,7 @@ mod test {
     use std::time::Duration;
     use tempfile::tempdir;
     use tokio_stream::StreamExt;
+    use types::rule::{RuleDef, Rules};
 
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     static DELAY: Duration = Duration::from_millis(200);
