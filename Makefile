@@ -1,5 +1,6 @@
 REPO := logdna-agent-v2
 
+SHELL = /bin/bash
 SHELLFLAGS := -ic
 .DEFAULT_GOAL := test
 
