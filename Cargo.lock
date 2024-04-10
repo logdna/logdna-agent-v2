@@ -2015,7 +2015,7 @@ checksum = "90ed8c1e510134f979dbc4f070f87d4313098b704861a105fe34231c70a3901c"
 
 [[package]]
 name = "logdna-agent"
-version = "3.9.1"
+version = "3.9.2"
 dependencies = [
  "anyhow",
  "api",
