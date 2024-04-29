@@ -54,8 +54,9 @@ ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy
 COPY --from=build /opt/logdna-agent-v2/target/release/logdna-agent /work/
 WORKDIR /work/
 
-RUN microdnf update -y \
-    && microdnf install ca-certificates libcap shadow-utils.x86_64 -y \
+RUN microdnf update --refresh --best --nodocs --noplugins --setopt=install_weak_deps=0 -y \
+    && microdnf install ca-certificates libcap shadow-utils.x86_64 systemd --best --nodocs --noplugins --setopt=install_weak_deps=0 -y \
+    && microdnf clean all \
     && rm -rf /var/cache/yum \
     && chmod -R 777 . \
     && groupadd -g 5000 logdna \
