@@ -107,8 +107,9 @@ COPY --from=build /logdna-agent /work/
 WORKDIR /work/
 
 # hadolint ignore=DL3041
-RUN microdnf update -y \
-    && microdnf install ca-certificates libcap shadow-utils -y \
+RUN microdnf update --refresh --best --nodocs --noplugins --setopt=install_weak_deps=0 -y \
+    && microdnf install ca-certificates libcap shadow-utils systemd --best --nodocs --noplugins --setopt=install_weak_deps=0 -y \
+    && microdnf clean all \
     && rm -rf /var/cache/yum \
     && chmod -R 777 . \
     && setcap "cap_dac_read_search+p" /work/logdna-agent \
