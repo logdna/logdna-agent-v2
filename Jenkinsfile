@@ -373,7 +373,7 @@ pipeline {
                                 echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_x86_64
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
-                                cargo build --release --target=x86_64-apple-darwin --target-dir x86-target
+                                MACOSX_DEPLOYMENT_TARGET=10.14 cargo build --release --target=x86_64-apple-darwin --target-dir x86-target
                             '''
                         }
                     }
@@ -404,7 +404,7 @@ pipeline {
                                 echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
-                                cargo build --release --target-dir arm-target
+                                MACOSX_DEPLOYMENT_TARGET=10.14 cargo build --release --target-dir arm-target
                             '''
                         }
                     }
