@@ -197,8 +197,8 @@ mod tests {
 
     #[test]
     fn should_exclude_lines() {
-        let exclusion = &[s!("DEBUG"), s!("(?i:TRACE)")];
-        let p = LineRules::new(exclusion, &[], &[]).unwrap();
+        let exclusion = [s!("DEBUG"), s!("(?i:TRACE)")];
+        let p = LineRules::new(&exclusion, &[], &[]).unwrap();
         // Not containing any excluded value
         is_match!(p, "Hello INFO something", Status::Ok(_));
 
@@ -215,8 +215,8 @@ mod tests {
     #[test]
     fn should_filter_by_inclusion() {
         // Only include lines with "WARN" (case sensitive) and "error" (case insensitive)
-        let inclusion = &[s!("WARN"), s!("(?i:error)")];
-        let p = LineRules::new(&[], inclusion, &[]).unwrap();
+        let inclusion = [s!("WARN"), s!("(?i:error)")];
+        let p = LineRules::new(&[], &inclusion, &[]).unwrap();
 
         // Should match
         is_match!(p, "WARN something", Status::Ok(_));
@@ -237,9 +237,9 @@ mod tests {
     fn should_use_exclusion_last() {
         // Only include lines with "WARN" and "error"
         // And exclude messages with the text "VERBOSE"
-        let inclusion = &[s!("WARN"), s!("(?i:error)")];
-        let exclusion = &[s!("VERBOSE")];
-        let p = LineRules::new(exclusion, inclusion, &[]).unwrap();
+        let inclusion = [s!("WARN"), s!("(?i:error)")];
+        let exclusion = [s!("VERBOSE")];
+        let p = LineRules::new(&exclusion, &inclusion, &[]).unwrap();
 
         // Should match
         is_match!(p, "WARN something", Status::Ok(_));
@@ -254,12 +254,12 @@ mod tests {
 
     #[test]
     fn should_redact_lines() {
-        let redact = &[
+        let redact = [
             s!(r"\S+@\S+\.\S+"),
             s!("(?i:SENSITIVE)"),
             s!(r"\d{1,2}-\d{1,2}-\d{4}"),
         ];
-        let p = LineRules::new(&[], &[], redact).unwrap();
+        let p = LineRules::new(&[], &[], &redact).unwrap();
         redact_match!(p, "Hello INFO not redacted", "Hello INFO not redacted");
         redact_match!(p, "my sensitive information", "my [REDACTED] information");
         redact_match!(p, "Sensitive sentence", "[REDACTED] sentence");
@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn should_support_overlapping_redactions() {
-        let redact = &[
+        let redact = [
             s!(r"(?i:SI)"),
             s!(r"(?i:SUPERSENSITIVE)"),
             s!(r"(?i:SENSITIVE)"),
@@ -285,7 +285,7 @@ mod tests {
             s!(r"(?i:S\w+E)"),
             s!(r"(?i:SENSITIVE information)"),
         ];
-        let p = LineRules::new(&[], &[], redact).unwrap();
+        let p = LineRules::new(&[], &[], &redact).unwrap();
         redact_match!(p, "Hello INFO not redacted", "Hello INFO not redacted");
         redact_match!(
             p,
@@ -301,8 +301,8 @@ mod tests {
 
     #[test]
     fn should_support_redactions_changing_length() {
-        let redact = &[s!(r"(?:123)"), s!(r"(?:def)")];
-        let p = LineRules::new(&[], &[], redact).unwrap();
+        let redact = [s!(r"(?:123)"), s!(r"(?:def)")];
+        let p = LineRules::new(&[], &[], &redact).unwrap();
         redact_match!(p, "Hello INFO not redacted", "Hello INFO not redacted");
         redact_match!(
             p,
@@ -313,8 +313,8 @@ mod tests {
 
     #[test]
     fn should_support_unordered_redactions() {
-        let redact = &[s!(r"(?i:AB)"), s!(r"(?i:CD)")];
-        let p = LineRules::new(&[], &[], redact).unwrap();
+        let redact = [s!(r"(?i:AB)"), s!(r"(?i:CD)")];
+        let p = LineRules::new(&[], &[], &redact).unwrap();
         redact_match!(p, "AB CD", "[REDACTED] [REDACTED]");
         redact_match!(
             p,
@@ -330,8 +330,8 @@ mod tests {
 
     #[test]
     fn should_support_unordered_overlapping_redactions() {
-        let redact = &[s!(r"(?i:AB)"), s!(r"(?i:CD)"), s!(r"\w{2}"), s!(r"\w{3}")];
-        let p = LineRules::new(&[], &[], redact).unwrap();
+        let redact = [s!(r"(?i:AB)"), s!(r"(?i:CD)"), s!(r"\w{2}"), s!(r"\w{3}")];
+        let p = LineRules::new(&[], &[], &redact).unwrap();
         redact_match!(
             p,
             "CD 1 CDA 2 AB 3 CD",
@@ -341,8 +341,8 @@ mod tests {
 
     #[test]
     fn should_apply_rules_and_redact_lines() {
-        let redact = &[s!("(?i:SENSITIVE)")];
-        let p = LineRules::new(&[s!("DEBUG")], &[s!("WARN"), s!("ERROR")], redact).unwrap();
+        let redact = [s!("(?i:SENSITIVE)")];
+        let p = LineRules::new(&[s!("DEBUG")], &[s!("WARN"), s!("ERROR")], &redact).unwrap();
         redact_match!(p, "Hello WARN not redacted", "Hello WARN not redacted");
         redact_match!(
             p,

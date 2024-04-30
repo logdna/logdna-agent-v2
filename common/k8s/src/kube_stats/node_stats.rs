@@ -180,16 +180,12 @@ impl NodeStatsBuilder<'_> {
         match status {
             Some(status) => {
                 if status.node_info.is_some() {
-                    container_runtime_version = status
-                        .node_info
-                        .as_ref()
-                        .unwrap()
-                        .container_runtime_version
-                        .clone();
+                    container_runtime_version
+                        .clone_from(&status.node_info.as_ref().unwrap().container_runtime_version);
 
-                    kernel_version = status.node_info.as_ref().unwrap().kernel_version.clone();
-                    kubelet_version = status.node_info.as_ref().unwrap().kubelet_version.clone();
-                    os_image = status.node_info.as_ref().unwrap().os_image.clone();
+                    kernel_version.clone_from(&status.node_info.as_ref().unwrap().kernel_version);
+                    kubelet_version.clone_from(&status.node_info.as_ref().unwrap().kubelet_version);
+                    os_image.clone_from(&status.node_info.as_ref().unwrap().os_image);
                 }
 
                 if status.allocatable.is_some() {
@@ -233,9 +229,9 @@ impl NodeStatsBuilder<'_> {
 
                     for address in addresses {
                         if address.type_.to_lowercase() == "internalip" {
-                            ip = address.address.clone();
+                            ip.clone_from(&address.address);
                         } else if address.type_.to_lowercase() == "externalip" {
-                            ip_external = address.address.clone();
+                            ip_external.clone_from(&address.address);
                         }
                     }
                 }
@@ -254,12 +250,10 @@ impl NodeStatsBuilder<'_> {
 
                                 ready_heartbeat_time = heartbeat.0.timestamp_millis();
 
-                                ready_message = condition
-                                    .message
-                                    .as_ref()
-                                    .unwrap_or(&"".to_string())
-                                    .clone();
-                                ready_status = condition.status.clone();
+                                ready_message.clone_from(
+                                    condition.message.as_ref().unwrap_or(&"".to_string()),
+                                );
+                                ready_status.clone_from(&condition.status);
                             }
 
                             if condition.last_transition_time.is_some() {
@@ -290,7 +284,7 @@ impl NodeStatsBuilder<'_> {
         }
 
         if self.n.metadata.name.is_some() {
-            node = self.n.metadata.name.as_ref().unwrap().clone();
+            node.clone_from(self.n.metadata.name.as_ref().unwrap());
         }
 
         NodeStats {

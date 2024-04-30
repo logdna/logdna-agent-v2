@@ -185,8 +185,8 @@ impl Service<Request<Body>> for Svc {
                         }
                     });
 
-                    file_info.annotation = line.annotation.clone();
-                    file_info.label = line.label.clone();
+                    file_info.annotation.clone_from(&line.annotation);
+                    file_info.label.clone_from(&line.label);
                     file_info.lines += 1;
                     file_info.values.push(raw_line);
                     file_info.meta = line.meta;

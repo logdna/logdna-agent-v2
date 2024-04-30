@@ -1051,7 +1051,7 @@ impl FileSystem {
         }
 
         // If we already know about it warn and return
-        if self.watch_descriptors.get(path).is_some() {
+        if self.watch_descriptors.contains_key(path) {
             #[cfg(any(target_os = "windows", target_os = "linux"))] // bug in notify-rs where there is always a create event before most other events, just ignore.
             warn!("watch descriptor for {} already exists...", path.display());
             return Ok(None);
@@ -1147,7 +1147,7 @@ impl FileSystem {
                 // Ensure the symlink's parent directory is being tracked
                 if let Some(parent) = path.parent() {
                     // Manually insert the parent directory for symlink target so that we receive deletes if it's not here
-                    if self.watch_descriptors.get(parent).is_none() {
+                    if !self.watch_descriptors.contains_key(parent) {
                         let new_entry = Entry::Dir {
                             children: Children::default(),
                             path: parent.into(),
@@ -1171,7 +1171,7 @@ impl FileSystem {
                             // Add the parent directory of the target
                             if let Some(parent) = target.parent() {
                                 // Manually insert the parent directory for symlink target so that we receive deletes if it's not here
-                                if self.watch_descriptors.get(parent).is_none() {
+                                if !self.watch_descriptors.contains_key(parent) {
                                     let new_entry = Entry::Dir {
                                         children: Children::default(),
                                         path: parent.into(),
