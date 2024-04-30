@@ -807,26 +807,26 @@ mod tests {
         l.reader.try_lock().unwrap().deref_mut().buf = buf;
 
         {
-            let exclusion = &vec!["DEBUG".to_owned(), "(?i:TRACE)".to_owned()];
-            let p = LineRules::new(exclusion, &[], &[]).unwrap();
+            let exclusion = ["DEBUG".to_owned(), "(?i:TRACE)".to_owned()];
+            let p = LineRules::new(&exclusion, &[], &[]).unwrap();
             assert!(matches!(p.process(&mut l), Status::Skip));
         }
         {
-            let inclusion = &vec!["DEBUG".to_owned(), "(?i:TRACE)".to_owned()];
-            let p = LineRules::new(&[], inclusion, &[]).unwrap();
+            let inclusion = ["DEBUG".to_owned(), "(?i:TRACE)".to_owned()];
+            let p = LineRules::new(&[], &inclusion, &[]).unwrap();
             assert!(matches!(p.process(&mut l), Status::Ok(_)));
         }
     }
 
     #[test]
     fn lazy_lines_should_support_redaction() {
-        let redact = &vec!["NAME".to_owned(), r"\d+".to_owned()];
+        let redact = ["NAME".to_owned(), r"\d+".to_owned()];
         let mut l = get_line();
 
         {
             let buf = b"my name is NAME and I was born in the year 1914".to_vec();
             l.reader.try_lock().unwrap().deref_mut().buf = buf;
-            let p = LineRules::new(&[], &[], redact).unwrap();
+            let p = LineRules::new(&[], &[], &redact).unwrap();
             match p.process(&mut l) {
                 Status::Ok(_) => assert_eq!(
                     std::str::from_utf8(l.get_line_buffer().unwrap()).unwrap(),
@@ -845,6 +845,7 @@ mod tests {
                     .read(true)
                     .write(true)
                     .create(true)
+                    .truncate(true)
                     .open(&file_path)
                     .unwrap(),
             ))
