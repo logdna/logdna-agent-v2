@@ -285,7 +285,7 @@ impl RetrySender {
             let mut file = BufWriter::new(
                 OpenOptions::new()
                     .create(true)
-                    .truncate(false)
+                    .truncate(true)
                     .write(true)
                     .open(&file_name)
                     .await?,
@@ -518,7 +518,7 @@ mod tests {
         let mut existing_file = BufWriter::new(
             OpenOptions::new()
                 .create(true)
-                .truncate(false)
+                .truncate(true)
                 .write(true)
                 .open(&existing_file_path)
                 .await?,

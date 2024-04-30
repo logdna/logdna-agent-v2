@@ -117,7 +117,7 @@ pub trait Merge {
 impl Merge for PathBuf {
     fn merge(&mut self, other: &Self, default: &Self) {
         if *self != *other && *other != *default {
-            *self = other.clone();
+            self.clone_from(other);
         }
     }
 }
@@ -125,21 +125,22 @@ impl Merge for PathBuf {
 impl Merge for String {
     fn merge(&mut self, other: &Self, default: &Self) {
         if *self != *other && *other != *default {
-            *self = other.clone();
+            self.clone_from(other);
         }
     }
 }
 
 impl Merge for bool {
     fn merge(&mut self, other: &Self, _default: &Self) {
-        *self = *self || *other;
+        let target = *self || *other;
+        self.clone_from(&target);
     }
 }
 
 impl Merge for u16 {
     fn merge(&mut self, other: &Self, default: &Self) {
         if *other != *default {
-            *self = *other;
+            self.clone_from(other);
         }
     }
 }
@@ -147,7 +148,7 @@ impl Merge for u16 {
 impl Merge for u32 {
     fn merge(&mut self, other: &Self, default: &Self) {
         if *other != *default {
-            *self = *other;
+            self.clone_from(other);
         }
     }
 }
@@ -155,7 +156,7 @@ impl Merge for u32 {
 impl Merge for u64 {
     fn merge(&mut self, other: &Self, default: &Self) {
         if *other != *default {
-            *self = *other;
+            self.clone_from(other);
         }
     }
 }
@@ -163,7 +164,7 @@ impl Merge for u64 {
 impl Merge for usize {
     fn merge(&mut self, other: &Self, default: &Self) {
         if *other != *default {
-            *self = *other;
+            self.clone_from(other);
         }
     }
 }
@@ -171,7 +172,7 @@ impl Merge for usize {
 impl Merge for i32 {
     fn merge(&mut self, other: &Self, default: &Self) {
         if *other != *default {
-            *self = *other;
+            self.clone_from(other);
         }
     }
 }
@@ -192,7 +193,7 @@ impl<T: PartialEq + Merge + Clone + Default> Merge for Option<T> {
 impl Merge for Option<ParamsBuilder> {
     fn merge(&mut self, other: &Self, default: &Self) {
         if *other != *default && other.is_some() {
-            *self = other.clone();
+            self.clone_from(other);
         }
     }
 }
@@ -200,7 +201,7 @@ impl Merge for Option<ParamsBuilder> {
 impl<T: PartialEq + Clone> Merge for Vec<T> {
     fn merge(&mut self, other: &Self, default: &Self) {
         if *other != *default {
-            *self = other.clone();
+            self.clone_from(other);
         }
     }
 }
