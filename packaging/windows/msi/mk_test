@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-set -eu
+set -eux
+# new line
 # shellcheck disable=SC1091
 source ./mk_env
 export WINEPREFIX="$SRC_ROOT/$BUILD_DIR/wine"
 rm -rf "$WINEPREFIX"
 mkdir -p "$WINEPREFIX"
-DISPLAY= WINEDEBUG=-all wine64 msiexec /qn /norestart -i "$SRC_ROOT/$BUILD_DIR/signed/mezmo-agent.msi"
+DISPLAY="" WINEDEBUG=+warn wine64 msiexec /qn /norestart -i "$SRC_ROOT/$BUILD_DIR/signed/mezmo-agent.msi"
 MEZMO_DIR="$WINEPREFIX/drive_c/Program Files/Mezmo"
-set -x
 # check all files are installed
 ([ -f "$MEZMO_DIR/logdna-agent.exe" ] && \
 [ -f "$MEZMO_DIR/logdna-agent-svc.exe" ] && \
