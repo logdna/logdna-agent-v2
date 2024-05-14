@@ -10,7 +10,7 @@
 
 [package]
 name = "logdna-agent"
-version = "2.2.14"
+version = "2.2.15"
 authors = ["CJP10 <connor.peticca@logdna.com>"]
 edition = "2018"
 build = "build.rs"
