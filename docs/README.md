@@ -90,10 +90,6 @@ Refer to the documentation for [deploying the agent on Linux](LINUX.md).
 
 Refer to the documentation for [installing the agent on Windows](WINDOWS.md).
 
-### Installing on MacOS
-
-Refer to the documentation for [installing the agent on MacOS](MACOS.md).
-
 
 ### Running as Non-Root
 
