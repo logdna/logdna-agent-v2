@@ -4,14 +4,14 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpStream;
 
-use futures::{StreamExt, TryStreamExt};
+use futures::{AsyncBufReadExt, StreamExt, TryStreamExt};
 
 use k8s_openapi::api::apps::v1::DaemonSet;
 use k8s_openapi::api::coordination::v1::Lease;
 use k8s_openapi::api::core::v1::{Endpoints, Namespace, Pod, Service, ServiceAccount};
 use k8s_openapi::api::rbac::v1::{ClusterRole, ClusterRoleBinding, Role, RoleBinding};
-use kube::api::{Api, ListParams, LogParams, PostParams, WatchEvent};
-use kube::{Client, ResourceExt};
+use kube::api::{Api, ListParams, LogParams, PostParams, WatchEvent, WatchParams};
+use kube::Client;
 
 // workaround for unused functions in different features: https://github.com/rust-lang/rust/issues/46379
 use crate::common;
@@ -25,7 +25,7 @@ async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
             async move {
                 let mut logs = pods
                     .log_stream(
-                        &p.name(),
+                        &p.metadata.name.clone().unwrap(),
                         &LogParams {
                             follow: true,
                             tail_lines: None,
@@ -34,15 +34,10 @@ async fn print_pod_logs(client: Client, namespace: &str, label: &str) {
                     )
                     .await
                     .unwrap()
-                    .boxed();
-
-                log::debug!("Logging agent pod {}", p.name());
-                while let Some(line) = logs.next().await {
-                    log::debug!(
-                        "LOG [{:?}] {:?}",
-                        p.name(),
-                        String::from_utf8_lossy(&line.unwrap())
-                    );
+                    .lines();
+                log::debug!("Logging agent pod {}", p.metadata.name.clone().unwrap());
+                while let Some(line) = logs.try_next().await.unwrap() {
+                    log::debug!("LOG [{:?}] {:?}", p.metadata.name, line);
                 }
             }
         });
@@ -140,10 +135,10 @@ async fn start_line_proxy_pod(
     //// Wait for pod
 
     // Start a watch call for pods matching our name
-    let lp = ListParams::default()
+    let wp = WatchParams::default()
         .fields(&format!("metadata.name={}", pod_name))
         .timeout(60);
-    let mut stream = pods.watch(&lp, "0").await.unwrap().boxed();
+    let mut stream = pods.watch(&wp, "0").await.unwrap().boxed();
 
     // Observe the pods phase for up to 60 seconds
     'outer: while let Some(status) = stream.try_next().await.unwrap() {
@@ -175,6 +170,9 @@ async fn start_line_proxy_pod(
         }
     }
 
+    let lp = ListParams::default()
+        .fields(&format!("metadata.name={}", pod_name))
+        .timeout(60);
     let pods = pods.list(&lp).await.unwrap();
     let pod_addr = pods
         .iter()
@@ -441,10 +439,10 @@ async fn create_agent_ds(
 
     let agent_pods: Api<Pod> = Api::namespaced(client.clone(), agent_namespace);
 
-    let lp = ListParams::default()
+    let wp = WatchParams::default()
         .labels(&format!("app={}", agent_name))
         .timeout(60);
-    let mut stream = agent_pods.watch(&lp, "0").await.unwrap().boxed();
+    let mut stream = agent_pods.watch(&wp, "0").await.unwrap().boxed();
 
     // Observe the pods phase for up to 60 seconds
     'ds_outer: while let Some(status) = stream.try_next().await.unwrap() {

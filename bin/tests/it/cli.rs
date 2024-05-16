@@ -1625,7 +1625,6 @@ fn lookback_stateful_lines_are_delivered() {
     let (server, received, shutdown_handle, cert_file, addr) =
         common::self_signed_https_ingester(None, None, None);
     thread::sleep(std::time::Duration::from_millis(250));
-    let file_path1 = file_path.clone();
     let file_path_clone = file_path.clone();
     tokio_test::block_on(async {
         let (line_count, _, server) = tokio::join!(
@@ -1648,11 +1647,11 @@ fn lookback_stateful_lines_are_delivered() {
                 tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
                 handle.kill().unwrap();
 
-                debug!("getting lines from {}", &file_path1.to_str().unwrap());
+                debug!("getting lines from {}", &file_path.to_str().unwrap());
                 let line_count = received
                     .lock()
                     .await
-                    .get(&file_path1.to_str().unwrap().to_string())
+                    .get(&file_path.to_str().unwrap().to_string())
                     .unwrap()
                     .lines;
                 shutdown_handle();

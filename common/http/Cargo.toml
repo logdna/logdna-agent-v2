@@ -27,8 +27,8 @@ thiserror = "1"
 time = "0.3"
 futures = "0.3"
 futures-timer = "3"
-prometheus = { version = "0.12", features = ["process"] }
-async-compression = { version = "0.3.8", features = ["tokio"] }
+prometheus = { version = "0.13", features = ["process"] }
+async-compression = { version = "0.4", features = ["tokio"] }
 rate-limit-macro = { version = "1" }
 
 [dev-dependencies]

@@ -4,7 +4,6 @@ use futures::StreamExt;
 use http::types::body::{KeyValueMap, LineBufferMut};
 use k8s_openapi::api::core::v1::Pod;
 use kube::{
-    api::ListParams,
     runtime::{
         reflector,
         reflector::ObjectRef,
@@ -44,11 +43,12 @@ impl K8sMetadata {
         let store_writer = reflector::store::Writer::default();
         let store = store_writer.as_reader();
 
-        let params = if let Some(node) = node_name {
-            ListParams::default().fields(&format!("spec.nodeName={}", node))
-        } else {
-            ListParams::default()
-        };
+        let params = node_name
+            .map(|node| kube::runtime::watcher::Config {
+                field_selector: Some(format!("spec.nodeName={}", node)),
+                ..Default::default()
+            })
+            .unwrap_or_default();
 
         let watched = StreamBackoff::new(watcher(api, params), ExponentialBackoff::default());
 

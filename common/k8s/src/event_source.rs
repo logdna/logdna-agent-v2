@@ -1,37 +1,28 @@
+use crate::errors::{K8sError, K8sEventStreamError};
+use crate::restarting_stream::{RequiresRestart, RestartingStream};
+use backoff::ExponentialBackoff;
+use chrono::Duration;
 use core::cmp::{Ord, Ordering};
+use crossbeam::atomic::AtomicCell;
+use futures::{stream::try_unfold, Stream, StreamExt, TryStreamExt};
+use http::types::body::LineBuilder;
+use k8s_openapi::api::core::v1::{Event, ObjectReference, Pod};
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
+use kube::ResourceExt;
+use kube::{
+    runtime::{watcher, WatchStreamExt},
+    Api, Client,
+};
+use metrics::Metrics;
+use pin_utils::pin_mut;
+use regex::Regex;
+use serde::Serialize;
 use std::convert::TryInto;
 use std::convert::{Into, TryFrom};
 use std::num::NonZeroI64;
 use std::sync::Arc;
 
-use backoff::ExponentialBackoff;
-use crossbeam::atomic::AtomicCell;
-
-use chrono::Duration;
-
-use futures::{stream::try_unfold, Stream, StreamExt, TryStreamExt};
-
-use k8s_openapi::api::core::v1::{Event, ObjectReference, Pod};
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
 use kube::api::ListParams;
-use kube::{
-    runtime::{utils::try_flatten_touched, watcher},
-    Api, Client, Config,
-};
-
-use pin_utils::pin_mut;
-
-use serde::Serialize;
-
-use http::types::body::LineBuilder;
-
-use metrics::Metrics;
-
-use crate::errors::{K8sError, K8sEventStreamError};
-
-use crate::restarting_stream::{RequiresRestart, RestartingStream};
-
-use regex::Regex;
 
 const CONTAINER_NAME: &str = "logdna-agent";
 
@@ -246,7 +237,7 @@ impl K8sEventStream {
         namespace: String,
         pod_label: String,
     ) -> Result<Self, K8sError> {
-        let config = match Config::from_cluster_env() {
+        let config = match kube::Config::incluster_dns() {
             Ok(v) => v,
             Err(e) => {
                 return Err(K8sError::InitializationError(format!(
@@ -351,10 +342,13 @@ impl K8sEventStream {
                         Ok(None)
                     } else {
                         info!("watching pod {}", oldest_pod_name);
-                        let params = ListParams::default()
-                            .timeout(30)
-                            .labels(&format!("app.kubernetes.io/name={}", &pod_label)) // filter instances by label
-                            .fields(&format!("metadata.name={}", oldest_pod_name)); // filter instances by label
+                        let params = kube::runtime::watcher::Config {
+                            label_selector: Some(format!("app.kubernetes.io/name={}", &pod_label)), // filter instances by label
+                            field_selector: Some(format!("metadata.name={}", oldest_pod_name)), // filter instances by label
+                            timeout: Some(30),
+                            ..Default::default()
+                        };
+
                         let stream = watcher(pods.clone(), params)
                             .skip_while(|e| {
                                 let matched = matches!(e, Ok(watcher::Event::<Pod>::Restarted(_)));
@@ -417,10 +411,10 @@ impl K8sEventStream {
         previous_event_logger_delete_time: Arc<AtomicCell<Option<NonZeroI64>>>,
     ) -> impl Stream<Item = Result<StreamElem<LineBuilder>, K8sEventStreamError>> {
         let events: Api<Event> = Api::all(client.as_ref().clone());
-        let params = ListParams::default();
 
         let latest_event_time_w = latest_event_time.clone();
-        try_flatten_touched(watcher(events, params))
+        watcher(events, kube::runtime::watcher::Config::default())
+            .touched_objects()
             .map_err(K8sEventStreamError::WatcherError)
             .filter({
                 move |event| {
@@ -430,12 +424,17 @@ impl K8sEventStream {
                         .load()
                         .or_else(|| earliest.load())
                         .and_then(|earliest| {
-                            let earliest =
-                                chrono::NaiveDateTime::from_timestamp(earliest.into(), 0);
+                            let earliest = chrono::DateTime::from_timestamp(earliest.into(), 0)
+                                .expect("Timestamp Out of Range");
+
                             event.as_ref().ok().and_then(|e| {
-                                e.last_timestamp
-                                    .as_ref()
-                                    .map(|l| earliest < l.0.naive_utc())
+                                if e.creation_timestamp().is_none()
+                                    && latest_event_time.load().is_none()
+                                {
+                                    return Some(false);
+                                }
+
+                                e.creation_timestamp().as_ref().map(|l| earliest < l.0)
                             })
                         });
                     async move { ret.unwrap_or(true) }

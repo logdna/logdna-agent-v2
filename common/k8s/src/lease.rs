@@ -124,7 +124,7 @@ mod tests {
     async fn test_leasepatchspec_object_serialize() {
         let test_agent = String::from("test-agent");
         let test_expected_agent = String::from("test-agent");
-        let test_date = Utc.ymd(2020, 3, 28).and_hms(15, 30, 5);
+        let test_date = Utc.with_ymd_and_hms(2020, 3, 28, 15, 30, 5).unwrap();
 
         let test_leasepatchvalue = LeasePatchValue {
             holder_identity: Some(test_agent),
