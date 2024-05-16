@@ -9,7 +9,6 @@ use futures::{stream::try_unfold, Stream, StreamExt, TryStreamExt};
 use http::types::body::LineBuilder;
 use k8s_openapi::api::core::v1::{Event, ObjectReference, Pod};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::Time;
-use kube::api::ListParams;
 use kube::ResourceExt;
 use kube::{
     runtime::{watcher, WatchStreamExt},
@@ -287,49 +286,53 @@ impl K8sEventStream {
                     start_renewal_task(leader_meta.leader.clone());
                     Ok(None)
                 } else {
-                    let params = ListParams::default()
-                        .timeout(30)
-                        .labels(&format!("app.kubernetes.io/name={}", &pod_label));
-                    let stream = watcher(pods.clone(), params)
-                        .skip_while(|e| {
-                            let matched = matches!(e, Ok(watcher::Event::<Pod>::Restarted(_)));
-                            async move { matched }
-                        })
-                        .map({
-                            move |e| match e {
-                                Ok(watcher::Event::Deleted(e)) => {
-                                    if let Some(name) = e.metadata.name {
-                                        info!("Agent Down {}", name);
+                    let stream = watcher(
+                        pods.clone(),
+                        kube::runtime::watcher::Config {
+                            label_selector: Some(format!("app.kubernetes.io/name={}", &pod_label)),
+                            timeout: Some(30),
+                            ..Default::default()
+                        },
+                    )
+                    .skip_while(|e| {
+                        let matched = matches!(e, Ok(watcher::Event::<Pod>::Restarted(_)));
+                        async move { matched }
+                    })
+                    .map({
+                        move |e| match e {
+                            Ok(watcher::Event::Deleted(e)) => {
+                                if let Some(name) = e.metadata.name {
+                                    info!("Agent Down {}", name);
 
-                                        futures::executor::block_on(check_for_leader(
-                                            leader_meta.clone(),
-                                            name,
-                                        ));
+                                    futures::executor::block_on(check_for_leader(
+                                        leader_meta.clone(),
+                                        name,
+                                    ));
 
-                                        delete_time.store(
-                                            e.metadata
-                                                .deletion_timestamp
-                                                .map(|t| {
-                                                    info!(
-                                                        "Ignoring k8s events before {}",
-                                                        t.0 - chrono::Duration::seconds(2)
-                                                    );
-                                                    NonZeroI64::new(t.0.timestamp() - 2)
-                                                })
-                                                .flatten(),
-                                        );
-                                    }
-                                    Cont::Break
+                                    delete_time.store(
+                                        e.metadata
+                                            .deletion_timestamp
+                                            .map(|t| {
+                                                info!(
+                                                    "Ignoring k8s events before {}",
+                                                    t.0 - chrono::Duration::seconds(2)
+                                                );
+                                                NonZeroI64::new(t.0.timestamp() - 2)
+                                            })
+                                            .flatten(),
+                                    );
                                 }
-                                _ => Cont::Cont,
+                                Cont::Break
                             }
-                        })
-                        .filter_map(|e| async move {
-                            match e {
-                                Cont::Cont => None,
-                                Cont::Break => Some(((), ())),
-                            }
-                        });
+                            _ => Cont::Cont,
+                        }
+                    })
+                    .filter_map(|e| async move {
+                        match e {
+                            Cont::Cont => None,
+                            Cont::Break => Some(((), ())),
+                        }
+                    });
                     pin_mut!(stream);
                     Ok(stream.next().await)
                 }
@@ -357,10 +360,9 @@ impl K8sEventStream {
         previous_event_logger_delete_time: Arc<AtomicCell<Option<NonZeroI64>>>,
     ) -> impl Stream<Item = Result<StreamElem<LineBuilder>, K8sEventStreamError>> {
         let events: Api<Event> = Api::all(client.as_ref().clone());
-        let params = ListParams::default();
 
         let latest_event_time_w = latest_event_time.clone();
-        watcher(events, params)
+        watcher(events, kube::runtime::watcher::Config::default())
             .touched_objects()
             .map_err(K8sEventStreamError::WatcherError)
             .filter({
@@ -373,9 +375,8 @@ impl K8sEventStream {
                         .load()
                         .or_else(|| earliest.load())
                         .and_then(|earliest| {
-                            let earliest =
-                                chrono::NaiveDateTime::from_timestamp_opt(earliest.into(), 0)
-                                    .expect("Timestamp Out of Range");
+                            let earliest = chrono::DateTime::from_timestamp(earliest.into(), 0)
+                                .expect("Timestamp Out of Range");
 
                             event.as_ref().ok().and_then(|e| {
                                 if e.creation_timestamp().is_none()
@@ -384,9 +385,7 @@ impl K8sEventStream {
                                     return Some(false);
                                 }
 
-                                e.creation_timestamp()
-                                    .as_ref()
-                                    .map(|l| earliest < l.0.naive_utc())
+                                e.creation_timestamp().as_ref().map(|l| earliest < l.0)
                             })
                         });
 

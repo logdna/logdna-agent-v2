@@ -77,7 +77,7 @@ pub struct ArgumentOptions {
 
     /// If compression is enabled, this is the gzip compression level to use. Defaults to 2.
     #[structopt(long, env = env_vars::GZIP_LEVEL)]
-    gzip_level: Option<u32>,
+    gzip_level: Option<i32>,
 
     /// The hostname metadata to attach to lines forwarded from this agent (defaults to
     /// os.hostname())

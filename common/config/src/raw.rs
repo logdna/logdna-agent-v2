@@ -147,6 +147,14 @@ impl Merge for u32 {
     }
 }
 
+impl Merge for i32 {
+    fn merge(&mut self, other: &Self, default: &Self) {
+        if *other != *default {
+            *self = *other;
+        }
+    }
+}
+
 impl Merge for u64 {
     fn merge(&mut self, other: &Self, default: &Self) {
         if *other != *default {
@@ -249,7 +257,7 @@ pub struct HttpConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub use_compression: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub gzip_level: Option<u32>,
+    pub gzip_level: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ingestion_key: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

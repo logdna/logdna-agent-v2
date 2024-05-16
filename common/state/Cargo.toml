@@ -14,7 +14,7 @@ state = ["rocksdb"]
 [dependencies]
 derivative = "2.2"
 futures = "0.3"
-rocksdb = { version = "0.19", optional = true }
+rocksdb = { version = "0.22", optional = true }
 async-channel = "1.6"
 thiserror = "1.0"
 tracing = "0.1"

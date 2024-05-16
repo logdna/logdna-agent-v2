@@ -149,7 +149,7 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
     }
 
     if let Some(value) = map.get_string(&GZIP_LEVEL) {
-        result.http.gzip_level = Some(u32::from_str(&value).map_err(|e| {
+        result.http.gzip_level = Some(i32::from_str(&value).map_err(|e| {
             ConfigError::PropertyInvalid(format!("gzip level property is invalid: {}", e))
         })?);
     }
