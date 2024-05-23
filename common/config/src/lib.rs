@@ -272,13 +272,13 @@ impl TryFrom<RawConfig> for Config {
             .params
             .and_then(|mut builder| {
                 if builder.build().is_err() {
-                    builder.hostname(get_hostname().unwrap_or_default());
+                    builder.hostname(get_hostname(None).unwrap_or_default());
                 }
                 builder.build().ok()
             })
             .unwrap_or_else(|| {
                 let mut builder = Params::builder();
-                builder.hostname(get_hostname().unwrap_or_default());
+                builder.hostname(get_hostname(None).unwrap_or_default());
                 builder
                     .build()
                     .expect("Failed to create default http.params")
@@ -454,24 +454,25 @@ impl TryFrom<RawConfig> for Config {
     }
 }
 
-pub fn get_hostname() -> Option<String> {
-    let path = PathBuf::from("/etc/logdna-hostname");
-    if path.exists() {
-        if let Ok(s) = File::open(&path).and_then(|mut f| {
-            let mut s = String::new();
-            f.read_to_string(&mut s).map(|_| s)
-        }) {
-            return Some(s);
-        }
+pub fn get_hostname(alt: Option<&[PathBuf]>) -> Option<String> {
+    lazy_static! {
+        static ref DEFAULT_PATHS: [PathBuf; 2] = [
+            PathBuf::from("/etc/logdna-hostname"),
+            PathBuf::from("/etc/hostname"),
+        ];
     }
 
-    let path = PathBuf::from("/etc/hostname");
-    if path.exists() {
-        if let Ok(s) = File::open(&path).and_then(|mut f| {
-            let mut s = String::new();
-            f.read_to_string(&mut s).map(|_| s)
-        }) {
-            return Some(s);
+    let paths = alt.unwrap_or(DEFAULT_PATHS.as_slice());
+    for path in paths.iter() {
+        if path.exists() {
+            let closure = |mut f: File| {
+                let mut s = String::new();
+                f.read_to_string(&mut s).map(|_| s)
+            };
+            match File::open(path).and_then(closure) {
+                Ok(s) => return Some(s.trim().to_string()),
+                Err(e) => warn!("Unable to read hostname from {:?}: {}", path, e),
+            }
         }
     }
 
@@ -610,16 +611,42 @@ mod tests {
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     use scopeguard::guard;
     use std::env;
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
     use std::fs::OpenOptions;
-    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
     use std::io::Write;
 
     use super::*;
 
     #[test]
     fn test_hostname() {
-        assert!(get_hostname().is_some());
+        let tempdir = tempfile::TempDir::new().unwrap();
+        let path = tempdir.path().to_path_buf();
+        let paths = [path.join("hostname1"), path.join("hostname2")];
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&paths[1])
+            .unwrap();
+        writeln!(file, " hostname2_with_trim ").expect("Should be able to write to hostname2");
+        assert_eq!(
+            get_hostname(Some(paths.as_slice())).unwrap(),
+            "hostname2_with_trim"
+        );
+
+        let mut file = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(&paths[0])
+            .unwrap();
+        writeln!(file, " hostname1_with_trim ").expect("Should be able to write to hostname1");
+        assert_eq!(
+            get_hostname(Some(paths.as_slice())).unwrap(),
+            "hostname1_with_trim"
+        );
     }
 
     #[test]
