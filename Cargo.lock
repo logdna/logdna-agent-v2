@@ -1133,7 +1133,6 @@ dependencies = [
  "notify_stream",
  "once_cell",
  "os_str_bytes",
- "path_abs",
  "pcre2",
  "pin-project-lite",
  "pin-utils",
@@ -2601,18 +2600,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e91099d4268b0e11973f036e885d652fb0b21fedcf69738c627f94db6a44f42"
 
 [[package]]
-name = "path_abs"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05ef02f6342ac01d8a93b65f96db53fe68a92a15f41144f97fb00a9e669633c3"
-dependencies = [
- "serde",
- "serde_derive",
- "std_prelude",
- "stfu8",
-]
-
-[[package]]
 name = "pcre2"
 version = "0.2.3"
 source = "git+https://github.com/logdna/rust-pcre2.git?branch=0.2#8096355b43e26db1eb73010e3be404aedc10f81d"
@@ -3625,18 +3612,6 @@ dependencies = [
  "tracing",
  "vec-collections",
 ]
-
-[[package]]
-name = "std_prelude"
-version = "0.2.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8207e78455ffdf55661170876f88daf85356e4edd54e0a3dbc79586ca1e50cbe"
-
-[[package]]
-name = "stfu8"
-version = "0.2.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e51f1e89f093f99e7432c491c382b88a6860a5adbe6bf02574bf0a08efff1978"
 
 [[package]]
 name = "strsim"

@@ -95,14 +95,14 @@ impl TryFrom<&Path> for FsEntry {
     type Error = std::io::Error;
 
     fn try_from(path: &Path) -> Result<Self, std::io::Error> {
-        let meta = path_abs::PathInfo::symlink_metadata(path)?;
+        let meta = fs::symlink_metadata(path)?;
         if meta.file_type().is_symlink() {
             Ok(FsEntry::Symlink {
                 path: path.to_path_buf(),
-                target: match path_abs::PathInfo::read_link(path) {
+                target: match fs::read_link(path) {
                     Ok(p) => Some(p),
-                    Err(e) if e.io_error().kind() == std::io::ErrorKind::NotFound => None,
-                    Err(e) => return Err(e.into()),
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(e) => return Err(e),
                 },
             })
         } else if meta.file_type().is_dir() {
@@ -114,8 +114,8 @@ impl TryFrom<&Path> for FsEntry {
             let inode = get_inode(path, None)?;
             #[cfg(windows)]
             let inode = {
-                let file = path_abs::FileRead::open(path)?;
-                get_inode(path, Some(file.as_ref()))?
+                let file = std::fs::OpenOptions::new().read(true).open(path)?;
+                get_inode(path, Some(&file))?
             };
             Ok(FsEntry::File {
                 path: path.to_path_buf(),
@@ -136,15 +136,7 @@ type EventTimestamp = time::OffsetDateTime;
 pub fn get_inode(path: &Path, _file: Option<&std::fs::File>) -> std::io::Result<u64> {
     use std::os::unix::fs::MetadataExt;
 
-    Ok(path
-        .metadata()
-        .map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("unable to retrieve inode for path \"{:?}\": {:?}", path, e),
-            )
-        })?
-        .ino())
+    Ok(path.metadata()?.ino())
 }
 
 #[cfg(windows)]

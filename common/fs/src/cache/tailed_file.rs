@@ -1,6 +1,7 @@
 use crate::cache::{get_inode, RetryStreamMessage, WatchEvent};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
+use std::fs::OpenOptions;
 use std::ops::DerefMut;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -370,11 +371,11 @@ impl<T> TailedFile<T> {
         resume_events_sender: Option<Sender<(u64, OffsetDateTime)>>,
         retry_events_sender: Option<Sender<RetryStreamMessage>>,
     ) -> Result<Self, std::io::Error> {
-        let file = path_abs::FileRead::open(path)?;
-        let inode = get_inode(path, Some(file.as_ref()))?;
+        let file = OpenOptions::new().read(true).open(path)?;
+        let inode = get_inode(path, Some(&file))?;
         Ok(Self {
             inner: Arc::new(Mutex::new(TailedFileInner {
-                reader: BufReader::new(tokio::fs::File::from_std(file.into())).compat(),
+                reader: BufReader::new(tokio::fs::File::from_std(file)).compat(),
                 buf: Vec::new(),
                 offset: 0,
                 path: path.to_path_buf(),
@@ -874,12 +875,9 @@ impl TailedFile<LazyLineSerializer> {
                             warn!("{}", e);
                             if e.kind() == std::io::ErrorKind::NotFound {
                                 warn!("Attempting to reopen {:?}", path);
-                                match path_abs::FileRead::open(path).map_err(Into::into).and_then(
-                                    |file| {
-                                        get_inode(path, Some(file.as_ref()))
-                                            .map(|inode| (file.into(), inode))
-                                    },
-                                ) {
+                                match OpenOptions::new().read(true).open(path).and_then(|file| {
+                                    get_inode(path, Some(&file)).map(|inode| (file, inode))
+                                }) {
                                     Ok((file, new_inode)) => {
                                         let reader_bufreader = pinned_reader.get_mut().get_mut();
                                         *reader_bufreader = tokio::io::BufReader::new(
@@ -897,16 +895,7 @@ impl TailedFile<LazyLineSerializer> {
                                     }
                                 }
                             };
-                            Some((
-                                Err(std::io::Error::new(
-                                    std::io::ErrorKind::Other,
-                                    format!(
-                                        "unable to read tailed file for path \"{:?}\": {:?}",
-                                        path, e
-                                    ),
-                                )),
-                                lazy_lines,
-                            ))
+                            Some((Err(e), lazy_lines))
                         }
                     }
                 },
