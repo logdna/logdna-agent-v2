@@ -962,55 +962,43 @@ impl FileSystem {
         offsets
     }
 
-    pub fn resolve_valid_paths(&self, entry: &Entry, entries: &EntryMap) -> SmallVec<[PathBuf; 4]> {
+    pub fn resolve_valid_paths(&self, entry: &Entry, _entries: &EntryMap) -> Vec<PathBuf> {
         // TODO: extract these Vecs or replace with SmallVec
         let mut paths = Vec::new();
-        let mut current_path_buf: PathBuf = PathBuf::with_capacity(entry.path().as_os_str().len());
-        self.resolve_valid_paths_helper(entry, &mut paths, &[], &mut current_path_buf, entries);
-        // If there is exactly one valid path reuse our current_path_buf allocation
-        if paths.len() == 1 {
-            current_path_buf.clear();
-            current_path_buf.push(paths.first().unwrap());
-            smallvec::smallvec![current_path_buf]
-        } else {
-            paths.iter().map(PathBuf::from).collect()
-        }
+        self.resolve_valid_paths_helper(entry, &mut paths, Vec::new(), _entries);
+        paths
     }
 
-    fn resolve_valid_paths_helper<'a>(
+    fn resolve_valid_paths_helper(
         &self,
-        entry: &'a Entry,
-        paths: &mut Vec<&'a OsStr>,
-        components: &[&'a OsStr],
-        current_path_buf: &mut PathBuf,
-        entries: &'a EntryMap,
+        entry: &Entry,
+        paths: &mut Vec<PathBuf>,
+        mut components: Vec<OsString>,
+        _entries: &EntryMap,
     ) {
-        let components_len = components.len();
-        let mut base_components: SmallVec<[&OsStr; 12]> = into_components(entry.path());
-        base_components.extend_from_slice(components); // add components already discovered from previous recursive step
+        let mut base_components: Vec<OsString> = into_components(entry.path());
+        base_components.append(&mut components); // add components already discovered from previous recursive step
         if self.is_initial_dir_target(entry.path()) && !entry.path().is_dir() {
             // only want paths that fall in our watch window
-            paths.push(entry.path().as_os_str());
+            paths.push(entry.path().to_path_buf());
         }
 
         let raw_components = base_components.as_slice();
-        for i in 0..raw_components.len() - components_len {
+        for i in 0..raw_components.len() - components.len() {
             // only need to iterate components up to current entry
-            current_path_buf.clear();
-            current_path_buf.extend(raw_components[0..=i].iter());
+            let current_path: PathBuf = raw_components[0..=i].iter().collect();
 
-            if let Some(symlinks) = self.symlinks.get(current_path_buf.as_path()) {
+            if let Some(symlinks) = self.symlinks.get(&current_path) {
                 // check if path has a symlink to it
-                let symlink_components = &raw_components[(i + 1)..];
+                let symlink_components = raw_components[(i + 1)..].to_vec();
                 for symlink_ptr in symlinks.iter() {
-                    let symlink = entries.get(*symlink_ptr);
+                    let symlink = _entries.get(*symlink_ptr);
                     if let Some(symlink) = symlink {
                         self.resolve_valid_paths_helper(
                             symlink,
                             paths,
-                            symlink_components,
-                            current_path_buf,
-                            entries,
+                            symlink_components.clone(),
+                            _entries,
                         );
                     } else {
                         error!("failed to find entry");
@@ -1647,20 +1635,12 @@ impl fmt::Debug for FileSystem {
     }
 }
 
-use once_cell::sync::OnceCell;
-use std::ffi::OsStr;
-static ROOT_PATH: OnceCell<OsString> = OnceCell::new();
-
 // Split the path into it's components.
-fn into_components(path: &Path) -> SmallVec<[&OsStr; 12]> {
+fn into_components(path: &Path) -> Vec<OsString> {
     path.components()
         .filter_map(|c| match c {
-            // Split the path into it's components.
-            Component::RootDir => {
-                let root_path = ROOT_PATH.get_or_init(|| OsString::from("/"));
-                Some(root_path.as_os_str())
-            }
-            Component::Normal(path) => Some(path),
+            Component::RootDir => Some("/".into()),
+            Component::Normal(path) => Some(path.into()),
             _ => None,
         })
         .collect()
