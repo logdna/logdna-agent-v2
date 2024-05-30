@@ -793,7 +793,7 @@ impl FileSystem {
         debug!("checking if {:#?} is reachable", target);
 
         let mut target: Cow<Path> = Cow::from(target);
-        if let Ok(entry_key) = self.get_first_entry(&target) {
+        if let Some(entry_key) = self.get_first_entry(&target) {
             let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
             if let Entry::Symlink { link, .. } = entry {
                 // If target is a symlink then we should not traverse it again in recursive calls
