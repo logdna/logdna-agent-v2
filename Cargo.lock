@@ -1131,7 +1131,6 @@ dependencies = [
  "middleware",
  "mz-http",
  "notify_stream",
- "once_cell",
  "os_str_bytes",
  "path_abs",
  "pcre2",

@@ -9,6 +9,7 @@ use metrics::Metrics;
 use notify_stream::{Event as WatchEvent, RecursiveMode, Watcher};
 use state::{FileId, Span, SpanVec};
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::hash_map::Entry as HashMapEntry;
 use std::collections::{HashMap, HashSet};
@@ -791,35 +792,30 @@ impl FileSystem {
     ) -> FsResult<bool> {
         debug!("checking if {:#?} is reachable", target);
 
-        let mut target_m = target;
-        let target_mref = &mut target_m;
-
-        if let Some(entry_key) = self.get_first_entry(target_mref) {
+        let mut target: Cow<Path> = Cow::from(target);
+        if let Ok(entry_key) = self.get_first_entry(&target) {
             let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
-            if let Entry::Symlink {
-                link: Some(ref link),
-                ..
-            } = entry
-            {
+            if let Entry::Symlink { link, .. } = entry {
                 // If target is a symlink then we should not traverse it again in recursive calls
-                cuts.push(target_mref.to_path_buf());
-                let _ = std::mem::replace(target_mref, link);
+                if let Some(link) = link.clone() {
+                    cuts.push(target.to_path_buf());
+                    target = Cow::from(link);
+                }
             }
         }
 
         // Cuts is the list of paths we've checked
-        if !cuts.iter().any(|cut| cut.as_path() == *target_mref)
-            && (self.is_initial_dir_target(target_mref)
-                || self.is_symlink_target(target_mref, _entries))
+        if !cuts.iter().any(|cut| cut == &target)
+            && (self.is_initial_dir_target(&target) || self.is_symlink_target(&target, _entries))
         {
-            trace!("short circuit {:?} is reachable", target_mref);
+            trace!("short circuit {:?} is reachable", target);
             return Ok(true);
         }
 
         let mut path_to_root = false;
 
         // Walk up the parents until a root is found
-        while let Some(parent) = target_mref.parent().take() {
+        while let Some(parent) = target.parent() {
             path_to_root = self
                 .referring_symlinks(parent, _entries)
                 .iter()
@@ -833,9 +829,9 @@ impl FileSystem {
             if self.passes_rules(parent) || self.is_symlink_target(parent, _entries) {
                 return Ok(true);
             }
-            let _ = std::mem::replace(target_mref, parent);
+            target = Cow::from(parent.to_path_buf());
         }
-        trace!("{:?} is reachable?: {}", target_mref, path_to_root);
+        trace!("{:?} is reachable?: {}", target, path_to_root);
         Ok(path_to_root)
     }
 
