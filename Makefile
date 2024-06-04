@@ -140,6 +140,8 @@ CHANGE_K8S_VERSION = sed 's/\(.*\)app\.kubernetes\.io\/version\(.\).*$$/\1app.ku
 
 CHANGE_K8S_IMAGE = sed 's/\(logdna\/logdna-agent.\).*$$/\1$(1)/g' $(2) >> $(2).tmp && mv $(2).tmp $(2)
 
+CHANGE_README_VERSION = awk '{sub(/img\.shields\.io\/badge\/Version-.+?-E9FF92.svg/, "img\.shields\.io\/badge\/Version-$(subst -,--,$(1))-E9FF92.svg")}1' docs/README.md >> docs/README.md.tmp && mv docs/README.md.tmp docs/README.md
+
 REMOTE_BRANCH ?= $(shell git branch -vv | awk '/^\*/{split(substr($$4, 2, length($$4)-2), arr, "/"); print arr[2]}')
 
 AWS_SHARED_CREDENTIALS_FILE=$(HOME)/.aws/credentials
@@ -286,6 +288,7 @@ bump-major-dev: ## Create a new minor beta release and push to github
 	$(eval TARGET_BRANCH := $(shell expr $(MINOR_VERSION) + 1).0)
 	$(eval NEW_VERSION := $(TARGET_BRANCH).0-dev)
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
+	$(call CHANGE_README_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	git add bin/Cargo.toml
@@ -298,6 +301,7 @@ release-major: ## Create a new major beta release and push to github
 	$(eval TARGET_BRANCH := $(MAJOR_VERSION).0)
 	$(eval NEW_VERSION := $(TARGET_BRANCH).0-beta.1)
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
+	$(call CHANGE_README_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
@@ -313,6 +317,7 @@ bump-minor-dev: ## Create a new minor beta release and push to github
 	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(shell expr $(MINOR_VERSION) + 1))
 	$(eval NEW_VERSION := $(TARGET_BRANCH).0-dev)
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
+	$(call CHANGE_README_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	git add bin/Cargo.toml
@@ -325,6 +330,7 @@ release-minor: ## Create a new minor beta release and push to github
 	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(MINOR_VERSION))
 	$(eval NEW_VERSION := $(TARGET_BRANCH).0-beta.1)
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
+	$(call CHANGE_README_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
@@ -341,6 +347,7 @@ release-patch: ## Create a new patch beta release and push to github
 	$(eval NEW_VERSION := $(TARGET_BRANCH).$(shell expr $(PATCH_VERSION) + 1))
 	@if [ ! "$(REMOTE_BRANCH)" = "$(TARGET_BRANCH)" ]; then echo "Can't create the patch release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"$(TARGET_BRANCH)\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
+	$(call CHANGE_README_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
@@ -357,6 +364,7 @@ release-beta: ## Bump the beta version and push to github
 	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(MINOR_VERSION))
 	$(eval NEW_VERSION := $(TARGET_BRANCH).$(PATCH_VERSION)-beta.$(shell expr $(BETA_VERSION) + 1))
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
+	$(call CHANGE_README_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
@@ -373,6 +381,7 @@ release: ## Create a new release from the current beta and push to github
 	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(MINOR_VERSION))
 	$(eval NEW_VERSION := $(TARGET_BRANCH).0)
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
+	$(call CHANGE_README_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
