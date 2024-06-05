@@ -989,16 +989,16 @@ impl FileSystem {
         current_path_buf: &mut PathBuf,
         entries: &'a EntryMap,
     ) {
-        let components_len = components.len();
         let mut base_components: SmallVec<[&OsStr; 12]> = into_components(entry.path());
         base_components.extend_from_slice(components); // add components already discovered from previous recursive step
+        let components = &components[..0];
         if self.is_initial_dir_target(entry.path()) && !entry.path().is_dir() {
             // only want paths that fall in our watch window
             paths.push(entry.path().as_os_str());
         }
 
         let raw_components = base_components.as_slice();
-        for i in 0..raw_components.len() - components_len {
+        for i in 0..raw_components.len() - components.len() {
             // only need to iterate components up to current entry
             current_path_buf.clear();
             current_path_buf.extend(raw_components[0..=i].iter());
