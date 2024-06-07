@@ -4,7 +4,8 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
+
 use std::fs::File;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -454,16 +455,12 @@ impl TryFrom<RawConfig> for Config {
     }
 }
 
-pub fn get_hostname(alt: Option<&[PathBuf]>) -> Option<String> {
-    lazy_static! {
-        static ref DEFAULT_PATHS: [PathBuf; 2] = [
-            PathBuf::from("/etc/logdna-hostname"),
-            PathBuf::from("/etc/hostname"),
-        ];
-    }
+pub fn get_hostname(alt: Option<&[&dyn AsRef<OsStr>]>) -> Option<String> {
+    static DEFAULT_PATHS: [&str; 2] = ["/etc/logdna-hostname", "/etc/hostname"];
+    let def = &DEFAULT_PATHS.each_ref().map(|p| p as &dyn AsRef<OsStr>);
 
-    let paths = alt.unwrap_or(DEFAULT_PATHS.as_slice());
-    for path in paths.iter() {
+    let paths = alt.unwrap_or(def).iter().map(Path::new);
+    for path in paths {
         if path.exists() {
             let closure = |mut f: File| {
                 let mut s = String::new();
