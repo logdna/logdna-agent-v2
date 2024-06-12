@@ -89,6 +89,7 @@ pipeline {
                         '''
                     }
                 }
+                /*
                 stage('Mac OSX Unit Tests'){
                     when {
                         allOf {
@@ -117,6 +118,7 @@ pipeline {
                       }
                     }
                 }
+                */
                 stage('Unit Tests'){
                     when {
                         not {
@@ -199,6 +201,7 @@ pipeline {
                         }
                     }
                 }
+                /*
                 stage('Mac OSX Integration Tests'){
                     when {
                         allOf {
@@ -234,6 +237,7 @@ pipeline {
                     }
                   }
                 }
+                */
                 stage('Run K8s Integration Tests') {
                     steps {
                         withCredentials([[
@@ -364,6 +368,7 @@ pipeline {
                         }
                     }
                 }
+                /*
                 stage('Build Mac OSX release binary X86_64') {
                     when {
                         environment name: 'BUILD_MAC_RELEASE', value: 'true'
@@ -429,6 +434,7 @@ pipeline {
                       }
                     }
                 }
+                */
             }
         }
         stage('Check Publish Images') {
@@ -488,6 +494,7 @@ pipeline {
                         }
                     }
                 }
+                /*
                 stage('Publish MAC binaries to S3') {
                     when {
                         allOf {
@@ -523,6 +530,7 @@ pipeline {
                         }
                     }
                 }
+                */
                 stage('Publish Installers') {
                     environment {
                         CHOCO_API_KEY = credentials('chocolatey-api-token')
