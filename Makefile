@@ -292,6 +292,7 @@ bump-major-dev: ## Create a new minor beta release and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	git add bin/Cargo.toml
+	git add docs/README.md
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git push
@@ -306,6 +307,7 @@ release-major: ## Create a new major beta release and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
+	git add docs/README.md
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
@@ -321,6 +323,7 @@ bump-minor-dev: ## Create a new minor beta release and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	git add bin/Cargo.toml
+	git add docs/README.md
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git push
@@ -335,6 +338,7 @@ release-minor: ## Create a new minor beta release and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
+	git add docs/README.md
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
@@ -352,6 +356,7 @@ release-patch: ## Create a new patch beta release and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
+	git add docs/README.md
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
@@ -369,6 +374,7 @@ release-beta: ## Bump the beta version and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
+	git add docs/README.md
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
@@ -386,6 +392,7 @@ release: ## Create a new release from the current beta and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
 	git add Cargo.lock bin/Cargo.toml
+	git add docs/README.md
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
