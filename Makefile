@@ -378,8 +378,7 @@ release-beta: ## Bump the beta version and push to github
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
 	git tag -s -a $(NEW_VERSION) -m ""
-	git push --follow-tags
-	git checkout $(TARGET_BRANCH) || git checkout -b $(TARGET_BRANCH)
+	#git push --follow-tags
 
 .PHONY:release
 release: ## Create a new release from the current beta and push to github

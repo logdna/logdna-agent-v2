@@ -2104,6 +2104,7 @@ async fn test_feature_leader_grabbing_lease() {
 
 #[ignore]
 #[test(tokio::test)]
+#[allow(unused_attributes)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_retry_line_with_missing_pod_metadata() {
     let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();

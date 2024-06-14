@@ -3,7 +3,7 @@ use crate::feature_leader::{FeatureLeader, FeatureLeaderMeta};
 use crate::restarting_stream::{RequiresRestart, RestartingStream};
 use crate::K8S_WATCHER_TIMEOUT;
 use backoff::ExponentialBackoff;
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use core::time;
 use crossbeam::atomic::AtomicCell;
 use futures::{stream::try_unfold, Stream, StreamExt, TryStreamExt};
@@ -381,9 +381,9 @@ impl K8sEventStream {
                         .load()
                         .or_else(|| earliest.load())
                         .and_then(|earliest| {
-                            let earliest =
-                                chrono::NaiveDateTime::from_timestamp_opt(earliest.into(), 0)
-                                    .expect("Timestamp Out of Range");
+                            let earliest = DateTime::from_timestamp(earliest.into(), 0)
+                                .expect("Timestamp Out of Range")
+                                .naive_local();
 
                             event.as_ref().ok().and_then(|e| {
                                 if e.creation_timestamp().is_none()
