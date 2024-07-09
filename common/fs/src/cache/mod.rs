@@ -1305,8 +1305,8 @@ impl FileSystem {
         _entries: &mut EntryMap,
     ) {
         if let Some(entry) = _entries.get(entry_key) {
-            let mut _children = vec![];
-            let mut _links = vec![];
+            let mut _children = Vec::new();
+            let mut _links = Vec::new();
             match entry {
                 Entry::Dir { children, .. } => {
                     for child in children.values() {
@@ -1560,7 +1560,7 @@ impl FileSystem {
     fn passes(&self, path: &Path, _entries: &EntryMap) -> bool {
         self.is_initial_dir_target(path)
             || self
-                .is_reachable(&mut vec![], path, _entries)
+                .is_reachable(&mut Vec::new(), path, _entries)
                 .unwrap_or(false)
     }
 

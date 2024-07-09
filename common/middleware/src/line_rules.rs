@@ -66,7 +66,7 @@ impl LineRules {
         value: Vec<u8>,
         line: &'a mut dyn LineBufferMut,
     ) -> Status<&'a mut dyn LineBufferMut> {
-        let mut matches: Vec<(usize, usize)> = vec![];
+        let mut matches: Vec<(usize, usize)> = Vec::new();
         for r in self.redact.iter() {
             for m in r.find_iter(&value) {
                 let mut overlapping_match = None;

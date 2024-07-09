@@ -16,6 +16,7 @@ members = [
     "api",
     "utils/metrics-recorder",
 ]
+resolver = "2"
 
 [profile.release]
 opt-level = 3
