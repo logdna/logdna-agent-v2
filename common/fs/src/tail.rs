@@ -1,16 +1,16 @@
 use crate::cache::entry::Entry;
 use crate::cache::event::Event;
 use crate::cache::tailed_file::LazyLineSerializer;
-pub use crate::cache::DirPathBuf;
 use crate::cache::{EntryKey, Error as CacheError, FileSystem};
-use crate::lookback::Lookback;
-use crate::rule::Rules;
+use types::lookback::Lookback;
+use types::rule::Rules;
 
 use metrics::Metrics;
 use state::{FileId, SpanVec};
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
 use tracing::{debug, info, warn};
+use types::dir_path::DirPathBuf;
 
 use futures::{ready, Future, Stream, StreamExt};
 
@@ -326,7 +326,6 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::rule::{RuleDef, Rules};
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     use pin_utils::pin_mut;
     use std::cell::Cell;
@@ -340,6 +339,7 @@ mod test {
     use std::time::Duration;
     use tempfile::tempdir;
     use tokio_stream::StreamExt;
+    use types::rule::{RuleDef, Rules};
 
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     static DELAY: Duration = Duration::from_millis(200);
