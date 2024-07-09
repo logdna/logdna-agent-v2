@@ -230,7 +230,7 @@ k8s-test: build-image-debian ## Run integration tests using k8s kind
 .PHONY:test-journald
 test-journald: ## Run journald unit tests
 	$(eval FEATURES := $(FEATURES) journald_tests)
-	$(DOCKER_JOURNALD_DISPATCH) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run --no-fail-fast $(FEATURES_ARG) --manifest-path bin/Cargo.toml -p journald --test-threads=1"
+	$(DOCKER_JOURNALD_DISPATCH) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run --no-fail-fast --features=libjournald --manifest-path bin/Cargo.toml -p journald --test-threads=1"
 
 .PHONY:bench
 bench:

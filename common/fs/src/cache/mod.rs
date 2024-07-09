@@ -2,8 +2,8 @@ use crate::cache::delayed_stream::delayed_stream;
 use crate::cache::entry::Entry;
 use crate::cache::event::Event;
 use crate::cache::tailed_file::TailedFile;
-use crate::lookback::Lookback;
-use crate::rule::{RuleDef, Rules, Status};
+use types::lookback::Lookback;
+use types::rule::{RuleDef, Rules, Status};
 
 use metrics::Metrics;
 use notify_stream::{Event as WatchEvent, RecursiveMode, Watcher};
@@ -30,13 +30,12 @@ use tracing::{debug, error, info, instrument, trace, warn};
 use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
 
 pub mod delayed_stream;
-pub mod dir_path;
 pub mod entry;
 pub mod event;
 mod event_debouncer;
 pub mod tailed_file;
 
-pub use dir_path::{DirPathBuf, DirPathBufError};
+use types::dir_path::DirPathBuf;
 
 type Children = HashMap<OsString, EntryKey>;
 type Symlinks = HashMap<PathBuf, Vec<EntryKey>>;
@@ -1619,7 +1618,6 @@ fn into_components(path: &Path) -> SmallVec<[&OsStr; 12]> {
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 mod tests {
     use super::*;
-    use crate::rule::{RuleDef, Rules};
     use pin_utils::pin_mut;
     use std::convert::TryInto;
     use std::fs::{copy, create_dir, hard_link, remove_dir_all, remove_file, rename, File};
@@ -1627,6 +1625,7 @@ mod tests {
     use std::io::Write;
     use std::{io, panic};
     use tempfile::{tempdir, TempDir};
+    use types::rule::{RuleDef, Rules};
 
     #[cfg(windows)]
     use std::sync::mpsc;
