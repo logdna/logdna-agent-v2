@@ -1,7 +1,6 @@
 use futures::Stream;
 
 use config::{self, ArgumentOptions, Config, DbPath, K8sLeaseConf, K8sTrackingConf};
-use fs::lookback::Lookback;
 use fs::tail;
 use futures::{stream, StreamExt};
 use http::batch::TimedRequestBatcherStreamExt;
@@ -52,6 +51,8 @@ use tracing::{debug, error, info, trace, warn};
 #[cfg(feature = "dep_audit")]
 use crate::dep_audit;
 use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
+
+use types::lookback::Lookback;
 
 pub static REPORTER_LEASE_NAME: &str = "logdna-agent-reporter-lease";
 pub static K8S_EVENTS_LEASE_NAME: &str = "logdna-agent-k8-events-lease";

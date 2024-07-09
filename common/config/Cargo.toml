@@ -9,9 +9,9 @@ integration_tests = []
 
 [dependencies]
 #local
-fs = { package = "fs", path = "../fs" }
 http = { package = "mz-http", path = "../http" }
 consts  = { package = "consts", path = "../consts" }
+types  = { package = "shared_types", path = "../misc/shared_types" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
