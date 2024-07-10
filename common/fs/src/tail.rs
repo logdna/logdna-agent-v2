@@ -59,7 +59,7 @@ async fn handle_event(
                     // If the file's passes the rules tail it
                     info!("initialize event for file {}", path_display);
                     if fs.is_initial_dir_target(entry.path()) {
-                        return data.borrow_mut().tail(&paths).await;
+                        return data.borrow_mut().tail(&paths, None).await;
                     }
                 }
                 Entry::Symlink { link, path } => {
@@ -87,7 +87,7 @@ async fn handle_event(
                                 final_target
                             );
                             let mut data = data.borrow_mut();
-                            return data.tail(&paths).await;
+                            return data.tail(&paths, None).await;
                         }
                     }
                 }
@@ -106,7 +106,26 @@ async fn handle_event(
             }
             if let Entry::File { data, .. } = entry {
                 info!("added {:?}", paths[0]);
-                return data.borrow_mut().tail(&paths).await;
+                return data.borrow_mut().tail(&paths, None).await;
+            }
+        }
+        Event::RetryWrite((entry_ptr, retry_offset)) => {
+            Metrics::fs().increment_writes();
+            debug!("Write Event");
+            let entries = fs.entries.borrow();
+            let entry = entries.get(entry_ptr)?;
+
+            let paths = fs.resolve_valid_paths(entry, &entries);
+            if paths.is_empty() {
+                return None;
+            }
+
+            if let Entry::File { data, .. } = entry {
+                return data
+                    .borrow_mut()
+                    .deref_mut()
+                    .tail(&paths, Some(retry_offset))
+                    .await;
             }
         }
         Event::Write(entry_ptr) => {
@@ -121,7 +140,7 @@ async fn handle_event(
             }
 
             if let Entry::File { data, .. } = entry {
-                return data.borrow_mut().deref_mut().tail(&paths).await;
+                return data.borrow_mut().deref_mut().tail(&paths, None).await;
             }
         }
         Event::Delete(entry_ptr) => {
@@ -149,7 +168,7 @@ async fn handle_event(
                     }
                     if let Entry::File { data, .. } = entry {
                         let mut tailed_file = data.borrow_mut();
-                        tailed_file.deref_mut().tail(&paths).await
+                        tailed_file.deref_mut().tail(&paths, None).await
                     } else {
                         None
                     }
@@ -223,6 +242,7 @@ impl Tailer {
         initial_offsets: Option<HashMap<FileId, SpanVec>>,
         fo_state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
         deletion_ack_sender: async_channel::Sender<Vec<std::path::PathBuf>>,
+        retry_event_delay: Option<std::time::Duration>,
     ) -> Self {
         Self {
             fs_cache: std::rc::Rc::new(std::cell::RefCell::new(FileSystem::new(
@@ -232,6 +252,7 @@ impl Tailer {
                 rules,
                 fo_state_handles,
                 deletion_ack_sender,
+                retry_event_delay,
             ))),
         }
     }
@@ -406,6 +427,7 @@ mod test {
                     None,
                     None,
                     async_channel::unbounded().0,
+                    None,
                 );
 
                 let stream = process(tailer).expect("failed to read events");
@@ -455,6 +477,7 @@ mod test {
                     None,
                     None,
                     async_channel::unbounded().0,
+                    None,
                 );
 
                 let stream = process(tailer).expect("failed to read events");
@@ -506,6 +529,7 @@ mod test {
                     None,
                     None,
                     async_channel::unbounded().0,
+                    None,
                 );
 
                 let stream = process(tailer).expect("failed to read events");

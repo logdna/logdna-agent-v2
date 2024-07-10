@@ -126,7 +126,7 @@ pub struct LogConfig {
     pub clear_cache_interval: Duration,
     pub tailer_cmd: Option<String>,
     pub tailer_args: Option<String>,
-    pub metadata_retry_delay: Duration,
+    pub metadata_retry_delay: Option<Duration>,
 }
 
 #[derive(Debug)]
@@ -392,13 +392,10 @@ impl TryFrom<RawConfig> for Config {
             ) as u64),
             tailer_cmd: raw.log.tailer_cmd,
             tailer_args: raw.log.tailer_args,
-            metadata_retry_delay: Duration::from_secs(raw.log.metadata_retry_delay.unwrap_or_else(
-                || {
-                    raw::LogConfig::default()
-                        .metadata_retry_delay
-                        .unwrap_or_default()
-                },
-            ) as u64),
+            metadata_retry_delay: raw
+                .log
+                .metadata_retry_delay
+                .map(|delay| Duration::from_secs(delay as u64)),
         };
 
         if log.use_k8s_enrichment == K8sTrackingConf::Never
