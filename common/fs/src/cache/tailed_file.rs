@@ -1,4 +1,4 @@
-use crate::cache::get_inode;
+use crate::cache::{get_inode, RetryStreamMessage};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::ops::DerefMut;
@@ -17,6 +17,8 @@ use http::types::serialize::{
 use state::{FileId, GetOffset, SpanVec};
 
 use metrics::Metrics;
+
+use types::sources::{RetryableLine, SourceError};
 
 use async_channel::Sender;
 use async_trait::async_trait;
@@ -49,6 +51,7 @@ pub struct LazyLineSerializer {
     file_offset: (u64, u64, u64),
 
     reader: Arc<Mutex<TailedFileInner>>,
+    _retry_events_send: Option<async_channel::Sender<RetryStreamMessage>>,
 }
 
 #[async_trait]
@@ -193,7 +196,12 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
 }
 
 impl LazyLineSerializer {
-    pub fn new(reader: Arc<Mutex<TailedFileInner>>, path: String, offset: (u64, u64, u64)) -> Self {
+    pub fn new(
+        reader: Arc<Mutex<TailedFileInner>>,
+        path: String,
+        offset: (u64, u64, u64),
+        retry_events_send: Option<async_channel::Sender<RetryStreamMessage>>,
+    ) -> Self {
         Self {
             reader,
             path: Some(path),
@@ -206,6 +214,7 @@ impl LazyLineSerializer {
             meta: None,
             line_buffer: None,
             file_offset: offset,
+            _retry_events_send: retry_events_send,
         }
     }
 }
@@ -336,6 +345,8 @@ pub struct TailedFileInner {
     offset: u64,
     inode: u64,
     path: PathBuf,
+    retries: u32,
+    _retrying_until: Option<OffsetDateTime>,
 }
 
 impl TailedFileInner {
@@ -348,6 +359,7 @@ impl TailedFileInner {
 pub struct TailedFile<T> {
     inner: Arc<Mutex<TailedFileInner>>,
     resume_events_sender: Option<Sender<(u64, OffsetDateTime)>>,
+    retry_events_sender: Option<Sender<RetryStreamMessage>>,
     _phantom: std::marker::PhantomData<T>,
 }
 
@@ -356,6 +368,7 @@ impl<T> TailedFile<T> {
         path: &Path,
         initial_offsets: SpanVec,
         resume_events_sender: Option<Sender<(u64, OffsetDateTime)>>,
+        retry_events_sender: Option<Sender<RetryStreamMessage>>,
     ) -> Result<Self, std::io::Error> {
         let file = path_abs::FileRead::open(path)?;
         let inode = get_inode(path, Some(file.as_ref()))?;
@@ -367,8 +380,11 @@ impl<T> TailedFile<T> {
                 path: path.to_path_buf(),
                 initial_offsets,
                 inode,
+                retries: 0,
+                _retrying_until: None,
             })),
             resume_events_sender,
+            retry_events_sender,
             _phantom: std::marker::PhantomData::<T>,
         })
     }
@@ -380,7 +396,11 @@ impl<T> TailedFile<T> {
 
 impl TailedFile<LineBuilder> {
     // tail a file for new line(s)
-    pub async fn tail(&mut self, paths: &[PathBuf]) -> Option<impl Stream<Item = LineBuilder>> {
+    pub async fn tail(
+        &mut self,
+        paths: &[PathBuf],
+        _seek_to: Option<u64>,
+    ) -> Option<impl Stream<Item = LineBuilder>> {
         // get the file len
         {
             let mut inner = self.inner.lock().await;
@@ -510,12 +530,40 @@ impl TailedFile<LineBuilder> {
         )
     }
 }
+
+impl RetryableLine for LazyLineSerializer {
+    fn retries_remaining(&self) -> u32 {
+        let inner = self.reader.try_lock().unwrap();
+        5 - inner.retries
+    }
+
+    fn retry_at(&self) -> time::OffsetDateTime {
+        OffsetDateTime::now_utc() + self.retry_after()
+    }
+
+    fn retry_after(&self) -> std::time::Duration {
+        let inner = self.reader.try_lock().unwrap();
+        inner.retries * std::time::Duration::from_secs(5)
+    }
+
+    fn retry(&self, _delay: Option<std::time::Duration>) -> Result<(), SourceError> {
+        // TODO
+        Ok(())
+    }
+
+    fn commit(&self) -> Result<(), SourceError> {
+        // TODO
+        Ok(())
+    }
+}
+
 pub struct LazyLines {
     reader: Arc<Mutex<TailedFileInner>>,
     total_read: usize,
     target_read: Option<usize>,
     paths: Rc<[String]>,
     resume_channel_send: Option<async_channel::Sender<(u64, OffsetDateTime)>>,
+    retry_channel_send: Option<Sender<RetryStreamMessage>>,
 }
 
 impl LazyLines {
@@ -524,6 +572,7 @@ impl LazyLines {
         paths: Rc<[String]>,
         target_read: Option<u64>,
         resume_channel_send: Option<Sender<(u64, OffsetDateTime)>>,
+        retry_channel_send: Option<Sender<RetryStreamMessage>>,
     ) -> Self {
         let (initial_end, initial_offset): (Option<u64>, Option<u64>) = {
             let inner = &mut reader.lock().await.reader;
@@ -561,6 +610,7 @@ impl LazyLines {
             target_read,
             paths,
             resume_channel_send,
+            retry_channel_send,
         }
     }
 }
@@ -570,9 +620,11 @@ impl TailedFile<LazyLineSerializer> {
     pub(crate) async fn tail(
         &mut self,
         paths: &[PathBuf],
+        _seek_to: Option<u64>,
     ) -> Option<impl Stream<Item = LazyLineSerializer>> {
         let target_read = {
             let mut inner = self.inner.lock().await;
+
             let len = match inner
                 .reader
                 .get_ref()
@@ -604,6 +656,7 @@ impl TailedFile<LazyLineSerializer> {
 
             // if we are at the end of the file there's no work to do
             if inner.offset == len {
+                debug!("at the end of the file, no more work to do");
                 return None;
             }
 
@@ -630,6 +683,7 @@ impl TailedFile<LazyLineSerializer> {
                     return None;
                 }
             }
+
             target_read
         };
 
@@ -645,6 +699,7 @@ impl TailedFile<LazyLineSerializer> {
                     ),
                     target_read,
                     self.resume_events_sender.clone(),
+                    self.retry_events_sender.clone(),
                 )
                 .await,
                 |mut lazy_lines| async move {
@@ -654,10 +709,12 @@ impl TailedFile<LazyLineSerializer> {
                         ref target_read,
                         ref paths,
                         ref resume_channel_send,
+                        ref retry_channel_send,
                         ..
                     } = lazy_lines;
 
                     let rc_reader = reader.clone();
+                    let retry_channel_send = retry_channel_send.clone();
                     // Get the next line
                     let mut borrow = rc_reader.try_lock().unwrap();
                     let TailedFileInner {
@@ -715,12 +772,14 @@ impl TailedFile<LazyLineSerializer> {
                                     let ret = (0..paths.len()).map({
                                         let paths = paths.clone();
                                         let rc_reader = rc_reader.clone();
+                                        let retry_channel_send = retry_channel_send.clone();
                                         let current_offset = (*inode, initial_offset, *offset);
                                         move |path_idx| {
                                             LazyLineSerializer::new(
                                                 rc_reader.clone(),
                                                 paths[path_idx].clone(),
                                                 current_offset,
+                                                retry_channel_send.clone(),
                                             )
                                         }
                                     });
@@ -814,6 +873,7 @@ mod tests {
         {
             let inclusion = ["DEBUG".to_owned(), "(?i:TRACE)".to_owned()];
             let p = LineRules::new(&[], &inclusion, &[]).unwrap();
+
             assert!(matches!(p.process(&mut l), Status::Ok(_)));
         }
     }
@@ -855,7 +915,9 @@ mod tests {
             initial_offsets: SpanVec::new(),
             inode: 0,
             path: file_path,
+            retries: 0,
+            _retrying_until: None,
         }));
-        LazyLineSerializer::new(file_inner, "file/path.log".to_owned(), (0, 0, 0))
+        LazyLineSerializer::new(file_inner, "file/path.log".to_owned(), (0, 0, 0), None)
     }
 }

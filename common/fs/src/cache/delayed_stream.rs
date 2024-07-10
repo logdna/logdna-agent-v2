@@ -112,7 +112,7 @@ impl<T> From<(Instant, T)> for DelayedEvent<T> {
 }
 
 pub fn delayed_stream<T>(
-    st: impl Stream<Item = T> + Unpin,
+    st: impl Stream<Item = (T, Option<Duration>)> + Unpin,
     delay: Duration,
 ) -> impl Stream<Item = T> {
     stream::unfold((st.ready_chunks(100).eager(), BinaryHeap::new(), false), {
@@ -147,9 +147,9 @@ pub fn delayed_stream<T>(
                     loop {
                         match st.next().await {
                             Some(Some(c)) => {
-                                for t in c {
+                                for (t, custom_delay) in c {
                                     delayed_events.push(Reverse(DelayedEvent::from((
-                                        Instant::now() + delay,
+                                        Instant::now() + custom_delay.unwrap_or(delay),
                                         t,
                                     ))));
                                 }
@@ -170,8 +170,10 @@ pub fn delayed_stream<T>(
                         if let Ok(Some(Some(ts))) =
                             timeout_at((de.delayed_until).into(), st.next()).await
                         {
-                            for t in ts {
-                                delayed_events.push(Reverse((Instant::now() + delay, t).into()));
+                            for (t, custom_delay) in ts {
+                                delayed_events.push(Reverse(
+                                    (Instant::now() + custom_delay.unwrap_or(delay), t).into(),
+                                ));
                             }
                         }
                     }
@@ -190,12 +192,13 @@ mod test {
 
     #[tokio::test]
     async fn test_eager_ready_chunks() {
-        let (retry_events_send, retry_events_recv) = async_channel::unbounded();
+        let (retry_events_send, retry_events_recv) =
+            async_channel::unbounded::<(_, Option<std::time::Duration>)>();
 
         let mut eager_ready_chunks_stream = retry_events_recv.ready_chunks(100).eager();
         assert!(matches!(eager_ready_chunks_stream.next().await, Some(None)));
 
-        retry_events_send.send(1).await.unwrap();
+        retry_events_send.send((1, None)).await.unwrap();
 
         assert!(matches!(
             eager_ready_chunks_stream.next().await,
@@ -212,7 +215,7 @@ mod test {
 
         let start = Instant::now();
         for i in 0..100 {
-            retry_events_send.send(i).await.unwrap();
+            retry_events_send.send((i, None)).await.unwrap();
         }
 
         let _ = delay_queue.next().await;
@@ -225,7 +228,7 @@ mod test {
         let next = Instant::now();
         assert!(delta < Duration::from_millis(10), "{:?}", delta);
 
-        retry_events_send.send(100).await.unwrap();
+        retry_events_send.send((100, None)).await.unwrap();
         delay_queue.as_mut().take(49).collect::<Vec<_>>().await;
         let delta = Instant::now() - next;
         let next = Instant::now();
@@ -237,7 +240,7 @@ mod test {
         assert!(delta > Duration::from_secs(1), "{:?}", delta);
 
         for i in 0..102 {
-            retry_events_send.send(i).await.unwrap();
+            retry_events_send.send((i, None)).await.unwrap();
         }
 
         delay_queue.as_mut().take(10).collect::<Vec<_>>().await;
