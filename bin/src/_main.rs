@@ -423,7 +423,7 @@ pub async fn _main(
             lookback,
             fo_state_handles,
             fs_offsets,
-            retry_metadata_retry_delay,
+            retry_metadata_delay,
         )| {
             let watched_dirs = watched_dirs.clone();
             let rules = rules.clone();
@@ -431,7 +431,7 @@ pub async fn _main(
             let deletion_ack_sender = deletion_ack_sender.clone();
             let fo_state_handles = fo_state_handles.clone();
             let fs_offsets = fs_offsets.clone();
-            let retry_metadata_retry_delay = *retry_metadata_retry_delay;
+            let retry_metadata_delay = *retry_metadata_delay;
             async move {
                 let tailer = tail::Tailer::new(
                     watched_dirs,
@@ -440,7 +440,7 @@ pub async fn _main(
                     Some(fs_offsets.lock().await.clone()),
                     fo_state_handles,
                     deletion_ack_sender,
-                    retry_metadata_retry_delay,
+                    retry_metadata_delay,
                 );
 
                 tail::process(tailer)
