@@ -1,4 +1,4 @@
-use crate::cache::{get_inode, RetryStreamMessage};
+use crate::cache::{get_inode, RetryStreamMessage, WatchEvent};
 use std::collections::HashMap;
 use std::convert::{TryFrom, TryInto};
 use std::ops::DerefMut;
@@ -51,7 +51,7 @@ pub struct LazyLineSerializer {
     file_offset: (u64, u64, u64),
 
     reader: Arc<Mutex<TailedFileInner>>,
-    _retry_events_send: Option<async_channel::Sender<RetryStreamMessage>>,
+    retry_events_send: Option<async_channel::Sender<RetryStreamMessage>>,
 }
 
 #[async_trait]
@@ -214,7 +214,7 @@ impl LazyLineSerializer {
             meta: None,
             line_buffer: None,
             file_offset: offset,
-            _retry_events_send: retry_events_send,
+            retry_events_send,
         }
     }
 }
@@ -346,7 +346,7 @@ pub struct TailedFileInner {
     inode: u64,
     path: PathBuf,
     retries: u32,
-    _retrying_until: Option<OffsetDateTime>,
+    retrying_until: Option<OffsetDateTime>,
 }
 
 impl TailedFileInner {
@@ -381,7 +381,7 @@ impl<T> TailedFile<T> {
                 initial_offsets,
                 inode,
                 retries: 0,
-                _retrying_until: None,
+                retrying_until: None,
             })),
             resume_events_sender,
             retry_events_sender,
@@ -546,8 +546,28 @@ impl RetryableLine for LazyLineSerializer {
         inner.retries * std::time::Duration::from_secs(5)
     }
 
-    fn retry(&self, _delay: Option<std::time::Duration>) -> Result<(), SourceError> {
-        // TODO
+    fn retry(&self, delay: Option<std::time::Duration>) -> Result<(), SourceError> {
+        let retries_remaining = self.retries_remaining();
+        let retry_at = self.retry_at();
+        let mut inner = self.reader.try_lock().unwrap();
+
+        if retries_remaining > 0 {
+            let delay = delay
+                .map(|delay| OffsetDateTime::now_utc() + delay * inner.retries)
+                .unwrap_or(retry_at);
+
+            let path = inner.path.clone();
+            let event = WatchEvent::Write(path);
+            if inner.retrying_until.is_none() {
+                inner.retries += 1;
+                inner.retrying_until = Some(delay);
+                if let Some(retry_events_send) = self.retry_events_send.as_ref() {
+                    retry_events_send
+                        .send_blocking((event, delay, inner.retries, Some(self.file_offset.1)))
+                        .unwrap();
+                }
+            }
+        }
         Ok(())
     }
 
@@ -620,7 +640,7 @@ impl TailedFile<LazyLineSerializer> {
     pub(crate) async fn tail(
         &mut self,
         paths: &[PathBuf],
-        _seek_to: Option<u64>,
+        seek_to: Option<u64>,
     ) -> Option<impl Stream<Item = LazyLineSerializer>> {
         let target_read = {
             let mut inner = self.inner.lock().await;
@@ -640,20 +660,81 @@ impl TailedFile<LazyLineSerializer> {
                 }
             };
 
-            if let Some(initial_offset) = inner.initial_offsets.pop_first().map(|offset| offset.end)
-            {
+            // line retry handling
+            let target_read = if let Some(seek_to) = seek_to {
                 inner.offset = inner
                     .reader
                     .get_mut()
                     .get_mut()
-                    .seek(SeekFrom::Start(initial_offset))
+                    .seek(SeekFrom::Start(seek_to))
                     .await
                     .map_err(|e| error!("{:?}", e))
-                    .unwrap_or(0)
+                    .unwrap_or(0);
+                None
+            } else {
+                // else we're on a normal read
+
+                if let Some(retrying_until) = inner.retrying_until {
+                    if retrying_until
+                        >= OffsetDateTime::now_utc() - std::time::Duration::from_millis(100)
+                    {
+                        debug!("waiting to retry, skipping read on {:#?}", paths);
+                        if inner.retries >= 5 {
+                            debug!(
+                                "queuing a retry for {:?} after {:#?}",
+                                paths,
+                                retrying_until - OffsetDateTime::now_utc()
+                                    + std::time::Duration::from_millis(1000)
+                            );
+                            if let Some(retry_events_send) = self.retry_events_sender.as_ref() {
+                                let event = WatchEvent::Write(paths[0].clone());
+                                retry_events_send
+                                    .send_blocking((
+                                        event,
+                                        retrying_until + std::time::Duration::from_millis(1000),
+                                        0,
+                                        None,
+                                    ))
+                                    .unwrap();
+                            }
+                        }
+                        return None;
+                    } else {
+                        // clear retry
+                        debug!("clearing retries on {:#?}", paths);
+                        inner.retrying_until = None;
+                        if let Some(sender) = self.resume_events_sender.as_ref() {
+                            if let Err(e) =
+                                sender.try_send((inner.inode, OffsetDateTime::now_utc()))
+                            {
+                                warn!("Couldn't send tailer continuation event: {}", e);
+                            } else {
+                                debug!(
+                                    "sending resume event for {:#?} at offset {:#?}",
+                                    paths, inner.offset
+                                );
+                            };
+                        }
+                    }
+                }
+
+                if let Some(initial_offset) =
+                    inner.initial_offsets.pop_first().map(|offset| offset.end)
+                {
+                    inner.offset = inner
+                        .reader
+                        .get_mut()
+                        .get_mut()
+                        .seek(SeekFrom::Start(initial_offset))
+                        .await
+                        .map_err(|e| error!("{:?}", e))
+                        .unwrap_or(0)
+                };
+
+                let target_read = inner.initial_offsets.first().map(|offsets| offsets.start);
+
+                target_read
             };
-
-            let target_read = inner.initial_offsets.first().map(|offsets| offsets.start);
-
             // if we are at the end of the file there's no work to do
             if inner.offset == len {
                 debug!("at the end of the file, no more work to do");
@@ -916,7 +997,7 @@ mod tests {
             inode: 0,
             path: file_path,
             retries: 0,
-            _retrying_until: None,
+            retrying_until: None,
         }));
         LazyLineSerializer::new(file_inner, "file/path.log".to_owned(), (0, 0, 0), None)
     }
