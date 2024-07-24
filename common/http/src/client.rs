@@ -24,7 +24,7 @@ pub struct Client {
 
 pub enum SendStatus {
     Sent,
-    Retry(hyper::Error),
+    Retry(hyper_util::client::legacy::Error),
     RetryServerError(hyper::StatusCode, String),
     RetryTimeout,
 }
@@ -53,17 +53,17 @@ impl Client {
         require_ssl: Option<bool>,
         concurrency_limit: Option<usize>,
         fo_state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
-    ) -> Self {
+    ) -> Result<Self, std::io::Error> {
         let (state_write, state_flush) = fo_state_handles
             .map(|(sw, sf)| (Some(sw), Some(sf)))
             .unwrap_or((None, None));
-        Self {
-            inner: HttpClient::new(template, require_ssl),
+        Ok(Self {
+            inner: HttpClient::new(template, require_ssl)?,
             limiter: RateLimiter::new(concurrency_limit.unwrap_or(10)),
             retry,
             state_write,
             state_flush,
-        }
+        })
     }
 
     pub async fn send<T>(

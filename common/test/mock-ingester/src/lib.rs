@@ -16,7 +16,7 @@ use tokio_stream::wrappers::TcpListenerStream;
 use tracing::{debug, error, info};
 
 use std::collections::HashMap;
-use std::convert::From;
+use std::convert::{From, TryFrom};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -308,8 +308,8 @@ fn error(err: String) -> io::Error {
 
 pub fn https_ingester(
     addr: SocketAddr,
-    server_cert: Vec<rustls::Certificate>,
-    private_key: rustls::PrivateKey,
+    server_cert: Vec<rustls::pki_types::CertificateDer<'static>>,
+    private_key: rustls::pki_types::PrivateKeyDer<'static>,
     http_version: Option<HttpVersion>,
 ) -> (
     impl Future<Output = std::result::Result<(), IngestError>>,
@@ -328,8 +328,8 @@ pub fn https_ingester(
 
 pub fn https_ingester_with_processors(
     addr: SocketAddr,
-    server_cert: Vec<rustls::Certificate>,
-    private_key: rustls::PrivateKey,
+    server_cert: Vec<rustls::pki_types::CertificateDer<'static>>,
+    private_key: rustls::pki_types::PrivateKeyDer<'static>,
     http_version: Option<HttpVersion>,
     req_fn: ReqFn,
     process_fn: ProcessFn,
@@ -348,7 +348,6 @@ pub fn https_ingester_with_processors(
             let tls_cfg = {
                 // Do not use client certificate authentication.
                 let mut cfg = rustls::ServerConfig::builder()
-                    .with_safe_defaults()
                     .with_no_client_auth()
                     .with_single_cert(server_cert, private_key)
                     .map_err(|e| error(format!("{}", e)))?;
@@ -436,31 +435,36 @@ impl hyper::server::accept::Accept for HyperAcceptor<'_> {
 }
 
 // Load public certificate from file.
-pub fn load_certs(filename: &str) -> io::Result<Vec<rustls::Certificate>> {
+pub fn load_certs(filename: &str) -> io::Result<Vec<rustls::pki_types::CertificateDer<'static>>> {
     // Open certificate file.
     let certfile = fs::File::open(filename)
         .map_err(|e| error(format!("failed to open {}: {}", filename, e)))?;
     let mut reader = io::BufReader::new(certfile);
 
     // Load and return certificate.
-    rustls_pemfile::certs(&mut reader)
-        .map_err(|_| error("failed to load certificate".into()))
-        .map(|certs| certs.into_iter().map(rustls::Certificate).collect())
+    Ok(rustls_pemfile::certs(&mut reader)
+        .flat_map(|certs| certs.into_iter())
+        .collect())
 }
 
 // Load private key from file.
-pub fn load_private_key(filename: &str) -> io::Result<rustls::PrivateKey> {
+pub fn load_private_key(filename: &str) -> io::Result<rustls::pki_types::PrivateKeyDer<'static>> {
     // Open keyfile.
     let keyfile = fs::File::open(filename)
         .map_err(|e| error(format!("failed to open {}: {}", filename, e)))?;
     let mut reader = io::BufReader::new(keyfile);
 
     // Load and return a single private key.
-    let keys: Vec<rustls::PrivateKey> = rustls_pemfile::rsa_private_keys(&mut reader)
-        .map(|keys| keys.into_iter().map(rustls::PrivateKey).collect())
-        .map_err(|_| error("failed to load private key".into()))?;
+    let keys: Vec<rustls::pki_types::PrivateKeyDer> = rustls_pemfile::rsa_private_keys(&mut reader)
+        .flat_map(|keys| {
+            keys.into_iter()
+                .map(rustls::pki_types::PrivateKeyDer::try_from)
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    //.map_err(|_| error("failed to load private key".into()))?;
     if keys.len() != 1 {
         return Err(error("expected a single private key".into()));
     }
-    Ok(keys[0].clone())
+    Ok(keys[0].clone_key())
 }

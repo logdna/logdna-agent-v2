@@ -8,7 +8,9 @@ integration_tests = []
 
 [dependencies]
 futures = "0.3.19"
-hyper = { version = "0.14.16", features = ["full"] }
-prometheus = "0.13.0"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["full"] }
+hyper-util = "0.1"
+prometheus = "0.13"
 prometheus-parse = { git = "https://github.com/ccakes/prometheus-parse-rs", rev = "a4574e9" }
 tokio = { version = "1", features = ["rt-multi-thread", "signal", "time"] }

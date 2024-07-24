@@ -142,7 +142,7 @@ pub async fn _main(
         Some(config.http.require_ssl),
         concurrency_limit,
         fo_state_handles,
-    ));
+    )?);
 
     if let Some(client) = Arc::get_mut(&mut client) {
         client.set_timeout(config.http.timeout);
