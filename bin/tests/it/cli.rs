@@ -262,7 +262,7 @@ fn test_append_and_move() {
     agent_handle.kill().expect("Could not kill process");
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_reuse_inode() {
@@ -1088,7 +1088,7 @@ fn lookback_tail_lines_file_created_before_agent_start_at_end() {
     });
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_partial_fsynced_lines() {
@@ -1099,8 +1099,9 @@ async fn test_partial_fsynced_lines() {
     let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &addr);
     settings.exclusion_regex = Some(r"/var\w*");
     let mut agent_handle = common::spawn_agent(settings);
-    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
     common::wait_for_file_event("initialize", &file_path, &mut stderr_reader);
+    common::consume_output(stderr_reader.into_inner());
     let (server_result, _) = tokio::join!(server, async {
         let mut file = OpenOptions::new()
             .append(true)
@@ -1273,7 +1274,7 @@ async fn test_tags() {
     agent_handle.kill().expect("Could not kill process");
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_lookback_restarting_agent() {
@@ -2453,6 +2454,7 @@ fn test_fs_rescan_on_initial_log_dir_delete() {
         .expect("Could not remove directory");
 
     common::wait_for_event("rescanning stream", &mut reader);
+    common::consume_output(reader);
 
     common::assert_agent_running(&mut agent_handle);
 

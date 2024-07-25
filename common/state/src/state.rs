@@ -458,16 +458,16 @@ mod test {
 
                         let mut updates = OffsetMap::default();
                         for path in paths.iter() {
-                            updates.insert(*path, (0, 2)).unwrap();
+                            updates.insert(*path, (0, 2).try_into().unwrap()).unwrap();
                         }
                         for path in paths.iter() {
-                            updates.insert(*path, (2, 13)).unwrap();
+                            updates.insert(*path, (2, 13).try_into().unwrap()).unwrap();
                         }
                         let key1 = wh.update(updates).await.unwrap();
 
                         let mut updates = OffsetMap::default();
                         for path in paths[..2].iter() {
-                            updates.insert(*path, (0, 14)).unwrap();
+                            updates.insert(*path, (0, 14).try_into().unwrap()).unwrap();
                         }
                         let key2 = wh.update(updates).await.unwrap();
                         fh.flush(Some(key1)).await.unwrap();

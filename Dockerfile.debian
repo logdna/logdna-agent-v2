@@ -34,8 +34,8 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     if [ -z "$SCCACHE_ENDPOINT" ]; then unset SCCACHE_ENDPOINT; fi; \
     if [ -z "$SCCACHE_RECACHE" ]; then unset SCCACHE_RECACHE; fi; \
     set +a && env && \
+    export RUSTFLAGS=-g && \
     cargo build --manifest-path bin/Cargo.toml ${FEATURES} --release && \
-    strip ./target/release/logdna-agent && \
     cp ./target/release/logdna-agent /logdna-agent && \
     sccache --show-stats
 

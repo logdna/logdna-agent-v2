@@ -47,7 +47,7 @@ type EntryMap = SlotMap<EntryKey, entry::Entry>;
 type FsResult<T> = Result<T, Error>;
 
 pub const EVENT_STREAM_BUFFER_COUNT: usize = 1000;
-const EVENT_RETRY_DELAY_MS: u64 = 1000;
+const EVENT_RETRY_DELAY_MS: u64 = 500;
 const EVENT_RETRY_COUNT: u32 = 5;
 const TAIL_WARN_THRESHOLD_B: u64 = 3000000;
 
@@ -222,25 +222,29 @@ type RetryStreamMessage = (WatchEvent, EventTimestamp, u32, Option<state::Span>)
 #[instrument(level = "debug", skip_all)]
 fn get_retry_events(
     fs: &Rc<RefCell<FileSystem>>,
-    retry_delay: Duration,
     retry_limit: u32,
 ) -> impl Stream<Item = RetryStreamMessage> {
     let retry_events = fs.borrow().retry_events_recv.clone().map(|e| {
         let delay = (e.1 - time::OffsetDateTime::now_utc()).unsigned_abs();
         (e, Some(delay))
     });
-    delayed_stream(retry_events, retry_delay).filter_map(
-        move |(event, ts, retries, retry_offset)| async move {
-            debug!("retry {} for event {:?}", retries + 1, event);
-            if retries <= retry_limit {
-                Some((event, ts, retries + 1, retry_offset))
-            } else {
-                None
-            }
-        },
+    delayed_stream(
+        retry_events,
+        fs.borrow()
+            .retry_event_delay
+            .unwrap_or(Duration::from_millis(EVENT_RETRY_DELAY_MS)),
     )
+    .filter_map(move |(event, ts, retries, retry_offset)| async move {
+        debug!("retry {} for event {:?}", retries + 1, event);
+        if retries <= retry_limit {
+            Some((event, ts, retries + 1, retry_offset))
+        } else {
+            None
+        }
+    })
 }
 
+#[derive(Debug)]
 pub(crate) struct CacheEvent {
     event: WatchEvent,
     event_time: EventTimestamp,
@@ -270,7 +274,7 @@ pub struct FileSystem {
 
     retry_events_recv: async_channel::Receiver<RetryStreamMessage>,
     retry_events_send: async_channel::Sender<RetryStreamMessage>,
-    _retry_event_delay: Option<std::time::Duration>,
+    retry_event_delay: Option<std::time::Duration>,
 
     ignored_dirs: HashSet<PathBuf>,
 
@@ -397,7 +401,7 @@ impl FileSystem {
             resume_events_send,
             retry_events_recv,
             retry_events_send,
-            _retry_event_delay: retry_event_delay,
+            retry_event_delay,
             ignored_dirs,
             fo_state_handles,
             deletion_ack_sender,
@@ -595,17 +599,14 @@ impl FileSystem {
             },
         );
 
-        let retry_events = get_retry_events(
-            &fs,
-            Duration::from_millis(EVENT_RETRY_DELAY_MS),
-            EVENT_RETRY_COUNT,
-        )
-        .map(|(event, event_time, retries, retry_offset)| CacheEvent {
-            event,
-            event_time,
-            retries,
-            retry_offset,
-        });
+        let retry_events = get_retry_events(&fs, EVENT_RETRY_COUNT).map(
+            |(event, event_time, retries, retry_offset)| CacheEvent {
+                event,
+                event_time,
+                retries,
+                retry_offset,
+            },
+        );
 
         let events = futures::stream::select(events, retry_events)
             .map({
@@ -904,7 +905,12 @@ impl FileSystem {
         ) -> Option<SpanVec> {
             if let Some(offset) = initial_offsets.get(key) {
                 debug!("Got offset {:?} from state using key {:?}", offset, path);
-                Some(offset.clone())
+                let mut offset_span = offset.clone();
+                // handle
+                if offset_span.len() == 1 {
+                    offset_span.insert(Span::new(0, offset_span.last().unwrap().start).unwrap());
+                }
+                Some(offset_span)
             } else {
                 None
             }
