@@ -160,7 +160,7 @@ fn as_event_stream(
     fs: Rc<RefCell<FileSystem>>,
     watch_event: &WatchEvent,
     event_time: EventTimestamp,
-    retry_offset: Option<u64>,
+    retry_offset: Option<state::Span>,
 ) -> impl Stream<Item = (Result<Event, Error>, EventTimestamp)> {
     let a = match fs.borrow_mut().process(watch_event, retry_offset) {
         Ok(events) => events
@@ -217,7 +217,7 @@ fn get_resume_events(
         .filter_map(|e| async { e })
 }
 
-type RetryStreamMessage = (WatchEvent, EventTimestamp, u32, Option<u64>);
+type RetryStreamMessage = (WatchEvent, EventTimestamp, u32, Option<state::Span>);
 
 #[instrument(level = "debug", skip_all)]
 fn get_retry_events(
@@ -245,7 +245,7 @@ pub(crate) struct CacheEvent {
     event: WatchEvent,
     event_time: EventTimestamp,
     retries: u32,
-    retry_offset: Option<u64>,
+    retry_offset: Option<state::Span>,
 }
 
 pub struct FileSystem {
@@ -669,7 +669,7 @@ impl FileSystem {
     fn process(
         &mut self,
         watch_event: &WatchEvent,
-        retry_offset: Option<u64>,
+        retry_offset: Option<state::Span>,
     ) -> FsResult<SmallVec<[Event; 2]>> {
         let _entries = self.entries.clone();
         let mut _entries = _entries.borrow_mut();

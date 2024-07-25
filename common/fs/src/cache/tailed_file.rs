@@ -14,7 +14,7 @@ use http::types::serialize::{
     SerializeUtf8, SerializeValue,
 };
 
-use state::{FileId, GetOffset, SpanVec};
+use state::{FileId, GetOffset, Span, SpanVec};
 
 use metrics::Metrics;
 
@@ -48,7 +48,7 @@ pub struct LazyLineSerializer {
     path: Option<String>,
     line_buffer: Option<Bytes>,
 
-    file_offset: (u64, u64, u64),
+    file_offset: (u64, Span),
 
     reader: Arc<Mutex<TailedFileInner>>,
     retry_events_send: Option<async_channel::Sender<RetryStreamMessage>>,
@@ -199,7 +199,7 @@ impl LazyLineSerializer {
     pub fn new(
         reader: Arc<Mutex<TailedFileInner>>,
         path: String,
-        offset: (u64, u64, u64),
+        offset: (u64, Span),
         retry_events_send: Option<async_channel::Sender<RetryStreamMessage>>,
     ) -> Self {
         Self {
@@ -329,8 +329,8 @@ impl LineBufferMut for LazyLineSerializer {
 }
 
 impl GetOffset for LazyLineSerializer {
-    fn get_offset(&self) -> Option<(u64, u64)> {
-        Some((self.file_offset.1, self.file_offset.2))
+    fn get_offset(&self) -> Option<Span> {
+        Some(self.file_offset.1)
     }
     fn get_key(&self) -> Option<u64> {
         Some(self.file_offset.0)
@@ -399,7 +399,7 @@ impl TailedFile<LineBuilder> {
     pub async fn tail(
         &mut self,
         paths: &[PathBuf],
-        _seek_to: Option<u64>,
+        _seek_to: Option<Span>,
     ) -> Option<impl Stream<Item = LineBuilder>> {
         // get the file len
         {
@@ -640,7 +640,7 @@ impl TailedFile<LazyLineSerializer> {
     pub(crate) async fn tail(
         &mut self,
         paths: &[PathBuf],
-        seek_to: Option<u64>,
+        retry_span: Option<Span>,
     ) -> Option<impl Stream<Item = LazyLineSerializer>> {
         let target_read = {
             let mut inner = self.inner.lock().await;

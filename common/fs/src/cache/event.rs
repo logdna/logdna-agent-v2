@@ -1,4 +1,6 @@
 use crate::cache::EntryKey;
+use state::Span;
+
 /// Represents a filesystem event
 #[derive(Debug, Clone)]
 pub enum Event {
@@ -9,7 +11,7 @@ pub enum Event {
     /// A file was written too
     Write(EntryKey),
     /// A file was written too
-    RetryWrite((EntryKey, u64)),
+    RetryWrite((EntryKey, Span)),
     /// A file was deleted
     Delete(EntryKey),
 }
