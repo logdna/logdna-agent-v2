@@ -59,7 +59,7 @@ async fn handle_event(
                     // If the file's passes the rules tail it
                     info!("initialize event for file {}", path_display);
                     if fs.is_initial_dir_target(entry.path()) {
-                        return data.borrow_mut().tail(&paths, None).await;
+                        return data.borrow_mut().tail(&paths).await;
                     }
                 }
                 Entry::Symlink { link, path } => {
@@ -87,7 +87,7 @@ async fn handle_event(
                                 final_target
                             );
                             let mut data = data.borrow_mut();
-                            return data.tail(&paths, None).await;
+                            return data.tail(&paths).await;
                         }
                     }
                 }
@@ -106,12 +106,12 @@ async fn handle_event(
             }
             if let Entry::File { data, .. } = entry {
                 info!("added {:?}", paths[0]);
-                return data.borrow_mut().tail(&paths, None).await;
+                return data.borrow_mut().tail(&paths).await;
             }
         }
-        Event::RetryWrite((entry_ptr, retry_offset)) => {
+        Event::RetryWrite((entry_ptr, _)) => {
             Metrics::fs().increment_writes();
-            debug!("Write Event");
+            debug!("RetryWrite Event");
             let entries = fs.entries.borrow();
             let entry = entries.get(entry_ptr)?;
 
@@ -121,11 +121,7 @@ async fn handle_event(
             }
 
             if let Entry::File { data, .. } = entry {
-                return data
-                    .borrow_mut()
-                    .deref_mut()
-                    .tail(&paths, Some(retry_offset))
-                    .await;
+                return data.borrow_mut().deref_mut().tail(&paths).await;
             }
         }
         Event::Write(entry_ptr) => {
@@ -140,7 +136,7 @@ async fn handle_event(
             }
 
             if let Entry::File { data, .. } = entry {
-                return data.borrow_mut().deref_mut().tail(&paths, None).await;
+                return data.borrow_mut().deref_mut().tail(&paths).await;
             }
         }
         Event::Delete(entry_ptr) => {
@@ -168,7 +164,7 @@ async fn handle_event(
                     }
                     if let Entry::File { data, .. } = entry {
                         let mut tailed_file = data.borrow_mut();
-                        tailed_file.deref_mut().tail(&paths, None).await
+                        tailed_file.deref_mut().tail(&paths).await
                     } else {
                         None
                     }
@@ -395,7 +391,7 @@ mod test {
         assert!(result.is_ok())
     }
 
-    #[test]
+    #[test_log::test]
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     fn none_lookback() {
         run_test(|| {
@@ -434,14 +430,14 @@ mod test {
                 pin_mut!(stream);
 
                 let events = take_events!(stream);
-                assert_eq!(events.len(), 0);
+                assert_eq!(events.len(), 0, "{:#?}", events);
 
                 tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
                 writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
                 file.sync_all().expect("Failed to sync file");
 
                 let events = take_events!(stream);
-                assert_eq!(events.len(), 1);
+                assert_eq!(events.len(), 1, "{:#?}", events);
             });
         });
     }
@@ -493,7 +489,7 @@ mod test {
                 file.sync_all().expect("Failed to sync file");
 
                 let events = take_events!(stream);
-                assert_eq!(events.len(), 1);
+                assert_eq!(events.len(), 1, "{:#?}", events);
             });
         });
     }
@@ -679,5 +675,110 @@ mod test {
 
         let result = rt.collect::<Vec<usize>>().await;
         assert_eq!(result, vec![1, 4, 5]);
+    }
+
+    #[test_log::test(tokio::test)]
+    async fn tailer_retries() {
+        use types::sources::RetryableLine;
+        let mut rules = Rules::new();
+        rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
+
+        let dir = tempdir().expect("Couldn't create temp dir...");
+
+        let file_path = dir.path().join("test.log");
+
+        let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
+
+        let tailer = Tailer::new(
+            vec![dir
+                .path()
+                .try_into()
+                .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
+            rules,
+            Lookback::Start,
+            None,
+            None,
+            async_channel::unbounded().0,
+            None,
+        );
+
+        let messages = &["0", "1", "2", "3", "4"];
+        messages.iter().for_each(|message| {
+            writeln!(file, "{}", message).expect("Couldn't write to temp log file...");
+            file.sync_all().expect("Failed to sync file");
+        });
+
+        let stream = process(tailer).expect("failed to read events");
+        pin_mut!(stream);
+        let events = take_events!(stream);
+        assert_eq!(events.len(), 5);
+        for event in events.iter() {
+            event
+                .as_ref()
+                .unwrap()
+                .retry(Some(Duration::from_secs(1)))
+                .unwrap();
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let mut events = take_events!(stream);
+        while events.is_empty() {
+            events = take_events!(stream);
+        }
+        assert_eq!(events.len(), 5);
+        for event in events.iter() {
+            event
+                .as_ref()
+                .unwrap()
+                .retry(Some(Duration::from_secs(1)))
+                .unwrap();
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let mut events = take_events!(stream);
+        while events.is_empty() {
+            events = take_events!(stream);
+        }
+        assert_eq!(events.len(), 5);
+        for event in events.iter() {
+            event
+                .as_ref()
+                .unwrap()
+                .retry(Some(Duration::from_secs(1)))
+                .unwrap();
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let mut events = take_events!(stream);
+        while events.is_empty() {
+            events = take_events!(stream);
+        }
+        assert_eq!(events.len(), 5);
+        for event in events.iter() {
+            event
+                .as_ref()
+                .unwrap()
+                .retry(Some(Duration::from_secs(1)))
+                .unwrap();
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let mut events = take_events!(stream);
+        while events.is_empty() {
+            events = take_events!(stream);
+        }
+        assert_eq!(events.len(), 5);
+        for event in events.iter() {
+            event
+                .as_ref()
+                .unwrap()
+                .retry(Some(Duration::from_secs(1)))
+                .unwrap();
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        let mut events = take_events!(stream);
+        while events.is_empty() {
+            events = take_events!(stream);
+        }
+        assert_eq!(events.len(), 5);
+        for event in events.iter() {
+            event.as_ref().unwrap().commit().unwrap();
+        }
     }
 }

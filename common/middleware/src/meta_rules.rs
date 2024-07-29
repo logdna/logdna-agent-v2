@@ -115,13 +115,13 @@ impl MetaRules {
 
     /// process_line
     /// - override line meta fields
-    /// [ create map ] => [ substitute then insert to map ] => [ substitute from map ] => [ override ]
-    ///  os env vars       "override" labels                    "override" fields          line fields
-    ///  line fields       "override" annotations
-    ///  line labels
-    ///  line annotations
-    /// Excluded:
-    ///  line "meta"
+    ///   [ create map ] => [ substitute then insert to map ] => [ substitute from map ] => [ override ]
+    ///   os env vars       "override" labels                    "override" fields          line fields
+    ///   line fields       "override" annotations
+    ///   line labels
+    ///   line annotations
+    ///   Excluded:
+    ///   line "meta"
     ///
     fn process_line<'a>(
         &self,

@@ -1,4 +1,3 @@
-use std::convert::TryInto;
 use std::sync::Arc;
 
 use thiserror::Error;
@@ -32,8 +31,7 @@ impl OffsetMap {
         }
     }
 
-    pub fn insert(&mut self, key: u64, value: (u64, u64)) -> Result<(), OffsetMapError> {
-        let value = value.try_into().map_err(OffsetMapError::SpanError)?;
+    pub fn insert(&mut self, key: u64, value: Span) -> Result<(), OffsetMapError> {
         let map = Arc::get_mut(&mut self.inner).ok_or(OffsetMapError::NonUnique)?;
 
         let key = FileId::from(key);

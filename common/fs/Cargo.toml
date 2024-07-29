@@ -58,6 +58,7 @@ winapi-util = { version = "0.1" }
 middleware = { package = "middleware", path = "../middleware" }
 env_logger = "0.9"
 tempfile = "3"
+test-log = { version = "0.2", features = ["trace"] }
 tokio-test = "0.4"
 tokio = {version= "1", features= ["fs", "io-util", "time", "macros"]}
 tokio-stream = "0.1"
