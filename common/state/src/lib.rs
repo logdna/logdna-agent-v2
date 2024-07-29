@@ -62,7 +62,7 @@ where
 
 pub trait GetOffset {
     fn get_key(&self) -> Option<u64>;
-    fn get_offset(&self) -> Option<(u64, u64)>;
+    fn get_offset(&self) -> Option<Span>;
 }
 
 #[derive(Debug, thiserror::Error)]
