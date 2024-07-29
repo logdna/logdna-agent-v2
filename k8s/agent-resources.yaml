@@ -17,7 +17,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.10.0
+    app.kubernetes.io/version: 3.10.1
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -27,7 +27,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.10.0
+    app.kubernetes.io/version: 3.10.1
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
@@ -41,7 +41,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.10.0
+    app.kubernetes.io/version: 3.10.1
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -58,7 +58,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.10.0
+    app.kubernetes.io/version: 3.10.1
 rules:
   - apiGroups: [""]
     resources: ["events"]
@@ -83,7 +83,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.10.0
+    app.kubernetes.io/version: 3.10.1
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -101,7 +101,7 @@ metadata:
   labels:
     app.kubernetes.io/name: logdna-agent
     app.kubernetes.io/instance: logdna-agent
-    app.kubernetes.io/version: 3.10.0
+    app.kubernetes.io/version: 3.10.1
 spec:
   updateStrategy:
     type: RollingUpdate
@@ -116,13 +116,13 @@ spec:
         app: logdna-agent
         app.kubernetes.io/name: logdna-agent
         app.kubernetes.io/instance: logdna-agent
-        app.kubernetes.io/version: 3.10.0
+        app.kubernetes.io/version: 3.10.1
     spec:
       serviceAccountName: logdna-agent
       priorityClassName: logdna-agent-ds-priority
       containers:
         - name: logdna-agent
-          image: logdna/logdna-agent:3.10.0
+          image: logdna/logdna-agent:3.10.1
           imagePullPolicy: Always
           securityContext:
             capabilities:
