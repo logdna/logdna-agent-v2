@@ -54,10 +54,25 @@ impl SpanCoalesced {
     }
 }
 
-#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+#[derive(Copy, Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct Span {
     pub start: u64,
     pub end: u64,
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq, Serialize)]
+pub struct Gap {
+    pub start: u64,
+    pub end: Option<u64>,
+}
+
+impl Gap {
+    pub fn into_span(self) -> Option<Span> {
+        self.end.map(|end| Span {
+            start: self.start,
+            end,
+        })
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -174,12 +189,141 @@ impl SpanVec {
         self.spans.first()
     }
 
+    pub fn pop_last(&mut self) -> Option<Span> {
+        if !self.is_empty() {
+            Some(self.spans.remove(self.spans.len() - 1))
+        } else {
+            None
+        }
+    }
+
     pub fn last(&self) -> Option<&Span> {
         self.spans.last()
     }
 
+    pub fn first_gap(&self) -> Gap {
+        let mut iter = self.iter();
+        let (start, end) = if let Some(first_span) = iter.next() {
+            if first_span.start == 0 {
+                let end = iter.next().map(|next_span| next_span.start - 1);
+                (first_span.end, end)
+            } else {
+                (0, Some(first_span.start - 1))
+            }
+        } else {
+            (0, None)
+        };
+        Gap { start, end }
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &Span> {
         self.spans.iter()
+    }
+
+    pub fn iter_gaps(&self) -> impl Iterator<Item = Gap> + '_ {
+        let mut iter = self.iter();
+        let mut current = iter.next();
+        std::iter::from_fn(move || {
+            if current.is_none() {
+                None
+            } else {
+                let (start, end) = if let Some(first_span) = current {
+                    if first_span.start == 0 {
+                        current = iter.next();
+                        let end = current.map(|next_span| next_span.start - 1);
+                        (first_span.end, end)
+                    } else {
+                        (0, Some(first_span.start - 1))
+                    }
+                } else {
+                    (0, None)
+                };
+                Some(Gap { start, end })
+            }
+        })
+    }
+
+    pub fn remove(&mut self, elem: Span) {
+        let elem_start = elem.start;
+        let elem_end = elem.end;
+
+        #[derive(Debug)]
+        struct RemoveRange {
+            start: usize,
+            end: usize,
+        }
+
+        // Find the point where the span overlaps a partition
+        let modify_left_idx = self
+            .spans
+            .partition_point(|&x| elem_end >= x.start && elem_start <= x.end);
+
+        use std::ops::ControlFlow;
+
+        let (removed_spans, split_spans) = match self.spans[modify_left_idx.saturating_sub(1)..]
+            .iter_mut()
+            .enumerate()
+            .try_fold((None, None), |(rem_range, split_spans), (idx, x)| {
+                match (
+                    (x.start >= elem_start),
+                    (elem_end > x.start),
+                    (elem_end >= x.end),
+                ) {
+                    // Span is contained within existing
+                    (false, true, false) => ControlFlow::Break((
+                        Some(RemoveRange {
+                            start: idx,
+                            end: idx,
+                        }),
+                        Some((
+                            Span::new(x.start, elem.start).unwrap(),
+                            Span::new(elem_end, x.end).unwrap(),
+                        )),
+                    )),
+                    // New span completely overlaps existing
+                    // Need to remove it
+                    (true, true, true) => ControlFlow::Continue((
+                        rem_range.map_or_else(
+                            || {
+                                Some(RemoveRange {
+                                    start: idx,
+                                    end: idx,
+                                })
+                            },
+                            |r: RemoveRange| {
+                                Some(RemoveRange {
+                                    start: r.start,
+                                    end: idx,
+                                })
+                            },
+                        ),
+                        None,
+                    )),
+                    // New span overlaps on the right of existing
+                    // Don't need to get rid of it
+                    (false, true, true) => {
+                        x.end = elem.start - 1;
+                        ControlFlow::Continue((rem_range, None))
+                    }
+                    // New span overlaps on the left of existing
+                    (true, true, false) => {
+                        x.start = elem.end;
+                        ControlFlow::Break((rem_range, split_spans))
+                    }
+                    (_, _, _) => ControlFlow::Break((rem_range, split_spans)),
+                }
+            }) {
+            ControlFlow::Continue((removed_spans, split_spans)) => (removed_spans, split_spans),
+            ControlFlow::Break((removed_spans, split_spans)) => (removed_spans, split_spans),
+        };
+
+        if let Some(removed_spans) = removed_spans {
+            self.spans.drain(removed_spans.start..=removed_spans.end);
+            if let Some((span1, span2)) = split_spans {
+                self.insert(span1);
+                self.insert(span2);
+            }
+        }
     }
 
     pub fn insert(&mut self, mut elem: Span) {
@@ -300,6 +444,15 @@ impl SpanVec {
             insert_idx = merge_idx;
             elem = merge_elem;
         }
+    }
+
+    pub fn contains(&self, other_span: Span) -> bool {
+        for span in self.spans.iter() {
+            if span.start <= other_span.start && span.end >= other_span.end {
+                return true;
+            }
+        }
+        false
     }
 }
 
@@ -555,4 +708,59 @@ fn test_span_vec_insert_coalescing() {
 
     sv.insert(Span::new(18, 35).unwrap());
     assert_eq!(sv.len(), 4, "{:#?}", sv);
+}
+
+#[ignore]
+#[test]
+fn test_span_vec_remove() {
+    let mut sv = SpanVec::new();
+    let s_close = Span::new(0, 1).unwrap();
+    let s_mid = Span::new(1, 2).unwrap();
+    let s_far = Span::new(3, 4).unwrap();
+
+    sv.insert(s_far);
+    assert_eq!(sv.len(), 1);
+    sv.insert(s_mid);
+    assert_eq!(sv.len(), 1);
+    sv.insert(s_close);
+    assert_eq!(sv.len(), 1);
+    assert_eq!(sv[0], Span::new(0, 4).unwrap());
+
+    // contained
+    let mut sv_contained = sv.clone();
+    sv_contained.remove(s_mid);
+    assert_eq!(sv_contained.len(), 2, "{:?}", sv_contained);
+    assert_eq!(sv_contained[0], Span::new(0, 0).unwrap());
+    assert_eq!(sv_contained[1], Span::new(2, 4).unwrap());
+
+    // left
+    let mut sv_left = sv.clone();
+    sv_left.remove(s_close);
+    assert_eq!(sv_left.len(), 1, "{:?}", sv_left);
+    assert_eq!(sv_left[0], Span::new(1, 4).unwrap());
+
+    let mut sv_right = sv.clone();
+    sv_right.remove(s_far);
+    assert_eq!(sv_right.len(), 1, "{:?}", sv_right);
+    assert_eq!(sv_right[0], Span::new(0, 2).unwrap());
+
+    let mut sv = SpanVec::new();
+    let s_close = Span::new(10, 11).unwrap();
+    let s_mid = Span::new(11, 12).unwrap();
+    let s_far = Span::new(13, 14).unwrap();
+
+    sv.insert(s_far);
+    assert_eq!(sv.len(), 1);
+    sv.insert(s_mid);
+    assert_eq!(sv.len(), 1);
+    sv.insert(s_close);
+
+    let mut sv_far = sv.clone();
+    sv_far.remove(Span::new(12, 17).unwrap());
+    assert_eq!(sv_far.len(), 1, "{:?}", sv_far);
+    assert_eq!(sv_far[0], Span::new(10, 11).unwrap());
+
+    let mut sv_far = sv.clone();
+    sv_far.remove(Span::new(5, 20).unwrap());
+    assert_eq!(sv_far.len(), 0, "{:?}", sv_far);
 }

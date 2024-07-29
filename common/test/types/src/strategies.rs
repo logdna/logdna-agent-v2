@@ -46,8 +46,8 @@ impl GetOffset for &OffsetLine {
     fn get_key(&self) -> Option<u64> {
         self.offset.map(|o| o.0.ffi())
     }
-    fn get_offset(&self) -> Option<(u64, u64)> {
-        self.offset.map(|o| (o.1.start, o.1.end))
+    fn get_offset(&self) -> Option<state::Span> {
+        self.offset.map(|o| o.1)
     }
 }
 

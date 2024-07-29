@@ -1193,6 +1193,7 @@ dependencies = [
  "smallvec",
  "state",
  "tempfile",
+ "test-log",
  "thiserror",
  "time",
  "tokio",

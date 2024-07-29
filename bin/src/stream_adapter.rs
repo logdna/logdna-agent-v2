@@ -202,7 +202,7 @@ impl IngestLineSerialize<String, bytes::Bytes, std::collections::HashMap<String,
 }
 
 impl GetOffset for StrictOrLazyLines {
-    fn get_offset(&self) -> Option<(u64, u64)> {
+    fn get_offset(&self) -> Option<state::Span> {
         match self {
             StrictOrLazyLines::Strict(_) => None,
             StrictOrLazyLines::Lazy(line) => line.get_offset(),

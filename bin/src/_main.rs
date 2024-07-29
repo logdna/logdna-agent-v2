@@ -42,9 +42,8 @@ use middleware::Executor;
 
 use pin_utils::pin_mut;
 use rand::Rng;
-use state::{AgentState, FileId, GetOffset, Span, SpanVec};
+use state::{AgentState, FileId, GetOffset, SpanVec};
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -542,10 +541,8 @@ pub async fn _main(
                         async move {
                             if let (Some(key), Some(offsets)) = pair {
                                 let mut span_vec = SpanVec::new();
-                                if let Ok(offsets) = Span::try_from(offsets) {
-                                    span_vec.insert(offsets);
-                                    fs_offsets.lock().await.insert(FileId::from(key), span_vec);
-                                }
+                                span_vec.insert(offsets);
+                                fs_offsets.lock().await.insert(FileId::from(key), span_vec);
                             }
                             true
                         }
@@ -781,35 +778,27 @@ pub async fn _main(
                             None
                         }
                         Err(MiddlewareError::Retry(name)) => {
-                            if delayed_source_enabled {
-                                rate_limit!(rate = 1, interval = 10 * 60, {
-                                    warn!("Pod metadata is missing for line (retries=5): {:?}", line);
-                                    // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
-                                    debug!(
-                                        "Retrying - delaying line processing by {} for {:?} seconds at [{}:{}]: {:?}",
-                                        name,
-                                        metadata_retry_delay,
-                                        file!(),
-                                        line!(),
-                                        line
-                                    );
-                                });
-                                if line.retries_remaining() > 0 {
-                                    debug!(
-                                        "Retrying - delaying line processing by {} for {:?} seconds at [{}:{}]: {:?}",
-                                        name,
-                                        metadata_retry_delay,
-                                        file!(),
-                                        line!(),
-                                        line
-                                    );
-                                    line.retry(Some(metadata_retry_delay)).ok()?;
+                            if metadata_retry_delay.is_some() {
+                                let retries_remaining = line.retries_remaining();
+                                if retries_remaining > 0 {
+                                    rate_limit!(rate = 1, interval = 10 * 60, {
+                                        warn!("Pod metadata is missing for line (retries={}): {:?}", retries_remaining, line);
+                                        debug!(
+                                            "Retrying - delaying line processing by {} for {:?} seconds at [{}:{}]: {:?}",
+                                            name,
+                                            metadata_retry_delay,
+                                            file!(),
+                                            line!(),
+                                            line
+                                        );
+                                    });
+                                    line.retry(metadata_retry_delay).ok()?;
                                     Metrics::middleware().increment_lines_delayed();
                                     None
                                 }
                                 else {
                                     rate_limit!(rate = 1, interval = 10 * 60, {
-                                        warn!("Pod metadata is missing for line (retries=5): {:?}", line);
+                                        warn!("Pod metadata is missing for line (retries=0): {:?}", line);
                                         debug!(
                                             "Retrying disabled, processing line by {} AS-IS at [{}:{}]: {:?}",
                                             name,
@@ -825,8 +814,8 @@ pub async fn _main(
                                             line!(),
                                             line
                                     );
-
                                     Metrics::middleware().increment_lines_no_k8s_meta();
+                                    line.commit().ok()?;
                                     Some(StrictOrLazyLines::Lazy(line))
                                 }
                             } else {
