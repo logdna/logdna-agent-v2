@@ -2102,7 +2102,6 @@ async fn test_feature_leader_grabbing_lease() {
     server_result.unwrap();
 }
 
-#[ignore]
 #[test(tokio::test)]
 #[allow(unused_attributes)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
@@ -2164,12 +2163,11 @@ async fn test_retry_line_with_missing_pod_metadata() {
             &mock_ingester_socket_addr_str,
             "never",
             "always",
-            "debug",
+            "info",
             "never",
             "never",
             Some(vec![
-                (config::env_vars::METADATA_RETRY_DELAY, "1"),
-                (config::env_vars::LOOKBACK, "start"),
+                (config::env_vars::METADATA_RETRY_DELAY, "5"),
                 (config::env_vars::MOCK_NO_PODS, "true"), // k8s log lines will not have metadata
                 (
                     config::env_vars::EXCLUSION_REGEX_RULES,
@@ -2196,16 +2194,13 @@ async fn test_retry_line_with_missing_pod_metadata() {
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
             logger_stream.write_all(msg.as_bytes()).await.unwrap();
         }
-        info!("lines sent");
 
         // Wait for the data to be received by the mock ingester
         // and delayed lines (all) delay time to expire
-        tokio::time::sleep(tokio::time::Duration::from_millis(20_000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
         // get socat pod log stats from ingester
         let map = received.lock().await;
-
-        info!("received lines: {:#?}", map);
         let result = map.iter().find(|(k, _)| k.contains(socat_pod_name));
         assert!(result.is_some());
 

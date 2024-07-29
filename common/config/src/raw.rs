@@ -611,7 +611,7 @@ exclude = /path/to/exclude/**",
             config.log.exclude,
             Some(Rules {
                 glob: expected_exclude,
-                regex: Vec::new()
+                regex: vec![]
             })
         );
         Ok(())

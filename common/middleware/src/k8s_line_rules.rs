@@ -271,7 +271,7 @@ mod tests {
 
     #[test]
     fn test_option_parsing_rules() {
-        let test_vec: &[String] = &[
+        let test_vec: Vec<String> = vec![
             "namespace:test-name-space".to_string(),
             "name:some-name".to_string(),
             "namespace:other-name-space".to_string(),
@@ -280,7 +280,7 @@ mod tests {
             "annotation.owner:secret-agent".to_string(),
         ];
 
-        let rule_results = get_rule_object(test_vec);
+        let rule_results = get_rule_object(&test_vec);
         let namespace_results = rule_results.get_vec("namespace").unwrap();
         let name_results = rule_results.get_vec("name").unwrap();
         let label_results = rule_results.get_vec("label").unwrap();

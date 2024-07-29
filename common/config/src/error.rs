@@ -14,9 +14,9 @@ pub enum ConfigError {
     PropertyInvalid(String),
     Template(http::types::error::TemplateError),
     Glob(glob::PatternError),
-    Regex(types::rule::RuleError),
-    NotADirectory(types::dir_path::DirPathBufError),
-    Lookback(types::lookback::ParseLookbackError),
+    Regex(fs::rule::RuleError),
+    NotADirectory(fs::cache::DirPathBufError),
+    Lookback(fs::lookback::ParseLookbackError),
 }
 
 impl Display for ConfigError {
@@ -69,20 +69,20 @@ impl From<glob::PatternError> for ConfigError {
     }
 }
 
-impl From<types::rule::RuleError> for ConfigError {
-    fn from(e: types::rule::RuleError) -> Self {
+impl From<fs::rule::RuleError> for ConfigError {
+    fn from(e: fs::rule::RuleError) -> Self {
         ConfigError::Regex(e)
     }
 }
 
-impl From<types::dir_path::DirPathBufError> for ConfigError {
-    fn from(e: types::dir_path::DirPathBufError) -> Self {
+impl From<fs::cache::DirPathBufError> for ConfigError {
+    fn from(e: fs::cache::DirPathBufError) -> Self {
         ConfigError::NotADirectory(e)
     }
 }
 
-impl From<types::lookback::ParseLookbackError> for ConfigError {
-    fn from(e: types::lookback::ParseLookbackError) -> Self {
+impl From<fs::lookback::ParseLookbackError> for ConfigError {
+    fn from(e: fs::lookback::ParseLookbackError) -> Self {
         ConfigError::Lookback(e)
     }
 }

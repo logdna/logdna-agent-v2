@@ -1,23 +1,19 @@
-use futures::{
-    task::{Context, Poll},
-    Stream,
-};
+use futures::Stream;
 
 use config::{self, ArgumentOptions, Config, DbPath, K8sLeaseConf, K8sTrackingConf};
+use fs::lookback::Lookback;
 use fs::tail;
 use futures::{stream, StreamExt};
 use http::batch::TimedRequestBatcherStreamExt;
 use http::client::{Client, ClientError, SendStatus};
 use http::retry::{retry, RetryItem};
-use http::types::body::{LineBufferMut, LineBuilder};
-
 use k8s::feature_leader::FeatureLeader;
 use k8s::feature_leader::FeatureLeaderMeta;
 use k8s::metrics_stats_stream::MetricsStatsStream;
 use middleware::MiddlewareError;
 use rate_limit_macro::rate_limit;
 
-// use fs::cache::delayed_stream::delayed_stream;
+use fs::cache::delayed_stream::delayed_stream;
 
 #[cfg(all(feature = "libjournald", target_os = "linux"))]
 use journald::libjournald::source::create_source;
@@ -46,7 +42,6 @@ use state::{AgentState, FileId, GetOffset, Span, SpanVec};
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::path::Path;
-use std::pin::Pin;
 use std::sync::Arc;
 use tokio::signal::*;
 use tokio::sync::Mutex;
@@ -56,12 +51,7 @@ use tracing::{debug, error, info, trace, warn};
 
 #[cfg(feature = "dep_audit")]
 use crate::dep_audit;
-
-use crate::stream_adapter::{RetryableLineBuilder, StrictOrLazyLineBuilder, StrictOrLazyLines};
-use types::{
-    lookback::Lookback,
-    sources::{RetryableLine, RetryableSource, SourceError, SourceRetry},
-};
+use crate::stream_adapter::{StrictOrLazyLineBuilder, StrictOrLazyLines};
 
 pub static REPORTER_LEASE_NAME: &str = "logdna-agent-reporter-lease";
 pub static K8S_EVENTS_LEASE_NAME: &str = "logdna-agent-k8-events-lease";
@@ -78,98 +68,6 @@ static FS_EVENT_DELAY: Duration = Duration::from_millis(10);
 pub static PKG_NAME: &str = env!("CARGO_PKG_NAME");
 #[no_mangle]
 pub static PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
-
-/// A Stream extension trait allowing you to call `retryable_line_stream` on any `Stream`
-/// of objects implementing IngestLineSerialize
-pub trait RetryableLineStreamExt: Stream {
-    fn retryable_lines<'a>(self) -> RetryableLineStream<'a, Self::Item>
-    where
-        Self::Item: LineBufferMut + std::marker::Send + std::marker::Sync + 'a,
-        Self: Sized + 'a,
-    {
-        retryable_line_stream(self)
-    }
-}
-
-impl<T: ?Sized> RetryableLineStreamExt for T where T: Stream {}
-
-// TODO: Replace with actual impl
-pub struct DelayStream<T> {
-    _sender: async_channel::Sender<T>,
-    _receiver: async_channel::Receiver<T>,
-}
-
-impl<T> DelayStream<T> {
-    fn new() -> Self {
-        let (sender, receiver) = async_channel::unbounded();
-        DelayStream {
-            _sender: sender,
-            _receiver: receiver,
-        }
-    }
-    fn send_to_retry(&self, _line: &T, _delay: std::time::Duration) -> Result<(), SourceError> {
-        // TODO: reintroduce delayed sending for non-file lines
-        Ok(())
-    }
-}
-
-impl<T> SourceRetry for DelayStream<T> {
-    type RetryableLine = T;
-    fn retry(
-        &self,
-        line: &Self::RetryableLine,
-        delay: std::time::Duration,
-    ) -> Result<(), SourceError> {
-        self.send_to_retry(line, delay)
-    }
-}
-
-pub struct RetryableLineStream<'a, T> {
-    delay_stream: std::sync::Arc<DelayStream<T>>,
-    stream: Pin<Box<dyn Stream<Item = T> + 'a>>,
-}
-
-impl<'a, T> RetryableLineStream<'a, T> {
-    fn new(stream: Pin<Box<dyn Stream<Item = T> + 'a>>) -> Self {
-        Self {
-            delay_stream: Arc::new(DelayStream::new()),
-            stream,
-        }
-    }
-}
-
-impl<'a> RetryableSource<LineBuilder> for RetryableLineStream<'a, LineBuilder> {
-    type RetryableLine =
-        RetryableLineBuilder<LineBuilder, std::sync::Weak<DelayStream<LineBuilder>>>;
-
-    fn retryable(&self, line: LineBuilder) -> Self::RetryableLine {
-        RetryableLineBuilder {
-            retryer: Arc::downgrade(&self.delay_stream),
-            line,
-        }
-    }
-}
-
-impl<'a> Stream for RetryableLineStream<'a, LineBuilder> {
-    type Item = RetryableLineBuilder<LineBuilder, std::sync::Weak<DelayStream<LineBuilder>>>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        // need to pass reference to self.delay_stream to return type
-        self.stream
-            .as_mut()
-            .poll_next(cx)
-            .map(|opt| opt.map(|line| self.retryable(line)))
-    }
-}
-
-pub fn retryable_line_stream<'a, T>(
-    stream: impl Stream<Item = T> + 'a,
-) -> RetryableLineStream<'a, T>
-where
-    T: LineBufferMut + std::marker::Send + std::marker::Sync + 'a,
-{
-    RetryableLineStream::new(Box::pin(stream))
-}
 
 pub async fn _main(
     shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
@@ -250,15 +148,15 @@ pub async fn _main(
         client.set_timeout(config.http.timeout);
     }
 
-    /*let (delayed_lines_send, delayed_lines_recv) = async_channel::unbounded();
+    let (delayed_lines_send, delayed_lines_recv) = async_channel::unbounded();
     let delayed_lines_source = if !config.log.metadata_retry_delay.is_zero() {
         Some(
             delayed_stream(delayed_lines_recv, config.log.metadata_retry_delay)
-                .retryable_lines(),
+                .map(StrictOrLazyLineBuilder::LazyDelayed),
         )
     } else {
         None
-    };*/
+    };
     let mut executor = Executor::new();
 
     let mut k8s_claimed_lease: Option<String> = None;
@@ -397,11 +295,7 @@ pub async fn _main(
     let journald_source = match config.journald.systemd_journal_tailer {
         true => {
             if !config.journald.paths.is_empty() {
-                Some(
-                    create_source(&config.journald.paths)
-                        .retryable_lines()
-                        .map(StrictOrLazyLineBuilder::Strict),
-                )
+                Some(create_source(&config.journald.paths).map(StrictOrLazyLineBuilder::Strict))
             } else {
                 None
             }
@@ -414,7 +308,7 @@ pub async fn _main(
         true => {
             if config.journald.paths.is_empty() {
                 create_journalctl_source()
-                    .map(|s| s.retryable_lines().map(StrictOrLazyLineBuilder::Strict))
+                    .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
                     .map_err(|e| {
                         info!("Journalctl source was not initialized");
                         debug!("Journalctl source initialization error: {}", e);
@@ -430,7 +324,7 @@ pub async fn _main(
     #[cfg(all(not(feature = "libjournald"), target_os = "linux"))]
     let journalctl_source = match config.journald.systemd_journal_tailer {
         true => create_journalctl_source()
-            .map(|s| s.retryable_lines().map(StrictOrLazyLineBuilder::Strict))
+            .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
             .map_err(|e| warn!("Error initializing journalctl source: {}", e))
             .ok(),
         false => None,
@@ -456,7 +350,7 @@ pub async fn _main(
                     tailer_args.iter().map(|s| s.as_ref()).collect(),
                     shutdown_tx.clone(),
                 )
-                .map(|s| s.retryable_lines().map(StrictOrLazyLineBuilder::Strict))
+                .map(|s| s.map(StrictOrLazyLineBuilder::Strict))
                 .map_err(|e| {
                     error!("Error initializing api tailer source: {}", e);
                     std::process::exit(1);
@@ -502,7 +396,6 @@ pub async fn _main(
     );
 
     debug!("Creating fs_source");
-
     let fs_source = tail::RestartingTailer::new(
         ds_source_params,
         // TODO check for any conditions that require the tailer to restart
@@ -513,7 +406,7 @@ pub async fn _main(
             }
             _ => false,
         },
-        move |(watched_dirs, rules, lookback, fo_state_handles, fs_offsets)| {
+        |(watched_dirs, rules, lookback, fo_state_handles, fs_offsets)| {
             let watched_dirs = watched_dirs.clone();
             let rules = rules.clone();
             let lookback = lookback.clone();
@@ -576,11 +469,7 @@ pub async fn _main(
     debug!("Creating k8s_source");
     let k8s_event_source: Option<_> = if let Some(fut) = k8s_event_stream.map(|e| e.event_stream())
     {
-        Some(
-            fut.await
-                .retryable_lines()
-                .map(StrictOrLazyLineBuilder::Strict),
-        )
+        Some(fut.await.map(StrictOrLazyLineBuilder::Strict))
     } else {
         None
     };
@@ -614,7 +503,6 @@ pub async fn _main(
                 })
                 .chain(fut.await)
                 .filter_map(|x| async { Some(x) })
-                .retryable_lines()
                 .map(StrictOrLazyLineBuilder::Strict),
             )
         } else {
@@ -635,9 +523,9 @@ pub async fn _main(
 
     pin_mut!(metric_stats_source);
 
-    //pin_mut!(delayed_lines_source);
+    pin_mut!(delayed_lines_source);
 
-    //let mut delayed_lines_source: Option<std::pin::Pin<&mut _>> = delayed_lines_source.as_pin_mut();
+    let mut delayed_lines_source: Option<std::pin::Pin<&mut _>> = delayed_lines_source.as_pin_mut();
 
     let mut k8s_event_source: Option<std::pin::Pin<&mut _>> = k8s_event_source.as_pin_mut();
     #[cfg(target_os = "linux")]
@@ -650,13 +538,10 @@ pub async fn _main(
 
     let mut metric_server_source: Option<std::pin::Pin<&mut _>> = metric_stats_source.as_pin_mut();
 
-    //type TAIT = impl http::types::body::LineBufferMut;// + middleware::RetryableLine;
-
     let mut sources: futures::stream::SelectAll<&mut (dyn Stream<Item = _> + Unpin)> =
         futures::stream::SelectAll::new();
 
     info!("Enabling filesystem");
-
     sources.push(&mut fs_source);
 
     #[cfg(all(feature = "libjournald", target_os = "linux"))]
@@ -675,18 +560,11 @@ pub async fn _main(
 
     let mut delayed_source_enabled = false;
     let metadata_retry_delay = config.log.metadata_retry_delay;
-
-    if !config.log.metadata_retry_delay.is_zero() {
-        delayed_source_enabled = true;
-    }
-    /*
-    // TODO: reintegrate delayed lines source for non-files
     if let Some(s) = delayed_lines_source.as_mut() {
         info!("Enabling delayed lines source");
         delayed_source_enabled = true;
         sources.push(s)
     }
-    */
 
     if let Some(s) = tailer_source.as_mut() {
         info!("Enabling api tailer source");
@@ -783,7 +661,7 @@ pub async fn _main(
                         Err(MiddlewareError::Retry(name)) => {
                             if delayed_source_enabled {
                                 rate_limit!(rate = 1, interval = 10 * 60, {
-                                    warn!("Pod metadata is missing for line (retries=5): {:?}", line);
+                                    warn!("Pod metadata is missing for line (retries=1): {:?}", line);
                                     // here we delay all pod lines to catchup with k8s pod metadata if delay os configured
                                     debug!(
                                         "Retrying - delaying line processing by {} for {:?} seconds at [{}:{}]: {:?}",
@@ -794,41 +672,9 @@ pub async fn _main(
                                         line
                                     );
                                 });
-                                if line.retries_remaining() > 0 {
-                                    debug!(
-                                        "Retrying - delaying line processing by {} for {:?} seconds at [{}:{}]: {:?}",
-                                        name,
-                                        metadata_retry_delay,
-                                        file!(),
-                                        line!(),
-                                        line
-                                    );
-                                    line.retry(Some(metadata_retry_delay)).ok()?;
-                                    Metrics::middleware().increment_lines_delayed();
-                                    None
-                                }
-                                else {
-                                    rate_limit!(rate = 1, interval = 10 * 60, {
-                                        warn!("Pod metadata is missing for line (retries=5): {:?}", line);
-                                        debug!(
-                                            "Retrying disabled, processing line by {} AS-IS at [{}:{}]: {:?}",
-                                            name,
-                                            file!(),
-                                            line!(),
-                                            line
-                                        );
-                                    });
-                                    trace!(
-                                            "Retrying disabled, processing line by {} AS-IS at [{}:{}]: {:?}",
-                                            name,
-                                            file!(),
-                                            line!(),
-                                            line
-                                    );
-
-                                    Metrics::middleware().increment_lines_no_k8s_meta();
-                                    Some(StrictOrLazyLines::Lazy(line))
-                                }
+                                delayed_lines_send.send_blocking(line).unwrap();
+                                Metrics::middleware().increment_lines_delayed();
+                                None
                             } else {
                                 rate_limit!(rate = 1, interval = 10 * 60, {
                                     error!("Pod metadata is missing for line (retries=disabled): {:?}", line);
@@ -847,7 +693,7 @@ pub async fn _main(
                     }
                 }
                 // Lazy already delayed/retried lines (from tailed files, not fetched yet)
-                /*StrictOrLazyLineBuilder::LazyDelayed(mut line) => {
+                StrictOrLazyLineBuilder::LazyDelayed(mut line) => {
                     match executor.validate(&line) {
                         Ok(_) => match executor.process(&mut line) {
                             Ok(_) => Some(StrictOrLazyLines::Lazy(line)),
@@ -910,7 +756,7 @@ pub async fn _main(
                             }
                         }
                     }
-                }*/
+                }
             }
         });
 

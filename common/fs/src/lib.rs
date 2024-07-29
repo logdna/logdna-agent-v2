@@ -6,6 +6,10 @@ extern crate lazy_static;
 pub mod cache;
 /// Contains the error type(s) for this crate
 pub mod error;
+/// Lookback config
+pub mod lookback;
+/// Traits and types for defining exclusion and inclusion rules
+pub mod rule;
 /// Defines the source implementation for fs
 pub mod source;
 /// Defines the tailer used to tail directories or single files

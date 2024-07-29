@@ -2,8 +2,8 @@ use crate::cache::delayed_stream::delayed_stream;
 use crate::cache::entry::Entry;
 use crate::cache::event::Event;
 use crate::cache::tailed_file::TailedFile;
-use types::lookback::Lookback;
-use types::rule::{RuleDef, Rules, Status};
+use crate::lookback::Lookback;
+use crate::rule::{RuleDef, Rules, Status};
 
 use metrics::Metrics;
 use notify_stream::{Event as WatchEvent, RecursiveMode, Watcher};
@@ -24,18 +24,19 @@ use futures::{Stream, StreamExt};
 use slotmap::{DefaultKey, SlotMap};
 use smallvec::SmallVec;
 use thiserror::Error;
+use time::OffsetDateTime;
 use tracing::{debug, error, info, instrument, trace, warn};
 
 use state::{FileOffsetFlushHandle, FileOffsetWriteHandle};
 
 pub mod delayed_stream;
+pub mod dir_path;
 pub mod entry;
 pub mod event;
 mod event_debouncer;
 pub mod tailed_file;
 
-use types::dir_path::DirPathBuf;
-use types::sources::RetryableLine;
+pub use dir_path::{DirPathBuf, DirPathBufError};
 
 type Children = HashMap<OsString, EntryKey>;
 type Symlinks = HashMap<PathBuf, Vec<EntryKey>>;
@@ -160,9 +161,8 @@ fn as_event_stream(
     fs: Rc<RefCell<FileSystem>>,
     watch_event: &WatchEvent,
     event_time: EventTimestamp,
-    retry_offset: Option<u64>,
 ) -> impl Stream<Item = (Result<Event, Error>, EventTimestamp)> {
-    let a = match fs.borrow_mut().process(watch_event, retry_offset) {
+    let a = match fs.borrow_mut().process(watch_event) {
         Ok(events) => events
             .into_iter()
             .map(Ok)
@@ -184,7 +184,7 @@ fn as_event_stream(
 fn get_initial_events(
     fs: &Rc<RefCell<FileSystem>>,
 ) -> impl Stream<Item = (Result<Event, Error>, EventTimestamp)> {
-    let init_time = EventTimestamp::now_utc();
+    let init_time = OffsetDateTime::now_utc();
     let initial_events = {
         let mut fs = fs.borrow_mut();
 
@@ -217,35 +217,21 @@ fn get_resume_events(
         .filter_map(|e| async { e })
 }
 
-type RetryStreamMessage = (WatchEvent, EventTimestamp, u32, Option<u64>);
-
 #[instrument(level = "debug", skip_all)]
 fn get_retry_events(
     fs: &Rc<RefCell<FileSystem>>,
     retry_delay: Duration,
     retry_limit: u32,
-) -> impl Stream<Item = RetryStreamMessage> {
-    let retry_events = fs.borrow().retry_events_recv.clone().map(|e| {
-        let delay = (e.1 - time::OffsetDateTime::now_utc()).unsigned_abs();
-        (e, Some(delay))
-    });
-    delayed_stream(retry_events, retry_delay).filter_map(
-        move |(event, ts, retries, retry_offset)| async move {
-            debug!("retry {} for event {:?}", retries + 1, event);
-            if retries <= retry_limit {
-                Some((event, ts, retries + 1, retry_offset))
-            } else {
-                None
-            }
-        },
-    )
-}
-
-pub(crate) struct CacheEvent {
-    event: WatchEvent,
-    event_time: EventTimestamp,
-    retries: u32,
-    retry_offset: Option<u64>,
+) -> impl Stream<Item = (WatchEvent, EventTimestamp, u32)> {
+    let retry_events = fs.borrow().retry_events_recv.clone();
+    delayed_stream(retry_events, retry_delay).filter_map(move |(event, ts, retries)| async move {
+        debug!("retry {} for event {:?}", retries + 1, event);
+        if retries <= retry_limit {
+            Some((event, ts, retries + 1))
+        } else {
+            None
+        }
+    })
 }
 
 pub struct FileSystem {
@@ -268,8 +254,8 @@ pub struct FileSystem {
     resume_events_recv: async_channel::Receiver<(u64, EventTimestamp)>,
     resume_events_send: async_channel::Sender<(u64, EventTimestamp)>,
 
-    retry_events_recv: async_channel::Receiver<RetryStreamMessage>,
-    retry_events_send: async_channel::Sender<RetryStreamMessage>,
+    retry_events_recv: async_channel::Receiver<(WatchEvent, EventTimestamp, u32)>,
+    retry_events_send: async_channel::Sender<(WatchEvent, EventTimestamp, u32)>,
 
     ignored_dirs: HashSet<PathBuf>,
 
@@ -547,8 +533,7 @@ impl FileSystem {
                                 as_event_stream(
                                     mfs.clone(),
                                     &notify_stream::Event::Rescan,
-                                    EventTimestamp::now_utc(),
-                                    None,
+                                    OffsetDateTime::now_utc(),
                                 ),
                                 (mfs, missing, watcher, stream),
                             ));
@@ -564,8 +549,7 @@ impl FileSystem {
                                         as_event_stream(
                                             mfs.clone(),
                                             &create_event,
-                                            EventTimestamp::now_utc(),
-                                            None,
+                                            OffsetDateTime::now_utc(),
                                         ),
                                         (mfs, missing, watcher, stream),
                                     ));
@@ -581,40 +565,32 @@ impl FileSystem {
         )
         .flatten();
 
+        use futures::future::Either;
+
         let resume_events = Box::pin(get_resume_events(&fs));
 
-        let events = event_debouncer::debounce_fs_events(notify_events_stream, resume_events).map(
-            |(event, event_time)| CacheEvent {
-                event,
-                event_time,
-                retries: 0,
-                retry_offset: None,
-            },
-        );
+        let events = event_debouncer::debounce_fs_events(notify_events_stream, resume_events)
+            .map(Either::Left);
 
         let retry_events = get_retry_events(
             &fs,
             Duration::from_millis(EVENT_RETRY_DELAY_MS),
             EVENT_RETRY_COUNT,
         )
-        .map(|(event, event_time, retries, retry_offset)| CacheEvent {
-            event,
-            event_time,
-            retries,
-            retry_offset,
-        });
+        .map(Either::Right);
 
         let events = futures::stream::select(events, retry_events)
             .map({
                 let fs = fs.clone();
-                move |CacheEvent {
-                          event,
-                          event_time,
-                          retries,
-                          retry_offset,
-                      }| {
+                move |e| {
+                    let (event, event_time, retries) = match e {
+                        Either::Left((event, event_time)) => (event, event_time, None),
+                        Either::Right((event, event_time, retries)) => {
+                            (event, event_time, Some(retries))
+                        }
+                    };
                     let fs = fs.clone();
-                    as_event_stream(fs, &event, event_time, retry_offset).filter_map({
+                    as_event_stream(fs, &event, event_time).filter_map({
                         let retry_event_sender = retry_event_sender.clone();
                         move |(e, event_time)| {
                             let retry_event_sender = retry_event_sender.clone();
@@ -635,8 +611,7 @@ impl FileSystem {
                                                         .send((
                                                             event.unwrap(),
                                                             event_time,
-                                                            retries,
-                                                            None,
+                                                            retries.unwrap_or(0),
                                                         ))
                                                         .await
                                                         .unwrap();
@@ -663,15 +638,11 @@ impl FileSystem {
 
     /// Handles inotify events and may produce Event(s) that are returned upstream through sender
     #[instrument(level = "debug", skip_all)]
-    fn process(
-        &mut self,
-        watch_event: &WatchEvent,
-        retry_offset: Option<u64>,
-    ) -> FsResult<SmallVec<[Event; 2]>> {
+    fn process(&mut self, watch_event: &WatchEvent) -> FsResult<SmallVec<[Event; 2]>> {
         let _entries = self.entries.clone();
         let mut _entries = _entries.borrow_mut();
 
-        debug!("handling notify event {:?}", watch_event);
+        debug!("handling notify event {:#?}", watch_event);
 
         // TODO: Remove OsString names
         let result = match watch_event {
@@ -682,16 +653,6 @@ impl FileSystem {
                         e.extend(self.process_modify(wd)?);
                         Ok(e)
                     })
-                }
-                Ok(es) => {
-                    if let Some(retry_offset) = retry_offset {
-                        Ok(es
-                            .into_iter()
-                            .map(move |e| Event::RetryWrite((e.key(), retry_offset)))
-                            .collect())
-                    } else {
-                        Ok(es)
-                    }
                 }
                 e => e,
             },
@@ -1043,7 +1004,7 @@ impl FileSystem {
 
         if !self.passes(path, _entries) {
             // Do not continuously log ignored files
-            if !self.ignored_dirs.contains(path) {
+            if let false = self.ignored_dirs.contains(path) {
                 self.ignored_dirs.insert(path.to_path_buf());
                 info!("ignoring {:?}", path);
             }
@@ -1067,13 +1028,8 @@ impl FileSystem {
                 let new_entry = Entry::File {
                     path: path.into(),
                     data: RefCell::new(
-                        TailedFile::new(
-                            path,
-                            offsets,
-                            Some(self.resume_events_send.clone()),
-                            Some(self.retry_events_send.clone()),
-                        )
-                        .map_err(Error::File)?,
+                        TailedFile::new(path, offsets, Some(self.resume_events_send.clone()))
+                            .map_err(Error::File)?,
                     ),
                 };
                 Metrics::fs().increment_tracked_files();
@@ -1349,8 +1305,8 @@ impl FileSystem {
         _entries: &mut EntryMap,
     ) {
         if let Some(entry) = _entries.get(entry_key) {
-            let mut _children = Vec::new();
-            let mut _links = Vec::new();
+            let mut _children = vec![];
+            let mut _links = vec![];
             match entry {
                 Entry::Dir { children, .. } => {
                     for child in children.values() {
@@ -1604,7 +1560,7 @@ impl FileSystem {
     fn passes(&self, path: &Path, _entries: &EntryMap) -> bool {
         self.is_initial_dir_target(path)
             || self
-                .is_reachable(&mut Vec::new(), path, _entries)
+                .is_reachable(&mut vec![], path, _entries)
                 .unwrap_or(false)
     }
 
@@ -1624,17 +1580,6 @@ impl FileSystem {
         } else {
             None
         }
-    }
-}
-
-impl types::sources::SourceRetry for FileSystem {
-    type RetryableLine = tailed_file::LazyLineSerializer;
-    fn retry(
-        &self,
-        line: &Self::RetryableLine,
-        delay: std::time::Duration,
-    ) -> Result<(), types::sources::SourceError> {
-        line.retry(Some(delay))
     }
 }
 
@@ -1674,6 +1619,7 @@ fn into_components(path: &Path) -> SmallVec<[&OsStr; 12]> {
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 mod tests {
     use super::*;
+    use crate::rule::{RuleDef, Rules};
     use pin_utils::pin_mut;
     use std::convert::TryInto;
     use std::fs::{copy, create_dir, hard_link, remove_dir_all, remove_file, rename, File};
@@ -1681,7 +1627,6 @@ mod tests {
     use std::io::Write;
     use std::{io, panic};
     use tempfile::{tempdir, TempDir};
-    use types::rule::{RuleDef, Rules};
 
     #[cfg(windows)]
     use std::sync::mpsc;

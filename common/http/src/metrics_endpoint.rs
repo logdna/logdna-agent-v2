@@ -28,7 +28,7 @@ async fn serve_req(_req: Request<Body>) -> Result<Response<Body>, hyper::Error> 
     let encoder = TextEncoder::new();
 
     let metric_families = prometheus::gather();
-    let mut buffer = Vec::new();
+    let mut buffer = vec![];
     encoder.encode(&metric_families, &mut buffer).unwrap();
 
     let response = Response::builder()

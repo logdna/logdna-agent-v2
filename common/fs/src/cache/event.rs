@@ -8,19 +8,18 @@ pub enum Event {
     New(EntryKey),
     /// A file was written too
     Write(EntryKey),
-    /// A file was written too
-    RetryWrite((EntryKey, u64)),
     /// A file was deleted
     Delete(EntryKey),
 }
 
+#[cfg(test)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
 impl Event {
     pub(crate) fn key(&self) -> EntryKey {
         *match self {
             Event::Initialize(key) => key,
             Event::New(key) => key,
             Event::Write(key) => key,
-            Event::RetryWrite((key, _)) => key,
             Event::Delete(key) => key,
         }
     }

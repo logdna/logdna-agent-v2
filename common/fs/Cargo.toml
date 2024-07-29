@@ -11,9 +11,7 @@ integration_tests = []
 #local
 http = { package = "mz-http", path = "../http" }
 consts = { package = "consts", path = "../consts" }
-types = { package = "shared_types", path = "../misc/shared_types" }
 metrics = { package = "metrics", path = "../metrics" }
-middleware = { package = "middleware", path = "../middleware" }
 state = { package = "state", path = "../state", default-features=false }
 notify_stream = { package = "notify_stream", path = "../notify_stream" }
 rate-limit-macro = "1"
@@ -60,4 +58,5 @@ tempfile = "3"
 tokio-test = "0.4"
 tokio = {version= "1", features= ["fs", "io-util", "time", "macros"]}
 tokio-stream = "0.1"
+middleware = { package = "middleware", path = "../middleware" }
 pin-utils = "0.1"

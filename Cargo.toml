@@ -15,7 +15,6 @@ members = [
     "common/consts",
     "api",
     "utils/metrics-recorder",
-    "common/misc/shared_types",
 ]
 
 [profile.release]

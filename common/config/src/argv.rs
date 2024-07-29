@@ -2,6 +2,7 @@ use crate::env_vars;
 use crate::raw::{Config as RawConfig, JournaldConfig, K8sStartupLeaseConfig, Rules};
 use crate::K8sLeaseConf;
 use crate::K8sTrackingConf;
+use fs::lookback::Lookback;
 use http::types::params::Params;
 use humanize_rs::bytes::Bytes;
 use std::env::var as env_var;
@@ -9,7 +10,6 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use structopt::StructOpt;
 use tracing::{info, warn};
-use types::lookback::Lookback;
 
 // Symbol that will be populated in the main.rs file
 extern "Rust" {
