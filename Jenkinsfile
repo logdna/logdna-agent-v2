@@ -452,41 +452,6 @@ pipeline {
                         }
                     }
                 }
-                stage('Publish Linux and Windows binaries to S3') {
-                    when {
-                        anyOf {
-                            branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
-                            environment name: 'PUBLISH_BINARIES', value: 'true'
-                        }
-                    }
-                    environment {
-                        CSC_PASS = credentials('chocolatey-api-token')
-                    }
-                    steps {
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]) {
-                            sh '''
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_static
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_static
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static
-                                STATIC=1 make publish-s3-binary
-                                WINDOWS=1 make publish-s3-binary
-                                WINDOWS=1 make msi-release
-                                WINDOWS=1 make test-msi-release
-                                WINDOWS=1 make publish-s3-binary-signed-release
-                                WINDOWS=1 make choco-release
-                                WINDOWS=1 make publish-s3-choco-release
-                                ARCH=x86_64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
-                                ARCH=aarch64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
-                                rm ${WORKSPACE}/.aws_creds_static
-                            '''
-                        }
-                    }
-                }
                 /*
                 stage('Publish MAC binaries to S3') {
                     when {
@@ -521,17 +486,6 @@ pipeline {
                     }
                 }
                 */
-                stage('Publish Installers') {
-                    environment {
-                        CHOCO_API_KEY = credentials('chocolatey-api-token')
-                    }
-                    when {
-                        environment name: 'PUBLISH_INSTALLERS', value: 'true'
-                    }
-                    steps {
-                        sh 'WINDOWS=1 make publish-choco-release'
-                    }
-                }
                 stage('Publish GCR images') {
                     when {
                         environment name: 'PUBLISH_GCR_IMAGE', value: 'true'
@@ -579,6 +533,54 @@ pipeline {
                         }
                     }
                 }
+                stage('Publish Linux and Windows binaries to S3') {
+                    when {
+                        anyOf {
+                            branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
+                            environment name: 'PUBLISH_BINARIES', value: 'true'
+                        }
+                    }
+                    environment {
+                        CSC_PASS = credentials('chocolatey-api-token')
+                    }
+                    steps {
+                        withCredentials([[
+                            $class: 'AmazonWebServicesCredentialsBinding',
+                            credentialsId: 'aws',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+                        ]]) {
+                            sh '''
+                                echo "[default]" > ${WORKSPACE}/.aws_creds_static
+                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_static
+                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static
+                                STATIC=1 make publish-s3-binary
+                                WINDOWS=1 make publish-s3-binary
+                                WINDOWS=1 make msi-release
+                                WINDOWS=1 make test-msi-release
+                                WINDOWS=1 make publish-s3-binary-signed-release
+                                WINDOWS=1 make choco-release
+                                WINDOWS=1 make publish-s3-choco-release
+                                ARCH=x86_64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
+                                ARCH=aarch64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
+                                rm ${WORKSPACE}/.aws_creds_static
+                            '''
+                        }
+                    }
+                }
+
+                stage('Publish Installers') {
+                    environment {
+                        CHOCO_API_KEY = credentials('chocolatey-api-token')
+                    }
+                    when {
+                        environment name: 'PUBLISH_INSTALLERS', value: 'true'
+                    }
+                    steps {
+                        sh 'WINDOWS=1 make publish-choco-release'
+                    }
+                }
+
             }
         }
     }
