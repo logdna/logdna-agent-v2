@@ -278,6 +278,44 @@ pipeline {
                         sysdig engineCredentialsId: 'sysdig-secure-api-token', name: 'sysdig_secure_images', inlineScanning: true
                     }
                 }
+                stage('Publish GCR images') {
+                    when {
+                        environment name: 'PUBLISH_GCR_IMAGE', value: 'true'
+                    }
+                    steps {
+                        // Publish to gcr, jenkins is logged into gcr globally
+                        sh 'ARCH=x86_64 make publish-image-gcr'
+                        sh 'ARCH=aarch64 make publish-image-gcr'
+                        sh 'make publish-image-multi-gcr'
+                    }
+                }
+                stage('Publish Dockerhub and ICR images') {
+                    when {
+                        environment name: 'PUBLISH_ICR_IMAGE', value: 'true'
+                    }
+                    steps {
+                        script {
+                            // Login and publish to dockerhub
+                            docker.withRegistry(
+                                'https://index.docker.io/v1/',
+                                'dockerhub-username-password'
+                            ) {
+                                sh 'ARCH=x86_64 make publish-image-docker'
+                                sh 'ARCH=aarch64 make publish-image-docker'
+                                sh 'make publish-image-multi-docker'
+                            }
+                            // Login and publish to ibm
+                            docker.withRegistry(
+                                'https://icr.io',
+                                'icr-iam-username-password'
+                            ) {
+                                sh 'ARCH=x86_64 make publish-image-ibm'
+                                sh 'ARCH=aarch64 make publish-image-ibm'
+                                sh 'make publish-image-multi-ibm'
+                            }
+                        }
+                    }
+                }
                 stage('Publish binaries to S3') {
                     when {
                         anyOf {
@@ -322,44 +360,6 @@ pipeline {
                     }
                     steps {
                         sh 'WINDOWS=1 make publish-choco-release'
-                    }
-                }
-                stage('Publish GCR images') {
-                    when {
-                        environment name: 'PUBLISH_GCR_IMAGE', value: 'true'
-                    }
-                    steps {
-                        // Publish to gcr, jenkins is logged into gcr globally
-                        sh 'ARCH=x86_64 make publish-image-gcr'
-                        sh 'ARCH=aarch64 make publish-image-gcr'
-                        sh 'make publish-image-multi-gcr'
-                    }
-                }
-                stage('Publish Dockerhub and ICR images') {
-                    when {
-                        environment name: 'PUBLISH_ICR_IMAGE', value: 'true'
-                    }
-                    steps {
-                        script {
-                            // Login and publish to dockerhub
-                            docker.withRegistry(
-                                'https://index.docker.io/v1/',
-                                'dockerhub-username-password'
-                            ) {
-                                sh 'ARCH=x86_64 make publish-image-docker'
-                                sh 'ARCH=aarch64 make publish-image-docker'
-                                sh 'make publish-image-multi-docker'
-                            }
-                            // Login and publish to ibm
-                            docker.withRegistry(
-                                'https://icr.io',
-                                'icr-iam-username-password'
-                            ) {
-                                sh 'ARCH=x86_64 make publish-image-ibm'
-                                sh 'ARCH=aarch64 make publish-image-ibm'
-                                sh 'make publish-image-multi-ibm'
-                            }
-                        }
                     }
                 }
             }
