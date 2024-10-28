@@ -3,6 +3,12 @@ def PROJECT_NAME = 'logdna-agent-v2'
 def TRIGGER_PATTERN = '.*@logdnabot.*'
 def publishGCRImage = false
 def publishDockerhubICRImages = false
+def slugify(str) {
+  def s = str.toLowerCase()
+  s = s.replaceAll(/[^a-z0-9\s-\/]/, "").replaceAll(/\s+/, " ").trim()
+  s = s.replaceAll(/[\/\s]/, '-').replaceAll(/-{2,}/, '-')
+  s
+}
 
 pipeline {
     agent {
@@ -18,7 +24,7 @@ pipeline {
     }
     triggers {
         issueCommentTrigger(TRIGGER_PATTERN)
-        parameterizedCron(env.BRANCH_NAME ==~ /\d\.\d/ ? '''
+        parameterizedCron(env.BRANCH_NAME ==~ /\d+\.\d+/ ? '''
             H 8 * * 1 % PUBLISH_GCR_IMAGE=true;PUBLISH_ICR_IMAGE=true;AUDIT=false;TASK_NAME=image-vulnerability-update
             H 12 * * 1 % AUDIT=true;TASK_NAME=audit
             ''' : ''
@@ -33,6 +39,7 @@ pipeline {
         CARGO_INCREMENTAL = 'false'
         DOCKER_BUILDKIT = '1'
         REMOTE_BRANCH = "${env.BRANCH_NAME}"
+        BUILD_SLUG = slugify("${BUILD_TAG}")
     }
     parameters {
         booleanParam(name: 'PUBLISH_GCR_IMAGE', description: 'Publish docker image to Google Container Registry (GCR)', defaultValue: false)
