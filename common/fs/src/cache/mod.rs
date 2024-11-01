@@ -92,6 +92,9 @@ enum FsEntry {
         path: PathBuf,
         target: Option<PathBuf>,
     },
+    Other {
+        path: PathBuf,
+    },
 }
 
 impl TryFrom<&Path> for FsEntry {
@@ -125,10 +128,9 @@ impl TryFrom<&Path> for FsEntry {
                 inode,
             })
         } else {
-            panic!(
-                "Got valid path that's neither file, dir nor symlink: {:#?}",
-                path
-            );
+            Ok(FsEntry::Other {
+                path: path.to_path_buf(),
+            })
         }
     }
 }
@@ -1225,9 +1227,22 @@ impl FileSystem {
                                 Ok(_) => {}
                             }
                         }
+                        FsEntry::Other { ref path } => {
+                            warn!(
+                                "symlink target is valid path that's neither file nor dir nor symlink: {:#?}",
+                                path
+                            );
+                        }
                     }
                 }
                 new_key
+            }
+            Ok(FsEntry::Other { ref path }) => {
+                warn!(
+                    "got valid path that's neither file nor dir nor symlink: {:#?}",
+                    path
+                );
+                return Ok(None);
             }
             Err(e) => {
                 rate_limit_macro::rate_limit!(rate = 1, interval = 30, {
@@ -2950,6 +2965,28 @@ mod tests {
         // Remove dir with contents (intermittently fails on windows)
         #[cfg(unix)]
         remove_dir_all(&sub_dir_path).unwrap();
+
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn dev_null_ignored() -> io::Result<()> {
+        let _ = env_logger::Builder::from_default_env().try_init();
+        let tempdir = TempDir::new()?;
+        let path = tempdir.path().to_path_buf();
+
+        // To make this more portable we should consider constructing the virtual null
+        // device instead of hoping "/dev/null" exists. E.g. mknod
+        let dev_null_path = PathBuf::from("/dev/null");
+        let file_path = path.join("test.log");
+
+        symlink_file(&dev_null_path, &file_path)?;
+
+        let fs = new_fs(path, None);
+
+        let entry = lookup!(fs, dev_null_path);
+        assert!(entry.is_none());
 
         Ok(())
     }
