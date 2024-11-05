@@ -1,6 +1,8 @@
 use crate::cache::delayed_stream::delayed_stream;
-use crate::cache::entry::Entry;
+use crate::cache::entry::{Entry, EntryKind};
 use crate::cache::event::Event;
+use crate::cache::guarded_option::GuardedOption;
+use crate::cache::symlinks::Symlinks;
 use crate::cache::tailed_file::TailedFile;
 use types::lookback::Lookback;
 use types::rule::{RuleDef, Rules, Status};
@@ -32,13 +34,14 @@ pub mod delayed_stream;
 pub mod entry;
 pub mod event;
 mod event_debouncer;
+pub mod guarded_option;
+pub mod symlinks;
 pub mod tailed_file;
 
 use types::dir_path::DirPathBuf;
 use types::sources::RetryableLine;
 
 type Children = HashMap<OsString, EntryKey>;
-type Symlinks = HashMap<PathBuf, Vec<EntryKey>>;
 type WatchDescriptors = HashMap<PathBuf, Vec<EntryKey>>;
 
 pub type EntryKey = DefaultKey;
@@ -384,7 +387,7 @@ impl FileSystem {
 
         let mut fs = Self {
             entries: Rc::new(RefCell::new(entries)),
-            symlinks: Symlinks::new(),
+            symlinks: Symlinks::default(),
             watch_descriptors: WatchDescriptors::new(),
             wd_by_inode: HashMap::new(),
             master_rules: rules,
@@ -434,6 +437,11 @@ impl FileSystem {
                 }
             }
 
+            // TODO: inserting initial dirs already recurses through subdirectories and files
+            // so this isn't needed. Keeping this; however, because insert recursion logic has an
+            // issue where if an excluded directory is hit before a symlink to the directory is,
+            // the contents of the excluded directory are not discovered. Probably other edge
+            // cases.
             if path_cpy.components().count() <= 1 {
                 debug!("Not recursively walking paths under {:?}", path_cpy);
                 continue;
@@ -485,7 +493,7 @@ impl FileSystem {
         let mut inodes: Vec<FileId> = Vec::new();
         // TODO convert to call-chain
         for entry in entries.values() {
-            if let Entry::File { data, .. } = entry {
+            if let EntryKind::File { data, .. } = entry.kind() {
                 let ino = data
                     .borrow()
                     .get_inner()
@@ -800,14 +808,12 @@ impl FileSystem {
 
         if let Some(entry_key) = self.get_first_entry(target_mref) {
             let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
-            if let Entry::Symlink {
-                link: Some(ref link),
-                ..
-            } = entry
-            {
+            if let EntryKind::Symlink { target, .. } = entry.kind() {
                 // If target is a symlink then we should not traverse it again in recursive calls
-                cuts.push(target_mref.to_path_buf());
-                let _ = std::mem::replace(target_mref, link);
+                if let Some(target) = target.as_option() {
+                    cuts.push(target_mref.to_path_buf());
+                    let _ = std::mem::replace(target_mref, target);
+                }
             }
         }
 
@@ -825,10 +831,14 @@ impl FileSystem {
         // Walk up the parents until a root is found
         while let Some(parent) = target_mref.parent().take() {
             path_to_root = self
-                .referring_symlinks(parent, _entries)
-                .iter()
-                .map(|target| self.is_reachable(cuts, target, _entries))
-                .try_fold(false, |acc, reachable| reachable.map(|inner| acc || inner))?;
+                .symlinks
+                .get(parent)
+                .map(|ss| {
+                    ss.iter()
+                        .map(|s| self.is_reachable(cuts, s, _entries))
+                        .try_fold(false, |acc, reachable| reachable.map(|inner| acc || inner))
+                })
+                .unwrap_or(Ok(false))?;
 
             if cuts.iter().any(|cut| cut == parent) {
                 path_to_root = false;
@@ -841,33 +851,6 @@ impl FileSystem {
         }
         trace!("{:?} is reachable?: {}", target_mref, path_to_root);
         Ok(path_to_root)
-    }
-
-    fn referring_symlinks(&self, target: &Path, _entries: &EntryMap) -> Vec<PathBuf> {
-        let mut referring = Vec::new();
-
-        for (_, symlink_ptrs) in self.symlinks.iter() {
-            for symlink_ptr in symlink_ptrs.iter() {
-                if let Some(symlink) = _entries.get(*symlink_ptr) {
-                    match symlink {
-                        Entry::Symlink { path, .. } => {
-                            if path == target {
-                                referring.push(path.clone())
-                            }
-                        }
-                        _ => {
-                            panic!(
-                                "did not expect non symlink entry in symlinks master map for path {:?}",
-                                target
-                            );
-                        }
-                    }
-                } else {
-                    error!("failed to find entry from symlink targets");
-                };
-            }
-        }
-        referring
     }
 
     #[instrument(level = "trace", skip_all)]
@@ -1012,24 +995,21 @@ impl FileSystem {
             current_path_buf.clear();
             current_path_buf.extend(raw_components[0..=i].iter());
 
-            if let Some(symlinks) = self.symlinks.get(current_path_buf.as_path()) {
-                // check if path has a symlink to it
-                let symlink_components = &raw_components[(i + 1)..];
-                for symlink_ptr in symlinks.iter() {
-                    let symlink = entries.get(*symlink_ptr);
-                    if let Some(symlink) = symlink {
+            let symlink_components = &raw_components[(i + 1)..];
+            self.symlinks.get(current_path_buf).inspect(|ss| {
+                ss.iter()
+                    .filter_map(|s| self.lookup(s, entries))
+                    .filter_map(|k| entries.get(k))
+                    .for_each(|e| {
                         self.resolve_valid_paths_helper(
-                            symlink,
+                            e,
                             paths,
                             symlink_components,
                             current_path_buf,
                             entries,
-                        );
-                    } else {
-                        error!("failed to find entry");
-                    }
-                }
-            }
+                        )
+                    });
+            });
         }
     }
 
@@ -1047,9 +1027,7 @@ impl FileSystem {
         events: &mut SmallVec<[Event; 2]>,
         _entries: &mut EntryMap,
     ) -> FsResult<Option<EntryKey>> {
-        // Filter to make sure it passes the rules
-        debug!("inserting {:?}", path);
-
+        debug!("checking if {:?} should be tracked...", path);
         if !self.passes(path, _entries) {
             // Do not continuously log ignored files
             if let false = self.ignored_dirs.contains(path) {
@@ -1058,6 +1036,22 @@ impl FileSystem {
             }
             return Ok(None);
         }
+
+        return self.insert_helper(path, events, _entries);
+    }
+
+    /// A helper function that should only be used recursively by itself, all other callers should
+    /// use `insert` instead. This skips the normal path validation and should only be used when a
+    /// inserted path is known to already be valid.
+    #[instrument(level = "trace", skip_all)]
+    fn insert_helper(
+        &mut self,
+        path: &Path,
+        events: &mut SmallVec<[Event; 2]>,
+        _entries: &mut EntryMap,
+    ) -> FsResult<Option<EntryKey>> {
+        // Filter to make sure it passes the rules
+        debug!("inserting {:?}", path);
 
         // If we already know about it warn and return
         if self.watch_descriptors.contains_key(path) {
@@ -1073,17 +1067,19 @@ impl FileSystem {
                 self.wd_by_inode.insert(inode, path.into());
                 let offsets = self.get_initial_offset(path, inode.into());
 
-                let new_entry = Entry::File {
+                let new_entry = Entry {
                     path: path.into(),
-                    data: RefCell::new(
-                        TailedFile::new(
-                            path,
-                            offsets,
-                            Some(self.resume_events_send.clone()),
-                            Some(self.retry_events_send.clone()),
-                        )
-                        .map_err(Error::File)?,
-                    ),
+                    kind: EntryKind::File {
+                        data: RefCell::new(
+                            TailedFile::new(
+                                path,
+                                offsets,
+                                Some(self.resume_events_send.clone()),
+                                Some(self.retry_events_send.clone()),
+                            )
+                            .map_err(Error::File)?,
+                        ),
+                    },
                 };
                 Metrics::fs().increment_tracked_files();
                 let new_key = self.register_as_child(new_entry, _entries)?;
@@ -1097,9 +1093,12 @@ impl FileSystem {
                 // Insert the parent directory first
                 trace!("inserting directory {}", path.display());
 
-                let new_entry = Entry::Dir {
-                    children: Default::default(),
+                let new_entry = Entry {
                     path: path.into(),
+                    kind: EntryKind::Dir {
+                        children: Default::default(),
+                        dependencies: Default::default(),
+                    },
                 };
 
                 // We use non-recursive watches and scan children manually
@@ -1137,29 +1136,39 @@ impl FileSystem {
             Ok(FsEntry::Symlink { ref path, target }) => {
                 // TODO: Handle self
 
+                let real_target = std::fs::read_link(path)?;
                 // Handle Target
-                if let Some(ref target) = target {
+                if target.is_some() {
                     trace!(
                         "inserting symlink {:?} with target {:?}",
                         path.display(),
-                        target.display()
-                    )
+                        real_target
+                    );
                 } else {
-                    trace!("inserting broken symlink {:?}", path);
+                    trace!(
+                        "inserting broken symlink {:?} with target {:?}",
+                        path,
+                        real_target
+                    );
                 }
 
-                let new_entry = Entry::Symlink {
-                    link: target.clone(),
+                let new_entry = Entry {
                     path: path.into(),
+                    kind: EntryKind::Symlink {
+                        target: GuardedOption::new(real_target.clone(), target.is_some()),
+                    },
                 };
 
                 // Ensure the symlink's parent directory is being tracked
                 if let Some(parent) = path.parent() {
                     // Manually insert the parent directory for symlink target so that we receive deletes if it's not here
                     if !self.watch_descriptors.contains_key(parent) {
-                        let new_entry = Entry::Dir {
-                            children: Children::default(),
+                        let new_entry = Entry {
                             path: parent.into(),
+                            kind: EntryKind::Dir {
+                                children: Children::default(),
+                                dependencies: Default::default(),
+                            },
                         };
                         let new_key = _entries.insert(new_entry);
                         self.register(new_key, _entries)?;
@@ -1171,28 +1180,29 @@ impl FileSystem {
                 trace!("registered symlink as child of {:#?}", path.parent());
                 events.push(Event::New(new_key));
 
-                // Recursively insert the link target
-                if let Some(ref target) = target {
+                // Add the parent directory of the target
+                if let Some(target) = target {
+                    // Ensure the symlink's parent directory is being tracked
+                    if let Some(parent) = target.parent() {
+                        // Manually insert the parent directory for symlink target so that we receive deletes if it's not here
+                        if !self.watch_descriptors.contains_key(parent) {
+                            let new_entry = Entry {
+                                path: parent.into(),
+                                kind: EntryKind::Dir {
+                                    children: Children::default(),
+                                    dependencies: Default::default(),
+                                },
+                            };
+                            let new_key = _entries.insert(new_entry);
+                            self.register(new_key, _entries)?;
+                        }
+                    }
+
                     match FsEntry::try_from(target.as_path())? {
                         FsEntry::Symlink { path, .. }
                         | FsEntry::File { path, .. }
                         | FsEntry::Dir { path, .. } => {
-                            // Add the parent directory of the target
-                            if let Some(parent) = target.parent() {
-                                // Manually insert the parent directory for symlink target so that we receive deletes if it's not here
-                                if !self.watch_descriptors.contains_key(parent) {
-                                    let new_entry = Entry::Dir {
-                                        children: Children::default(),
-                                        path: parent.into(),
-                                    };
-                                    let new_key = _entries.insert(new_entry);
-                                    self.register(new_key, _entries)?;
-                                }
-                            }
-
-                            // FIXME: Insert the target as a symlink target
-
-                            match self.insert(target, events, _entries) {
+                            match self.insert_helper(&target, events, _entries) {
                                 Err(e) => {
                                     // The insert of the target failed, the changes to the symlink itself
                                     // are going to be tracked, continue
@@ -1212,7 +1222,7 @@ impl FileSystem {
                                         path.display()
                                     );
                                 }
-                                _ => {}
+                                Ok(_) => {}
                             }
                         }
                     }
@@ -1231,20 +1241,34 @@ impl FileSystem {
 
     fn register(&mut self, entry_key: EntryKey, _entries: &mut EntryMap) -> FsResult<()> {
         let entry = _entries.get(entry_key).ok_or(Error::Lookup)?;
-        let path = entry.path();
+        let path = PathBuf::from(entry.path());
 
-        if let Entry::Symlink { link, .. } = entry {
-            if let Some(link) = link {
-                self.symlinks
-                    .entry(link.clone())
-                    .or_default()
-                    .push(entry_key);
-            }
+        if let EntryKind::Symlink { target, .. } = entry.kind() {
+            self.symlinks.add(path.clone(), target.as_value().clone());
         } else {
             self.watcher
-                .watch(path, RecursiveMode::NonRecursive)
-                .map_err(|e| Error::Watch(Some(path.to_path_buf()), e))?;
+                .watch(&path, RecursiveMode::NonRecursive)
+                .map_err(|e| Error::Watch(Some(path.clone()), e))?;
         }
+
+        // re-enable any dangling symlinks pointing to this path
+        if let Some(symlinks) = self.symlinks.get(&path) {
+            for symlink in symlinks {
+                if let Some(key) = self.lookup(symlink, _entries) {
+                    if let Some(entry) = _entries.get_mut(key) {
+                        match entry.kind_mut() {
+                            EntryKind::Symlink { target, .. } => {
+                                target.toggle_on();
+                            }
+                            _ => {
+                                panic!("did not expect non-symlink {:?}", entry.path())
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         info!("watching {:?}", path);
         self.watch_descriptors
             .entry(path.to_path_buf())
@@ -1286,20 +1310,27 @@ impl FileSystem {
             }
         }
 
-        if let Entry::Symlink {
-            link: Some(link), ..
-        } = entry
-        {
-            let entries = match self.symlinks.get_mut(link) {
-                Some(v) => v,
-                None => {
-                    error!("attempted to remove untracked symlink {:?}", path);
-                    return;
+        if let EntryKind::Symlink { target, .. } = entry.kind() {
+            if let Some(target) = target.as_option() {
+                self.symlinks.remove(&path, target);
+            }
+        }
+
+        // disable any dangling symlinks pointing to this path
+        if let Some(symlinks) = self.symlinks.get(&path) {
+            for symlink in symlinks {
+                if let Some(key) = self.lookup(symlink, _entries) {
+                    if let Some(entry) = _entries.get_mut(key) {
+                        match entry.kind_mut() {
+                            EntryKind::Symlink { target, .. } => {
+                                target.toggle_off();
+                            }
+                            _ => {
+                                panic!("did not expect non-symlink {:?}", entry.path())
+                            }
+                        }
+                    }
                 }
-            };
-            entries.retain(|other| *other != entry_key);
-            if entries.is_empty() {
-                self.symlinks.remove(link);
             }
         }
 
@@ -1323,13 +1354,16 @@ impl FileSystem {
 
         if let Some(parent) = parent {
             trace!("checking if we need to remove {:#?}", path);
-            if let Some((name, child_count)) = _entries
-                .get_mut(parent)
-                .map(|entry| (entry.path().to_path_buf(), entry.children().iter().count()))
-            {
+            if let Some((name, child_count, dep_count)) = _entries.get_mut(parent).map(|entry| {
+                (
+                    entry.path().to_path_buf(),
+                    entry.children().iter().count(),
+                    entry.dependencies().iter().count(),
+                )
+            }) {
                 let parent_passes = self.passes(&name, _entries);
                 trace!("parent {:#?} passes? {}", &name, parent_passes);
-                if !parent_passes && child_count == 1 {
+                if !parent_passes && child_count == 1 && dep_count == 0 {
                     trace!("recursing remove for {:#?}", name);
                     return self.remove(&name, events, _entries);
                 }
@@ -1357,24 +1391,28 @@ impl FileSystem {
         events: &mut SmallVec<[Event; 2]>,
         _entries: &mut EntryMap,
     ) {
+        let mut symlink_info = None;
         if let Some(entry) = _entries.get(entry_key) {
-            let mut _children = vec![];
-            let mut _links = vec![];
-            match entry {
-                Entry::Dir { children, .. } => {
+            let path = entry.path().to_path_buf();
+            let mut _children = Vec::new();
+
+            match entry.kind() {
+                EntryKind::Dir { children, .. } => {
                     for child in children.values() {
                         _children.push(*child);
                     }
                     self.unregister(entry_key, _entries);
                     events.push(Event::Delete(entry_key));
                 }
-                Entry::Symlink { ref link, path } => {
+                EntryKind::Symlink { target, .. } => {
+                    symlink_info = target.to_option().zip(Some(path));
+
                     trace!("We're removing a symlink, check if we should unwatch it's target");
-                    let mut cuts = vec![path.clone()];
-                    let non_initial_paths_under = link
-                        .as_deref()
-                        .map(|link| {
-                            walkdir::WalkDir::new(link)
+                    let mut cuts = vec![PathBuf::from(entry.path())];
+                    let non_initial_paths_under = target
+                        .as_option_deref()
+                        .map(|target| {
+                            walkdir::WalkDir::new(target)
                                 .into_iter()
                                 .filter_map(|path| {
                                     path.ok().and_then(|path| {
@@ -1414,17 +1452,8 @@ impl FileSystem {
                         self.drop_entry(unreachable, events, _entries);
                     }
                 }
-                Entry::File { ref path, .. } => {
+                EntryKind::File { .. } => {
                     Metrics::fs().decrement_tracked_files();
-                    if let Some(entries) = self.symlinks.get(path) {
-                        for entry in entries {
-                            if let Some(entry) = _entries.get(*entry) {
-                                if !self.passes(entry.path(), _entries) {
-                                    _links.push(entry.path().to_path_buf())
-                                }
-                            }
-                        }
-                    }
                     self.unregister(entry_key, _entries);
                     events.push(Event::Delete(entry_key));
                 }
@@ -1433,6 +1462,33 @@ impl FileSystem {
             for child in _children {
                 trace!("drop entry clearing children");
                 self.drop_entry(child, events, _entries);
+            }
+        }
+
+        if let Some((target, path)) = symlink_info {
+            if let Some(parent) = target.parent() {
+                if let Some(key) = self.lookup(parent, _entries) {
+                    if let Some(entry) = _entries.get_mut(key) {
+                        if let Some(dependencies) = entry.dependencies() {
+                            if let Some(index) = dependencies.iter().position(|v| *v == path) {
+                                trace!(
+                                    "removing dependency {} from directory {}",
+                                    path.display(),
+                                    parent.display()
+                                );
+                                dependencies.swap_remove(index);
+                            }
+                        }
+
+                        let child_count = entry.children().iter().count();
+                        let dep_count = entry.dependencies().iter().count();
+                        if !self.passes(parent, _entries) && child_count == 0 && dep_count == 0 {
+                            if let Err(e) = self.remove(parent, events, _entries) {
+                                warn!("unable to clean up directory {} with no children or dependencies: {}", parent.display(), e);
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -1549,32 +1605,13 @@ impl FileSystem {
 
     #[instrument(level = "trace", skip_all)]
     fn is_symlink_target(&self, path: &Path, _entries: &EntryMap) -> bool {
-        for (_, symlink_ptrs) in self.symlinks.iter() {
-            for symlink_ptr in symlink_ptrs.iter() {
-                if let Some(symlink) = _entries.get(*symlink_ptr) {
-                    match symlink {
-                        Entry::Symlink { link, .. } => {
-                            if let Some(link) = link {
-                                if link == path {
-                                    trace!("Is a symlink target {:?}", path);
-                                    return true;
-                                }
-                            }
-                        }
-                        _ => {
-                            panic!(
-                                "did not expect non symlink entry in symlinks master map for path {:?}",
-                                path
-                            );
-                        }
-                    }
-                } else {
-                    error!("failed to find entry from symlink targets");
-                };
-            }
+        if self.symlinks.get(path).is_some() {
+            trace!("Is a symlink target {:?}", path);
+            true
+        } else {
+            trace!("Not a symlink target {:?}", path);
+            false
         }
-        trace!("Not a symlink target {:?}", path);
-        false
     }
 
     pub(crate) fn passes_rules(&self, path: &Path) -> bool {
@@ -1729,6 +1766,15 @@ mod tests {
         }};
     }
 
+    macro_rules! symlinks {
+        ( $x:expr, $y: expr ) => {{
+            let fs = $x.borrow();
+            fs.symlinks
+                .get(&$y)
+                .map(|ss| ss.iter().cloned().collect::<Vec<PathBuf>>())
+        }};
+    }
+
     macro_rules! lookup_entry_path {
         ( $x:expr, $y: expr ) => {{
             let fs = $x.borrow();
@@ -1744,8 +1790,8 @@ mod tests {
                 let fs = $x.borrow();
                 let entries = fs.entries.borrow();
                 assert!(matches!(
-                    entries.get($y.unwrap()).unwrap(),
-                    Entry::File { .. }
+                    entries.get($y.unwrap()).unwrap().kind(),
+                    EntryKind::File { .. }
                 ));
             }
         };
@@ -1940,8 +1986,8 @@ mod tests {
         let fs = fs.borrow();
         let entries = fs.entries.borrow();
         assert!(matches!(
-            entries.get(entry_key.unwrap()).unwrap(),
-            Entry::Dir { .. }
+            entries.get(entry_key.unwrap()).unwrap().kind(),
+            EntryKind::Dir { .. }
         ));
     }
 
@@ -2007,14 +2053,14 @@ mod tests {
         let _fs = fs.borrow();
         let _entries = &_fs.entries;
         let _entries = _entries.borrow();
-        match _entries.get(entry_key_dir.unwrap()).unwrap() {
-            Entry::Dir { .. } => {}
+        match _entries.get(entry_key_dir.unwrap()).unwrap().kind() {
+            EntryKind::Dir { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
         assert!(matches!(
-            _entries.get(entry_key_symlink.unwrap()).unwrap(),
-            Entry::Symlink { .. }
+            _entries.get(entry_key_symlink.unwrap()).unwrap().kind(),
+            EntryKind::Symlink { .. }
         ));
 
         Ok(())
@@ -2065,6 +2111,7 @@ mod tests {
         assert!(lookup!(fs, file_path).is_some());
         assert!(lookup!(fs, sym_path).is_some());
         assert!(lookup!(fs, hard_path).is_some());
+        assert_eq!(symlinks!(fs, file_path).unwrap()[0], sym_path);
 
         tempdir.close()?;
         take_events!(fs);
@@ -2074,6 +2121,7 @@ mod tests {
         assert!(lookup!(fs, file_path).is_none());
         assert!(lookup!(fs, sym_path).is_none());
         assert!(lookup!(fs, hard_path).is_none());
+        assert!(symlinks!(fs, file_path).is_none());
 
         Ok(())
     }
@@ -2103,6 +2151,7 @@ mod tests {
         assert!(lookup!(fs, file_path).is_some());
         assert!(lookup!(fs, sym_path).is_some());
         assert!(lookup!(fs, hard_path).is_some());
+        assert_eq!(symlinks!(fs, file_path).unwrap()[0], sym_path);
 
         tempdir.close()?;
 
@@ -2111,6 +2160,7 @@ mod tests {
         assert!(lookup!(fs, file_path).is_none());
         assert!(lookup!(fs, sym_path).is_none());
         assert!(lookup!(fs, hard_path).is_none());
+        assert!(symlinks!(fs, file_path).is_none());
 
         Ok(())
     }
@@ -2179,27 +2229,32 @@ mod tests {
     // Deletes a symlink
     #[tokio::test]
     #[cfg(unix)]
-    async fn filesystem_delete_symlink() {
+    async fn filesystem_delete_symlink_dir() {
         let tempdir = TempDir::new().unwrap();
         let path = tempdir.path().to_path_buf();
 
-        let a = path.join("a");
-        let b = path.join("b");
-        create_dir(&a).unwrap();
-        symlink_dir(&a, &b).unwrap();
+        let file_path = path.join("file");
+        let symlink_path = path.join("symlink");
+        create_dir(&file_path).unwrap();
+        symlink_dir(&file_path, &symlink_path).unwrap();
 
         let fs = create_fs(&path);
 
-        remove_dir_all(&b).unwrap();
+        assert!(lookup!(fs, file_path).is_some());
+        assert!(lookup!(fs, symlink_path).is_some());
+        assert_eq!(symlinks!(fs, file_path).unwrap()[0], symlink_path);
+
+        remove_dir_all(&symlink_path).unwrap();
         take_events!(fs);
 
-        assert!(lookup!(fs, a).is_some());
-        assert!(lookup!(fs, b).is_none());
+        assert!(lookup!(fs, file_path).is_some());
+        assert!(lookup!(fs, symlink_path).is_none());
+        assert!(symlinks!(fs, file_path).is_none());
     }
 
-    /// Deletes a symlink that points to a not tracked directory
-    #[ignore]
+    // Deletes a symlink that points to a not tracked directory
     #[tokio::test]
+    #[cfg(unix)]
     async fn filesystem_delete_symlink_to_untracked_dir() -> io::Result<()> {
         let tempdir = TempDir::new()?;
         let tempdir2 = TempDir::new()?.into_path();
@@ -2212,64 +2267,105 @@ mod tests {
 
         let fs = create_fs(&path);
         assert!(lookup!(fs, symlink_path).is_some());
-        // Symlink dirs are not followed
-
-        assert!(lookup!(fs, real_dir_path).is_none());
+        assert!(lookup!(fs, real_dir_path).is_some());
+        assert_eq!(symlinks!(fs, real_dir_path).unwrap()[0], symlink_path);
 
         remove_dir_all(&symlink_path)?;
         take_events!(fs);
 
         assert!(lookup!(fs, symlink_path).is_none());
         assert!(lookup!(fs, real_dir_path).is_none());
+        assert!(symlinks!(fs, real_dir_path).is_none());
         Ok(())
     }
 
-    // Deletes the pointee of a symlink
-    #[ignore]
+    // Deletes the target of a symlink
     #[tokio::test]
-    async fn filesystem_delete_symlink_pointee() -> io::Result<()> {
+    #[cfg(unix)]
+    async fn filesystem_delete_symlink_target() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
         let tempdir = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
 
-        let a = path.join("a");
-        let b = path.join("b");
-        File::create(&a)?;
-        symlink_file(&a, &b)?;
+        let file_path = path.join("file");
+        let symlink_path = path.join("symlink");
+        File::create(&file_path)?;
+        symlink_file(&file_path, &symlink_path)?;
 
         let fs = create_fs(&path);
 
-        remove_file(&a)?;
+        assert!(lookup!(fs, file_path).is_some());
+        assert!(lookup!(fs, symlink_path).is_some());
+        assert_eq!(symlinks!(fs, file_path).unwrap()[0], symlink_path);
+
+        remove_file(&file_path)?;
         take_events!(fs);
 
-        assert!(lookup!(fs, a).is_none());
-
-        // Windows watcher might have dangling links and it's ok
-        #[cfg(not(windows))]
-        assert!(lookup!(fs, b).is_none());
+        assert!(lookup!(fs, file_path).is_none());
+        assert!(lookup!(fs, symlink_path).is_some());
+        assert_eq!(symlinks!(fs, file_path).unwrap()[0], symlink_path);
 
         Ok(())
     }
 
-    // Deletes the pointee of a symlink in untracked dir
-    #[ignore]
     #[tokio::test]
-    async fn filesystem_delete_untracked_symlink_pointee() -> io::Result<()> {
+    #[cfg(unix)]
+    async fn filesystem_dangling_symlink_restored() -> io::Result<()> {
+        let _ = env_logger::Builder::from_default_env().try_init();
+        let tempdir = TempDir::new()?;
+        let path = tempdir.path().to_path_buf();
+
+        let file_path = path.join("file");
+        let symlink_path = path.join("symlink");
+        File::create(&file_path)?;
+        symlink_file(&file_path, &symlink_path)?;
+
+        let fs = create_fs(&path);
+
+        assert!(lookup!(fs, file_path).is_some());
+        assert!(lookup!(fs, symlink_path).is_some());
+        assert_eq!(symlinks!(fs, file_path).unwrap()[0], symlink_path);
+
+        remove_file(&file_path)?;
+        take_events!(fs);
+
+        assert!(lookup!(fs, file_path).is_none());
+        assert!(lookup!(fs, symlink_path).is_some());
+        assert_eq!(symlinks!(fs, file_path).unwrap()[0], symlink_path);
+
+        File::create(&file_path)?;
+        take_events!(fs);
+
+        assert!(lookup!(fs, file_path).is_some());
+        assert!(lookup!(fs, symlink_path).is_some());
+        assert_eq!(symlinks!(fs, file_path).unwrap()[0], symlink_path);
+
+        Ok(())
+    }
+
+    // Deletes the target of a symlink in untracked dir
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn filesystem_delete_untracked_symlink_target() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
         let tempdir = TempDir::new()?;
         let tempdir2 = TempDir::new()?;
         let path = tempdir.path().to_path_buf();
         let path2 = tempdir2.path().to_path_buf();
 
-        let a = path.join("a");
-        let b = path2.join("b");
-        File::create(&b)?;
-        symlink_file(&b, &a)?;
+        let symlink_path = path.join("symlink");
+        let file_path = path2.join("file");
+        File::create(&file_path)?;
+        symlink_file(&file_path, &symlink_path)?;
 
         let fs = create_fs(&path);
         take_events!(fs);
 
-        remove_file(&b)?;
+        assert!(lookup!(fs, file_path).is_some());
+        assert!(lookup!(fs, symlink_path).is_some());
+        assert_eq!(symlinks!(fs, file_path).unwrap()[0], symlink_path);
+
+        remove_file(&file_path)?;
         let events = take_events!(fs);
 
         assert_eq!(
@@ -2290,7 +2386,10 @@ mod tests {
                 .collect::<Vec<_>>()
         );
 
-        assert!(lookup!(fs, b).is_none());
+        assert!(lookup!(fs, file_path).is_none());
+        assert!(lookup!(fs, symlink_path).is_some());
+        assert!(lookup!(fs, path2).is_some());
+        assert_eq!(symlinks!(fs, file_path).unwrap()[0], symlink_path);
 
         Ok(())
     }
@@ -2471,23 +2570,23 @@ mod tests {
         let _fs = fs.borrow();
         let _entries = &_fs.entries;
         let _entries = _entries.borrow();
-        match _entries.get(entry.unwrap()).unwrap() {
-            Entry::Dir { .. } => {}
+        match _entries.get(entry.unwrap()).unwrap().kind() {
+            EntryKind::Dir { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
-        match _entries.get(entry2.unwrap()).unwrap() {
-            Entry::File { .. } => {}
+        match _entries.get(entry2.unwrap()).unwrap().kind() {
+            EntryKind::File { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
-        match _entries.get(entry3.unwrap()).unwrap() {
-            Entry::File { .. } => {}
+        match _entries.get(entry3.unwrap()).unwrap().kind() {
+            EntryKind::File { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
-        match _entries.get(entry4.unwrap()).unwrap() {
-            Entry::Symlink { .. } => {}
+        match _entries.get(entry4.unwrap()).unwrap().kind() {
+            EntryKind::Symlink { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
@@ -2575,23 +2674,23 @@ mod tests {
         let _fs = fs.borrow();
         let _entries = &_fs.entries;
         let _entries = _entries.borrow();
-        match _entries.get(entry.unwrap()).unwrap() {
-            Entry::Dir { .. } => {}
+        match _entries.get(entry.unwrap()).unwrap().kind() {
+            EntryKind::Dir { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
-        match _entries.get(entry2.unwrap()).unwrap() {
-            Entry::File { .. } => {}
+        match _entries.get(entry2.unwrap()).unwrap().kind() {
+            EntryKind::File { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
-        match _entries.get(entry3.unwrap()).unwrap() {
-            Entry::File { .. } => {}
+        match _entries.get(entry3.unwrap()).unwrap().kind() {
+            EntryKind::File { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
-        match _entries.get(entry4.unwrap()).unwrap() {
-            Entry::Symlink { .. } => {}
+        match _entries.get(entry4.unwrap()).unwrap().kind() {
+            EntryKind::Symlink { .. } => {}
             _ => panic!("wrong entry type"),
         };
 
@@ -2622,8 +2721,8 @@ mod tests {
         let _fs = fs.borrow();
         let _entries = &_fs.entries;
         let _entries = _entries.borrow();
-        match _entries.get(entry.unwrap()).unwrap() {
-            Entry::File { .. } => {}
+        match _entries.get(entry.unwrap()).unwrap().kind() {
+            EntryKind::File { .. } => {}
             _ => panic!("wrong entry type"),
         };
         Ok(())
@@ -2690,8 +2789,8 @@ mod tests {
         let _fs = fs.borrow();
         let _entries = &_fs.entries;
         let _entries = _entries.borrow();
-        match _entries.get(entry.unwrap()).unwrap() {
-            Entry::File { .. } => {}
+        match _entries.get(entry.unwrap()).unwrap().kind() {
+            EntryKind::File { .. } => {}
             _ => panic!("wrong entry type"),
         };
         Ok(())

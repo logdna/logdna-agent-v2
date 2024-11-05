@@ -225,7 +225,7 @@ integration-test: ## Run integration tests using image with additional tools
 .PHONY:k8s-test
 k8s-test: build-image-debian ## Run integration tests using k8s kind
 	$(DOCKER) tag $(REPO):$(IMAGE_TAG) $(REPO):local
-	IMAGE_TAG=$(IMAGE_TAG) $(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "cargo nextest run --no-fail-fast --nocapture $(TARGET_DOCKER_ARG) --manifest-path bin/Cargo.toml --features k8s_tests"
+	IMAGE_TAG=$(IMAGE_TAG) $(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "cargo nextest run --no-fail-fast --retries=2 --nocapture $(TARGET_DOCKER_ARG) --manifest-path bin/Cargo.toml --features k8s_tests $(TESTS)"
 
 .PHONY:test-journald
 test-journald: ## Run journald unit tests

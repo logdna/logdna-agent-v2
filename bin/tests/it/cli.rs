@@ -946,7 +946,8 @@ fn lookback_none_lines_are_delivered() {
 #[cfg(any(target_os = "windows", target_os = "linux"))] // needs a refactor to use self signed server on mac
 fn lookback_tail_lines_file_created_after_agent_start_at_beg() {
     let dir = tempdir().expect("Couldn't create temp dir...");
-    let dir_path = format!("{}/", dir.path().to_str().unwrap());
+    let dir_path = dir.path().to_path_buf();
+    let log_path = format!("{}/", dir_path.to_str().unwrap());
 
     let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester(
         Some(common::HttpVersion::Http2),
@@ -961,7 +962,7 @@ fn lookback_tail_lines_file_created_after_agent_start_at_beg() {
         let (line_count, server) = tokio::join!(
             async {
                 let mut handle = common::spawn_agent(AgentSettings {
-                    log_dirs: &dir_path,
+                    log_dirs: &log_path,
                     exclusion_regex: Some(r"^/var.*"),
                     ssl_cert_file: Some(cert_file.path()),
                     lookback: Some("tail"),
@@ -970,10 +971,10 @@ fn lookback_tail_lines_file_created_after_agent_start_at_beg() {
                 });
                 debug!("spawned agent");
 
-                let file_path = dir.path().join("start-tail-test.log");
+                let file_path = dir_path.join("start-tail-test.log");
 
                 async move {
-                    let file_path = dir.path().join("start-tail-test.log");
+                    let file_path = dir_path.join("start-tail-test.log");
                     let log_lines = "This is a test log line";
                     let mut file =
                         File::create(&file_path).expect("Couldn't create temp log file...");
