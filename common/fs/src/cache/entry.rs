@@ -1,57 +1,61 @@
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 
+use crate::cache::guarded_option::GuardedOption;
 use crate::cache::Children;
 use crate::cache::TailedFile;
 
 use crate::cache::tailed_file::LazyLineSerializer;
 
+pub struct Entry {
+    pub path: PathBuf,
+    pub kind: EntryKind,
+}
+
 #[derive(Debug)]
-pub enum Entry {
+pub enum EntryKind {
     File {
-        path: PathBuf,
         data: RefCell<TailedFile<LazyLineSerializer>>,
     },
     Dir {
         /// A map of entry keys by file name
         children: Children,
-        path: PathBuf,
+        dependencies: Vec<PathBuf>,
     },
     Symlink {
         /// The target of the symlink
-        link: Option<PathBuf>,
-        path: PathBuf,
+        target: GuardedOption<PathBuf>,
     },
 }
 
 impl Entry {
     pub fn path(&self) -> &Path {
-        match self {
-            Entry::Dir { path: wd, .. }
-            | Entry::Symlink { path: wd, .. }
-            | Entry::File { path: wd, .. } => wd,
-        }
+        &self.path
+    }
+
+    pub fn kind(&self) -> &EntryKind {
+        &self.kind
+    }
+
+    pub fn kind_mut(&mut self) -> &mut EntryKind {
+        &mut self.kind
     }
 
     pub fn set_path(&mut self, path: PathBuf) {
-        match self {
-            Entry::File { path: wd, .. }
-            | Entry::Dir { path: wd, .. }
-            | Entry::Symlink { path: wd, .. } => *wd = path,
-        }
-    }
-
-    pub fn link(&self) -> Option<&PathBuf> {
-        match self {
-            Entry::Symlink { link, .. } => link.as_ref(),
-            _ => None,
-        }
+        self.path = path
     }
 
     /// Gets a mutable reference to the children
     pub fn children(&mut self) -> Option<&mut Children> {
-        match self {
-            Entry::Dir { children, .. } => Some(children),
+        match &mut self.kind {
+            EntryKind::Dir { children, .. } => Some(children),
+            _ => None,
+        }
+    }
+
+    pub fn dependencies(&mut self) -> Option<&mut Vec<PathBuf>> {
+        match &mut self.kind {
+            EntryKind::Dir { dependencies, .. } => Some(dependencies),
             _ => None,
         }
     }

@@ -1,4 +1,4 @@
-use crate::cache::entry::Entry;
+use crate::cache::entry::EntryKind;
 use crate::cache::event::Event;
 use crate::cache::tailed_file::LazyLineSerializer;
 use crate::cache::{EntryKey, Error as CacheError, FileSystem};
@@ -32,9 +32,9 @@ fn get_file_for_path(fs: &FileSystem, next_path: &std::path::Path) -> Option<Ent
     let mut next_path_opt = Some(next_path);
     while let Some(next_path) = next_path_opt {
         let next_entry_key = fs.lookup(next_path, &entries)?;
-        match entries.get(next_entry_key) {
-            Some(Entry::Symlink { ref link, .. }) => next_path_opt = link.as_deref(),
-            Some(Entry::File { .. }) => return Some(next_entry_key),
+        match entries.get(next_entry_key).map(|entry| entry.kind()) {
+            Some(EntryKind::Symlink { ref target, .. }) => next_path_opt = target.as_option_deref(),
+            Some(EntryKind::File { .. }) => return Some(next_entry_key),
             _ => break,
         }
     }
@@ -53,8 +53,8 @@ async fn handle_event(
             let entries = fs.entries.borrow();
             let entry = entries.get(entry_ptr)?;
             let paths = fs.resolve_valid_paths(entry, &entries);
-            match entry {
-                Entry::File { data, .. } => {
+            match entry.kind() {
+                EntryKind::File { data, .. } => {
                     let path_display = entry.path().display();
                     // If the file's passes the rules tail it
                     info!("initialize event for file {}", path_display);
@@ -62,10 +62,10 @@ async fn handle_event(
                         return data.borrow_mut().tail(&paths).await;
                     }
                 }
-                Entry::Symlink { link, path } => {
-                    let sym_path = path;
-                    if let Some(link) = link {
-                        let final_target = get_file_for_path(fs, link)?;
+                EntryKind::Symlink { target, .. } => {
+                    let sym_path = entry.path();
+                    if let Some(target) = target.as_option() {
+                        let final_target = get_file_for_path(fs, target)?;
 
                         let entries = &fs.entries.borrow();
                         let final_entry = entries.get(final_target)?;
@@ -80,7 +80,7 @@ async fn handle_event(
                         );
 
                         let entry_key = get_file_for_path(fs, path)?;
-                        if let Entry::File { data, .. } = &entries.get(entry_key)? {
+                        if let EntryKind::File { data, .. } = &entries.get(entry_key)?.kind() {
                             info!(
                                 "initialized symlink {:?} as {:?}",
                                 sym_path.display(),
@@ -104,7 +104,7 @@ async fn handle_event(
             if paths.is_empty() {
                 return None;
             }
-            if let Entry::File { data, .. } = entry {
+            if let EntryKind::File { data, .. } = entry.kind() {
                 info!("added {:?}", paths[0]);
                 return data.borrow_mut().tail(&paths).await;
             }
@@ -120,7 +120,7 @@ async fn handle_event(
                 return None;
             }
 
-            if let Entry::File { data, .. } = entry {
+            if let EntryKind::File { data, .. } = entry.kind() {
                 return data.borrow_mut().deref_mut().tail(&paths).await;
             }
         }
@@ -135,7 +135,7 @@ async fn handle_event(
                 return None;
             }
 
-            if let Entry::File { data, .. } = entry {
+            if let EntryKind::File { data, .. } = entry.kind() {
                 return data.borrow_mut().deref_mut().tail(&paths).await;
             }
         }
@@ -150,19 +150,18 @@ async fn handle_event(
                 if paths.is_empty() {
                     None
                 } else {
-                    if let Entry::Symlink {
-                        link: Some(link), ..
-                    } = entry
-                    {
-                        if let Some(real_entry) = fs.lookup(link, &entries) {
-                            if let Some(r_entry) = entries.get(real_entry) {
-                                entry = r_entry
+                    if let EntryKind::Symlink { target, .. } = entry.kind() {
+                        if let Some(target) = target.as_option() {
+                            if let Some(real_entry) = fs.lookup(target, &entries) {
+                                if let Some(r_entry) = entries.get(real_entry) {
+                                    entry = r_entry
+                                }
+                            } else {
+                                info!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths);
                             }
-                        } else {
-                            info!("can't wrap up deleted symlink - pointed to file / directory doesn't exist: {:?}", paths);
                         }
                     }
-                    if let Entry::File { data, .. } = entry {
+                    if let EntryKind::File { data, .. } = entry.kind() {
                         let mut tailed_file = data.borrow_mut();
                         tailed_file.deref_mut().tail(&paths).await
                     } else {
