@@ -301,7 +301,6 @@ where
     let instant = std::time::Instant::now();
 
     debug!("event info: {:?}", event_info);
-    debug!("event info: {:?}", event_info);
     for _safeguard in 0..100_000 {
         assert!(
             instant.elapsed() < delay.unwrap_or(std::time::Duration::from_secs(20)),
