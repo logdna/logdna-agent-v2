@@ -177,7 +177,9 @@ fn generate_tests(
                     for env in &[#tokens] {
                         // reset env vars
                         for env in &[#tokens] {
-                            std::env::remove_var(env);
+                            unsafe {
+                                std::env::remove_var(env);
+                            }
                         }
                         std::env::set_var(env, #test_data);
                         assert_eq!(Some(#name::parse().#field), std::str::FromStr::from_str(#test_data).ok());
@@ -188,7 +190,9 @@ fn generate_tests(
                     for env in &[#tokens] {
                         // reset env vars
                         for env in &[#tokens] {
-                            std::env::remove_var(env);
+                            unsafe {
+                                std::env::remove_var(env);
+                            }
                         }
                         std::env::set_var(env, #test_data);
                         assert_eq!(#name::parse().#field, std::str::FromStr::from_str(#test_data).ok());

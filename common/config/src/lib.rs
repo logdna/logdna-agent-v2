@@ -326,7 +326,7 @@ mod tests {
 
             EnvConfig::ingestion_key_vars()
                 .iter()
-                .for_each(env::remove_var);
+                .for_each(|v| unsafe { env::remove_var(v) });
             env::set_var(&EnvConfig::config_file_vars()[0], "test.yaml");
             assert!(Config::new().is_err());
 
@@ -335,7 +335,7 @@ mod tests {
 
             EnvConfig::inclusion_rules_vars()
                 .iter()
-                .for_each(env::remove_var);
+                .for_each(|v| unsafe { env::remove_var(v) });
             let old_len = Config::new().unwrap().log.rules.inclusion_list().len();
             env::set_var(&EnvConfig::inclusion_rules_vars()[0], "test.log,test2.log");
             assert_eq!(
