@@ -51,7 +51,7 @@ impl<'a, T> RetryableLineStream<'a, T> {
     }
 }
 
-impl<'a> RetryableSource<LineBuilder> for RetryableLineStream<'a, LineBuilder> {
+impl RetryableSource<LineBuilder> for RetryableLineStream<'_, LineBuilder> {
     type RetryableLine =
         RetryableLineBuilder<LineBuilder, std::sync::Weak<DelayStream<LineBuilder>>>;
 
@@ -63,7 +63,7 @@ impl<'a> RetryableSource<LineBuilder> for RetryableLineStream<'a, LineBuilder> {
     }
 }
 
-impl<'a> Stream for RetryableLineStream<'a, LineBuilder> {
+impl Stream for RetryableLineStream<'_, LineBuilder> {
     type Item = RetryableLineBuilder<LineBuilder, std::sync::Weak<DelayStream<LineBuilder>>>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {

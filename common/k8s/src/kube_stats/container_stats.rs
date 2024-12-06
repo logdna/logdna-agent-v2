@@ -173,7 +173,7 @@ impl ContainerStatsBuilder<'_> {
             });
         }
 
-        if last_state.eq(&state) || last_state.eq("") {
+        if last_state.eq(&state) || last_state.is_empty() {
             last_state = String::from("");
             last_reason = String::from("");
             last_finished = None;

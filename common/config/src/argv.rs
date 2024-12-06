@@ -441,6 +441,7 @@ impl ArgumentOptions {
         macro_rules! deprecated_env {
             ($key: ident, $var_name: ident, Option<$ftype: ty>) => {
                 if let Ok(v) = env_var(env_vars::$var_name) {
+                    #[allow(irrefutable_let_patterns)]
                     if let Ok(parsed) = std::str::FromStr::from_str(&v) {
                         options.$key = Some(parsed);
                         info!("Using deprecated env var '$var_name'");
@@ -451,6 +452,7 @@ impl ArgumentOptions {
             };
             ($key: ident, $var_name: ident, $ftype: ty) => {
                 if let Ok(v) = env_var(env_vars::$var_name) {
+                    #[allow(irrefutable_let_patterns)]
                     if let Ok(parsed) = std::str::FromStr::from_str(&v) {
                         options.$key = parsed;
                         info!("Using deprecated env var '$var_name'");
