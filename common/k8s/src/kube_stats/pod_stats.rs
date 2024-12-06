@@ -69,48 +69,42 @@ impl PodStatsBuilder<'_> {
 
         let pod = self.p.metadata.name.clone().unwrap_or_default();
 
-        match spec {
-            Some(spec) => {
-                if spec.priority.is_some() {
-                    priority = Some(spec.priority.unwrap());
-                }
-
-                if spec.priority_class_name.is_some() {
-                    priority_class = spec.priority_class_name.clone().unwrap();
-                }
-
-                if spec.node_name.is_some() {
-                    node = spec.node_name.clone().unwrap();
-                }
+        if let Some(spec) = spec {
+            if spec.priority.is_some() {
+                priority = Some(spec.priority.unwrap());
             }
-            None => {}
+
+            if spec.priority_class_name.is_some() {
+                priority_class = spec.priority_class_name.clone().unwrap();
+            }
+
+            if spec.node_name.is_some() {
+                node = spec.node_name.clone().unwrap();
+            }
         }
 
-        match status {
-            Some(status) => {
-                if status.start_time.is_some() {
-                    let pod_created = status.start_time.clone().unwrap();
+        if let Some(status) = status {
+            if status.start_time.is_some() {
+                let pod_created = status.start_time.clone().unwrap();
 
-                    pod_age = Utc::now()
-                        .signed_duration_since(pod_created.0)
-                        .num_milliseconds();
+                pod_age = Utc::now()
+                    .signed_duration_since(pod_created.0)
+                    .num_milliseconds();
 
-                    created = pod_created.0.timestamp_millis();
-                }
-
-                if status.pod_ip.is_some() {
-                    ip = status.pod_ip.clone().unwrap();
-                }
-
-                if status.phase.is_some() {
-                    phase = status.phase.clone().unwrap();
-                }
-
-                if status.qos_class.is_some() {
-                    qos_class = status.qos_class.clone().unwrap();
-                }
+                created = pod_created.0.timestamp_millis();
             }
-            None => {}
+
+            if status.pod_ip.is_some() {
+                ip = status.pod_ip.clone().unwrap();
+            }
+
+            if status.phase.is_some() {
+                phase = status.phase.clone().unwrap();
+            }
+
+            if status.qos_class.is_some() {
+                qos_class = status.qos_class.clone().unwrap();
+            }
         }
 
         PodStats {

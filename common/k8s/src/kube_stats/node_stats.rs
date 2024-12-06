@@ -168,110 +168,103 @@ impl NodeStatsBuilder<'_> {
         let pods_total = self.n_pods.pods_total;
         let pods_unknown = self.n_pods.pods_unknown;
 
-        match spec {
-            Some(spec) => {
-                if spec.unschedulable.is_some() {
-                    unschedulable = Some(*spec.unschedulable.as_ref().unwrap());
-                }
+        if let Some(spec) = spec {
+            if spec.unschedulable.is_some() {
+                unschedulable = Some(*spec.unschedulable.as_ref().unwrap());
             }
-            None => {}
         }
 
-        match status {
-            Some(status) => {
-                if status.node_info.is_some() {
-                    container_runtime_version
-                        .clone_from(&status.node_info.as_ref().unwrap().container_runtime_version);
+        if let Some(status) = status {
+            if status.node_info.is_some() {
+                container_runtime_version
+                    .clone_from(&status.node_info.as_ref().unwrap().container_runtime_version);
 
-                    kernel_version.clone_from(&status.node_info.as_ref().unwrap().kernel_version);
-                    kubelet_version.clone_from(&status.node_info.as_ref().unwrap().kubelet_version);
-                    os_image.clone_from(&status.node_info.as_ref().unwrap().os_image);
-                }
+                kernel_version.clone_from(&status.node_info.as_ref().unwrap().kernel_version);
+                kubelet_version.clone_from(&status.node_info.as_ref().unwrap().kubelet_version);
+                os_image.clone_from(&status.node_info.as_ref().unwrap().os_image);
+            }
 
-                if status.allocatable.is_some() {
-                    let allocatable = status.allocatable.as_ref().unwrap();
-                    let cpu_quantity = allocatable.get("cpu");
-                    let memory_quantity = allocatable.get("memory");
-                    let pods_quantity = allocatable.get("pods");
+            if status.allocatable.is_some() {
+                let allocatable = status.allocatable.as_ref().unwrap();
+                let cpu_quantity = allocatable.get("cpu");
+                let memory_quantity = allocatable.get("memory");
+                let pods_quantity = allocatable.get("pods");
 
-                    cpu_allocatable = cpu_quantity
-                        .map(|cpu| convert_cpu_usage_to_milli(cpu.0.as_str()))
-                        .unwrap_or(None);
+                cpu_allocatable = cpu_quantity
+                    .map(|cpu| convert_cpu_usage_to_milli(cpu.0.as_str()))
+                    .unwrap_or(None);
 
-                    memory_allocatable = memory_quantity
-                        .map(|memory| convert_memory_usage_to_bytes(memory.0.as_str()))
-                        .unwrap_or(None);
+                memory_allocatable = memory_quantity
+                    .map(|memory| convert_memory_usage_to_bytes(memory.0.as_str()))
+                    .unwrap_or(None);
 
-                    pods_allocatable =
-                        pods_quantity.and_then(|pods_quantity| pods_quantity.0.parse().ok());
-                }
+                pods_allocatable =
+                    pods_quantity.and_then(|pods_quantity| pods_quantity.0.parse().ok());
+            }
 
-                if status.capacity.is_some() {
-                    let capacity = status.capacity.as_ref().unwrap();
-                    let cpu_quantity = capacity.get("cpu");
-                    let memory_quantity = capacity.get("memory");
-                    let pods_quantity = capacity.get("pods");
+            if status.capacity.is_some() {
+                let capacity = status.capacity.as_ref().unwrap();
+                let cpu_quantity = capacity.get("cpu");
+                let memory_quantity = capacity.get("memory");
+                let pods_quantity = capacity.get("pods");
 
-                    cpu_capacity = cpu_quantity
-                        .map(|cpu| convert_cpu_usage_to_milli(cpu.0.as_str()))
-                        .unwrap_or(None);
+                cpu_capacity = cpu_quantity
+                    .map(|cpu| convert_cpu_usage_to_milli(cpu.0.as_str()))
+                    .unwrap_or(None);
 
-                    memory_capacity = memory_quantity
-                        .map(|memory| convert_memory_usage_to_bytes(memory.0.as_str()))
-                        .unwrap_or(None);
+                memory_capacity = memory_quantity
+                    .map(|memory| convert_memory_usage_to_bytes(memory.0.as_str()))
+                    .unwrap_or(None);
 
-                    pods_capacity =
-                        pods_quantity.and_then(|pods_quantity| pods_quantity.0.parse().ok());
-                }
+                pods_capacity =
+                    pods_quantity.and_then(|pods_quantity| pods_quantity.0.parse().ok());
+            }
 
-                if status.addresses.is_some() {
-                    let addresses = status.addresses.as_ref().unwrap();
+            if status.addresses.is_some() {
+                let addresses = status.addresses.as_ref().unwrap();
 
-                    for address in addresses {
-                        if address.type_.to_lowercase() == "internalip" {
-                            ip.clone_from(&address.address);
-                        } else if address.type_.to_lowercase() == "externalip" {
-                            ip_external.clone_from(&address.address);
-                        }
-                    }
-                }
-
-                if status.conditions.is_some() {
-                    let conditions = status.conditions.as_ref().unwrap();
-
-                    for condition in conditions {
-                        if condition.type_.to_lowercase() == "ready" {
-                            if condition.last_heartbeat_time.is_some() {
-                                let heartbeat = condition.last_heartbeat_time.clone().unwrap();
-
-                                ready_heartbeat_age = Utc::now()
-                                    .signed_duration_since(heartbeat.0)
-                                    .num_milliseconds();
-
-                                ready_heartbeat_time = heartbeat.0.timestamp_millis();
-
-                                ready_message.clone_from(
-                                    condition.message.as_ref().unwrap_or(&"".to_string()),
-                                );
-                                ready_status.clone_from(&condition.status);
-                            }
-
-                            if condition.last_transition_time.is_some() {
-                                let transition = condition.last_transition_time.clone().unwrap();
-
-                                ready_transition_age = Utc::now()
-                                    .signed_duration_since(transition.0)
-                                    .num_milliseconds();
-
-                                ready_transition_time = transition.0.timestamp_millis();
-                            }
-
-                            ready = Some(condition.status.to_lowercase() == "true");
-                        }
+                for address in addresses {
+                    if address.type_.to_lowercase() == "internalip" {
+                        ip.clone_from(&address.address);
+                    } else if address.type_.to_lowercase() == "externalip" {
+                        ip_external.clone_from(&address.address);
                     }
                 }
             }
-            None => {}
+
+            if status.conditions.is_some() {
+                let conditions = status.conditions.as_ref().unwrap();
+
+                for condition in conditions {
+                    if condition.type_.to_lowercase() == "ready" {
+                        if condition.last_heartbeat_time.is_some() {
+                            let heartbeat = condition.last_heartbeat_time.clone().unwrap();
+
+                            ready_heartbeat_age = Utc::now()
+                                .signed_duration_since(heartbeat.0)
+                                .num_milliseconds();
+
+                            ready_heartbeat_time = heartbeat.0.timestamp_millis();
+
+                            ready_message
+                                .clone_from(condition.message.as_ref().unwrap_or(&"".to_string()));
+                            ready_status.clone_from(&condition.status);
+                        }
+
+                        if condition.last_transition_time.is_some() {
+                            let transition = condition.last_transition_time.clone().unwrap();
+
+                            ready_transition_age = Utc::now()
+                                .signed_duration_since(transition.0)
+                                .num_milliseconds();
+
+                            ready_transition_time = transition.0.timestamp_millis();
+                        }
+
+                        ready = Some(condition.status.to_lowercase() == "true");
+                    }
+                }
+            }
         }
 
         if self.n.metadata.creation_timestamp.is_some() {

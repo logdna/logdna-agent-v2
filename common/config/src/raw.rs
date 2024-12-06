@@ -18,7 +18,7 @@ where
     D: Deserializer<'de>,
 {
     struct BytesVisitor;
-    impl<'de> Visitor<'de> for BytesVisitor {
+    impl Visitor<'_> for BytesVisitor {
         type Value = u64;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
