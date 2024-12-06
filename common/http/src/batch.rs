@@ -49,7 +49,7 @@ impl<'a> TimedRequestBatchStream<'a> {
     }
 }
 
-impl<'a> Stream for TimedRequestBatchStream<'a> {
+impl Stream for TimedRequestBatchStream<'_> {
     type Item = BatchResult;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
@@ -83,13 +83,12 @@ pub struct TimedRequestBatcherState<St: Stream> {
     buffer_source: BufferSource,
 }
 
-impl<'a, St: Stream> TimedRequestBatcherState<St>
+impl<St: Stream> TimedRequestBatcherState<St>
 where
     St::Item: IngestLineSerialize<String, bytes::Bytes, HashMap<String, String>, Ok = ()>
         + GetOffset
         + std::marker::Send
-        + std::marker::Sync
-        + 'a,
+        + std::marker::Sync,
 {
     pub fn new(stream: St, capacity: usize, duration: Duration) -> TimedRequestBatcherState<St> {
         assert!(capacity > 0);

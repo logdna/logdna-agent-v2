@@ -409,9 +409,8 @@ impl K8sEventStream {
                         .as_ref()
                         .and_then(|t| NonZeroI64::new(t.0.timestamp() - 2));
 
-                    let ret = LineBuilder::try_from(EventLog::from(e)).map(|l| {
+                    let ret = LineBuilder::try_from(EventLog::from(e)).inspect(|_| {
                         Metrics::k8s().increment_lines();
-                        l
                     });
 
                     if ret.is_ok() && this_event_time.is_some() {
