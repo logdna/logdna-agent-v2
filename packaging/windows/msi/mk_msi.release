@@ -2,7 +2,7 @@
 set -eu
 mkdir -p "$SRC_ROOT/$BUILD_DIR/signed"
 pushd "$SRC_ROOT/$BUILD_DIR/cert"
-source "./mezmo_cert_release.env"
+SM_CERT_ALIAS=$(cat ./mezmo_cert_release_alias.txt)
 echo signing agent exe files ...
 #
 # Sign Agent service exe

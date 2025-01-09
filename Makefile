@@ -574,9 +574,8 @@ msi-$(1): ## create signed exe and msi files in $(BUILD_DIR)/signed
 	trap \"rm -rf '$(BUILD_DIR)/cert'\" EXIT; \
 	mkdir -p '$(BUILD_DIR)/cert'; \
 	if [ "$(1)" == "release" ]; then \
-	  aws s3 cp s3://ecosys-vault/mezmo_cert_release.p12 '$(BUILD_DIR)/cert'; \
 	  aws s3 cp s3://ecosys-vault/mezmo_cert_release.pem '$(BUILD_DIR)/cert'; \
-	  aws s3 cp s3://ecosys-vault/mezmo_cert_release.env '$(BUILD_DIR)/cert'; \
+	  aws s3 cp s3://ecosys-vault/mezmo_cert_release_alias.txt '$(BUILD_DIR)/cert'; \
 	  aws s3 cp s3://ecosys-vault/x86_64-linux-gnu/smpkcs11.so '$(BUILD_DIR)/cert'; \
 	else \
 	  aws s3 cp s3://ecosys-vault/mezmo_cert_debug.pfx '$(BUILD_DIR)/cert'; \
