@@ -1,6 +1,6 @@
 # LogDNA Agent
 
-![agent version](https://img.shields.io/badge/Version-3.10.2--beta.2-E9FF92.svg)
+![agent version](https://img.shields.io/badge/Version-3.10.2-E9FF92.svg)
 [![made-with-rust](https://img.shields.io/badge/Made%20with-Rust-orange.svg)](https://www.rust-lang.org/)
 
 Mezmo, formerly LogDNA, enables enterprises to ingest all of their log data to a single platform, normalize it, and route it to the appropriate teams so that they can take meaningful action in real time. Join us at the Mezmo community [forum](https://community.logdna.com).
