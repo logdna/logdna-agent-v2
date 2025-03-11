@@ -366,6 +366,8 @@ mod tests {
             restart_count: 0,
             started: None,
             state: None,
+            allocated_resources: None,
+            resources: None,
         }
     }
 
@@ -382,6 +384,8 @@ mod tests {
             name: "container-name".to_string(),
             ports: None,
             readiness_probe: None,
+            resize_policy: None,
+            restart_policy: None,
             resources: Some(resource),
             security_context: None,
             startup_probe: None,
@@ -409,6 +413,7 @@ mod tests {
         ResourceRequirements {
             limits: Some(b_tree_limits),
             requests: Some(b_tree_requests),
+            claims: None,
         }
     }
 
@@ -424,6 +429,7 @@ mod tests {
         ResourceRequirements {
             limits: Some(b_tree_limits),
             requests: Some(b_tree_requests),
+            claims: None,
         }
     }
 }
