@@ -265,6 +265,7 @@ pub fn create_journalctl_source() -> Result<impl Stream<Item = LineBuilder>, std
     let decoder = JournaldExportDecoder::default();
 
     let journalctl_stdout = journalctl_process.stdout.take().ok_or_else(|| {
+        #[allow(clippy::io_other_error)]
         std::io::Error::new(
             std::io::ErrorKind::Other,
             "cannot get journalctl stdout hanlde",

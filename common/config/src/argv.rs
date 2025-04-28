@@ -9,7 +9,7 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 use structopt::StructOpt;
 use tracing::{info, warn};
-use types::lookback::Lookback;
+use types::{lookback::Lookback, truncate::Truncate};
 
 // Symbol that will be populated in the main.rs file
 extern "Rust" {
@@ -129,6 +129,11 @@ pub struct ArgumentOptions {
     /// Defaults to "none".
     #[structopt(long, env = env_vars::LOOKBACK)]
     lookback: Option<Lookback>,
+
+    /// The truncate strategy on partial truncations ("start", "smallfiles", or "tail").
+    /// Defaults to "none".
+    #[structopt(long, env = env_vars::TRUNCATE)]
+    truncate: Option<Truncate>,
 
     /// List of tags metadata to attach to lines forwarded from this agent
     #[structopt(long, short, env = env_vars::TAGS)]
@@ -350,6 +355,10 @@ impl ArgumentOptions {
 
         if self.lookback.is_some() {
             raw.log.lookback = self.lookback.map(|v| v.to_string());
+        }
+
+        if self.truncate.is_some() {
+            raw.log.truncate = self.truncate.map(|v| v.to_string());
         }
 
         if self.use_k8s_enrichment.is_some() {
@@ -723,6 +732,7 @@ mod test {
         assert_eq!(config.http.gzip_level, Some(2));
         assert_eq!(config.http.body_size, Some(2 * 1024 * 1024));
         assert_eq!(config.log.lookback, None);
+        assert_eq!(config.log.truncate, None);
         assert_eq!(config.log.dirs, vec![PathBuf::from(DEFAULT_LOG_DIR)]);
         assert_eq!(
             config.log.include,
@@ -765,6 +775,7 @@ mod test {
             metrics_port: Some(9089),
             tags: vec_strings!("a", "b"),
             lookback: Some(Lookback::Start),
+            truncate: Some(Truncate::Tail),
             use_k8s_enrichment: Some(K8sTrackingConf::Always),
             log_k8s_events: Some(K8sTrackingConf::Never),
             log_metric_server_stats: Some(K8sTrackingConf::Always),
@@ -799,6 +810,7 @@ mod test {
             vec_paths![DEFAULT_LOG_DIR, "/my/path", "/my/other/path"]
         );
         assert_eq!(config.log.lookback, some_string!("start"));
+        assert_eq!(config.log.truncate, some_string!("tail"));
         assert_eq!(config.log.use_k8s_enrichment, some_string!("always"));
         assert_eq!(config.log.log_k8s_events, some_string!("never"));
         assert_eq!(config.log.log_metric_server_stats, some_string!("always"));

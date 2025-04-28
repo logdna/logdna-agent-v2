@@ -454,6 +454,18 @@ impl SpanVec {
         }
         false
     }
+
+    pub fn truncate(&mut self, end: u64) {
+        while let Some(span) = self.spans.last_mut() {
+            if end <= span.start {
+                self.spans.pop();
+                continue;
+            } else if end < span.end {
+                span.end = end;
+            }
+            break;
+        }
+    }
 }
 
 impl Default for SpanVec {

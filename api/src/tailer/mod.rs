@@ -180,14 +180,17 @@ pub fn create_tailer_source(
         .expect("Failed to assign tailer process to job.");
 
     let tailer_stdout = tailer_process.stdout.take().ok_or_else(|| {
+        #[allow(clippy::io_other_error)]
         std::io::Error::new(std::io::ErrorKind::Other, "Can't get tailer stdout handle")
     })?;
 
     let tailer_stderr = tailer_process.stderr.take().ok_or_else(|| {
+        #[allow(clippy::io_other_error)]
         std::io::Error::new(std::io::ErrorKind::Other, "Can't get tailer stderr handle")
     })?;
 
     let tailer_stdin = tailer_process.stdin.take().ok_or_else(|| {
+        #[allow(clippy::io_other_error)]
         std::io::Error::new(std::io::ErrorKind::Other, "Can't get tailer stdin handle")
     })?;
 

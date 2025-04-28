@@ -4,8 +4,8 @@ use crate::cache::event::Event;
 use crate::cache::guarded_option::GuardedOption;
 use crate::cache::symlinks::Symlinks;
 use crate::cache::tailed_file::TailedFile;
-use types::lookback::Lookback;
 use types::rule::{RuleDef, Rules, Status};
+use types::{lookback::Lookback, truncate::Truncate};
 
 use metrics::Metrics;
 use notify_stream::{Event as WatchEvent, RecursiveMode, Watcher};
@@ -144,6 +144,7 @@ pub fn get_inode(path: &Path, _file: Option<&std::fs::File>) -> std::io::Result<
     Ok(path
         .metadata()
         .map_err(|e| {
+            #[allow(clippy::io_other_error)]
             std::io::Error::new(
                 std::io::ErrorKind::Other,
                 format!("unable to retrieve inode for path \"{:?}\": {:?}", path, e),
@@ -272,6 +273,7 @@ pub struct FileSystem {
     fs_start_time: SystemTime,
 
     lookback_config: Lookback,
+    truncate_config: Truncate,
     initial_offsets: HashMap<FileId, SpanVec>,
 
     resume_events_recv: async_channel::Receiver<(u64, EventTimestamp)>,
@@ -314,10 +316,12 @@ fn add_initial_dir_rules(rules: &mut Rules, path: &DirPathBuf) {
 }
 
 impl FileSystem {
+    #[allow(clippy::too_many_arguments)]
     #[instrument(level = "debug", skip_all)]
     pub fn new(
         initial_dirs_original: Vec<DirPathBuf>,
         lookback_config: Lookback,
+        truncate_config: Truncate,
         initial_offsets: HashMap<FileId, SpanVec>,
         rules: Rules,
         fo_state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
@@ -398,6 +402,7 @@ impl FileSystem {
             missing_dirs,
             fs_start_time,
             lookback_config,
+            truncate_config,
             initial_offsets,
             watcher,
             missing_dir_watcher: Some(missing_dir_watcher),
@@ -831,7 +836,7 @@ impl FileSystem {
         let mut path_to_root = false;
 
         // Walk up the parents until a root is found
-        while let Some(parent) = target_mref.parent().take() {
+        while let Some(parent) = target_mref.parent() {
             path_to_root = self
                 .symlinks
                 .get(parent)
@@ -1078,6 +1083,7 @@ impl FileSystem {
                                 offsets,
                                 Some(self.resume_events_send.clone()),
                                 Some(self.retry_events_send.clone()),
+                                self.truncate_config,
                             )
                             .map_err(Error::File)?,
                         ),
@@ -1845,6 +1851,7 @@ mod tests {
                 .try_into()
                 .unwrap_or_else(|_| panic!("{:?} is not a directory!", path))],
             Lookback::Start,
+            Truncate::Start,
             HashMap::new(),
             rules,
             None,

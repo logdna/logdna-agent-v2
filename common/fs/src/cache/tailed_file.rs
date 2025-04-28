@@ -19,6 +19,7 @@ use state::{FileId, GetOffset, Span, SpanVec};
 use metrics::Metrics;
 
 use types::sources::{RetryableLine, SourceError};
+use types::truncate::Truncate;
 
 use async_channel::Sender;
 use async_trait::async_trait;
@@ -380,6 +381,7 @@ pub struct TailedFile<T> {
     inner: Arc<Mutex<TailedFileInner>>,
     resume_events_sender: Option<Sender<(u64, OffsetDateTime)>>,
     retry_events_sender: Option<Sender<RetryStreamMessage>>,
+    truncate_config: Truncate,
     _phantom: std::marker::PhantomData<T>,
 }
 
@@ -389,6 +391,7 @@ impl<T> TailedFile<T> {
         initial_offsets: SpanVec,
         resume_events_sender: Option<Sender<(u64, OffsetDateTime)>>,
         retry_events_sender: Option<Sender<RetryStreamMessage>>,
+        truncate_config: Truncate,
     ) -> Result<Self, std::io::Error> {
         let file = path_abs::FileRead::open(path)?;
         let inode = get_inode(path, Some(file.as_ref()))?;
@@ -405,6 +408,7 @@ impl<T> TailedFile<T> {
             })),
             resume_events_sender,
             retry_events_sender,
+            truncate_config,
             _phantom: std::marker::PhantomData::<T>,
         })
     }
@@ -456,17 +460,28 @@ impl TailedFile<LineBuilder> {
             // if the offset is greater than the file's len
             // it's very likely a truncation occurred
             if offset > len {
-                info!("{:?} was truncated from {} to {}", &paths[0], offset, len);
-                // Reset offset back to the start... ish?
-                // TODO: Work out the purpose of the 8192 something to do with lookback? That seems wrong.
-                inner.offset = if len < 8192 { 0 } else { len };
-                let offset = inner.offset;
+                let new_offset = match self.truncate_config {
+                    Truncate::Start => 0,
+                    Truncate::SmallFiles => {
+                        if len < 8192 {
+                            0
+                        } else {
+                            len
+                        }
+                    }
+                    Truncate::Tail => len,
+                };
+                inner.offset = new_offset;
+                info!(
+                    "{:?} was truncated from {:?} to {}, setting new offset to {} ({})",
+                    &paths[0], offset, len, new_offset, self.truncate_config,
+                );
                 // seek to the offset, this creates the "tailing" effect
                 if let Err(e) = inner
                     .reader
                     .get_mut()
                     .get_mut()
-                    .seek(SeekFrom::Start(offset))
+                    .seek(SeekFrom::Start(new_offset))
                     .await
                 {
                     error!("error seeking {:?}", e);
@@ -856,25 +871,39 @@ impl TailedFile<LazyLineSerializer> {
             // if the offset is greater than the file's len
             // it's very likely a truncation occurred
             if inner.offset > len {
+                let new_offset = match self.truncate_config {
+                    Truncate::Start => 0,
+                    Truncate::SmallFiles => {
+                        if len < 8192 {
+                            0
+                        } else {
+                            len
+                        }
+                    }
+                    Truncate::Tail => len,
+                };
                 info!(
-                    "{:?} was truncated from {:?} to {}",
-                    &paths[0], inner.offsets, len
+                    "{:?} was truncated from {:?} to {}, setting new offset to {} ({})",
+                    &paths[0], inner.offsets, len, new_offset, self.truncate_config,
                 );
 
-                // Reset offset back to the start... ish?
-                // Need to reset TailedFileInner TODO: extract as method
-                inner.offsets = SpanVec::new();
-                inner.retrying_until = Vec::new();
+                // truncate offsets to new file length
+                inner.offset = new_offset;
+                inner.offsets.truncate(new_offset);
 
-                // TODO: Work out the purpose of the 8192 something to do with lookback? That seems wrong.
-                inner.offset = if len < 8192 { 0 } else { len };
+                // TODO: no good mechanism to stop retrying of truncated lines - this is just a
+                // bandaid to maybe catch queued but not yet executed retries (in a very very tiny
+                // window).
+                for event in &mut inner.retrying_until {
+                    event.spans.truncate(new_offset);
+                }
+
                 // seek to the offset, this creates the "tailing" effect
-                let offset = inner.offset;
                 if let Err(e) = inner
                     .reader
                     .get_mut()
                     .get_mut()
-                    .seek(SeekFrom::Start(offset))
+                    .seek(SeekFrom::Start(new_offset))
                     .await
                 {
                     error!("error seeking {:?}", e);
@@ -1046,6 +1075,7 @@ impl TailedFile<LazyLineSerializer> {
                                     }
                                 }
                             };
+                            #[allow(clippy::io_other_error)]
                             Some((
                                 Err(std::io::Error::new(
                                     std::io::ErrorKind::Other,

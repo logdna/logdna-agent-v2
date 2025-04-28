@@ -2,8 +2,8 @@ use crate::cache::entry::EntryKind;
 use crate::cache::event::Event;
 use crate::cache::tailed_file::LazyLineSerializer;
 use crate::cache::{EntryKey, Error as CacheError, FileSystem};
-use types::lookback::Lookback;
 use types::rule::Rules;
+use types::{lookback::Lookback, truncate::Truncate};
 
 use metrics::Metrics;
 use state::{FileId, SpanVec};
@@ -230,10 +230,12 @@ pub fn process(
 
 impl Tailer {
     /// Creates new instance of Tailer
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         watched_dirs: Vec<DirPathBuf>,
         rules: Rules,
         lookback_config: Lookback,
+        truncate_config: Truncate,
         initial_offsets: Option<HashMap<FileId, SpanVec>>,
         fo_state_handles: Option<(FileOffsetWriteHandle, FileOffsetFlushHandle)>,
         deletion_ack_sender: async_channel::Sender<Vec<std::path::PathBuf>>,
@@ -243,6 +245,7 @@ impl Tailer {
             fs_cache: std::rc::Rc::new(std::cell::RefCell::new(FileSystem::new(
                 watched_dirs,
                 lookback_config,
+                truncate_config,
                 initial_offsets.unwrap_or_default(),
                 rules,
                 fo_state_handles,
@@ -399,14 +402,14 @@ mod test {
                 rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
 
                 let log_lines = "This is a test log line";
-                tracing::debug!("{}", log_lines.as_bytes().len());
+                tracing::debug!("{}", log_lines.len());
                 let dir = tempdir().expect("Couldn't create temp dir...");
 
                 let file_path = dir.path().join("test.log");
 
                 let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
-                let line_write_count = (400 / (log_lines.as_bytes().len() + 1)) + 2;
+                let line_write_count = (400 / (log_lines.len() + 1)) + 2;
                 (0..line_write_count).for_each(|_| {
                     writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...")
                 });
@@ -419,6 +422,7 @@ mod test {
                         .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
                     rules,
                     Lookback::None,
+                    Truncate::Start,
                     None,
                     None,
                     async_channel::unbounded().0,
@@ -449,14 +453,14 @@ mod test {
                 rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
 
                 let log_lines1 = "This is a test log line";
-                tracing::debug!("{}", log_lines1.as_bytes().len());
+                tracing::debug!("{}", log_lines1.len());
                 let dir = tempdir().expect("Couldn't create temp dir...");
 
                 let file_path = dir.path().join("test.log");
 
                 let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
-                let line_write_count = (8192 / (log_lines1.as_bytes().len() + 1)) + 2;
+                let line_write_count = (8192 / (log_lines1.len() + 1)) + 2;
                 (0..line_write_count).for_each(|_| {
                     writeln!(file, "{}", log_lines1).expect("Couldn't write to temp log file...")
                 });
@@ -469,6 +473,7 @@ mod test {
                         .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
                     rules,
                     Lookback::SmallFiles,
+                    Truncate::Start,
                     None,
                     None,
                     async_channel::unbounded().0,
@@ -507,7 +512,7 @@ mod test {
                 let file_path = dir.path().join("test.log");
 
                 let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
-                let line_write_count = (8_388_608 / (log_lines.as_bytes().len() + 1)) + 1;
+                let line_write_count = (8_388_608 / (log_lines.len() + 1)) + 1;
                 (0..line_write_count).for_each(|i| {
                     writeln!(file, "{}, {}", log_lines, i)
                         .expect("Couldn't write to temp log file...")
@@ -521,6 +526,7 @@ mod test {
                         .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
                     rules,
                     Lookback::Start,
+                    Truncate::Start,
                     None,
                     None,
                     async_channel::unbounded().0,
@@ -695,6 +701,7 @@ mod test {
                 .unwrap_or_else(|_| panic!("{:?} is not a directory!", dir.path()))],
             rules,
             Lookback::Start,
+            Truncate::Start,
             None,
             None,
             async_channel::unbounded().0,

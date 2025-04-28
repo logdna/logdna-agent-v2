@@ -133,6 +133,7 @@ impl Service<Request<Body>> for Svc {
                 .unwrap_or_default();
 
             let body = req.into_body();
+            #[allow(clippy::io_other_error)]
             let mut body = tokio_util::io::StreamReader::new(
                 body.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
             );
@@ -302,6 +303,7 @@ pub fn http_ingester_with_processors(
     )
 }
 
+#[allow(clippy::io_other_error)]
 fn error(err: String) -> io::Error {
     io::Error::new(io::ErrorKind::Other, err)
 }

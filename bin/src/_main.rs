@@ -399,6 +399,7 @@ pub async fn _main(
         config.log.dirs.clone(),
         config.log.rules.clone(),
         config.log.lookback.clone(),
+        config.log.truncate,
         fo_state_handles,
         fs_offsets,
         metadata_retry_delay,
@@ -420,6 +421,7 @@ pub async fn _main(
             watched_dirs,
             rules,
             lookback,
+            truncate,
             fo_state_handles,
             fs_offsets,
             retry_metadata_delay,
@@ -427,6 +429,7 @@ pub async fn _main(
             let watched_dirs = watched_dirs.clone();
             let rules = rules.clone();
             let lookback = lookback.clone();
+            let truncate = *truncate;
             let deletion_ack_sender = deletion_ack_sender.clone();
             let fo_state_handles = fo_state_handles.clone();
             let fs_offsets = fs_offsets.clone();
@@ -436,6 +439,7 @@ pub async fn _main(
                     watched_dirs,
                     rules,
                     lookback,
+                    truncate,
                     Some(fs_offsets.lock().await.clone()),
                     fo_state_handles,
                     deletion_ack_sender,
