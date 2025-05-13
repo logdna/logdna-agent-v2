@@ -140,7 +140,7 @@ pipeline {
                                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
                                             ]]){
                             sh """
-                                make -j2 test
+                                make test
                             """
                         }
                     }

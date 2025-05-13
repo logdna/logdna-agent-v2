@@ -322,8 +322,7 @@ impl TryFrom<RawConfig> for Config {
             retry_dir: raw.http.retry_dir.unwrap_or_else(|| {
                 if cfg!(windows) {
                     if let Ok(temp) = std::env::var("temp") {
-                        let dir = format!("{}/{}", temp, "logdna");
-                        return PathBuf::from(dir);
+                        return Path::new(&temp).join("logdna");
                     }
                 }
                 PathBuf::from("/tmp/logdna")
@@ -465,7 +464,7 @@ pub fn get_hostname(alt: Option<&[&dyn AsRef<OsStr>]>) -> Option<String> {
             };
             match File::open(path).and_then(closure) {
                 Ok(s) => return Some(s.trim().to_string()),
-                Err(e) => warn!("Unable to read hostname from {:?}: {}", path, e),
+                Err(e) => warn!("Unable to read hostname from {path:?}: {e}"),
             }
         }
     }

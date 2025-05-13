@@ -4,27 +4,30 @@ FROM ${BUILD_IMAGE}
 
 ARG UID
 
-STOPSIGNAL SIGRTMIN+3
+RUN <<-EOF
+  set -eux
+  apt-get update
+  apt-get install -y systemd libsystemd0
+  apt-get clean
+  rm -rf /var/lib/apt/lists/*
+EOF
 
-RUN rm -f /lib/systemd/system/multi-user.target.wants/* \
-  /etc/systemd/system/*.wants/* \
-  /lib/systemd/system/local-fs.target.wants/* \
-  /lib/systemd/system/sockets.target.wants/*udev* \
-  /lib/systemd/system/sockets.target.wants/*initctl* \
-  /lib/systemd/system/sysinit.target.wants/systemd-tmpfiles-setup* \
-  /lib/systemd/system/sysinit.target.wants/*udev* \
-  /lib/systemd/system/systemd-update-utmp*
+RUN <<-EOF
+  set -eux
+  mkdir -p /var/log/journal /run/systemd/journal/docket
+  touch /run/systemd/journal/socket
+EOF
 
-RUN mkdir -p /var/log/journal && \
-    useradd -u ${UID} -G systemd-journal test_user && \
-    chown :systemd-journal /var/log/journal && \
-    chmod g+s /var/log/journal
+RUN echo "uninitialized" > /etc/machine-id || true
+
+RUN <<-EOF
+  set -eux
+  useradd -u ${UID} -G systemd-journal test_user
+  chown :systemd-journal /var/log/journal
+  chmod g+s /var/log/journal
+EOF
 
 
 WORKDIR /work/
 
-RUN chmod 777 /etc
-RUN mkdir /etc/logdna
-RUN chmod 777 /etc/logdna
-
-CMD [ "/bin/systemd", "--system", "--unit=sysinit.target" ]
+CMD [ "/lib/systemd/systemd-journald" ]

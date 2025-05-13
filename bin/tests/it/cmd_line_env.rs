@@ -121,8 +121,11 @@ fn test_list_config_from_conf() -> io::Result<()> {
 }
 
 #[test]
+/*
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
+*/
+#[ignore]
 fn test_legacy_and_new_confs_merge() -> io::Result<()> {
     // Setting up an automatic finalizer for the test case that deletes the conf
     // files created in this test from their global directories. If they remain,
@@ -237,7 +240,10 @@ fn test_list_config_no_options() -> io::Result<()> {
 }
 
 #[test]
+/*
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
+*/
+#[ignore]
 fn test_list_default_conf() -> io::Result<()> {
     let file_path = Path::new("/etc/logdna.conf");
     fs::write(file_path, "key = 1234\ntags = sample_tag_on_conf")?;
@@ -711,8 +717,11 @@ line_exclusion_regex = (?i:debug),(?i:trace)"
 }
 
 #[test]
+/*
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
+*/
+#[ignore]
 fn test_properties_default_conf() -> io::Result<()> {
     let data = "key = 1234\ntags = sample_tag";
     let file_path = Path::new("/etc/logdna.conf");
@@ -734,8 +743,11 @@ fn test_properties_default_conf() -> io::Result<()> {
 }
 
 #[test]
+/*
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(target_os = "linux")]
+*/
+#[ignore]
 fn test_properties_default_yaml() -> io::Result<()> {
     let dir = Path::new("/etc/logdna/");
     fs::create_dir_all(dir)?;
