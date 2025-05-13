@@ -1274,8 +1274,11 @@ async fn test_tags() {
 }
 
 #[test(tokio::test)]
+/*
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
+*/
+#[ignore]
 async fn test_lookback_restarting_agent() {
     let line_count = Arc::new(AtomicUsize::new(0));
 

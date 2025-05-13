@@ -9,7 +9,7 @@ export ARCH ?= x86_64
 # The image repo and tag can be modified e.g.
 # `make build RUST_IMAGE=docker.io/rust:latest
 RUST_IMAGE_REPO ?= docker.io/logdna/build-images
-RUST_IMAGE_BASE ?= bullseye
+RUST_IMAGE_BASE ?= bookworm
 RUST_IMAGE_TAG ?= rust-$(RUST_IMAGE_BASE)-1-stable
 RUST_IMAGE ?= $(RUST_IMAGE_REPO):$(RUST_IMAGE_TAG)-$(ARCH)
 
@@ -18,11 +18,11 @@ ifneq ($(RUST_IMAGE_SUFFIX),)
 	RUST_IMAGE := $(RUST_IMAGE)-$(RUST_IMAGE_SUFFIX)
 endif
 
-BENCH_IMAGE_BASE ?= bullseye
+BENCH_IMAGE_BASE ?= bookworm
 BENCH_IMAGE_TAG ?= rust-$(BENCH_IMAGE_BASE)-1-stable
 BENCH_IMAGE ?= $(RUST_IMAGE_REPO):$(BENCH_IMAGE_TAG)-$(ARCH)
 
-TOOLS_IMAGE_BASE ?= bullseye
+TOOLS_IMAGE_BASE ?= bookworm
 TOOLS_IMAGE_TAG ?= rust-$(TOOLS_IMAGE_BASE)-1-stable
 TOOLS_IMAGE ?= $(RUST_IMAGE_REPO):$(TOOLS_IMAGE_TAG)-$(ARCH)
 
@@ -48,7 +48,7 @@ DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
 export CARGO_CACHE ?= $(shell pwd)/.cargo_cache
 RUST_COMMAND := $(DOCKER_DISPATCH) $(RUST_IMAGE)
 UNCACHED_RUST_COMMAND := CACHE_TARGET="false" $(DOCKER_DISPATCH) $(RUST_IMAGE)
-DEB_COMMAND := CACHE_TARGET="false" $(DOCKER_DISPATCH) alanfranz/fpm-within-docker:debian-bullseye
+DEB_COMMAND := CACHE_TARGET="false" $(DOCKER_DISPATCH) alanfranz/fpm-within-docker:debian-bookworm
 RPM_COMMAND := CACHE_TARGET="false" $(DOCKER_DISPATCH) alanfranz/fpm-within-docker:centos-8
 BENCH_COMMAND = CACHE_TARGET="false" $(DOCKER_DISPATCH) $(BENCH_IMAGE)
 HADOLINT_COMMAND := $(DOCKER_DISPATCH) $(HADOLINT_IMAGE)
