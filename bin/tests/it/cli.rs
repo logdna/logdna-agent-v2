@@ -335,34 +335,136 @@ async fn test_reuse_inode() {
     server_result.unwrap()
 }
 
-#[test]
+#[test(tokio::test)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
-fn test_truncate_file() {
+async fn test_partial_truncate_small_file() {
     // K8s uses copytruncate, see https://github.com/kubernetes/kubernetes/issues/38495
     let dir = tempdir().expect("Could not create temp dir").into_path();
     let file_path = dir.join("file1.log");
-    common::append_to_file(&file_path, 100, 50).expect("Could not append");
+    let total_lines = 139;
+    common::append_to_file(&file_path, 10, 10).expect("Could not append");
 
-    let mut agent_handle = common::spawn_agent(AgentSettings::new(dir.to_str().unwrap()));
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
 
-    let mut stderr_reader = BufReader::new(agent_handle.stderr.as_mut().unwrap());
+    let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &addr);
+    settings.lookback = Some("start");
 
-    common::wait_for_file_event("initialize", &file_path, &mut stderr_reader);
-    common::append_to_file(&file_path, 10_000, 20).expect("Could not append");
-    common::truncate_file(&file_path).expect("Could not truncate file");
+    let (server_result, _) = tokio::join!(server, async {
+        let mut agent_handle = common::spawn_agent(settings);
+        let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
 
-    // Immediately, start appending to the truncated file
-    common::append_to_file(&file_path, 5, 5).expect("Could not append");
-    common::wait_for_file_event("truncated", &file_path, &mut stderr_reader);
+        common::wait_for_file_event("initialize", &file_path, &mut stderr_reader);
+        common::append_to_file(&file_path, 10, 10).expect("Could not append");
+        common::force_client_to_flush(&dir).await;
 
-    // Continue appending
-    common::append_to_file(&file_path, 100, 5).expect("Could not append");
-    common::wait_for_file_event("tailer sendings lines", &file_path, &mut stderr_reader);
+        common::trim_file(&file_path, 50).expect("Could not trim file");
 
-    common::assert_agent_running(&mut agent_handle);
+        // Immediately, start appending to the truncated file
+        common::wait_for_file_event("truncated", &file_path, &mut stderr_reader);
+        common::force_client_to_flush(&dir).await;
 
-    agent_handle.kill().expect("Could not kill process");
+        // Continue appending
+        common::append_to_file(&file_path, 100, 100).expect("Could not append");
+        common::wait_for_file_event("tailer sendings lines", &file_path, &mut stderr_reader);
+        common::force_client_to_flush(&dir).await;
+
+        consume_output(stderr_reader.into_inner());
+
+        // Wait for agent to process lines
+        tokio::time::sleep(tokio::time::Duration::from_millis(1_500)).await;
+
+        let mut file_info = FileInfo::default();
+        let map_key = file_path.to_str().unwrap();
+
+        for _ in 0..10 {
+            let map = received.lock().await;
+            file_info = map.get(map_key).unwrap_or(&file_info).clone();
+            // Avoid awaiting while holding the lock
+            drop(map);
+
+            if file_info.lines < total_lines {
+                // Wait for the data to be received by the mock ingester
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                continue;
+            }
+            break;
+        }
+
+        assert_eq!(file_info.values.len(), total_lines);
+
+        common::assert_agent_running(&mut agent_handle);
+
+        agent_handle.kill().expect("Could not kill process");
+        shutdown_handle();
+    });
+    server_result.unwrap()
+}
+
+#[test(tokio::test)]
+#[cfg_attr(not(feature = "integration_tests"), ignore)]
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+async fn test_partial_truncate_large_file() {
+    // K8s uses copytruncate, see https://github.com/kubernetes/kubernetes/issues/38495
+    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let file_path = dir.join("file1.log");
+    let total_lines = 300;
+    common::append_to_file(&file_path, 100, 100).expect("Could not append");
+
+    let (server, received, shutdown_handle, addr) = common::start_http_ingester();
+
+    let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &addr);
+    settings.lookback = Some("start");
+
+    let (server_result, _) = tokio::join!(server, async {
+        let mut agent_handle = common::spawn_agent(settings);
+        let mut stderr_reader = BufReader::new(agent_handle.stderr.take().unwrap());
+
+        common::wait_for_file_event("initialize", &file_path, &mut stderr_reader);
+        common::append_to_file(&file_path, 100, 100).expect("Could not append");
+        common::force_client_to_flush(&dir).await;
+
+        common::trim_file(&file_path, 50).expect("Could not trim file");
+
+        // Immediately, start appending to the truncated file
+        common::wait_for_file_event("truncated", &file_path, &mut stderr_reader);
+        common::force_client_to_flush(&dir).await;
+
+        // Continue appending
+        common::append_to_file(&file_path, 100, 100).expect("Could not append");
+        common::wait_for_file_event("tailer sendings lines", &file_path, &mut stderr_reader);
+        common::force_client_to_flush(&dir).await;
+
+        consume_output(stderr_reader.into_inner());
+
+        // Wait for agent to process lines
+        tokio::time::sleep(tokio::time::Duration::from_millis(1_500)).await;
+
+        let mut file_info = FileInfo::default();
+        let map_key = file_path.to_str().unwrap();
+
+        for _ in 0..10 {
+            let map = received.lock().await;
+            file_info = map.get(map_key).unwrap_or(&file_info).clone();
+            // Avoid awaiting while holding the lock
+            drop(map);
+
+            if file_info.lines < total_lines {
+                // Wait for the data to be received by the mock ingester
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                continue;
+            }
+            break;
+        }
+
+        assert_eq!(file_info.values.len(), total_lines);
+
+        common::assert_agent_running(&mut agent_handle);
+
+        agent_handle.kill().expect("Could not kill process");
+        shutdown_handle();
+    });
+    server_result.unwrap()
 }
 
 #[test]
@@ -877,7 +979,7 @@ fn lookback_none_lines_are_delivered() {
 
     debug!("test log: {}", file_path.to_str().unwrap());
     // Enough bytes to get past the lookback threshold
-    let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
+    let line_write_count = (8192 / (log_lines.len() + 1)) + 1;
     (0..line_write_count)
         .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
 
@@ -885,7 +987,7 @@ fn lookback_none_lines_are_delivered() {
         "wrote {} lines to {} with size {}",
         line_write_count,
         file_path.to_str().unwrap(),
-        (log_lines.as_bytes().len() + 1) * line_write_count
+        (log_lines.len() + 1) * line_write_count
     );
     file.sync_all().expect("Failed to sync file");
 
@@ -1353,7 +1455,7 @@ async fn test_lookback_restarting_agent() {
         tokio::time::sleep(tokio::time::Duration::from_millis(2500)).await;
 
         let map = received.lock().await;
-        assert!(map.len() > 0);
+        assert!(!map.is_empty());
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();
 
         assert!(file_info.values.len() > 100);
@@ -1992,7 +2094,7 @@ fn lookback_stateful_lines_are_delivered() {
     let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
     // Enough bytes to get past the lookback threshold
-    let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
+    let line_write_count = (8192 / (log_lines.len() + 1)) + 1;
 
     (0..line_write_count)
         .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));

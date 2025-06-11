@@ -20,8 +20,8 @@ use async_compression::Level;
 use http::types::params::Params;
 use http::types::request::{Encoding, RequestTemplate, Schema};
 use types::dir_path::DirPathBuf;
-use types::lookback::Lookback;
 use types::rule::{RuleDef, Rules};
+use types::{lookback::Lookback, truncate::Truncate};
 
 pub use crate::argv::ArgumentOptions;
 use crate::error::ConfigError;
@@ -118,6 +118,7 @@ pub struct LogConfig {
     pub line_inclusion_regex: Vec<String>,
     pub line_redact_regex: Vec<String>,
     pub lookback: Lookback,
+    pub truncate: Truncate,
     pub use_k8s_enrichment: K8sTrackingConf,
     pub log_k8s_events: K8sTrackingConf,
     pub k8s_metadata_include: Vec<String>,
@@ -366,6 +367,11 @@ impl TryFrom<RawConfig> for Config {
                 .lookback
                 .map(|s| s.parse::<Lookback>())
                 .unwrap_or_else(|| Ok(Lookback::default()))?,
+            truncate: raw
+                .log
+                .truncate
+                .map(|s| s.parse::<Truncate>())
+                .unwrap_or_else(|| Ok(Truncate::default()))?,
             use_k8s_enrichment: parse_k8s_enum_config_or_warn(
                 raw.log.use_k8s_enrichment,
                 env_vars::USE_K8S_LOG_ENRICHMENT,
@@ -536,6 +542,7 @@ lazy_static! {
         Regex::new(r"(?P<var>\$\{(?P<key>[^|}]+?)\|(?P<default>[^|}]*?)})").unwrap();
 }
 
+#[allow(clippy::doc_overindented_list_items)]
 /// Var expansion with default value support.
 /// Supported cases:
 ///   1. ${VarName}             - simple substitute using vars dictionary,
@@ -693,6 +700,7 @@ mod tests {
         assert_eq!(config.log.log_k8s_events, K8sTrackingConf::Never);
         assert_eq!(config.log.log_metric_server_stats, K8sTrackingConf::Never);
         assert_eq!(config.log.lookback, Lookback::None);
+        assert_eq!(config.log.truncate, Truncate::SmallFiles);
         let def_pathbuf = PathBuf::from(DEFAULT_LOG_DIR);
         assert_eq!(
             config.log.dirs,

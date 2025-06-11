@@ -310,6 +310,8 @@ pub struct LogConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lookback: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub truncate: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub use_k8s_enrichment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub log_k8s_events: Option<String>,
@@ -484,6 +486,7 @@ impl Default for LogConfig {
             line_inclusion_regex: None,
             line_redact_regex: None,
             lookback: None,
+            truncate: None,
             use_k8s_enrichment: None,
             log_k8s_events: None,
             k8s_metadata_include: None,
@@ -512,6 +515,7 @@ impl Merge for LogConfig {
         self.line_redact_regex
             .merge(&other.line_redact_regex, &default.line_redact_regex);
         self.lookback.merge(&other.lookback, &default.lookback);
+        self.truncate.merge(&other.truncate, &default.truncate);
         self.use_k8s_enrichment
             .merge(&other.use_k8s_enrichment, &default.use_k8s_enrichment);
         self.log_k8s_events
@@ -866,6 +870,7 @@ gzip_level = 4
 ip = 10.10.10.8
 mac = 00:A0:C9:14:C8:29
 lookback = start
+truncate = start
 db_path = /var/lib/my-dir
 metrics_port = 8901
 use_k8s_log_enrichment = never
@@ -906,6 +911,7 @@ ingest_buffer_size = 3145728
         assert_eq!(params.ip, some_string!("10.10.10.8"));
         assert_eq!(params.mac, some_string!("00:A0:C9:14:C8:29"));
 
+        assert_eq!(config.log.lookback, some_string!("start"));
         assert_eq!(config.log.lookback, some_string!("start"));
         assert_eq!(config.log.db_path, Some(PathBuf::from("/var/lib/my-dir")));
         assert_eq!(config.log.metrics_port, Some(8901));

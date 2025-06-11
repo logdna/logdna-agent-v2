@@ -17,6 +17,7 @@ pub enum ConfigError {
     Regex(types::rule::RuleError),
     NotADirectory(types::dir_path::DirPathBufError),
     Lookback(types::lookback::ParseLookbackError),
+    Truncate(types::truncate::ParseTruncateError),
 }
 
 impl Display for ConfigError {
@@ -41,6 +42,7 @@ impl Display for ConfigError {
             ConfigError::Regex(e) => write!(f, "{}", e),
             ConfigError::NotADirectory(e) => write!(f, "{}", e),
             ConfigError::Lookback(e) => write!(f, "{}", e),
+            ConfigError::Truncate(e) => write!(f, "{}", e),
         }
     }
 }
@@ -84,5 +86,11 @@ impl From<types::dir_path::DirPathBufError> for ConfigError {
 impl From<types::lookback::ParseLookbackError> for ConfigError {
     fn from(e: types::lookback::ParseLookbackError) -> Self {
         ConfigError::Lookback(e)
+    }
+}
+
+impl From<types::truncate::ParseTruncateError> for ConfigError {
+    fn from(e: types::truncate::ParseTruncateError) -> Self {
+        ConfigError::Truncate(e)
     }
 }

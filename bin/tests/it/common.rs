@@ -68,6 +68,24 @@ pub fn truncate_file(file_path: &Path) -> Result<(), std::io::Error> {
     Ok(())
 }
 
+#[cfg(not(target_os = "macos"))]
+pub fn trim_file(path: &Path, bytes: u64) -> Result<(), std::io::Error> {
+    let file = OpenOptions::new().read(true).write(true).open(path)?;
+
+    let file_len = file.metadata()?.len();
+
+    if bytes > file_len {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "File length longer than requested bytes to trim",
+        ));
+    }
+
+    file.set_len(file_len - bytes)?;
+    file.sync_all()?;
+    Ok(())
+}
+
 #[derive(Clone, Default)]
 pub struct AgentSettings<'a> {
     pub log_dirs: &'a str,

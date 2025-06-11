@@ -177,7 +177,7 @@ impl Watcher {
                 trace!("received raw notify event: {:?}", received);
                 let notify::Event { kind, paths, attrs } = received;
                 let mut paths = paths.into_iter();
-                if let Some(mapped_event) = match ((paths.next(), paths.last()), kind) {
+                if let Some(mapped_event) = match ((paths.next(), paths.next_back()), kind) {
                     // looks like something removed a file
                     (
                         (Some(from_path), None),

@@ -603,9 +603,9 @@ mod tests {
             Ok(PodMetadata {
                 name: name.to_string(),
                 namespace: namespace.to_string(),
-                labels: real_pod_meta.labels.clone().take().unwrap_or_default(),
+                labels: real_pod_meta.labels.clone().unwrap_or_default(),
                 //.map_or_else(KeyValueMap::new, |v| v.iter().fold(KeyValueMap::new(), |acc, (k, v)| acc.add(k, v))),
-                annotations: real_pod_meta.annotations.clone().take().unwrap_or_default(), //.as_ref().map_or_else(KeyValueMap::new, |v| v.iter().fold(KeyValueMap::new(), |acc, (k, v)| acc.add(k, v))),
+                annotations: real_pod_meta.annotations.clone().unwrap_or_default(), //.as_ref().map_or_else(KeyValueMap::new, |v| v.iter().fold(KeyValueMap::new(), |acc, (k, v)| acc.add(k, v))),
             })
         }
     }
