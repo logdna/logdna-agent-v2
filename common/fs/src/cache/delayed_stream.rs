@@ -129,9 +129,7 @@ pub fn delayed_stream<T>(
                     let now = Instant::now();
                     while delayed_events
                         .peek()
-                        .map_or(false, |de: &Reverse<DelayedEvent<_>>| {
-                            now > de.0.delayed_until
-                        })
+                        .is_some_and(|de: &Reverse<DelayedEvent<_>>| now > de.0.delayed_until)
                     {
                         ready_events.push(delayed_events.pop().unwrap().0.event);
                     }

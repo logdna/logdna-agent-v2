@@ -22,25 +22,24 @@ pub enum ConfigError {
 impl Display for ConfigError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         match self {
-            ConfigError::MultipleErrors(vector) => write!(f, "{:?}", vector),
-            ConfigError::MissingField(field) => write!(f, "{} is a required field", field),
+            ConfigError::MultipleErrors(vector) => write!(f, "{vector:?}"),
+            ConfigError::MissingField(field) => write!(f, "{field} is a required field"),
             ConfigError::MissingFieldOrEnvVar(field, vars) => {
                 write!(
                     f,
-                    "{} is missing, use command line arguments, env var ({}) or \
-                    the config file to set it",
-                    field, vars
+                    "{field} is missing, use command line arguments, env var ({vars}) or \
+                    the config file to set it"
                 )
             }
-            ConfigError::Io(e) => write!(f, "{}", e),
-            ConfigError::Serde(e) => write!(f, "{}", e),
-            ConfigError::SerdeProperties(e) => write!(f, "{}", e),
-            ConfigError::PropertyInvalid(e) => write!(f, "{}", e),
-            ConfigError::Template(e) => write!(f, "{}", e),
-            ConfigError::Glob(e) => write!(f, "{}", e),
-            ConfigError::Regex(e) => write!(f, "{}", e),
-            ConfigError::NotADirectory(e) => write!(f, "{}", e),
-            ConfigError::Lookback(e) => write!(f, "{}", e),
+            ConfigError::Io(e) => write!(f, "{e}"),
+            ConfigError::Serde(e) => write!(f, "{e}"),
+            ConfigError::SerdeProperties(e) => write!(f, "{e}"),
+            ConfigError::PropertyInvalid(e) => write!(f, "{e}"),
+            ConfigError::Template(e) => write!(f, "{e}"),
+            ConfigError::Glob(e) => write!(f, "{e}"),
+            ConfigError::Regex(e) => write!(f, "{e}"),
+            ConfigError::NotADirectory(e) => write!(f, "{e}"),
+            ConfigError::Lookback(e) => write!(f, "{e}"),
         }
     }
 }

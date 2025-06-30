@@ -278,7 +278,7 @@ impl RetrySender {
 
         // Write to a partial file to avoid concurrently reading from a file that's not been written
         let mut file_name = self.directory.clone();
-        file_name.push(format!("{}_{}.retry.partial", fn_ts, fn_uuid));
+        file_name.push(format!("{fn_ts}_{fn_uuid}.retry.partial"));
 
         // this scope block needed for file close
         {
@@ -369,7 +369,7 @@ impl RetrySender {
         Metrics::retry().report_storage_used(new_disk_used);
 
         let mut new_file_name = self.directory.clone();
-        new_file_name.push(format!("{}_{}.retry", fn_ts, fn_uuid));
+        new_file_name.push(format!("{fn_ts}_{fn_uuid}.retry"));
 
         Ok(rename(file_name, new_file_name).await?)
     }
@@ -513,7 +513,7 @@ mod tests {
         let fn_uuid = Uuid::new_v4().to_string();
 
         let mut existing_file_path = retry_dir.clone();
-        existing_file_path.push(format!("{}_{}.retry", fn_ts, fn_uuid));
+        existing_file_path.push(format!("{fn_ts}_{fn_uuid}.retry"));
 
         let mut existing_file = BufWriter::new(
             OpenOptions::new()

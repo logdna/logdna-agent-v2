@@ -9,7 +9,7 @@ pub async fn fetch_agent_metrics(
     metrics_port: u16,
 ) -> Result<(StatusCode, Option<String>), hyper::Error> {
     let client = Client::new();
-    let url = format!("http://127.0.0.1:{}/metrics", metrics_port)
+    let url = format!("http://127.0.0.1:{metrics_port}/metrics")
         .parse()
         .unwrap();
 

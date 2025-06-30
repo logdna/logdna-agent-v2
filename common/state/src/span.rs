@@ -681,7 +681,7 @@ fn test_span_vec_insert_coalescing() {
 
     sv.insert(Span::new(7, 399).unwrap());
 
-    assert_eq!(sv.len(), 3, "{:#?}", sv);
+    assert_eq!(sv.len(), 3, "{sv:#?}");
 
     let mut sv = SpanVec::new();
     sv.insert(Span::new(0, 1).unwrap());
@@ -704,10 +704,10 @@ fn test_span_vec_insert_coalescing() {
     assert_eq!(sv.len(), 11);
 
     sv.insert(Span::new(9, 15).unwrap());
-    assert_eq!(sv.len(), 8, "{:#?}", sv);
+    assert_eq!(sv.len(), 8, "{sv:#?}");
 
     sv.insert(Span::new(18, 35).unwrap());
-    assert_eq!(sv.len(), 4, "{:#?}", sv);
+    assert_eq!(sv.len(), 4, "{sv:#?}");
 }
 
 #[ignore]
@@ -729,19 +729,19 @@ fn test_span_vec_remove() {
     // contained
     let mut sv_contained = sv.clone();
     sv_contained.remove(s_mid);
-    assert_eq!(sv_contained.len(), 2, "{:?}", sv_contained);
+    assert_eq!(sv_contained.len(), 2, "{sv_contained:?}");
     assert_eq!(sv_contained[0], Span::new(0, 0).unwrap());
     assert_eq!(sv_contained[1], Span::new(2, 4).unwrap());
 
     // left
     let mut sv_left = sv.clone();
     sv_left.remove(s_close);
-    assert_eq!(sv_left.len(), 1, "{:?}", sv_left);
+    assert_eq!(sv_left.len(), 1, "{sv_left:?}");
     assert_eq!(sv_left[0], Span::new(1, 4).unwrap());
 
     let mut sv_right = sv.clone();
     sv_right.remove(s_far);
-    assert_eq!(sv_right.len(), 1, "{:?}", sv_right);
+    assert_eq!(sv_right.len(), 1, "{sv_right:?}");
     assert_eq!(sv_right[0], Span::new(0, 2).unwrap());
 
     let mut sv = SpanVec::new();
@@ -757,10 +757,10 @@ fn test_span_vec_remove() {
 
     let mut sv_far = sv.clone();
     sv_far.remove(Span::new(12, 17).unwrap());
-    assert_eq!(sv_far.len(), 1, "{:?}", sv_far);
+    assert_eq!(sv_far.len(), 1, "{sv_far:?}");
     assert_eq!(sv_far[0], Span::new(10, 11).unwrap());
 
     let mut sv_far = sv.clone();
     sv_far.remove(Span::new(5, 20).unwrap());
-    assert_eq!(sv_far.len(), 0, "{:?}", sv_far);
+    assert_eq!(sv_far.len(), 0, "{sv_far:?}");
 }

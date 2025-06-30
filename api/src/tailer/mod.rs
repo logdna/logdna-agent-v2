@@ -99,7 +99,7 @@ impl Decoder for TailerApiDecoder {
                         range_len = r.len();
                         std::str::from_utf8(r)
                             .ok()
-                            .map_or_else(|| format!("{:?}", r), |s| s.to_string())
+                            .map_or_else(|| format!("{r:?}"), |s| s.to_string())
                     })
                     .map_position(|p| p.translate_position(&src[..]));
 
@@ -125,7 +125,7 @@ impl Decoder for TailerApiDecoder {
                         .map_range(|r| {
                             std::str::from_utf8(r)
                                 .ok()
-                                .map_or_else(|| format!("{:?}", r), |s| s.to_string())
+                                .map_or_else(|| format!("{r:?}"), |s| s.to_string())
                         })
                         .map_position(|p| p.translate_position(&src[..]));
                     format!(
@@ -179,17 +179,20 @@ pub fn create_tailer_source(
         .assign_process(tailer_process.raw_handle().unwrap())
         .expect("Failed to assign tailer process to job.");
 
-    let tailer_stdout = tailer_process.stdout.take().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::Other, "Can't get tailer stdout handle")
-    })?;
+    let tailer_stdout = tailer_process
+        .stdout
+        .take()
+        .ok_or_else(|| std::io::Error::other("Can't get tailer stdout handle"))?;
 
-    let tailer_stderr = tailer_process.stderr.take().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::Other, "Can't get tailer stderr handle")
-    })?;
+    let tailer_stderr = tailer_process
+        .stderr
+        .take()
+        .ok_or_else(|| std::io::Error::other("Can't get tailer stderr handle"))?;
 
-    let tailer_stdin = tailer_process.stdin.take().ok_or_else(|| {
-        std::io::Error::new(std::io::ErrorKind::Other, "Can't get tailer stdin handle")
-    })?;
+    let tailer_stdin = tailer_process
+        .stdin
+        .take()
+        .ok_or_else(|| std::io::Error::other("Can't get tailer stdin handle"))?;
 
     tokio::spawn(async move {
         let status = tailer_process

@@ -64,13 +64,13 @@ fn api_key_present() {
 
     let log_lines = "This is a test log line\nLook at me, another test log line\nMore log lines....\nAnother log line!";
 
-    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+    writeln!(file, "{log_lines}").expect("Couldn't write to temp log file...");
     file.sync_all().unwrap();
 
     let test_file_path = dir.path().join("test.log");
     let mut file = File::create(test_file_path).expect("Couldn't create temp log file...");
 
-    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+    writeln!(file, "{log_lines}").expect("Couldn't write to temp log file...");
     file.sync_all().unwrap();
 
     handle.kill().unwrap();
@@ -790,7 +790,7 @@ proptest! {
 
         debug!("{}", lines_write_count);
         log_lines[0..lines_write_count].iter()
-            .for_each(|log_line| writeln!(file, "{}", log_line).expect("Couldn't write to temp log file..."));
+            .for_each(|log_line| writeln!(file, "{log_line}").expect("Couldn't write to temp log file..."));
         file.sync_all().expect("Failed to sync file");
 
         // Dump the agent's stdout
@@ -832,7 +832,7 @@ proptest! {
                 async {
                     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                     log_lines[lines_write_count..lines_write_count + 5].iter().for_each(|log_line| {
-                        writeln!(file, "{}", log_line).expect("Couldn't write to temp log file...");
+                        writeln!(file, "{log_line}").expect("Couldn't write to temp log file...");
                     });
                     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                     file.sync_all().expect("Failed to sync file");
@@ -877,15 +877,15 @@ fn lookback_none_lines_are_delivered() {
 
     debug!("test log: {}", file_path.to_str().unwrap());
     // Enough bytes to get past the lookback threshold
-    let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
+    let line_write_count = (8192 / (log_lines.len() + 1)) + 1;
     (0..line_write_count)
-        .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
+        .for_each(|_| writeln!(file, "{log_lines}").expect("Couldn't write to temp log file..."));
 
     debug!(
         "wrote {} lines to {} with size {}",
         line_write_count,
         file_path.to_str().unwrap(),
-        (log_lines.as_bytes().len() + 1) * line_write_count
+        (log_lines.len() + 1) * line_write_count
     );
     file.sync_all().expect("Failed to sync file");
 
@@ -928,7 +928,7 @@ fn lookback_none_lines_are_delivered() {
             },
             async move {
                 (0..5).for_each(|_| {
-                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                    writeln!(file, "{log_lines}").expect("Couldn't write to temp log file...");
                 });
                 file.sync_all().expect("Failed to sync file");
                 tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
@@ -981,8 +981,7 @@ fn lookback_tail_lines_file_created_after_agent_start_at_beg() {
 
                     tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
                     (0..5).for_each(|_| {
-                        writeln!(file, "{}", log_lines)
-                            .expect("Couldn't write to temp log file...");
+                        writeln!(file, "{log_lines}").expect("Couldn't write to temp log file...");
                         file.sync_all().expect("Failed to sync file");
                     });
                     file.sync_all().expect("Failed to sync file");
@@ -1036,8 +1035,7 @@ fn lookback_tail_lines_file_created_before_agent_start_at_end() {
     let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
     debug!("test log: {}", file_path.to_str().unwrap());
-    (0..5)
-        .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
+    (0..5).for_each(|_| writeln!(file, "{log_lines}").expect("Couldn't write to temp log file..."));
 
     file.sync_all().expect("Failed to sync file");
 
@@ -1076,7 +1074,7 @@ fn lookback_tail_lines_file_created_before_agent_start_at_end() {
             async move {
                 tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
                 (0..5).for_each(|_| {
-                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                    writeln!(file, "{log_lines}").expect("Couldn't write to temp log file...");
                     file.sync_all().expect("Failed to sync file");
                 });
                 file.sync_all().expect("Failed to sync file");
@@ -1262,7 +1260,7 @@ async fn test_tags() {
             break;
         }
 
-        assert_eq!(file_info.lines, total_lines, "{:#?}", file_info);
+        assert_eq!(file_info.lines, total_lines, "{file_info:#?}");
         assert_eq!(
             file_info.values,
             vec![common::LINE.to_owned() + "\n"; total_lines]
@@ -1313,7 +1311,7 @@ async fn test_lookback_restarting_agent() {
 
         let writer_thread = std::thread::spawn(move || {
             for i in 0..line_count_target {
-                writeln!(file, "Hello from line {}", i).unwrap();
+                writeln!(file, "Hello from line {i}").unwrap();
                 line_count_clone.fetch_add(1, Ordering::SeqCst);
                 if i % 1000 == 0 {
                     file.sync_all().unwrap();
@@ -1353,7 +1351,7 @@ async fn test_lookback_restarting_agent() {
         tokio::time::sleep(tokio::time::Duration::from_millis(2500)).await;
 
         let map = received.lock().await;
-        assert!(map.len() > 0);
+        assert!(!map.is_empty());
         let file_info = map.get(file_path.to_str().unwrap()).unwrap();
 
         assert!(file_info.values.len() > 100);
@@ -1370,7 +1368,7 @@ async fn test_lookback_restarting_agent() {
         );
 
         for i in 0..file_info.values.len() {
-            assert_eq!(file_info.values[i], format!("Hello from line {}\n", i));
+            assert_eq!(file_info.values[i], format!("Hello from line {i}\n"));
         }
 
         agent_handle.kill().expect("Could not kill process");
@@ -1394,7 +1392,7 @@ async fn test_symlink_initialization_both_included() {
         .open(&file_path)
         .unwrap();
     for i in 0..10 {
-        writeln!(file, "SAMPLE {}", i).unwrap();
+        writeln!(file, "SAMPLE {i}").unwrap();
     }
     file.sync_all().unwrap();
     std::os::unix::fs::symlink(&file_path, &symlink_path).unwrap();
@@ -1408,7 +1406,7 @@ async fn test_symlink_initialization_both_included() {
         consume_output(stderr_reader.into_inner());
         tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
         for i in 10..20 {
-            writeln!(file, "SAMPLE {}", i).unwrap();
+            writeln!(file, "SAMPLE {i}").unwrap();
         }
         file.sync_all().unwrap();
         common::force_client_to_flush(&log_dir).await;
@@ -1420,13 +1418,13 @@ async fn test_symlink_initialization_both_included() {
             .get(file_path.to_str().unwrap())
             .expect("lines for file not found");
         for i in 0..20 {
-            assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
+            assert_eq!(file_info.values[i], format!("SAMPLE {i}\n"));
         }
         let file_info = map
             .get(symlink_path.to_str().unwrap())
             .expect("lines for symlink not found");
         for i in 0..20 {
-            assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
+            assert_eq!(file_info.values[i], format!("SAMPLE {i}\n"));
         }
 
         agent_handle.kill().expect("Could not kill process");
@@ -1451,7 +1449,7 @@ async fn test_symlink_initialization_excluded_file() {
         .open(&file_path)
         .unwrap();
     for i in 0..10 {
-        writeln!(file, "SAMPLE {}", i).unwrap();
+        writeln!(file, "SAMPLE {i}").unwrap();
     }
     file.sync_all().unwrap();
     std::os::unix::fs::symlink(&file_path, &symlink_path).unwrap();
@@ -1465,7 +1463,7 @@ async fn test_symlink_initialization_excluded_file() {
         // Consume output
         consume_output(stderr_reader.into_inner());
         for i in 10..20 {
-            writeln!(file, "SAMPLE {}", i).unwrap();
+            writeln!(file, "SAMPLE {i}").unwrap();
         }
         file.sync_all().unwrap();
         common::force_client_to_flush(&log_dir).await;
@@ -1476,7 +1474,7 @@ async fn test_symlink_initialization_excluded_file() {
             .get(symlink_path.to_str().unwrap())
             .expect("symlink not found");
         for i in 0..20 {
-            assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
+            assert_eq!(file_info.values[i], format!("SAMPLE {i}\n"));
         }
         assert!(map.get(file_path.to_str().unwrap()).is_none());
         agent_handle.kill().expect("Could not kill process");
@@ -1502,7 +1500,7 @@ async fn test_symlink_to_symlink_initialization_excluded_file() {
         .open(&file_path)
         .unwrap();
     for i in 0..10 {
-        writeln!(file, "SAMPLE {}", i).unwrap();
+        writeln!(file, "SAMPLE {i}").unwrap();
     }
     file.sync_all().unwrap();
     std::os::unix::fs::symlink(&file_path, &excluded_symlink_path).unwrap();
@@ -1517,7 +1515,7 @@ async fn test_symlink_to_symlink_initialization_excluded_file() {
         // Consume output
         consume_output(stderr_reader.into_inner());
         for i in 10..20 {
-            writeln!(file, "SAMPLE {}", i).unwrap();
+            writeln!(file, "SAMPLE {i}").unwrap();
         }
         file.sync_all().unwrap();
         common::force_client_to_flush(&log_dir).await;
@@ -1528,7 +1526,7 @@ async fn test_symlink_to_symlink_initialization_excluded_file() {
             .get(symlink_path.to_str().unwrap())
             .expect("symlink not found");
         for i in 0..20 {
-            assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
+            assert_eq!(file_info.values[i], format!("SAMPLE {i}\n"));
         }
         agent_handle.kill().expect("Could not kill process");
         shutdown_handle();
@@ -1560,7 +1558,7 @@ async fn test_symlink_to_dir_initialization_excluded_file() {
         .open(&file_path)
         .unwrap();
     for i in 0..10 {
-        writeln!(file, "SAMPLE {}", i).unwrap();
+        writeln!(file, "SAMPLE {i}").unwrap();
     }
     file.sync_all().unwrap();
 
@@ -1582,7 +1580,7 @@ async fn test_symlink_to_dir_initialization_excluded_file() {
         // Consume output
         consume_output(stderr_reader.into_inner());
         for i in 10..20 {
-            writeln!(file, "SAMPLE {}", i).unwrap();
+            writeln!(file, "SAMPLE {i}").unwrap();
         }
         file.sync_all().unwrap();
         common::force_client_to_flush(&log_dir).await;
@@ -1595,7 +1593,7 @@ async fn test_symlink_to_dir_initialization_excluded_file() {
             .get(tracked_symlink_path.to_str().unwrap())
             .expect("symlink not found");
         for i in 0..20 {
-            assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
+            assert_eq!(file_info.values[i], format!("SAMPLE {i}\n"));
         }
         agent_handle.kill().expect("Could not kill process");
         shutdown_handle();
@@ -1628,7 +1626,7 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
         .open(&file_path)
         .unwrap();
     for i in 0..10 {
-        writeln!(file, "SAMPLE {}", i).unwrap();
+        writeln!(file, "SAMPLE {i}").unwrap();
     }
     file.sync_all().unwrap();
     std::os::unix::fs::symlink(&file_path, &excluded_symlink_path).unwrap();
@@ -1653,7 +1651,7 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
         common::wait_for_event("Enabling filesystem", &mut stderr_reader);
         consume_output(stderr_reader.into_inner());
         for i in 10..20 {
-            writeln!(file, "SAMPLE {}", i).unwrap();
+            writeln!(file, "SAMPLE {i}").unwrap();
         }
         file.sync_all().unwrap();
         common::force_client_to_flush(&log_dir).await;
@@ -1665,7 +1663,7 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
                 .get(symlink_path.to_str().unwrap())
                 .expect("symlink not found");
             for i in 0..20 {
-                assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
+                assert_eq!(file_info.values[i], format!("SAMPLE {i}\n"));
             }
         }
         agent_handle.kill().expect("Could not kill process");
@@ -1682,7 +1680,7 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
         common::wait_for_event("Enabling filesystem", &mut stderr_reader);
         consume_output(stderr_reader.into_inner());
         for i in 20..30 {
-            writeln!(file, "SAMPLE {}", i).unwrap();
+            writeln!(file, "SAMPLE {i}").unwrap();
         }
         file.sync_all().unwrap();
         common::force_client_to_flush(&log_dir).await;
@@ -1697,7 +1695,7 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
             debug!("line: {:?}", v);
         }
         for i in 0..30 {
-            assert_eq!(file_info.values[i], format!("SAMPLE {}\n", i));
+            assert_eq!(file_info.values[i], format!("SAMPLE {i}\n"));
         }
         agent_handle.kill().expect("Could not kill process");
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -1730,7 +1728,7 @@ async fn test_symlink_initialization_with_stateful_lookback() {
         .unwrap();
 
     for i in 0..10 {
-        writeln!(file, "SAMPLE {}", i).unwrap();
+        writeln!(file, "SAMPLE {i}").unwrap();
     }
     file.sync_all().unwrap();
 
@@ -1740,7 +1738,7 @@ async fn test_symlink_initialization_with_stateful_lookback() {
         server,
         async {
             for i in 10..20 {
-                writeln!(file, "SAMPLE {}", i).unwrap();
+                writeln!(file, "SAMPLE {i}").unwrap();
             }
             file.sync_all().unwrap();
             common::force_client_to_flush(&log_dir).await;
@@ -1753,7 +1751,7 @@ async fn test_symlink_initialization_with_stateful_lookback() {
                 .get(symlink_path.to_str().unwrap())
                 .expect("symlink not found");
             for (i, line) in file_info.values.iter().enumerate() {
-                assert_eq!(line.as_str(), &format!("SAMPLE {}\n", i));
+                assert_eq!(line.as_str(), &format!("SAMPLE {i}\n"));
             }
             shutdown_handle();
         },
@@ -1812,7 +1810,7 @@ async fn test_line_rules(
 
     let (server_result, _) = tokio::join!(server, async move {
         for item in to_write {
-            write!(file, "{}", item).unwrap();
+            write!(file, "{item}").unwrap();
 
             if !item.ends_with('\n') {
                 // Add partial lines on purpose
@@ -1992,10 +1990,10 @@ fn lookback_stateful_lines_are_delivered() {
     let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
     // Enough bytes to get past the lookback threshold
-    let line_write_count = (8192 / (log_lines.as_bytes().len() + 1)) + 1;
+    let line_write_count = (8192 / (log_lines.len() + 1)) + 1;
 
     (0..line_write_count)
-        .for_each(|_| writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file..."));
+        .for_each(|_| writeln!(file, "{log_lines}").expect("Couldn't write to temp log file..."));
     file.sync_all().expect("Failed to sync file");
 
     // Write initial lines
@@ -2046,7 +2044,7 @@ fn lookback_stateful_lines_are_delivered() {
                     .expect("Couldn't create temp log file...");
                 (0..5).for_each(|_| {
                     file.sync_all().expect("Failed to sync file");
-                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                    writeln!(file, "{log_lines}").expect("Couldn't write to temp log file...");
                 });
                 tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
                 file.sync_all().expect("Failed to sync file");
@@ -2107,7 +2105,7 @@ fn lookback_stateful_lines_are_delivered() {
                     .open(&file_path_clone)
                     .expect("Couldn't create temp log file...");
                 (0..5).for_each(|_| {
-                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                    writeln!(file, "{log_lines}").expect("Couldn't write to temp log file...");
                 });
                 tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                 file.sync_all().expect("Failed to sync file");
@@ -2147,8 +2145,8 @@ async fn test_tight_writes() {
             .open(&file_path)?;
 
         for i in 0..lines {
-            if let Err(e) = writeln!(file, "{}", line) {
-                eprintln!("Couldn't write to file: {}", e);
+            if let Err(e) = writeln!(file, "{line}") {
+                eprintln!("Couldn't write to file: {e}");
                 return Err(e);
             }
 
@@ -2220,8 +2218,8 @@ async fn test_tight_writes_with_slow_ingester() {
 
         let delay_count = 45;
         for i in 0..lines - delay_count {
-            if let Err(e) = writeln!(file, "{}", line) {
-                eprintln!("Couldn't write to file: {}", e);
+            if let Err(e) = writeln!(file, "{line}") {
+                eprintln!("Couldn't write to file: {e}");
                 return Err(e);
             }
 
@@ -2235,8 +2233,8 @@ async fn test_tight_writes_with_slow_ingester() {
 
         for _ in 0..delay_count {
             tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-            if let Err(e) = writeln!(file, "{}", line) {
-                eprintln!("Couldn't write to file: {}", e);
+            if let Err(e) = writeln!(file, "{line}") {
+                eprintln!("Couldn't write to file: {e}");
                 return Err(e);
             }
             file.flush()?;
@@ -2304,7 +2302,7 @@ async fn test_endurance_writes() {
         while elapsed < 90 {
             i += 1;
             if let Err(e) = file.write_all(line.as_bytes()).await {
-                eprintln!("Couldn't write to file: {}", e);
+                eprintln!("Couldn't write to file: {e}");
                 return Err(e);
             }
             if i % (sync_every / 10) == 0 {

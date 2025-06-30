@@ -10,7 +10,7 @@ impl Display for TailerError {
     fn fmt(&self, f: &mut Formatter) -> Result<(), fmt::Error> {
         match self {
             TailerError::InvalidJSON(error) => {
-                write!(f, "Invalid JSON: {}", error)
+                write!(f, "Invalid JSON: {error}")
             }
         }
     }

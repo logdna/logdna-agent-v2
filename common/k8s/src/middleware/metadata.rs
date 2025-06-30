@@ -238,7 +238,7 @@ impl K8sMetadata {
             .any_semantic();
 
         let wc = if let Some(node) = node_name {
-            wc.fields(&format!("spec.nodeName={}", node))
+            wc.fields(&format!("spec.nodeName={node}"))
         } else {
             wc
         };
@@ -603,9 +603,9 @@ mod tests {
             Ok(PodMetadata {
                 name: name.to_string(),
                 namespace: namespace.to_string(),
-                labels: real_pod_meta.labels.clone().take().unwrap_or_default(),
+                labels: real_pod_meta.labels.clone().unwrap_or_default(),
                 //.map_or_else(KeyValueMap::new, |v| v.iter().fold(KeyValueMap::new(), |acc, (k, v)| acc.add(k, v))),
-                annotations: real_pod_meta.annotations.clone().take().unwrap_or_default(), //.as_ref().map_or_else(KeyValueMap::new, |v| v.iter().fold(KeyValueMap::new(), |acc, (k, v)| acc.add(k, v))),
+                annotations: real_pod_meta.annotations.clone().unwrap_or_default(), //.as_ref().map_or_else(KeyValueMap::new, |v| v.iter().fold(KeyValueMap::new(), |acc, (k, v)| acc.add(k, v))),
             })
         }
     }
@@ -653,7 +653,7 @@ mod tests {
         for (i, line) in lines.iter_mut().enumerate() {
             let result = k8s_meta.process(line);
             if let Status::Ok(_) = result {
-                assert_eq!(line.line, Some(format!("line {}", i)));
+                assert_eq!(line.line, Some(format!("line {i}")));
                 if i == 1 || i == 3 {
                     assert!(line.get_annotations().is_none());
                     assert!(line.get_labels().is_none());

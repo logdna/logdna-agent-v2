@@ -208,7 +208,7 @@ async fn test_retry_after_timeout() {
 
         let file_lines = &["hello\n", " world\n", " world2\n", " world3\n", " world4\n"];
         for item in file_lines {
-            write!(file, "{}", item).unwrap();
+            write!(file, "{item}").unwrap();
         }
 
         // Wait for the data to be received by the mock ingester
@@ -312,7 +312,7 @@ async fn gen_log_data(file: &mut File) {
             .map(char::from)
             .collect();
 
-        writeln!(file, "{}", line).unwrap();
+        writeln!(file, "{line}").unwrap();
         file.flush().unwrap();
     }
     tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
@@ -561,14 +561,14 @@ fn get_config_file(
         .unwrap_or_default();
 
     let disk_limit_line = retry_disk_limit
-        .map(|u| format!("  retry_disk_limit: {}", u))
+        .map(|u| format!("  retry_disk_limit: {u}"))
         .unwrap_or_default();
 
     write!(
         config_file,
         "
 http:
-  timeout: {}
+  timeout: {timeout}
   endpoint: /logs/agent
   use_ssl: false
   use_compression: true
@@ -578,10 +578,10 @@ http:
     tags: tag1
     now: 0
   body_size: 2097152
-  retry_base_delay_ms: {}
-  retry_step_delay_ms: {}
-{}
-{}
+  retry_base_delay_ms: {retry_base_delay_ms}
+  retry_step_delay_ms: {retry_step_delay_ms}
+{retry_dir_line}
+{disk_limit_line}
 log:
   dirs:
   - /var/log/
@@ -596,8 +596,7 @@ log:
     regex: []
 journald: {{}}
 startup: {{}}
-",
-        timeout, retry_base_delay_ms, retry_step_delay_ms, retry_dir_line, disk_limit_line
+"
     )
     .unwrap();
 

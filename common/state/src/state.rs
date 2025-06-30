@@ -345,6 +345,7 @@ fn handle_file_offset_flush(
     (Some(wb), (state, pending, span_buf, bytes_buf))
 }
 
+#[allow(clippy::result_large_err)]
 fn handle_file_offset_event(
     event: FileOffsetEvent,
     cf_handle: &rocksdb::ColumnFamily,

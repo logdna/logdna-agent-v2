@@ -199,7 +199,7 @@ impl Decoder for JournaldExportDecoder {
                         range_len = r.len();
                         std::str::from_utf8(r)
                             .ok()
-                            .map_or_else(|| format!("{:?}", r), |s| s.to_string())
+                            .map_or_else(|| format!("{r:?}"), |s| s.to_string())
                     })
                     .map_position(|p| p.translate_position(&src[..]));
 
@@ -225,7 +225,7 @@ impl Decoder for JournaldExportDecoder {
                         .map_range(|r| {
                             std::str::from_utf8(r)
                                 .ok()
-                                .map_or_else(|| format!("{:?}", r), |s| s.to_string())
+                                .map_or_else(|| format!("{r:?}"), |s| s.to_string())
                         })
                         .map_position(|p| p.translate_position(&src[..]));
                     format!(
@@ -264,12 +264,10 @@ pub fn create_journalctl_source() -> Result<impl Stream<Item = LineBuilder>, std
 
     let decoder = JournaldExportDecoder::default();
 
-    let journalctl_stdout = journalctl_process.stdout.take().ok_or_else(|| {
-        std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "cannot get journalctl stdout hanlde",
-        )
-    })?;
+    let journalctl_stdout = journalctl_process
+        .stdout
+        .take()
+        .ok_or_else(|| std::io::Error::other("cannot get journalctl stdout hanlde"))?;
 
     info!("Listening to journalctl");
     Ok(

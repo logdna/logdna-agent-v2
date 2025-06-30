@@ -388,9 +388,7 @@ mod tests {
         assert_eq!(
             input0.len(),
             lines0.len(),
-            "input {:#?}\nresult {:#?}",
-            input0,
-            lines0
+            "input {input0:#?}\nresult {lines0:#?}"
         );
         assert_eq!(input0, lines0);
 

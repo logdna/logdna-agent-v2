@@ -399,16 +399,16 @@ mod test {
                 rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
 
                 let log_lines = "This is a test log line";
-                tracing::debug!("{}", log_lines.as_bytes().len());
+                tracing::debug!("{}", log_lines.len());
                 let dir = tempdir().expect("Couldn't create temp dir...");
 
                 let file_path = dir.path().join("test.log");
 
                 let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
-                let line_write_count = (400 / (log_lines.as_bytes().len() + 1)) + 2;
+                let line_write_count = (400 / (log_lines.len() + 1)) + 2;
                 (0..line_write_count).for_each(|_| {
-                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...")
+                    writeln!(file, "{log_lines}").expect("Couldn't write to temp log file...")
                 });
                 file.sync_all().expect("Failed to sync file");
 
@@ -429,14 +429,14 @@ mod test {
                 pin_mut!(stream);
 
                 let events = take_events!(stream);
-                assert_eq!(events.len(), 0, "{:#?}", events);
+                assert_eq!(events.len(), 0, "{events:#?}");
 
                 tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
-                writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                writeln!(file, "{log_lines}").expect("Couldn't write to temp log file...");
                 file.sync_all().expect("Failed to sync file");
 
                 let events = take_events!(stream);
-                assert_eq!(events.len(), 1, "{:#?}", events);
+                assert_eq!(events.len(), 1, "{events:#?}");
             });
         });
     }
@@ -449,16 +449,16 @@ mod test {
                 rules.add_inclusion(RuleDef::glob_rule(r"**").unwrap());
 
                 let log_lines1 = "This is a test log line";
-                tracing::debug!("{}", log_lines1.as_bytes().len());
+                tracing::debug!("{}", log_lines1.len());
                 let dir = tempdir().expect("Couldn't create temp dir...");
 
                 let file_path = dir.path().join("test.log");
 
                 let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
-                let line_write_count = (8192 / (log_lines1.as_bytes().len() + 1)) + 2;
+                let line_write_count = (8192 / (log_lines1.len() + 1)) + 2;
                 (0..line_write_count).for_each(|_| {
-                    writeln!(file, "{}", log_lines1).expect("Couldn't write to temp log file...")
+                    writeln!(file, "{log_lines1}").expect("Couldn't write to temp log file...")
                 });
                 file.sync_all().expect("Failed to sync file");
 
@@ -484,11 +484,11 @@ mod test {
                 tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
 
                 let log_lines2 = "This is a test log line2";
-                writeln!(file, "{}", log_lines2).expect("Couldn't write to temp log file...");
+                writeln!(file, "{log_lines2}").expect("Couldn't write to temp log file...");
                 file.sync_all().expect("Failed to sync file");
 
                 let events = take_events!(stream);
-                assert_eq!(events.len(), 1, "{:#?}", events);
+                assert_eq!(events.len(), 1, "{events:#?}");
             });
         });
     }
@@ -507,10 +507,9 @@ mod test {
                 let file_path = dir.path().join("test.log");
 
                 let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
-                let line_write_count = (8_388_608 / (log_lines.as_bytes().len() + 1)) + 1;
+                let line_write_count = (8_388_608 / (log_lines.len() + 1)) + 1;
                 (0..line_write_count).for_each(|i| {
-                    writeln!(file, "{}, {}", log_lines, i)
-                        .expect("Couldn't write to temp log file...")
+                    writeln!(file, "{log_lines}, {i}").expect("Couldn't write to temp log file...")
                 });
                 file.sync_all().expect("Failed to sync file");
 
@@ -534,7 +533,7 @@ mod test {
                 assert!(events.len() >= line_write_count);
 
                 (0..5).for_each(|_| {
-                    writeln!(file, "{}", log_lines).expect("Couldn't write to temp log file...");
+                    writeln!(file, "{log_lines}").expect("Couldn't write to temp log file...");
                     file.sync_all().expect("Failed to sync file");
                 });
 
@@ -703,7 +702,7 @@ mod test {
 
         let messages = &["0", "1", "2", "3", "4"];
         messages.iter().for_each(|message| {
-            writeln!(file, "{}", message).expect("Couldn't write to temp log file...");
+            writeln!(file, "{message}").expect("Couldn't write to temp log file...");
             file.sync_all().expect("Failed to sync file");
         });
 

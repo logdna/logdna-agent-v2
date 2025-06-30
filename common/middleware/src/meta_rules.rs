@@ -82,8 +82,7 @@ impl MetaRules {
                 Some(str) => match serde_json::from_str(str.as_str()) {
                     Ok(kvp) => Ok(kvp),
                     Err(err) => Err(MetaRulesError::Config(format!(
-                        "Invalid MZ_META_ANNOTATIONS value: '{}', err: '{}'",
-                        str, err
+                        "Invalid MZ_META_ANNOTATIONS value: '{str}', err: '{err}'"
                     ))),
                 }?,
                 _ => None,
@@ -92,8 +91,7 @@ impl MetaRules {
                 Some(str) => match serde_json::from_str(str.as_str()) {
                     Ok(kvp) => Ok(kvp),
                     Err(err) => Err(MetaRulesError::Config(format!(
-                        "Invalid MZ_META_LABELS value: '{}', err: '{}'",
-                        str, err
+                        "Invalid MZ_META_LABELS value: '{str}', err: '{err}'"
                     ))),
                 }?,
                 _ => None,

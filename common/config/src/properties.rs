@@ -135,19 +135,19 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
 
     if let Some(value) = map.get_string(&USE_SSL) {
         result.http.use_ssl = Some(bool::from_str(&value).map_err(|e| {
-            ConfigError::PropertyInvalid(format!("use ssl property is invalid: {}", e))
+            ConfigError::PropertyInvalid(format!("use ssl property is invalid: {e}"))
         })?);
     }
 
     if let Some(value) = map.get_string(&USE_COMPRESSION) {
         result.http.use_compression = Some(bool::from_str(&value).map_err(|e| {
-            ConfigError::PropertyInvalid(format!("use compression property is invalid: {}", e))
+            ConfigError::PropertyInvalid(format!("use compression property is invalid: {e}"))
         })?);
     }
 
     if let Some(value) = map.get_string(&GZIP_LEVEL) {
         result.http.gzip_level = Some(i32::from_str(&value).map_err(|e| {
-            ConfigError::PropertyInvalid(format!("gzip level property is invalid: {}", e))
+            ConfigError::PropertyInvalid(format!("gzip level property is invalid: {e}"))
         })?);
     }
 
@@ -183,13 +183,13 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
 
     if let Some(value) = map.get(&INGEST_TIMEOUT) {
         result.http.timeout = Some(value.parse().map_err(|e| {
-            ConfigError::PropertyInvalid(format!("ingest_timeout is invalid: {}", e))
+            ConfigError::PropertyInvalid(format!("ingest_timeout is invalid: {e}"))
         })?);
     }
 
     if let Some(value) = map.get(&INGEST_BUFFER_SIZE) {
         result.http.body_size = Some(value.parse().map_err(|e| {
-            ConfigError::PropertyInvalid(format!("ingest_buffer_size is invalid: {}", e))
+            ConfigError::PropertyInvalid(format!("ingest_buffer_size is invalid: {e}"))
         })?);
     }
 
@@ -205,7 +205,7 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
 
     if let Some(value) = map.get(&RETRY_DISK_LIMIT) {
         let limit = Bytes::<u64>::from_str(value).map_err(|e| {
-            ConfigError::PropertyInvalid(format!("retry disk limit property is invalid: {}", e))
+            ConfigError::PropertyInvalid(format!("retry disk limit property is invalid: {e}"))
         })?;
         result.http.retry_disk_limit = Some(limit.size());
     }
@@ -223,7 +223,7 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
 
     if let Some(value) = map.get(&METRICS_PORT) {
         result.log.metrics_port = Some(u16::from_str(value).map_err(|e| {
-            ConfigError::PropertyInvalid(format!("metrics port property is invalid: {}", e))
+            ConfigError::PropertyInvalid(format!("metrics port property is invalid: {e}"))
         })?);
     }
 
@@ -322,13 +322,13 @@ fn from_property_map(map: HashMap<String, String>) -> Result<Config, ConfigError
 
     if let Some(value) = map.get(&CLEAR_CACHE_INTERVAL) {
         result.log.clear_cache_interval = Some(u32::from_str(value).map_err(|e| {
-            ConfigError::PropertyInvalid(format!("clear cache interval property is invalid: {}", e))
+            ConfigError::PropertyInvalid(format!("clear cache interval property is invalid: {e}"))
         })?);
     }
 
     if let Some(value) = map.get(&METADATA_RETRY_DELAY) {
         result.log.metadata_retry_delay = Some(u32::from_str(value).map_err(|e| {
-            ConfigError::PropertyInvalid(format!("metadata retry delay property is invalid: {}", e))
+            ConfigError::PropertyInvalid(format!("metadata retry delay property is invalid: {e}"))
         })?);
     }
 

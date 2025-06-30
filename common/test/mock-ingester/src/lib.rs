@@ -133,9 +133,7 @@ impl Service<Request<Body>> for Svc {
                 .unwrap_or_default();
 
             let body = req.into_body();
-            let mut body = tokio_util::io::StreamReader::new(
-                body.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)),
-            );
+            let mut body = tokio_util::io::StreamReader::new(body.map_err(std::io::Error::other));
             match encoding {
                 Some(encoding) if encoding == "gzip" => {
                     let mut decoder = async_compression::tokio::bufread::GzipDecoder::new(body);
@@ -276,7 +274,7 @@ pub fn http_ingester_with_processors(
                 .unwrap_or_else(|_| panic!("Couldn't bind to {:?}", addr));
             // Prepare a long-running future stream to accept and serve cients.
             let incoming_stream = TcpListenerStream::new(tcp)
-                .map_err(|e| error(format!("Incoming failed: {:?}", e)))
+                .map_err(|e| error(format!("Incoming failed: {e:?}")))
                 .boxed();
 
             let server_builder = hyper::server::Server::builder(HyperAcceptor {
@@ -303,7 +301,7 @@ pub fn http_ingester_with_processors(
 }
 
 fn error(err: String) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, err)
+    io::Error::other(err)
 }
 
 pub fn https_ingester(
@@ -351,7 +349,7 @@ pub fn https_ingester_with_processors(
                     .with_safe_defaults()
                     .with_no_client_auth()
                     .with_single_cert(server_cert, private_key)
-                    .map_err(|e| error(format!("{}", e)))?;
+                    .map_err(|e| error(format!("{e}")))?;
                 // Configure ALPN to accept HTTP/2, HTTP/1.1 in that order.
                 cfg.alpn_protocols = match http_version {
                     Some(HttpVersion::Http1) => vec![b"http/1.1".to_vec()],
@@ -370,13 +368,13 @@ pub fn https_ingester_with_processors(
             // Prepare a long-running future stream to accept and serve cients.
 
             let incoming_tls_stream = TcpListenerStream::new(tcp)
-                .map_err(|e| error(format!("Incoming failed: {:?}", e)))
+                .map_err(|e| error(format!("Incoming failed: {e:?}")))
                 .and_then(move |s| {
                     tls_acceptor.accept(s).map_err(|e| {
                         println!("[!] Voluntary server halt due to client-connection error...");
                         // Errors could be handled here, instead of server aborting.
                         // Ok(None)
-                        error(format!("TLS Error: {:?}", e))
+                        error(format!("TLS Error: {e:?}"))
                     })
                 })
                 .boxed();
@@ -438,8 +436,8 @@ impl hyper::server::accept::Accept for HyperAcceptor<'_> {
 // Load public certificate from file.
 pub fn load_certs(filename: &str) -> io::Result<Vec<rustls::Certificate>> {
     // Open certificate file.
-    let certfile = fs::File::open(filename)
-        .map_err(|e| error(format!("failed to open {}: {}", filename, e)))?;
+    let certfile =
+        fs::File::open(filename).map_err(|e| error(format!("failed to open {filename}: {e}")))?;
     let mut reader = io::BufReader::new(certfile);
 
     // Load and return certificate.
@@ -451,8 +449,8 @@ pub fn load_certs(filename: &str) -> io::Result<Vec<rustls::Certificate>> {
 // Load private key from file.
 pub fn load_private_key(filename: &str) -> io::Result<rustls::PrivateKey> {
     // Open keyfile.
-    let keyfile = fs::File::open(filename)
-        .map_err(|e| error(format!("failed to open {}: {}", filename, e)))?;
+    let keyfile =
+        fs::File::open(filename).map_err(|e| error(format!("failed to open {filename}: {e}")))?;
     let mut reader = io::BufReader::new(keyfile);
 
     // Load and return a single private key.

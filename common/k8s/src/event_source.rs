@@ -82,7 +82,7 @@ impl From<Event> for EventLog {
                     }),
                 )
             } else if let Some(ref name) = name {
-                (Some(format!("{}/{}", kind, name)), None)
+                (Some(format!("{kind}/{name}")), None)
             } else {
                 (None, None)
             }
@@ -99,7 +99,7 @@ impl From<Event> for EventLog {
         let duration = age.map(|age| {
             if age > Duration::weeks(0) {
                 let age_val = age.to_std().map(|d|humantime::format_duration(d).to_string()).unwrap(/*Safe to unwrap as we checked it's positive*/);
-                format!("over {}", age_val)
+                format!("over {age_val}")
             } else {
                 "just now".to_string()
             }
@@ -116,10 +116,8 @@ impl From<Event> for EventLog {
                 event_time.is_some(),
                 message.as_ref(),
             ) {
-                (Some(r), Some(c), Some(d), _, Some(m)) => {
-                    Some(format!("{}  (x{} {})  {}", r, c, d, m))
-                }
-                (Some(r), None, None, true, Some(m)) => Some(format!("{}  {}", r, m)),
+                (Some(r), Some(c), Some(d), _, Some(m)) => Some(format!("{r}  (x{c} {d})  {m}")),
+                (Some(r), None, None, true, Some(m)) => Some(format!("{r}  {m}")),
                 _ => None,
             },
             level: log_level,

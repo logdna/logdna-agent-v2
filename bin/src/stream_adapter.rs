@@ -138,6 +138,7 @@ impl<T> SourceRetry for DelayStream<T> {
 
 impl<T: ?Sized> RetryableLineStreamExt for T where T: Stream {}
 
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum StrictOrLazyLineBuilder<T, R> {
     Strict(RetryableLineBuilder<T, R>),
     Lazy(LazyLineSerializer),

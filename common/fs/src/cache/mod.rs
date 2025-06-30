@@ -144,10 +144,9 @@ pub fn get_inode(path: &Path, _file: Option<&std::fs::File>) -> std::io::Result<
     Ok(path
         .metadata()
         .map_err(|e| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
-                format!("unable to retrieve inode for path \"{:?}\": {:?}", path, e),
-            )
+            std::io::Error::other(format!(
+                "unable to retrieve inode for path \"{path:?}\": {e:?}"
+            ))
         })?
         .ino())
 }
@@ -831,7 +830,7 @@ impl FileSystem {
         let mut path_to_root = false;
 
         // Walk up the parents until a root is found
-        while let Some(parent) = target_mref.parent().take() {
+        while let Some(parent) = target_mref.parent() {
             path_to_root = self
                 .symlinks
                 .get(parent)
@@ -2942,11 +2941,11 @@ mod tests {
 
         writeln!(file2, "hello")?;
         let events = take_events!(fs);
-        assert_eq!(events.len(), 1, "events: {:#?}", events);
+        assert_eq!(events.len(), 1, "events: {events:#?}");
 
         writeln!(file3, "hello")?;
         let events = take_events!(fs);
-        assert_eq!(events.len(), 1, "events: {:#?}", events);
+        assert_eq!(events.len(), 1, "events: {events:#?}");
 
         drop(file1);
         drop(file2);
