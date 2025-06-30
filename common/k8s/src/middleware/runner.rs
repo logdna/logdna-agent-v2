@@ -38,34 +38,33 @@ async fn step_trampoline<'a>(
             let middleware_k8s_client = create_k8s_client_default_from_env(user_agent.clone())
                 .unwrap_or_else(|e| {
                     let message =
-                        format!("unable to create client for k8s metadata watcher: {:?}", e);
+                        format!("unable to create client for k8s metadata watcher: {e:?}");
                     panic!("{}", message);
                 });
             State::Kicking(attempts, middleware_k8s_client)
         }
         State::Kicking(attempts, client) => {
-            let (thread_handle, swap_intent) =
-                match middleware.kick_over(client, node_name.as_deref()) {
-                    Ok((stream, swap_intent)) => {
-                        trace!("k8s metadata watcher kicked over!");
-                        (
-                            tokio::spawn(async move {
-                                trace!("k8s metadata watcher thread started, processing events!");
-                                stream.for_each(|_| async {}).await;
-                                trace!("k8s metadata watcher thread exiting!");
-                            }),
-                            swap_intent,
-                        )
-                    }
-                    Err(e) => {
-                        let message = format!(
-                            "The agent could not access k8s api after several attempts: {}",
-                            e
-                        );
-                        error!("{}", message);
-                        panic!("{}", message);
-                    }
-                };
+            let (thread_handle, swap_intent) = match middleware
+                .kick_over(client, node_name.as_deref())
+            {
+                Ok((stream, swap_intent)) => {
+                    trace!("k8s metadata watcher kicked over!");
+                    (
+                        tokio::spawn(async move {
+                            trace!("k8s metadata watcher thread started, processing events!");
+                            stream.for_each(|_| async {}).await;
+                            trace!("k8s metadata watcher thread exiting!");
+                        }),
+                        swap_intent,
+                    )
+                }
+                Err(e) => {
+                    let message =
+                        format!("The agent could not access k8s api after several attempts: {e}");
+                    error!("{}", message);
+                    panic!("{}", message);
+                }
+            };
             State::Swapping(attempts, thread_handle, swap_intent)
         }
         State::Swapping(attempts, thread_handle, swap_intent) => {

@@ -22,7 +22,7 @@ fn main() {
         */
 
         if let Err(e) = res.compile() {
-            println!("cargo:error={}", e);
+            println!("cargo:error={e}");
             std::process::exit(1);
         }
     }

@@ -260,7 +260,7 @@ impl From<notify::Error> for Error {
     fn from(e: notify::Error) -> Error {
         match e.kind {
             ErrorKind::Generic(s) => Error::Generic(s),
-            ErrorKind::Io(err) => Error::Io(format!("{}", err)),
+            ErrorKind::Io(err) => Error::Io(format!("{err}")),
             ErrorKind::PathNotFound => Error::PathNotFound,
             ErrorKind::WatchNotFound => Error::WatchNotFound,
             ErrorKind::InvalidConfig(c) => Error::InvalidConfig(c),
