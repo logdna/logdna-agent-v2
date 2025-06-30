@@ -375,12 +375,12 @@ async fn start_line_proxy_pod(
 
     // Start a watch call for pods matching our name
     let wp = WatchParams::default()
-        .fields(&format!("metadata.name={}", pod_name))
+        .fields(&format!("metadata.name={pod_name}"))
         .timeout(60);
     let mut stream = pods.watch(&wp, "0").await.unwrap().boxed();
 
     let lp = ListParams::default()
-        .fields(&format!("metadata.name={}", pod_name))
+        .fields(&format!("metadata.name={pod_name}"))
         .timeout(60);
 
     // Observe the pods phase for up to 60 seconds
@@ -520,7 +520,7 @@ async fn create_mock_ingester_service(
 
     // TODO work out why this isn't working...
     // format!("{}.{}.svc.cluster.local:{}", service_name, service_namespace, service_port)
-    format!("{}:{}", ingest_cluster_ip, service_port)
+    format!("{ingest_cluster_ip}:{service_port}")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -552,7 +552,7 @@ async fn create_agent_ds(
         "apiVersion": "rbac.authorization.k8s.io/v1",
         "kind": "Role",
         "metadata": {
-            "name": &format!("{}-logging", agent_name)
+            "name": &format!("{agent_name}-logging")
         },
         "rules": [
             {
@@ -584,7 +584,7 @@ async fn create_agent_ds(
         "roleRef": {
             "apiGroup": "rbac.authorization.k8s.io",
             "kind": "Role",
-            "name": &format!("{}-logging", agent_name)
+            "name": &format!("{agent_name}-logging")
         },
         "subjects": [
             {
@@ -603,7 +603,7 @@ async fn create_agent_ds(
         "apiVersion": "rbac.authorization.k8s.io/v1",
         "kind": "ClusterRole",
         "metadata": {
-            "name": &format!("{}-logging", agent_name)
+            "name": &format!("{agent_name}-logging")
         },
         "rules": [
             {
@@ -687,7 +687,7 @@ async fn create_agent_ds(
         "roleRef": {
             "apiGroup": "rbac.authorization.k8s.io",
             "kind": "ClusterRole",
-            "name": &format!("{}-logging", agent_name)
+            "name": &format!("{agent_name}-logging")
         },
         "subjects": [
             {
@@ -724,7 +724,7 @@ async fn create_agent_ds(
     let agent_pods: Api<Pod> = Api::namespaced(client.clone(), agent_namespace);
 
     let wp = WatchParams::default()
-        .labels(&format!("app={}", agent_name))
+        .labels(&format!("app={agent_name}"))
         .timeout(60);
 
     let mut stream = agent_pods.watch(&wp, "0").await.unwrap().boxed();
@@ -754,7 +754,7 @@ async fn create_agent_ds(
                 }
             }
             WatchEvent::Deleted(o) => println!("Deleted {}", &o.metadata.name.unwrap()),
-            WatchEvent::Error(e) => println!("Error {}", e),
+            WatchEvent::Error(e) => println!("Error {e}"),
             _ => {}
         }
     }
@@ -1364,7 +1364,7 @@ async fn test_k8s_enrichment() {
         assert_eq!(label.unwrap()["app.kubernetes.io/name"], socat_pod_name);
         assert_eq!(
             label.unwrap()["app.kubernetes.io/instance"],
-            format!("{}-instance", socat_pod_name)
+            format!("{socat_pod_name}-instance")
         );
         let values = &pod_file_info.values;
         assert!(values.len() == 5, "{:#?}", values);
@@ -2151,7 +2151,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
 
         // assert we got all lines
         let (_, pod_file_info) = result.unwrap();
-        assert_eq!(pod_file_info.lines, 5, "{:?}", pod_file_info);
+        assert_eq!(pod_file_info.lines, 5, "{pod_file_info:?}");
 
         info!("success");
 

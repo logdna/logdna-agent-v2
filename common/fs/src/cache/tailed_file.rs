@@ -1047,13 +1047,9 @@ impl TailedFile<LazyLineSerializer> {
                                 }
                             };
                             Some((
-                                Err(std::io::Error::new(
-                                    std::io::ErrorKind::Other,
-                                    format!(
-                                        "unable to read tailed file for path \"{:?}\": {:?}",
-                                        path, e
-                                    ),
-                                )),
+                                Err(std::io::Error::other(format!(
+                                    "unable to read tailed file for path \"{path:?}\": {e:?}"
+                                ))),
                                 lazy_lines,
                             ))
                         }

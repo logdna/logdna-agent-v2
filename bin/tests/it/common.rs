@@ -38,8 +38,8 @@ pub fn append_to_file(file_path: &Path, lines: i32, sync_every: i32) -> Result<(
         .open(file_path)?;
 
     for i in 0..lines {
-        if let Err(e) = writeln!(file, "{}", LINE) {
-            eprintln!("Couldn't write to file: {}", e);
+        if let Err(e) = writeln!(file, "{LINE}") {
+            eprintln!("Couldn't write to file: {e}");
             return Err(e);
         }
 
@@ -205,7 +205,7 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
     }
 
     if let Some(port) = settings.metrics_port {
-        agent.env("LOGDNA_METRICS_PORT", format!("{}", port));
+        agent.env("LOGDNA_METRICS_PORT", format!("{port}"));
     }
 
     if let Some(rules) = settings.exclusion {
@@ -260,12 +260,12 @@ pub fn spawn_agent(settings: AgentSettings) -> Child {
     if let Some(clear_cache_interval) = settings.clear_cache_interval {
         agent.env(
             "LOGDNA_CLEAR_CACHE_INTERVAL",
-            format!("{}", clear_cache_interval),
+            format!("{clear_cache_interval}"),
         );
     }
 
     if let Some(metadata_retry_delay) = settings.metadata_retry_delay {
-        agent.env("METADATA_RETRY_DELAY", format!("{}", metadata_retry_delay));
+        agent.env("METADATA_RETRY_DELAY", format!("{metadata_retry_delay}"));
     }
 
     agent.spawn().expect("Failed to start agent")
@@ -414,7 +414,7 @@ pub fn self_signed_https_ingester(
         received,
         shutdown_handle,
         cert_file,
-        format!("localhost:{}", port),
+        format!("localhost:{port}"),
     )
 }
 
@@ -432,7 +432,7 @@ pub fn start_http_ingester() -> (
         server,
         received,
         shutdown_handle,
-        format!("localhost:{}", port),
+        format!("localhost:{port}"),
     )
 }
 
@@ -470,6 +470,6 @@ pub fn start_ingester(
         server,
         received,
         shutdown_handle,
-        format!("localhost:{}", port),
+        format!("localhost:{port}"),
     )
 }

@@ -306,7 +306,7 @@ impl TryFrom<RawConfig> for Config {
         // so as long as the symbols we create are &'static str's then this is completely safe.
         let (pkg_name, pkg_version) = unsafe { (PKG_NAME, PKG_VERSION) };
 
-        template_builder.user_agent(format!("{}/{} ({})", pkg_name, pkg_version, info).as_str());
+        template_builder.user_agent(format!("{pkg_name}/{pkg_version} ({info})").as_str());
 
         let http = HttpConfig {
             template: template_builder.build()?,
@@ -482,9 +482,9 @@ fn print_settings(raw_config: &RawConfig) -> Result<(), ConfigError> {
         .filter_map(|&key| {
             std::env::var(key).ok().map(|value| {
                 if key.contains("KEY") || key.contains("PIN") {
-                    format!("{}=REDACTED", key)
+                    format!("{key}=REDACTED")
                 } else {
-                    format!("{}={}", key, value)
+                    format!("{key}={value}")
                 }
             })
         })
@@ -536,6 +536,7 @@ lazy_static! {
         Regex::new(r"(?P<var>\$\{(?P<key>[^|}]+?)\|(?P<default>[^|}]*?)})").unwrap();
 }
 
+#[allow(clippy::doc_overindented_list_items)]
 /// Var expansion with default value support.
 /// Supported cases:
 ///   1. ${VarName}             - simple substitute using vars dictionary,

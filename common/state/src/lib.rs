@@ -102,7 +102,7 @@ pub struct FileOffsetWriteHandle {
 }
 
 impl FileOffsetWriteHandle {
-    pub async fn update<'a>(&self, offsets: OffsetMap) -> Result<DefaultKey, FileOffsetStateError> {
+    pub async fn update(&self, offsets: OffsetMap) -> Result<DefaultKey, FileOffsetStateError> {
         let (tx, rx) = oneshot::channel();
         self.tx
             .send(FileOffsetEvent::Update(FileOffsetUpdate::Update(
