@@ -138,7 +138,7 @@ CHANGE_BIN_VERSION = awk '{sub(/^version = ".+"$$/, "version = \"$(1)\"")}1' bin
 
 CHANGE_K8S_VERSION = sed 's/\(.*\)app\.kubernetes\.io\/version\(.\).*$$/\1app.kubernetes.io\/version\2 $(1)/g' $(2) >> $(2).tmp && mv $(2).tmp $(2)
 
-CHANGE_K8S_IMAGE = sed -E 's/(logdna\/logdna-agent:|logdna\/logdna-agent-stress-test:).*$$/\1$(1)/g' $(2) >> $(2).tmp && mv $(2).tmp $(2)
+CHANGE_K8S_IMAGE = sed 's/\(logdna\/logdna-agent.\).*$$/\1$(1)/g' $(2) >> $(2).tmp && mv $(2).tmp $(2)
 
 CHANGE_README_VERSION = awk '{sub(/img\.shields\.io\/badge\/Version-.+?-E9FF92.svg/, "img\.shields\.io\/badge\/Version-$(subst -,--,$(1))-E9FF92.svg")}1' docs/README.md >> docs/README.md.tmp && mv docs/README.md.tmp docs/README.md
 
@@ -466,17 +466,6 @@ build-image-debug: ## Build a docker image as specified in the Dockerfile.debug
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
 		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
 
-.PHONY:build-stress-test-image
-build-stress-test-image: ## Build a docker image as specified in the Dockerfile
-	$(DOCKER) build ./utils/stress_test -t $(REPO)-stress-test:$(IMAGE_TAG) \
-		$(PULL_OPTS) \
-		--progress=plain \
-		--platform=linux/${DEB_ARCH_NAME_${ARCH}} \
-		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
-		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
-		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
-		--rm
-
 .PHONY:build-deb
 build-deb: build-release
 	$(DEB_COMMAND) "" 'package_version="$(BUILD_VERSION)"; \
@@ -701,38 +690,6 @@ publish-image-multi-docker: ## Publish multi-arch container images to docker hub
 .PHONY:publish-image-multi-ibm
 publish-image-multi-ibm: ## Publish multi-arch container images to icr
 	$(call publish_images_multi,$(DOCKER_IBM_IMAGE))
-
-
-.PHONY: publish-stress-test-image
-publish-stress-test-image: publish-stress-test-image-gcr publish-stress-test-image-docker # publish-stress-test-image-multi-ibm ## Publish SemVer compliant releases to our registries
-
-.PHONY:publish-stress-test-image-gcr
-publish-stress-test-image-gcr: ## Publish SemVer compliant releases to gcr
-	$(call publish_images,$(DOCKER_PRIVATE_IMAGE),"-stress-test")
-
-.PHONY:publish-stress-test-image-docker
-publish-stress-test-image-docker: ## Publish SemVer compliant releases to docker hub
-	$(call publish_images,$(DOCKER_PUBLIC_IMAGE),"-stress-test")
-
-.PHONY:publish-stress-test-image-ibm
-publish-stress-test-image-ibm: ## Publish SemVer compliant releases to icr
-	$(call publish_images,$(DOCKER_IBM_IMAGE),"-stress-test")
-
-.PHONY: publish-stress-test-image-multi
-publish-stress-test-image-multi: publish-stress-test-image-multi-gcr publish-stress-test-image-multi-docker # publish-stress-test-image-multi-ibm ## Publish multi-arch SemVer compliant releases to our registries
-
-.PHONY:publish-stress-test-image-multi-gcr
-publish-stress-test-image-multi-gcr: ## Publish multi-arch container images to gcr
-	$(call publish_images_multi,$(DOCKER_PRIVATE_IMAGE),"-stress-test")
-
-.PHONY:publish-stress-test-image-multi-docker
-publish-stress-test-image-multi-docker: ## Publish multi-arch container images to docker hub
-	$(call publish_images_multi,$(DOCKER_PUBLIC_IMAGE),"-stress-test")
-
-.PHONY:publish-stress-test-image-multi-ibm
-publish-stress-test-image-multi-ibm: ## Publish multi-arch container images to icr
-	$(call publish_images_multi,$(DOCKER_IBM_IMAGE),"-stress-test")
-
 
 .PHONY:run
 run: ## Run the debug version of the agent

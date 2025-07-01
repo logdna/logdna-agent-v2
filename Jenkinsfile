@@ -277,7 +277,6 @@ pipeline {
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_x86_64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_x86_64
                                 ARCH=x86_64 make build-image AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_x86_64
-                                ARCH=x86_64 make build-stress-test-image AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_x86_64
                             """
                         }
                     }
@@ -300,7 +299,6 @@ pipeline {
                                 echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_aarch64
                                 echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_aarch64
                                 ARCH=aarch64 make build-image AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_aarch64
-                                ARCH=aarch64 make build-stress-test-image AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_aarch64
                             """
                         }
                     }
@@ -495,9 +493,6 @@ pipeline {
                         sh 'ARCH=x86_64 make publish-image-gcr'
                         sh 'ARCH=aarch64 make publish-image-gcr'
                         sh 'make publish-image-multi-gcr'
-                        sh 'ARCH=x86_64 make publish-stress-test-image-gcr'
-                        sh 'ARCH=aarch64 make publish-stress-test-image-gcr'
-                        sh 'make publish-stress-test-image-multi-gcr'
                     }
                 }
                 stage('Publish Dockerhub and ICR images') {
@@ -514,9 +509,6 @@ pipeline {
                                 sh 'ARCH=x86_64 make publish-image-docker'
                                 sh 'ARCH=aarch64 make publish-image-docker'
                                 sh 'make publish-image-multi-docker'
-                                sh 'ARCH=x86_64 make publish-stress-test-image-docker'
-                                sh 'ARCH=aarch64 make publish-stress-test-image-docker'
-                                sh 'make publish-stress-test-image-multi-docker'
                             }
                             // Login and publish to ibm
                             docker.withRegistry(
@@ -526,9 +518,6 @@ pipeline {
                                 sh 'ARCH=x86_64 make publish-image-ibm'
                                 sh 'ARCH=aarch64 make publish-image-ibm'
                                 sh 'make publish-image-multi-ibm'
-                                //sh 'ARCH=x86_64 make publish-stress-test-image-ibm'
-                                //sh 'ARCH=aarch64 make publish-stress-test-image-ibm'
-                                //sh 'make publish-stress-test-image-multi-ibm'
                             }
                         }
                     }
