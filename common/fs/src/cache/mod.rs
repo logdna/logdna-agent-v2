@@ -2135,7 +2135,11 @@ mod tests {
         assert!(lookup!(fs, file_path).is_none());
         assert!(lookup!(fs, sym_path).is_none());
         assert!(lookup!(fs, hard_path).is_none());
-        assert!(symlinks!(fs, file_path).is_none());
+        assert!(
+            symlinks!(fs, file_path).is_none(),
+            "{:?}",
+            symlinks!(fs, file_path)
+        );
 
         Ok(())
     }
