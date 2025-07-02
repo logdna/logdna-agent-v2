@@ -153,13 +153,13 @@ RUST_LOG?=info
 space := $(subst ,, )
 comma := ,
 
-FEATURES_ARG=$(if $(FEATURES),--features $(subst $(space),$(comma),$(FEATURES)))
+FEATURES_ARG=$(if $(FEATURES),--features=$(subst $(space),$(comma),$(FEATURES)))
 
 ifneq ($(NO_DEFAULT_FEATURES),)
 	FEATURES_ARG:=--no-default-features $(FEATURES_ARG)
 endif
 
-join-with = $(subst $(space),$1,$(strip $2))
+join-with = $(if $(2),$(subst $(space),$1,$(strip $2)),$2)
 
 _TAC= awk '{line[NR]=$$0} END {for (i=NR; i>=1; i--) print line[i]}'
 TEST_RULES=
@@ -223,7 +223,8 @@ integration-test: ## Run integration tests using image with additional tools
 	$(DOCKER_JOURNALD_DISPATCH) "$(BUILD_ENV_DOCKER_ARGS) --env LOGDNA_INGESTION_KEY=$(LOGDNA_INGESTION_KEY) --env LOGDNA_HOST=$(LOGDNA_HOST) --env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo nextest run --no-fail-fast --retries=2 $(FEATURES_ARG) --manifest-path bin/Cargo.toml $(TESTS) $(TEST_THREADS_ARG)"
 
 .PHONY:k8s-test
-k8s-test: build-image-debian ## Run integration tests using k8s kind
+k8s-test: ## Run integration tests using k8s kind
+	$(call build-image-command,debian,k8s_tests)
 	$(DOCKER) tag $(REPO):$(IMAGE_TAG) $(REPO):local
 	IMAGE_TAG=$(IMAGE_TAG) $(DOCKER_KIND_DISPATCH) $(K8S_TEST_CREATE_CLUSTER) $(RUST_IMAGE) "--env RUST_LOG=$(RUST_LOG)" "cargo nextest run --no-fail-fast --retries=2 --nocapture $(TARGET_DOCKER_ARG) --manifest-path bin/Cargo.toml --features k8s_tests $(TESTS)"
 
@@ -399,9 +400,8 @@ DEB_VERSION=1
 DEB_ARCH_NAME_x86_64=amd64
 DEB_ARCH_NAME_aarch64=arm64
 
-.PHONY:build-image
-build-image: ## Build a docker image as specified in the Dockerfile
-	$(DOCKER) build . -t $(REPO):$(IMAGE_TAG) \
+define build-image-command
+	$(DOCKER) build . -f $(if $(1),$(call join-with,.,Dockerfile $(1)),Dockerfile) -t $(REPO):$(IMAGE_TAG) \
 		$(PULL_OPTS) \
 		--progress=plain \
 		--platform=linux/${DEB_ARCH_NAME_${ARCH}} \
@@ -414,57 +414,24 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg TARGET_ARCH=$(ARCH) \
 		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
-		--build-arg FEATURES='$(FEATURES_ARG)' \
+		--build-arg FEATURES='$(if $(FEATURES_ARG),$(call join-with,$(comma),$(FEATURES_ARG),$(2)),--features $(2))' \
 		--build-arg REPO=$(REPO) \
 		--build-arg VCS_REF=$(VCS_REF) \
 		--build-arg VCS_URL=$(VCS_URL) \
 		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
 		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
+endef
 
-.PHONY:build-image-debian
-build-image-debian: ## Build a docker image as specified in the Dockerfile.debian
-	$(DOCKER) build . -f Dockerfile.debian -t $(REPO):$(IMAGE_TAG) \
-		$(PULL_OPTS) \
-		--progress=plain \
-		--platform=linux/${DEB_ARCH_NAME_${ARCH}} \
-		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
-		--rm \
-		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
-		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
-		--build-arg TARGET=$(TARGET) \
-		--build-arg TARGET_DIR=$(TARGET_DIR) \
-		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
-		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
-		--build-arg FEATURES='$(FEATURES_ARG)' \
-		--build-arg REPO=$(REPO) \
-		--build-arg VCS_REF=$(VCS_REF) \
-		--build-arg VCS_URL=$(VCS_URL) \
-		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
-		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
-		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
+define build-image-target
+.PHONY:$(call join-with,-,build-image $(1))
+$(call join-with,-,build-image $(1)): ## Build a docker image as specified in the $(call join-with,.,Dockerfile $(1))
+$(call build-image-command,$(1))
+endef
 
-.PHONY:build-image-debug
-build-image-debug: ## Build a docker image as specified in the Dockerfile.debug
-	$(DOCKER) build . -f Dockerfile.debug -t $(REPO):$(IMAGE_TAG) \
-		$(PULL_OPTS) \
-		--progress=plain \
-		--platform=linux/${DEB_ARCH_NAME_${ARCH}} \
-		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
-		--rm \
-		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
-		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
-		--build-arg TARGET=$(TARGET) \
-		--build-arg TARGET_DIR=$(TARGET_DIR) \
-		--build-arg BUILD_TIMESTAMP=$(BUILD_TIMESTAMP) \
-		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
-		--build-arg FEATURES='$(FEATURES_ARG)' \
-		--build-arg REPO=$(REPO) \
-		--build-arg VCS_REF=$(VCS_REF) \
-		--build-arg VCS_URL=$(VCS_URL) \
-		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
-		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
-		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
+$(eval $(call build-image-target))
+$(eval $(call build-image-target,debian))
+$(eval $(call build-image-target,debug))
 
 .PHONY:build-deb
 build-deb: build-release
