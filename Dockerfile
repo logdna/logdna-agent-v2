@@ -1,7 +1,7 @@
 # syntax = docker/dockerfile:1.0-experimental
 
-ARG UBI_MAJOR_VERSION=8
-ARG UBI_MINOR_VERSION=8
+ARG UBI_MAJOR_VERSION=9
+ARG UBI_MINOR_VERSION=6
 ARG UBI_VERSION=${UBI_MAJOR_VERSION}.${UBI_MINOR_VERSION}
 
 ARG TARGET_ARCH=x86_64
@@ -70,7 +70,10 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     if [ ! -d "vendor" || ! -f ".cargo/config.toml" ]; then CARGO_NET_OFFLINE=false; fi; \
     if [ ! -z ${RUSTC_WRAPPER+x} ]; then while sccache --start-server > /dev/null 2>&1; do echo "starting sccache server"; done; fi; \
     set -a; source /tmp/ubi${UBI_MAJOR_VERSION}.env; set +a && env && \
-    cargo build --manifest-path bin/Cargo.toml --no-default-features ${FEATURES} --release $TARGET_ARG && \
+    ( cargo build --manifest-path bin/Cargo.toml --no-default-features ${FEATURES} --release $TARGET_ARG -ass || ( \
+      find /opt/logdna-agent-v2/target/x86_64-linux-gnu/x86_64-unknown-linux-gnu/release/build -name config.log  -exec echo "===BEGIN=== {}" \; -exec cat {} \; -exec echo "===END=== {}" \; && \
+      false \
+    ) ) && \
     llvm-strip ./${TARGET_DIR}/${TARGET}/release/logdna-agent && \
     cp ./${TARGET_DIR}/${TARGET}/release/logdna-agent /logdna-agent && \
     sccache --show-stats
