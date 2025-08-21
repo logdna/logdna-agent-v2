@@ -1,7 +1,7 @@
 # syntax = docker/dockerfile:1.0-experimental
 
-ARG UBI_MAJOR_VERSION=8
-ARG UBI_MINOR_VERSION=8
+ARG UBI_MAJOR_VERSION=9
+ARG UBI_MINOR_VERSION=6
 ARG UBI_VERSION=${UBI_MAJOR_VERSION}.${UBI_MINOR_VERSION}
 
 ARG TARGET_ARCH=x86_64
@@ -67,7 +67,7 @@ RUN --mount=type=secret,id=aws,target=/root/.aws/credentials \
     export ${BUILD_ENVS?};  \
     if [ -z "$SCCACHE_ENDPOINT" ]; then unset SCCACHE_ENDPOINT; fi; \
     if [ -z "$SCCACHE_RECACHE" ]; then unset SCCACHE_RECACHE; fi; \
-    if [ ! -d "vendor" || ! -f ".cargo/config.toml" ]; then CARGO_NET_OFFLINE=false; fi; \
+    if [ ! -d "vendor" ] || [ ! -f ".cargo/config.toml" ]; then CARGO_NET_OFFLINE=false; fi; \
     if [ ! -z ${RUSTC_WRAPPER+x} ]; then while sccache --start-server > /dev/null 2>&1; do echo "starting sccache server"; done; fi; \
     set -a; source /tmp/ubi${UBI_MAJOR_VERSION}.env; set +a && env && \
     cargo build --manifest-path bin/Cargo.toml --no-default-features ${FEATURES} --release $TARGET_ARG && \
@@ -109,11 +109,12 @@ WORKDIR /work/
 # hadolint ignore=DL3041
 RUN microdnf update --refresh --best --nodocs --noplugins --setopt=install_weak_deps=0 -y \
     && microdnf install ca-certificates libcap shadow-utils systemd --best --nodocs --noplugins --setopt=install_weak_deps=0 -y \
-    && microdnf clean all \
-    && rm -rf /var/cache/yum \
     && chmod -R 777 . \
     && setcap "cap_dac_read_search+p" /work/logdna-agent \
     && groupadd -g 5000 logdna \
-    && useradd -u 5000 -g logdna logdna
+    && useradd -u 5000 -g logdna logdna \
+    && microdnf remove shadow-utils -y \
+    && microdnf clean all \
+    && rm -rf /var/cache/yum
 
 CMD ["./logdna-agent"]

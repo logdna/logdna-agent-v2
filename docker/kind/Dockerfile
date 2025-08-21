@@ -1,4 +1,4 @@
-ARG BUILD_IMAGE docker.io/logdna/build-images:rust-bullseye-1-stable-x86_64
+ARG BUILD_IMAGE docker.io/logdna/build-images:rust-bookworm-1-stable-x86_64
 FROM ${BUILD_IMAGE}
 STOPSIGNAL SIGRTMIN+3
 
