@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -eux
+
 TARGET_ARCH="$1"
 
 UBI_MAJOR_VERSION="$2"
@@ -11,7 +13,7 @@ SYSROOT_PATH="/sysroot/ubi-$UBI_VERSION"
 
 ubi_packages="systemd-libs systemd-devel glibc glibc-devel gcc libstdc++-devel libstdc++-static kernel-headers"
 
-apt-get update 1>&2 && apt-get install --no-install-recommends -y dnf 1>&2
+apt-get update 1>&2 && apt-get install --no-install-recommends -y dnf rpm 1>&2
 dnf install --releasever="${UBI_MAJOR_VERSION}" --forcearch="${TARGET_ARCH}" \
             --installroot="$SYSROOT_PATH/" --repo="ubi-${UBI_MAJOR_VERSION}-baseos-rpms" \
             --repo="ubi-${UBI_MAJOR_VERSION}-appstream-rpms" --repo="ubi-${UBI_MAJOR_VERSION}-codeready-builder-rpms" -y \
