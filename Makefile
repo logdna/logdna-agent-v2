@@ -417,11 +417,7 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg FEATURES='$(FEATURES_ARG)' \
 		--build-arg REPO=$(REPO) \
 		--build-arg VCS_REF=$(VCS_REF) \
-		--build-arg VCS_URL=$(VCS_URL) \
-		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
-		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
-		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT) \
-		--no-cache
+		--build-arg VCS_URL=$(VCS_URL)
 
 .PHONY:build-image-debian
 build-image-debian: ## Build a docker image as specified in the Dockerfile.debian
@@ -440,11 +436,7 @@ build-image-debian: ## Build a docker image as specified in the Dockerfile.debia
 		--build-arg FEATURES='$(FEATURES_ARG)' \
 		--build-arg REPO=$(REPO) \
 		--build-arg VCS_REF=$(VCS_REF) \
-		--build-arg VCS_URL=$(VCS_URL) \
-		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
-		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
-		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT) \
-		--no-cache
+		--build-arg VCS_URL=$(VCS_URL)
 
 .PHONY:build-image-debug
 build-image-debug: ## Build a docker image as specified in the Dockerfile.debug
@@ -463,11 +455,7 @@ build-image-debug: ## Build a docker image as specified in the Dockerfile.debug
 		--build-arg FEATURES='$(FEATURES_ARG)' \
 		--build-arg REPO=$(REPO) \
 		--build-arg VCS_REF=$(VCS_REF) \
-		--build-arg VCS_URL=$(VCS_URL) \
-		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
-		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
-		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT) \
-		--no-cache
+		--build-arg VCS_URL=$(VCS_URL)
 
 .PHONY:build-deb
 build-deb: build-release
