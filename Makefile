@@ -420,7 +420,8 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--build-arg VCS_URL=$(VCS_URL) \
 		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
-		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
+		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT) \
+		--no-cache
 
 .PHONY:build-image-debian
 build-image-debian: ## Build a docker image as specified in the Dockerfile.debian
@@ -442,7 +443,8 @@ build-image-debian: ## Build a docker image as specified in the Dockerfile.debia
 		--build-arg VCS_URL=$(VCS_URL) \
 		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
-		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
+		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT) \
+		--no-cache
 
 .PHONY:build-image-debug
 build-image-debug: ## Build a docker image as specified in the Dockerfile.debug
@@ -464,7 +466,8 @@ build-image-debug: ## Build a docker image as specified in the Dockerfile.debug
 		--build-arg VCS_URL=$(VCS_URL) \
 		--build-arg SCCACHE_BUCKET=$(SCCACHE_BUCKET) \
 		--build-arg SCCACHE_REGION=$(SCCACHE_REGION) \
-		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT)
+		--build-arg SCCACHE_ENDPOINT=$(SCCACHE_ENDPOINT) \
+		--no-cache
 
 .PHONY:build-deb
 build-deb: build-release
