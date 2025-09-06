@@ -5,7 +5,7 @@
 
 Mezmo, formerly LogDNA, enables enterprises to ingest all of their log data to a single platform, normalize it, and route it to the appropriate teams so that they can take meaningful action in real time. Join us at the Mezmo community [forum](https://community.logdna.com).
 
-The LogDNA agent is a resource-efficient log collection client that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters. Supported platforms include Linux, Windows and Mac.
+The LogDNA agent is a resource-efficient log collection client that forwards logs to [LogDNA]. This version of the agent is written in [Rust] to ensure maximum performance, and when coupled with LogDNA's web application, provides a powerful log management tool for distributed systems, including [Kubernetes] clusters. Supported platforms include Linux, and Windows.
 
 
 <table>
