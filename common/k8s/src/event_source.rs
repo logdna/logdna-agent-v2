@@ -297,13 +297,13 @@ impl K8sEventStream {
                         .skip_while(|e| {
                             let matched = matches!(
                                 e,
-                                Ok(watcher::Event::<PartialObjectMeta<Pod>>::Restarted(_))
+                                Ok(watcher::Event::<PartialObjectMeta<Pod>>::InitApply(_))
                             );
                             async move { matched }
                         })
                         .map({
                             move |e| match e {
-                                Ok(watcher::Event::Deleted(e)) => {
+                                Ok(watcher::Event::Delete(e)) => {
                                     if let Some(name) = e.metadata.name {
                                         info!("Agent Down {}", name);
 

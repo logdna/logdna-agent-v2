@@ -592,7 +592,6 @@ mod tests {
 
         let meta = ObjectMeta {
             annotations: None,
-            cluster_name: None,
             creation_timestamp: Some(Time(Utc::now())),
             deletion_grace_period_seconds: None,
             deletion_timestamp: None,
