@@ -43,7 +43,6 @@ DOCKER_JOURNALD_DISPATCH := BUILD_IMAGE=$(RUST_IMAGE) ARCH=$(ARCH) ./docker/jour
 DOCKER_KIND_DISPATCH := BUILD_IMAGE=$(RUST_IMAGE) ARCH=$(ARCH) ./docker/kind_dispatch.sh "$(WORKDIR)" "$(shell pwd):/build:Z"
 DOCKER_PRIVATE_IMAGE := us.gcr.io/logdna-k8s/logdna-agent-v2
 DOCKER_PUBLIC_IMAGE ?= docker.io/logdna/logdna-agent
-DOCKER_IBM_IMAGE := icr.io/ext/logdna-agent
 
 export CARGO_CACHE ?= $(shell pwd)/.cargo_cache
 RUST_COMMAND := $(DOCKER_DISPATCH) $(RUST_IMAGE)
@@ -662,7 +661,7 @@ define publish_images_multi
 endef
 
 .PHONY: publish-image
-publish-image: publish-image-gcr publish-image-docker publish-image-ibm ## Publish SemVer compliant releases to our registries
+publish-image: publish-image-gcr publish-image-docker ## Publish SemVer compliant releases to our registries
 
 .PHONY:publish-image-gcr
 publish-image-gcr: ## Publish SemVer compliant releases to gcr
@@ -672,12 +671,8 @@ publish-image-gcr: ## Publish SemVer compliant releases to gcr
 publish-image-docker: ## Publish SemVer compliant releases to docker hub
 	$(call publish_images,$(DOCKER_PUBLIC_IMAGE))
 
-.PHONY:publish-image-ibm
-publish-image-ibm: ## Publish SemVer compliant releases to icr
-	$(call publish_images,$(DOCKER_IBM_IMAGE))
-
 .PHONY: publish-image-multi
-publish-image-multi: publish-image-multi-gcr publish-image-multi-docker publish-image-multi-ibm ## Publish multi-arch SemVer compliant releases to our registries
+publish-image-multi: publish-image-multi-gcr publish-image-multi-docker ## Publish multi-arch SemVer compliant releases to our registries
 
 .PHONY:publish-image-multi-gcr
 publish-image-multi-gcr: ## Publish multi-arch container images to gcr
@@ -686,10 +681,6 @@ publish-image-multi-gcr: ## Publish multi-arch container images to gcr
 .PHONY:publish-image-multi-docker
 publish-image-multi-docker: ## Publish multi-arch container images to docker hub
 	$(call publish_images_multi,$(DOCKER_PUBLIC_IMAGE))
-
-.PHONY:publish-image-multi-ibm
-publish-image-multi-ibm: ## Publish multi-arch container images to icr
-	$(call publish_images_multi,$(DOCKER_IBM_IMAGE))
 
 .PHONY:run
 run: ## Run the debug version of the agent
