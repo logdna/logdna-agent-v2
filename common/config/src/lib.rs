@@ -762,6 +762,7 @@ mod tests {
 
         let file = OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .read(true)
             .open(&path)

@@ -412,7 +412,7 @@ mod test {
     #[test]
     fn it_works() {
         let _ = env_logger::Builder::from_default_env().try_init();
-        let data_dir = tempdir().expect("Could not create temp dir").into_path();
+        let data_dir = tempdir().expect("Could not create temp dir").keep();
 
         // create a db, write to it, mutate it, delete entries.
         // The times/delays are significant
@@ -495,7 +495,7 @@ mod test {
         // build a path with multiple levels of missing directories to ensure they're all created
         let missing_state_dir = tempdir()
             .unwrap()
-            .into_path()
+            .keep()
             .join("a")
             .join("ghostly")
             .join("path");
@@ -519,7 +519,7 @@ mod test {
         use std::fs::DirBuilder;
         use std::os::unix::fs::DirBuilderExt;
 
-        let noperm_dir = tempdir().unwrap().into_path().join("denied");
+        let noperm_dir = tempdir().unwrap().keep().join("denied");
         assert!(
             !noperm_dir.exists(),
             "test prereq failed: {:?} reported as already existing",
@@ -547,7 +547,7 @@ mod test {
 
     #[test]
     fn new_agent_state_not_dir() {
-        let blocking_file = tempdir().unwrap().into_path().join("block");
+        let blocking_file = tempdir().unwrap().keep().join("block");
         File::create(&blocking_file).unwrap();
 
         let result = AgentState::new(&blocking_file).unwrap_err();
@@ -556,7 +556,7 @@ mod test {
 
     #[test]
     fn new_agent_state_dir_exists() {
-        let state_dir = tempdir().unwrap().into_path();
+        let state_dir = tempdir().unwrap().keep();
         let result = AgentState::new(state_dir);
         assert!(result.is_ok(), "failed to create valid AgentState struct");
     }

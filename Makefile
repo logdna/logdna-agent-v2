@@ -343,8 +343,8 @@ release-minor: ## Create a new minor beta release and push to github
 
 .PHONY:release-patch
 release-patch: ## Create a new patch beta release and push to github
-	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(MINOR_VERSION))
-	$(eval NEW_VERSION := $(TARGET_BRANCH).$(shell expr $(PATCH_VERSION) + 1))
+	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(MINOR_VERSION)-dev)
+	$(eval NEW_VERSION := $(MAJOR_VERSION).$(MINOR_VERSION).$(shell expr $(PATCH_VERSION) + 1)-beta.1)
 	@if [ ! "$(REMOTE_BRANCH)" = "$(TARGET_BRANCH)" ]; then echo "Can't create the patch release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"$(TARGET_BRANCH)\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(call CHANGE_README_VERSION,$(NEW_VERSION))

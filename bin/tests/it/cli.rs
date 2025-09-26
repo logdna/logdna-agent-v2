@@ -80,7 +80,7 @@ fn api_key_present() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))] // needs a refactor to use self signed server on mac
 fn test_append_and_delete() {
-    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let dir = tempdir().expect("Could not create temp dir").keep();
     let file_path = dir.join("file1.log");
     File::create(&file_path).expect("Could not create file");
 
@@ -112,7 +112,7 @@ fn test_append_and_delete() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))] // needs a refactor to use self signed server on mac
 fn test_file_added_after_initialization() {
-    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let dir = tempdir().expect("Could not create temp dir").keep();
     let mut agent_handle = common::spawn_agent(AgentSettings::new(dir.to_str().unwrap()));
     let mut reader = BufReader::new(agent_handle.stderr.take().unwrap());
 
@@ -134,7 +134,7 @@ fn test_file_added_after_initialization() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 fn test_delete_does_not_leave_file_descriptor() {
-    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let dir = tempdir().expect("Could not create temp dir").keep();
     let file_path = dir.join("file1.log");
     File::create(&file_path).expect("Could not create file");
     let mut settings = AgentSettings::new(dir.to_str().unwrap());
@@ -204,7 +204,7 @@ fn test_signals(signal: nix::sys::signal::Signal) {
 
     use wait_timeout::ChildExt;
 
-    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let dir = tempdir().expect("Could not create temp dir").keep();
     let file_path = dir.join("file1.log");
     File::create(&file_path).expect("Could not create file");
 
@@ -238,7 +238,7 @@ fn test_signals(signal: nix::sys::signal::Signal) {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))] // needs a refactor to use self signed server on mac
 fn test_append_and_move() {
-    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let dir = tempdir().expect("Could not create temp dir").keep();
     let file1_path = dir.join("file1.log");
     let file2_path = dir.join("file2.log");
     File::create(&file1_path).expect("Could not create file");
@@ -266,13 +266,13 @@ fn test_append_and_move() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_reuse_inode() {
-    let dir1 = tempdir().expect("Could not create temp dir").into_path();
-    let dir2 = tempdir().expect("Could not create temp dir").into_path();
+    let dir1 = tempdir().expect("Could not create temp dir").keep();
+    let dir2 = tempdir().expect("Could not create temp dir").keep();
     let file_path = dir1.join("file1.log");
     let mv_path = dir2.join("file1.log");
     let total_lines = 500;
 
-    let db_dir = tempdir().unwrap().into_path();
+    let db_dir = tempdir().unwrap().keep();
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
 
     let mut settings = AgentSettings::with_mock_ingester(dir1.to_str().unwrap(), &addr);
@@ -340,7 +340,7 @@ async fn test_reuse_inode() {
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 fn test_truncate_file() {
     // K8s uses copytruncate, see https://github.com/kubernetes/kubernetes/issues/38495
-    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let dir = tempdir().expect("Could not create temp dir").keep();
     let file_path = dir.join("file1.log");
     common::append_to_file(&file_path, 100, 50).expect("Could not append");
 
@@ -369,7 +369,7 @@ fn test_truncate_file() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 fn test_exclusion_rules() {
-    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let dir = tempdir().expect("Could not create temp dir").keep();
     let included_file = dir.join("file1.log");
     let excluded_file = dir.join("file2.log");
     common::append_to_file(&included_file, 100, 50).expect("Could not append");
@@ -410,7 +410,7 @@ fn test_exclusion_rules() {
 #[test]
 // #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_include_only_rules() {
-    let dir = tempdir().unwrap().into_path();
+    let dir = tempdir().unwrap().keep();
     let included = dir.join("my_app.log");
     let excluded1 = dir.join("other_file.log");
     let excluded2 = dir.join("another_file.log");
@@ -455,7 +455,7 @@ fn test_include_only_rules() {
 #[allow(clippy::needless_late_init)]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_files_other_than_dot_log_should_be_not_included_by_default() {
-    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let dir = tempdir().expect("Could not create temp dir").keep();
     let included_file = dir.join("file1.log");
     let not_included_files = vec![
         "file2.tar.gz",
@@ -503,10 +503,10 @@ fn test_files_other_than_dot_log_should_be_not_included_by_default() {
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 fn test_dangling_symlinks() {
-    let log_dir = tempdir().expect("Could not create temp dir").into_path();
+    let log_dir = tempdir().expect("Could not create temp dir").keep();
     let log_sub_dir = log_dir.join("sub");
     fs::create_dir(&log_sub_dir).unwrap();
-    let data_dir = tempdir().expect("Could not create temp dir").into_path();
+    let data_dir = tempdir().expect("Could not create temp dir").keep();
     let file_path = data_dir.join("file1.log");
     let symlink_path = log_sub_dir.join("file1.log");
     common::append_to_file(&file_path, 100, 50).expect("Could not append");
@@ -542,8 +542,8 @@ fn test_dangling_symlinks() {
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 fn test_append_after_symlinks_delete() {
-    let log_dir = tempdir().expect("Could not create temp dir").into_path();
-    let data_dir = tempdir().expect("Could not create temp dir").into_path();
+    let log_dir = tempdir().expect("Could not create temp dir").keep();
+    let data_dir = tempdir().expect("Could not create temp dir").keep();
     let file_path = data_dir.join("file1.log");
     let symlink_path = log_dir.join("file1.log");
     common::append_to_file(&file_path, 100, 50).expect("Could not append");
@@ -579,8 +579,8 @@ fn test_directory_symlinks_delete() {
         }
     }
 
-    let log_dir = tempdir().expect("Could not create temp dir").into_path();
-    let data_dir = tempdir().expect("Could not create temp dir").into_path();
+    let log_dir = tempdir().expect("Could not create temp dir").keep();
+    let data_dir = tempdir().expect("Could not create temp dir").keep();
 
     let dir_1_path = data_dir.join("dir_1");
     let dir_1_1_path = dir_1_path.join("dir_1_1");
@@ -1091,7 +1091,7 @@ fn lookback_tail_lines_file_created_before_agent_start_at_end() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_partial_fsynced_lines() {
-    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let dir = tempdir().expect("Couldn't create temp dir...").keep();
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let file_path = dir.join("test.log");
     File::create(&file_path).expect("Couldn't create temp log file...");
@@ -1150,7 +1150,7 @@ async fn test_partial_fsynced_lines() {
 #[cfg(target_os = "linux")]
 async fn test_transient_access_denied() {
     use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let dir = tempdir().expect("Couldn't create temp dir...").keep();
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let file_path = dir.join("test.log");
 
@@ -1221,7 +1221,7 @@ async fn test_transient_access_denied() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_tags() {
-    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let dir = tempdir().expect("Couldn't create temp dir...").keep();
 
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let file_path = dir.join("test.log");
@@ -1282,8 +1282,8 @@ async fn test_tags() {
 async fn test_lookback_restarting_agent() {
     let line_count = Arc::new(AtomicUsize::new(0));
 
-    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
-    let db_dir = tempdir().unwrap().into_path();
+    let dir = tempdir().expect("Couldn't create temp dir...").keep();
+    let db_dir = tempdir().unwrap().keep();
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
 
     let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &addr);
@@ -1384,7 +1384,7 @@ async fn test_lookback_restarting_agent() {
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 async fn test_symlink_initialization_both_included() {
-    let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let log_dir = tempdir().expect("Couldn't create temp dir...").keep();
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let file_path = log_dir.join("test.log");
     let symlink_path = log_dir.join("test-symlink.log");
@@ -1440,8 +1440,8 @@ async fn test_symlink_initialization_both_included() {
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 async fn test_symlink_initialization_excluded_file() {
-    let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
-    let excluded_dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let log_dir = tempdir().expect("Couldn't create temp dir...").keep();
+    let excluded_dir = tempdir().expect("Couldn't create temp dir...").keep();
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let file_path = excluded_dir.join("test.log");
     let symlink_path = log_dir.join("test-symlink.log");
@@ -1490,8 +1490,8 @@ async fn test_symlink_initialization_excluded_file() {
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 async fn test_symlink_to_symlink_initialization_excluded_file() {
-    let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
-    let excluded_dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let log_dir = tempdir().expect("Couldn't create temp dir...").keep();
+    let excluded_dir = tempdir().expect("Couldn't create temp dir...").keep();
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let file_path = excluded_dir.join("test.log");
     let excluded_symlink_path = excluded_dir.join("test-symlink.log");
@@ -1541,8 +1541,8 @@ async fn test_symlink_to_symlink_initialization_excluded_file() {
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 async fn test_symlink_to_dir_initialization_excluded_file() {
-    let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
-    let test_dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let log_dir = tempdir().expect("Couldn't create temp dir...").keep();
+    let test_dir = tempdir().expect("Couldn't create temp dir...").keep();
     let excluded_dir = test_dir.join("excluded");
     std::fs::create_dir(&excluded_dir).unwrap();
     let tracked_dir = test_dir.join("tracked");
@@ -1614,8 +1614,8 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
     let (server, received, shutdown_handle, cert_file, addr) =
         common::self_signed_https_ingester(None, None, None);
 
-    let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
-    let excluded_dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let log_dir = tempdir().expect("Couldn't create temp dir...").keep();
+    let excluded_dir = tempdir().expect("Couldn't create temp dir...").keep();
     let file_path = excluded_dir.join("test.log");
     let excluded_hardlink_path = excluded_dir.join("test-hardlink.log");
     let excluded_symlink_path = excluded_dir.join("test-symlink.log");
@@ -1711,8 +1711,8 @@ async fn test_symlink_to_hardlink_initialization_excluded_file() {
 #[cfg_attr(not(all(target_os = "linux", feature = "integration_tests")), ignore)]
 #[cfg(unix)]
 async fn test_symlink_initialization_with_stateful_lookback() {
-    let log_dir = tempdir().expect("Couldn't create temp dir...").into_path();
-    let excluded_dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let log_dir = tempdir().expect("Couldn't create temp dir...").keep();
+    let excluded_dir = tempdir().expect("Couldn't create temp dir...").keep();
 
     let db_dir = tempdir().expect("Couldn't create temp dir...");
     let db_dir_path = db_dir.path();
@@ -1797,7 +1797,7 @@ async fn test_line_rules(
     to_write: Vec<&str>,
     expected: Vec<&str>,
 ) {
-    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let dir = tempdir().expect("Couldn't create temp dir...").keep();
 
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let file_path = dir.join("test.log");
@@ -1944,7 +1944,7 @@ async fn test_line_redact() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))] // needs a refactor to use self signed server on mac
 async fn test_directory_created_after_initialization() {
-    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let dir = tempdir().expect("Couldn't create temp dir...").keep();
     let future_dir = dir.join("inner");
 
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
@@ -2124,7 +2124,7 @@ fn lookback_stateful_lines_are_delivered() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_tight_writes() {
-    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let dir = tempdir().expect("Couldn't create temp dir...").keep();
 
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
     let file_path = dir.join("test.log");
@@ -2181,7 +2181,7 @@ async fn test_tight_writes() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_tight_writes_with_slow_ingester() {
-    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let dir = tempdir().expect("Couldn't create temp dir...").keep();
 
     let (server, received, shutdown_handle, cert_file, addr) = common::self_signed_https_ingester(
         None,
@@ -2263,7 +2263,7 @@ async fn test_tight_writes_with_slow_ingester() {
 #[cfg_attr(not(feature = "slow_tests"), ignore)]
 async fn test_endurance_writes() {
     use tokio::io::AsyncWriteExt;
-    let dir = tempdir().expect("Couldn't create temp dir...").into_path();
+    let dir = tempdir().expect("Couldn't create temp dir...").keep();
 
     let line_count = Arc::new(AtomicUsize::new(0));
 
@@ -2355,7 +2355,7 @@ async fn test_endurance_writes() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 fn test_clear_cache() {
-    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let dir = tempdir().expect("Could not create temp dir").keep();
     let file_path = dir.join("file1.log");
     File::create(&file_path).expect("Could not create file");
 
@@ -2401,8 +2401,8 @@ fn test_offset_stream_state_gc() {
     use ::fs::cache::get_inode;
 
     let _ = env_logger::Builder::from_default_env().try_init();
-    let dir = tempdir().expect("Could not create temp dir").into_path();
-    let db_dir = tempdir().expect("Could not create temp dir").into_path();
+    let dir = tempdir().expect("Could not create temp dir").keep();
+    let db_dir = tempdir().expect("Could not create temp dir").keep();
     let file_path = dir.join("file1.log");
 
     File::create(&file_path).expect("Could not create file");
@@ -2439,7 +2439,7 @@ fn test_offset_stream_state_gc() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 fn test_fs_rescan_on_initial_log_dir_delete() {
-    let base_dir = tempdir().expect("Could not create temp dir").into_path();
+    let base_dir = tempdir().expect("Could not create temp dir").keep();
 
     let dir_path = base_dir.join("initial_log_dir");
     std::fs::create_dir(dir_path.clone()).expect("Unable to create dir");
@@ -2467,7 +2467,7 @@ fn test_fs_rescan_on_initial_log_dir_delete() {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 fn test_fs_rescan_on_initial_log_dir_create() {
-    let base_dir = tempdir().expect("Could not create temp dir").into_path();
+    let base_dir = tempdir().expect("Could not create temp dir").keep();
 
     let dir_path = base_dir.join("initial_log_dir");
     let dir_path_str = dir_path.to_str().unwrap();

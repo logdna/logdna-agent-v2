@@ -572,7 +572,7 @@ mod tests {
 
     #[test]
     fn test_properties_file_basic() -> io::Result<()> {
-        let dir = tempdir().unwrap().into_path();
+        let dir = tempdir().unwrap().keep();
         let file_name = dir.join("test.conf");
         fs::write(
             &file_name,
