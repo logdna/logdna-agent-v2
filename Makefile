@@ -407,6 +407,7 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--platform=linux/${DEB_ARCH_NAME_${ARCH}} \
 		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
 		--rm \
+		--provenance=false \
 		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
 		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
 		--build-arg TARGET=$(TARGET) \
