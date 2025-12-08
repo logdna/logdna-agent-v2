@@ -62,7 +62,7 @@ once_cell = "1.10"
 rlimit = "0.10"
 
 [target.'cfg(any(windows))'.dependencies]
-winservice = { git = "https://github.com/dkhokhlov/winservice.git" }
+windows-service = "0.8"
 flexi_logger = { version = "0.22", features = ["async"] }
 
 # Dependency for linux integration tests
