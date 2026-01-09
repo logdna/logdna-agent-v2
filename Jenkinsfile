@@ -13,7 +13,7 @@ def slugify(str) {
 pipeline {
     agent {
         node {
-            label "rust-x86_64"
+            label "ec2-fleet"
             customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
         }
     }
