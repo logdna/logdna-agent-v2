@@ -43,7 +43,6 @@ pipeline {
     }
     parameters {
         booleanParam(name: 'PUBLISH_GCR_IMAGE', description: 'Publish docker image to Google Container Registry (GCR)', defaultValue: false)
-        booleanParam(name: 'PUBLISH_ICR_IMAGE', description: 'Publish docker image to IBM Container Registry (ICR) and Dockerhub', defaultValue: false)
         booleanParam(name: 'PUBLISH_BINARIES', description: 'Publish executable binaries to S3 bucket s3://logdna-agent-build-bin', defaultValue: false)
         booleanParam(name: 'PUBLISH_INSTALLERS', description: 'Publish Choco installer', defaultValue: false)
         booleanParam(name: 'AUDIT', description: 'Check for application vulnerabilities with cargo audit', defaultValue: true)
@@ -510,15 +509,6 @@ pipeline {
                                 sh 'ARCH=aarch64 make publish-image-docker'
                                 sh 'make publish-image-multi-docker'
                             }
-                            // Login and publish to ibm
-                            docker.withRegistry(
-                                'https://icr.io',
-                                'icr-iam-username-password'
-                            ) {
-                                sh 'ARCH=x86_64 make publish-image-ibm'
-                                sh 'ARCH=aarch64 make publish-image-ibm'
-                                sh 'make publish-image-multi-ibm'
-                            }
                         }
                     }
                 }
@@ -577,7 +567,6 @@ pipeline {
         success {
             script {
                 if (params.TASK_NAME == 'image-vulnerability-update') {
-                    //TODO: change channel to #ibm-mezmo-agent after testing
                     notifySlack(
                         currentBuild.currentResult,
                         [channel: '#proj-agent'],
