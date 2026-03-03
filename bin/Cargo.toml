@@ -1,18 +1,9 @@
-# version bump checklist
-# 1) version = "X.Y.Z" in this file
-#       ../bin/Cargo.toml
-# 2) version in all the k8s yaml image: logdna/logdna-agent-v2:X.Y.Z
-#       ../k8s/*.yaml
-# 3) update changelog
-#       ../CHANGELOG.md
-# 4) *optional* run 'cargo update' so that new deps are pulled in
-# 5) once the diff/pr is accepted tag the commit in master X.Y.Z, this will trigger the CI job
-
 [package]
 name = "logdna-agent"
-version = "3.9.0-dev"
 authors = ["CJP10 <connor.peticca@logdna.com>"]
-edition = "2018"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
 build = "build.rs"
 
 [[bin]]

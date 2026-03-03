@@ -1,7 +1,8 @@
 [package]
 name = "logdna-metrics-recorder"
 version = "0.1.0"
-edition = "2018"
+edition.workspace = true
+rust-version.workspace = true
 
 [features]
 integration_tests = []
