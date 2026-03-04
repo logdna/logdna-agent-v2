@@ -25,7 +25,7 @@ pipeline {
     triggers {
         issueCommentTrigger(TRIGGER_PATTERN)
         parameterizedCron(env.BRANCH_NAME ==~ /\d+\.\d+/ ? '''
-            H 8 * * 1 % PUBLISH_GCR_IMAGE=true;PUBLISH_ICR_IMAGE=true;AUDIT=false;TASK_NAME=image-vulnerability-update
+            H 8 * * 1 % PUBLISH_PRIVATE_IMAGE=true;PUBLISH_PUBLIC_IMAGE=true;AUDIT=false;TASK_NAME=image-vulnerability-update
             H 12 * * 1 % AUDIT=true;TASK_NAME=audit
             ''' : ''
         )
@@ -42,8 +42,8 @@ pipeline {
         BUILD_SLUG = slugify("${BUILD_TAG}")
     }
     parameters {
-        booleanParam(name: 'PUBLISH_GCR_IMAGE', description: 'Publish docker image to Google Container Registry (GCR)', defaultValue: false)
-        booleanParam(name: 'PUBLISH_ICR_IMAGE', description: 'Publish docker image to IBM Container Registry (ICR) and Dockerhub', defaultValue: false)
+        booleanParam(name: 'PUBLISH_PRIVATE_IMAGE', description: 'Publish docker image to private registries (e.g. Google Container Registry (GCR))', defaultValue: false)
+        booleanParam(name: 'PUBLISH_PUBLIC_IMAGE', description: 'Publish docker image to public registries (e.g. Dockerhub)', defaultValue: false)
         booleanParam(name: 'PUBLISH_BINARIES', description: 'Publish executable binaries to S3 bucket s3://logdna-agent-build-bin', defaultValue: false)
         booleanParam(name: 'PUBLISH_INSTALLERS', description: 'Publish Choco installer', defaultValue: false)
         booleanParam(name: 'AUDIT', description: 'Check for application vulnerabilities with cargo audit', defaultValue: true)
@@ -486,7 +486,7 @@ pipeline {
                 */
                 stage('Publish GCR images') {
                     when {
-                        environment name: 'PUBLISH_GCR_IMAGE', value: 'true'
+                        environment name: 'PUBLISH_PRIVATE_IMAGE', value: 'true'
                     }
                     steps {
                         // Publish to gcr, jenkins is logged into gcr globally
@@ -495,9 +495,9 @@ pipeline {
                         sh 'make publish-image-multi-gcr'
                     }
                 }
-                stage('Publish Dockerhub and ICR images') {
+                stage('Publish Dockerhub') {
                     when {
-                        environment name: 'PUBLISH_ICR_IMAGE', value: 'true'
+                        environment name: 'PUBLISH_PUBLIC_IMAGE', value: 'true'
                     }
                     steps {
                         script {
@@ -509,15 +509,6 @@ pipeline {
                                 sh 'ARCH=x86_64 make publish-image-docker'
                                 sh 'ARCH=aarch64 make publish-image-docker'
                                 sh 'make publish-image-multi-docker'
-                            }
-                            // Login and publish to ibm
-                            docker.withRegistry(
-                                'https://icr.io',
-                                'icr-iam-username-password'
-                            ) {
-                                sh 'ARCH=x86_64 make publish-image-ibm'
-                                sh 'ARCH=aarch64 make publish-image-ibm'
-                                sh 'make publish-image-multi-ibm'
                             }
                         }
                     }
@@ -577,7 +568,6 @@ pipeline {
         success {
             script {
                 if (params.TASK_NAME == 'image-vulnerability-update') {
-                    //TODO: change channel to #ibm-mezmo-agent after testing
                     notifySlack(
                         currentBuild.currentResult,
                         [channel: '#proj-agent'],
