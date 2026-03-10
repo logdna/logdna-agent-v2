@@ -362,7 +362,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_initial_write_get_debounced_into_create() -> io::Result<()> {
-        let dir = tempdir().unwrap().into_path();
+        let dir = tempdir().unwrap().keep();
         let dir_path = &dir;
 
         let mut w = Watcher::new();
@@ -389,7 +389,7 @@ mod tests {
     async fn test_create_file_after_dir_watch() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
 
-        let dir = tempdir().unwrap().into_path();
+        let dir = tempdir().unwrap().keep();
         let dir_path = &dir;
 
         let mut w = Watcher::new();
@@ -526,7 +526,7 @@ mod tests {
     #[tokio::test]
     #[cfg(unix)]
     async fn test_watch_file_write_after_create() -> io::Result<()> {
-        let dir = tempdir().unwrap().into_path();
+        let dir = tempdir().unwrap().keep();
 
         let mut w = Watcher::new();
 
@@ -562,7 +562,7 @@ mod tests {
         let (tx_main, rx_main) = mpsc::channel();
         let (tx_thread, rx_thread) = mpsc::channel();
 
-        let dir = tempdir().unwrap().into_path();
+        let dir = tempdir().unwrap().keep();
 
         let mut w = Watcher::new();
 
@@ -612,8 +612,8 @@ mod tests {
     #[tokio::test]
     #[cfg(target_os = "linux")]
     async fn test_watch_symlink_write_after_create_linux() -> io::Result<()> {
-        let dir = tempdir()?.into_path();
-        let excluded_dir = tempdir()?.into_path();
+        let dir = tempdir()?.keep();
+        let excluded_dir = tempdir()?.keep();
 
         let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
@@ -653,8 +653,8 @@ mod tests {
     #[tokio::test]
     #[cfg(unix)]
     async fn test_watch_symlink_and_target_write_after_create() -> io::Result<()> {
-        let dir = tempdir()?.into_path();
-        let excluded_dir = tempdir()?.into_path();
+        let dir = tempdir()?.keep();
+        let excluded_dir = tempdir()?.keep();
 
         let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
@@ -702,8 +702,8 @@ mod tests {
     #[tokio::test]
     #[cfg(unix)]
     async fn test_watch_symlink_and_target_changed() -> io::Result<()> {
-        let dir = tempdir()?.into_path();
-        let excluded_dir = tempdir()?.into_path();
+        let dir = tempdir()?.keep();
+        let excluded_dir = tempdir()?.keep();
 
         let mut w = Watcher::new();
         w.watch(&dir, RecursiveMode::Recursive).unwrap();
@@ -745,8 +745,8 @@ mod tests {
     #[tokio::test]
     #[cfg(unix)]
     async fn test_watch_symlink_directory() -> io::Result<()> {
-        let dir = tempdir()?.into_path();
-        let excluded_dir = tempdir()?.into_path();
+        let dir = tempdir()?.keep();
+        let excluded_dir = tempdir()?.keep();
 
         let file1_path = &excluded_dir.join("file1.log");
         let symlink_path = &dir.join("symlink-dir");
@@ -801,8 +801,8 @@ mod tests {
     #[tokio::test]
     #[cfg(unix)]
     async fn test_watch_symlink_directory_move_in_move_out() -> io::Result<()> {
-        let dir = tempdir()?.into_path();
-        let excluded_dir = tempdir()?.into_path();
+        let dir = tempdir()?.keep();
+        let excluded_dir = tempdir()?.keep();
 
         let file1_path = &excluded_dir.join("file1.log");
         let symlink_path = &dir.join("symlink-dir");
@@ -872,8 +872,8 @@ mod tests {
     #[tokio::test]
     #[cfg(target_os = "linux")]
     async fn test_watch_hardlink_file_linux() -> io::Result<()> {
-        let dir = tempdir()?.into_path();
-        let excluded_dir = tempdir()?.into_path();
+        let dir = tempdir()?.keep();
+        let excluded_dir = tempdir()?.keep();
 
         let file_path = &excluded_dir.join("file1.log");
         let link_path = &dir.join("symlink.log");
@@ -912,7 +912,7 @@ mod tests {
         // inject Rename event with Some path
         let mut evt =
             notify::event::Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::From)));
-        let the_path = tempdir()?.into_path();
+        let the_path = tempdir()?.keep();
         evt.paths.push(the_path.clone());
         w.inject(Ok(evt));
         let mut items = Vec::new();
