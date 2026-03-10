@@ -508,7 +508,7 @@ mod tests {
 
     #[tokio::test]
     async fn retry_sender_existing_files() -> std::io::Result<()> {
-        let retry_dir = tempdir()?.into_path();
+        let retry_dir = tempdir()?.keep();
         let fn_ts = OffsetDateTime::now_utc().unix_timestamp();
         let fn_uuid = Uuid::new_v4().to_string();
 

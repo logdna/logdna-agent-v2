@@ -272,7 +272,7 @@ async fn test_reuse_inode() {
     let mv_path = dir2.join("file1.log");
     let total_lines = 500;
 
-    let db_dir = tempdir().unwrap().into_path();
+    let db_dir = tempdir().unwrap().keep();
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
 
     let mut settings = AgentSettings::with_mock_ingester(dir1.to_str().unwrap(), &addr);
@@ -410,7 +410,7 @@ fn test_exclusion_rules() {
 #[test]
 // #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_include_only_rules() {
-    let dir = tempdir().unwrap().into_path();
+    let dir = tempdir().unwrap().keep();
     let included = dir.join("my_app.log");
     let excluded1 = dir.join("other_file.log");
     let excluded2 = dir.join("another_file.log");
@@ -1283,7 +1283,7 @@ async fn test_lookback_restarting_agent() {
     let line_count = Arc::new(AtomicUsize::new(0));
 
     let dir = tempdir().expect("Couldn't create temp dir...").into_path();
-    let db_dir = tempdir().unwrap().into_path();
+    let db_dir = tempdir().unwrap().keep();
     let (server, received, shutdown_handle, addr) = common::start_http_ingester();
 
     let mut settings = AgentSettings::with_mock_ingester(dir.to_str().unwrap(), &addr);
