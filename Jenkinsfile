@@ -1,13 +1,40 @@
 library 'magic-butler-catalogue'
 def PROJECT_NAME = 'logdna-agent-v2'
 def TRIGGER_PATTERN = '.*@logdnabot.*'
-def publishGCRImage = false
-def publishDockerhubICRImages = false
 def slugify(str) {
   def s = str.toLowerCase()
   s = s.replaceAll(/[^a-z0-9\s-\/]/, "").replaceAll(/\s+/, " ").trim()
   s = s.replaceAll(/[\/\s]/, '-').replaceAll(/-{2,}/, '-')
   s
+}
+
+def withAwsCreds(Closure body) {
+    withCredentials([[
+        $class: 'AmazonWebServicesCredentialsBinding',
+        credentialsId: 'aws',
+        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
+    ]]) {
+        def credsFile = "${env.WORKSPACE}/.aws_creds_${UUID.randomUUID()}"
+
+        withEnv([
+            "AWS_SHARED_CREDENTIALS_FILE=${credsFile}",
+            "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}",
+            "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
+        ]) {
+            sh '''
+                echo "[default]" > $AWS_SHARED_CREDENTIALS_FILE
+                echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $AWS_SHARED_CREDENTIALS_FILE
+                echo "AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY" >> $AWS_SHARED_CREDENTIALS_FILE
+            '''
+
+            try {
+                body.call()
+            } finally {
+                sh 'rm -f $AWS_SHARED_CREDENTIALS_FILE'
+            }
+        }
+    }
 }
 
 pipeline {
@@ -25,8 +52,8 @@ pipeline {
     triggers {
         issueCommentTrigger(TRIGGER_PATTERN)
         parameterizedCron(env.BRANCH_NAME ==~ /\d+\.\d+/ ? '''
-            H 8 * * 1 % PUBLISH_GCR_IMAGE=true;PUBLISH_ICR_IMAGE=true;AUDIT=false;TASK_NAME=image-vulnerability-update
-            H 12 * * 1 % AUDIT=true;TASK_NAME=audit
+            H 8 * * 1 % BUILD_ALL=false;PUBLISH_GCR_IMAGE=true;PUBLISH_DOCKER_IMAGE=true;TASK_NAME=image-vulnerability-update
+            H 12 * * 1 % BUILD_ALL=false;AUDIT=true;TASK_NAME=audit
             ''' : ''
         )
     }
@@ -42,13 +69,13 @@ pipeline {
         BUILD_SLUG = slugify("${BUILD_TAG}")
     }
     parameters {
+        booleanParam(name: 'BUILD_ALL', description: 'Build all artifacts regardless of publish parameters', defaultValue: true)
         booleanParam(name: 'PUBLISH_GCR_IMAGE', description: 'Publish docker image to Google Container Registry (GCR)', defaultValue: false)
-        booleanParam(name: 'PUBLISH_ICR_IMAGE', description: 'Publish docker image to IBM Container Registry (ICR) and Dockerhub', defaultValue: false)
-        booleanParam(name: 'PUBLISH_BINARIES', description: 'Publish executable binaries to S3 bucket s3://logdna-agent-build-bin', defaultValue: false)
-        booleanParam(name: 'PUBLISH_INSTALLERS', description: 'Publish Choco installer', defaultValue: false)
-        booleanParam(name: 'BUILD_MAC_RELEASE', description: 'Build Mac Release', defaultValue: true)
-        booleanParam(name: 'TEST_MAC', description: 'Test on Mac', defaultValue: true)
-        booleanParam(name: 'AUDIT', description: 'Check for application vulnerabilities with cargo audit', defaultValue: true)
+        booleanParam(name: 'PUBLISH_DOCKER_IMAGE', description: 'Publish docker image to Dockerhub', defaultValue: false)
+        booleanParam(name: 'PUBLISH_LINUX_BINARIES', description: 'Publish linux executable binaries to S3 bucket s3://logdna-agent-build-bin', defaultValue: false)
+        booleanParam(name: 'PUBLISH_WINDOWS_BINARIES', description: 'Publish windows executable binaries to S3 bucket s3://logdna-agent-build-bin', defaultValue: false)
+        booleanParam(name: 'PUBLISH_CHOCO_INSTALLER', description: 'Publish Choco installer', defaultValue: false)
+        booleanParam(name: 'AUDIT', description: 'Check for application vulnerabilities with cargo audit', defaultValue: false)
         string(name: 'RUST_IMAGE_SUFFIX', description: 'Build image tag suffix', defaultValue: "")
         choice(name: 'TASK_NAME', choices: ['n/a', 'audit', 'image-vulnerability-update'], description: 'The name of the task being handled in this build, if applicable')
     }
@@ -79,13 +106,13 @@ pipeline {
         }
         stage('Lint, Audit, and Unit Test') {
             parallel {
-                /*stage('Lint') {
+                stage('Lint') {
                     steps {
                         sh '''
                             make lint -o lint-audit
                         '''
                     }
-                }*/
+                }
                 stage('Audit') {
                     when {
                         environment name: 'AUDIT', value: 'true'
@@ -96,36 +123,6 @@ pipeline {
                         '''
                     }
                 }
-                /*
-                stage('Mac OSX Unit Tests'){
-                    when {
-                        allOf {
-                            environment name: 'TEST_MAC', value: 'true'
-                            not {
-                                triggeredBy 'ParameterizedTimerTriggerCause'
-                            }
-                        }
-                    }
-                    agent {
-                        node {
-                            label "osx-node"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
-                    steps {
-                        sh """
-                            source $HOME/.cargo/env
-                            cargo make unit-tests
-                        """
-                    }
-                    post {
-                      always {
-                        sh "cargo clean"
-                        sh "rm -f ${WORKSPACE}/.aws_creds_mac_static_arm64"
-                      }
-                    }
-                }
-                */
                 stage('Unit Tests'){
                     when {
                         not {
@@ -133,29 +130,19 @@ pipeline {
                         }
                     }
                     steps {
-                        withCredentials([[
-                                            $class: 'AmazonWebServicesCredentialsBinding',
-                                            credentialsId: 'aws',
-                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                            ]]){
-                            sh """
-                                make test
-                            """
+                        script {
+                            withAwsCreds {
+                                sh 'make test'
+                            }
                         }
                     }
                 }
                 stage('Code Coverage'){
                     steps {
-                        withCredentials([[
-                                           $class: 'AmazonWebServicesCredentialsBinding',
-                                           credentialsId: 'aws',
-                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                         ]]){
-                            sh """
-                              make unit-code-coverage
-                            """
+                        script {
+                            withAwsCreds {
+                                sh 'make unit-code-coverage'
+                            }
                         }
                     }
                     post {
@@ -193,260 +180,126 @@ pipeline {
                             // Assumes the pipeline-e2e-creds format remains the same. Chase
                             // refer to the e2e tests's README's authorization docs for the
                             // current structure
-                            LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
-                            TEST_THREADS = sh (script: 'threads=$(echo $(nproc)/4 | bc); echo $(( threads > 1 ? threads: 1))', returnStdout: true).trim()
-                        }
-                        withCredentials([[
-                                           $class: 'AmazonWebServicesCredentialsBinding',
-                                           credentialsId: 'aws',
-                                           accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                           secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                         ]]){
-                            sh """
-                              TEST_THREADS="${TEST_THREADS}" make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}
-                            """
+                            def LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
+                            def TEST_THREADS = sh (script: 'threads=$(echo $(nproc)/4 | bc); echo $(( threads > 1 ? threads: 1))', returnStdout: true).trim()
+
+                            sh "TEST_THREADS=${TEST_THREADS} make integration-test LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY}"
                         }
                     }
                 }
-                /*
-                stage('Mac OSX Integration Tests'){
-                    when {
-                        allOf {
-                            environment name: 'TEST_MAC', value: 'true'
-                            not {
-                                triggeredBy 'ParameterizedTimerTriggerCause'
+                stage('Run K8s Integration Tests') {
+                    steps {
+                        script {
+                            withAwsCreds {
+                                sh 'make k8s-test'
                             }
                         }
                     }
-                    agent {
-                        node {
-                            label "osx-node"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
-                    environment {
-                        CREDS_FILE = credentials('pipeline-e2e-creds')
-                        LOGDNA_HOST = "logs.use.stage.logdna.net"
-                    }
-                    steps {
-                        script {
-                            def creds = readJSON file: CREDS_FILE
-                            LOGDNA_INGESTION_KEY = creds["packet-stage"]["account"]["ingestionkey"]
-                        }
-                        sh """
-                            source $HOME/.cargo/env
-                            LOGDNA_INGESTION_KEY=${LOGDNA_INGESTION_KEY} LOGDNA_HOST=${LOGDNA_HOST} cargo make int-tests
-                        """
-                    }
-                    post {
-                      always {
-                        sh "cargo clean"
-                    }
-                  }
-                }
-                */
-                stage('Run K8s Integration Tests') {
-                    steps {
-                        withCredentials([[
-                                            $class: 'AmazonWebServicesCredentialsBinding',
-                                            credentialsId: 'aws',
-                                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                                            ]]) {
-                            sh """
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_k8s-test
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_k8s-test
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_k8s-test
-                                make k8s-test AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_k8s-test
-                            """
-                        }
-                    }
-                }
-            }
-            post {
-                always {
-                    sh "make clean"
-                    sh "rm -f ${WORKSPACE}/.aws_creds_k8s-test"
                 }
             }
         }
-        stage('Build Release Binaries') {
+        stage('Build Release') {
             environment {
                 CREDS_FILE = credentials('pipeline-e2e-creds')
                 LOGDNA_HOST = "logs.use.stage.logdna.net"
             }
             parallel {
                 stage('Build Release Image x86_64') {
-                    steps {
-                        sh "make init-qemu"
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]){
-                            sh """
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_x86_64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_x86_64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_x86_64
-                                ARCH=x86_64 make build-image AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_x86_64
-                            """
+                    when {
+                        anyOf {
+                            environment name: 'BUILD_ALL', value: 'true'
+                            environment name: 'PUBLISH_GCR_IMAGE', value: 'true'
+                            environment name: 'PUBLISH_DOCKER_IMAGE', value: 'true'
                         }
                     }
-                    post {
-                        always {
-                            sh "rm ${WORKSPACE}/.aws_creds_x86_64"
+                    environment {
+                        ARCH = 'x86_64'
+                    }
+                    steps {
+                        script {
+                            withAwsCreds {
+                                sh 'make build-image'
+                            }
                         }
                     }
                 }
                 stage('Build Release Image aarch64') {
-                    steps {
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]){
-                            sh """
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_aarch64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_aarch64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_aarch64
-                                ARCH=aarch64 make build-image AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_aarch64
-                            """
+                    when {
+                        anyOf {
+                            environment name: 'BUILD_ALL', value: 'true'
+                            environment name: 'PUBLISH_GCR_IMAGE', value: 'true'
+                            environment name: 'PUBLISH_DOCKER_IMAGE', value: 'true'
                         }
                     }
-                    post {
-                        always {
-                            sh "rm ${WORKSPACE}/.aws_creds_aarch64"
+                    environment {
+                        ARCH = 'aarch64'
+                    }
+                    steps {
+                        script {
+                            withAwsCreds {
+                                sh 'make build-image'
+                            }
                         }
                     }
                 }
                 stage('Build static release binary x86_64') {
-                    steps {
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]) {
-                            sh '''
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_static_x86_64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_static_x86_64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static_x86_64
-                                ARCH=x86_64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static_x86_64
-                                rm ${WORKSPACE}/.aws_creds_static_x86_64
-                            '''
+                    when {
+                        anyOf {
+                            environment name: 'BUILD_ALL', value: 'true'
+                            environment name: 'PUBLISH_LINUX_BINARIES', value: 'true'
                         }
+                    }
+                    environment {
+                        ARCH = 'x86_64'
+                        STATIC = '1'
+                    }
+                    steps {
+                        sh 'make build-release'
                     }
                 }
                 stage('Build static release binary aarch64') {
-                    steps {
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]) {
-                            sh '''
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_static_aarch64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_static_aarch64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static_aarch64
-                                ARCH=aarch64 STATIC=1 FEATURES= make build-release AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static_aarch64
-                                rm ${WORKSPACE}/.aws_creds_static_aarch64
-                            '''
+                    when {
+                        anyOf {
+                            environment name: 'BUILD_ALL', value: 'true'
+                            environment name: 'PUBLISH_LINUX_BINARIES', value: 'true'
                         }
+                    }
+                    environment {
+                        ARCH = 'aarch64'
+                        STATIC = '1'
+                    }
+                    steps {
+                        sh 'make build-release'
                     }
                 }
                 stage('Build Windows release binary x86_64') {
-                    steps {
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]) {
-                            sh '''
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_win_static_x86_64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_win_static_x86_64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_win_static_x86_64
-                                ARCH=x86_64 WINDOWS=1 FEATURES=windows_service make build-release AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_win_static_x86_64
-                                rm ${WORKSPACE}/.aws_creds_win_static_x86_64
-                            '''
-                        }
-                    }
-                }
-                /*
-                stage('Build Mac OSX release binary X86_64') {
                     when {
-                        environment name: 'BUILD_MAC_RELEASE', value: 'true'
-                    }
-                    agent {
-                        node {
-                            label "osx-node"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}/x86")
+                        anyOf {
+                            environment name: 'BUILD_ALL', value: 'true'
+                            environment name: 'PUBLISH_WINDOWS_BINARIES', value: 'true'
+                            environment name: 'PUBLISH_CHOCO_INSTALLER', value: 'true'
                         }
+                    }
+                    environment {
+                        ARCH = 'x86_64'
+                        WINDOWS = '1'
+                        FEATURES = 'windows_service'
                     }
                     steps {
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]) {
-                            sh '''
-                                source $HOME/.cargo/env
-                                source ~/.bash_profile
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_x86_64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_x86_64
-                                MACOSX_DEPLOYMENT_TARGET=10.14 cargo build --release --target=x86_64-apple-darwin --target-dir x86-target
-                            '''
-                        }
-                    }
-                    post {
-                      always {
-                        sh "cargo clean"
-                        sh "rm -f ${WORKSPACE}/.aws_creds_mac_static_x86_64"
-                      }
+                        sh 'make build-release'
                     }
                 }
-                stage('Build Mac OSX release binary ARM64') {
-                    agent {
-                        node {
-                            label "osx-node"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}/arm")
-                        }
-                    }
-                    steps {
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]) {
-                            sh '''
-                                source $HOME/.cargo/env
-                                source ~/.bash_profile
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_arm64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
-                                MACOSX_DEPLOYMENT_TARGET=10.14 cargo build --release --target-dir arm-target
-                            '''
-                        }
-                    }
-                    post {
-                      always {
-                        sh "cargo clean"
-                        sh "rm -f ${WORKSPACE}/.aws_creds_mac_static_arm64"
-                      }
-                    }
-                }
-                */
             }
         }
         stage('Check Publish Images') {
             stages {
                 stage('Scanning Images') {
+                    when {
+                        anyOf {
+                            environment name: 'PUBLISH_GCR_IMAGE', value: 'true'
+                            environment name: 'PUBLISH_DOCKER_IMAGE', value: 'true'
+                        }
+                    }
                     steps {
                         sh 'ARCH=x86_64 make sysdig_secure_images'
                         script {
@@ -466,43 +319,6 @@ pipeline {
                         }
                     }
                 }
-                /*
-                stage('Publish MAC binaries to S3') {
-                    when {
-                        allOf {
-                            environment name: 'BUILD_MAC_RELEASE', value: 'true'
-                            anyOf {
-                                branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
-                                environment name: 'PUBLISH_BINARIES', value: 'true'
-                            }
-                        }
-                    }
-                    agent {
-                        node {
-                            label "osx-node"
-                            customWorkspace("/tmp/workspace/${env.BUILD_TAG}")
-                        }
-                    }
-                    steps {
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]) {
-                            sh """
-                                source $HOME/.cargo/env
-                                source ~/.bash_profile
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_mac_static_arm64
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_mac_static_arm64
-                                MACOS=1 make publish-s3-binary
-                                rm ${WORKSPACE}/.aws_creds_mac_static_arm64
-                            """
-                        }
-                    }
-                }
-                */
                 stage('Publish GCR images') {
                     when {
                         environment name: 'PUBLISH_GCR_IMAGE', value: 'true'
@@ -514,9 +330,9 @@ pipeline {
                         sh 'make publish-image-multi-gcr'
                     }
                 }
-                stage('Publish Dockerhub and ICR images') {
+                stage('Publish Dockerhub') {
                     when {
-                        environment name: 'PUBLISH_ICR_IMAGE', value: 'true'
+                        environment name: 'PUBLISH_DOCKER_IMAGE', value: 'true'
                     }
                     steps {
                         script {
@@ -529,63 +345,65 @@ pipeline {
                                 sh 'ARCH=aarch64 make publish-image-docker'
                                 sh 'make publish-image-multi-docker'
                             }
-                            // Login and publish to ibm
-                            docker.withRegistry(
-                                'https://icr.io',
-                                'icr-iam-username-password'
-                            ) {
-                                sh 'ARCH=x86_64 make publish-image-ibm'
-                                sh 'ARCH=aarch64 make publish-image-ibm'
-                                sh 'make publish-image-multi-ibm'
+                        }
+                    }
+                }
+                stage('Publish Linux Binaries') {
+                    when {
+                        environment name: 'PUBLISH_LINUX_BINARIES', value: 'true'
+                    }
+                    steps {
+                        script {
+                            withAwsCreds {
+                                sh '''
+                                    ARCH=x86_64 STATIC=1 make publish-s3-binary
+                                    ARCH=aarch64 STATIC=1 make publish-s3-binary
+                                '''
                             }
                         }
                     }
                 }
-                stage('Publish Linux and Windows binaries to S3') {
+
+                stage('Publish Windows Binaries') {
                     when {
-                        anyOf {
-                            branch pattern: "\\d\\.\\d.*", comparator: "REGEXP"
-                            environment name: 'PUBLISH_BINARIES', value: 'true'
-                        }
+                        environment name: 'PUBLISH_WINDOWS_BINARIES', value: 'true'
                     }
                     environment {
-                        CSC_PASS = credentials('chocolatey-api-token')
+                        WINDOWS = '1'
                     }
                     steps {
-                        withCredentials([[
-                            $class: 'AmazonWebServicesCredentialsBinding',
-                            credentialsId: 'aws',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
-                        ]]) {
-                            sh '''
-                                echo "[default]" > ${WORKSPACE}/.aws_creds_static
-                                echo "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}" >> ${WORKSPACE}/.aws_creds_static
-                                echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> ${WORKSPACE}/.aws_creds_static
-                                STATIC=1 make publish-s3-binary
-                                WINDOWS=1 make publish-s3-binary
-                                WINDOWS=1 make msi-release
-                                WINDOWS=1 make test-msi-release
-                                WINDOWS=1 make publish-s3-binary-signed-release
-                                WINDOWS=1 make choco-release
-                                WINDOWS=1 make publish-s3-choco-release
-                                ARCH=x86_64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
-                                ARCH=aarch64 STATIC=1 make publish-s3-binary AWS_SHARED_CREDENTIALS_FILE=${WORKSPACE}/.aws_creds_static
-                                rm ${WORKSPACE}/.aws_creds_static
-                            '''
+                        script {
+                            withAwsCreds {
+                                sh '''
+                                    make publish-s3-binary
+                                    make msi-release
+                                    make test-msi-release
+                                    make publish-s3-binary-signed-release
+                                '''
+                            }
                         }
                     }
                 }
 
-                stage('Publish Installers') {
+                stage('Publish Choco Installer') {
+                    when {
+                        environment name: 'PUBLISH_CHOCO_INSTALLER', value: 'true'
+                    }
                     environment {
                         CHOCO_API_KEY = credentials('chocolatey-api-token')
-                    }
-                    when {
-                        environment name: 'PUBLISH_INSTALLERS', value: 'true'
+                        CSC_PASS = credentials('chocolatey-api-token')
+                        WINDOWS = '1'
                     }
                     steps {
-                        sh 'WINDOWS=1 make publish-choco-release'
+                        script {
+                            withAwsCreds {
+                                sh '''
+                                    make choco-release
+                                    make publish-s3-choco-release
+                                    make publish-choco-release
+                                '''
+                            }
+                        }
                     }
                 }
 
@@ -617,8 +435,10 @@ pipeline {
             }
         }
         always {
-            sh 'ARCH=x86_64 make clean-all'
-            sh 'ARCH=aarch64 make clean-all'
+            sh """
+                ARCH=x86_64 make clean-all
+                ARCH=aarch64 make clean-all
+            """
             cleanWs(deleteDirs: true,
                     // Uncomment the 'cleanWhenFailure: false,' line for debug
                     // cleanWhenFailure: false,
