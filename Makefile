@@ -144,7 +144,7 @@ CHANGE_README_VERSION = awk '{sub(/img\.shields\.io\/badge\/Version-.+?-E9FF92.s
 
 REMOTE_BRANCH ?= $(shell git branch -vv | awk '/^\*/{split(substr($$4, 2, length($$4)-2), arr, "/"); print arr[2]}')
 
-AWS_SHARED_CREDENTIALS_FILE=$(HOME)/.aws/credentials
+AWS_SHARED_CREDENTIALS_FILE?=$(HOME)/.aws/credentials
 
 LOGDNA_HOST?=localhost:1337
 
