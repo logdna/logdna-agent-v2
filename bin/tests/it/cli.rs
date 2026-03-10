@@ -33,7 +33,7 @@ use test_log::test;
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn api_key_missing() {
-    let mut cmd = Command::cargo_bin("logdna-agent").unwrap();
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_logdna-agent"));
     cmd.env_clear()
         .env("RUST_LOG", "debug")
         .assert()
