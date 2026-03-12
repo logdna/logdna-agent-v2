@@ -611,7 +611,7 @@ mod test {
             (watched_dirs, rules, Lookback::None, initial_offsets),
             // For this test, any number divisible by 4 should trigger the recovery behavior.
             // Those values will be dropped from the collected output.
-            |n: &usize| *n % 4 == 0,
+            |n: &usize| (*n).is_multiple_of(4),
             // Builds a closure to produce a stream of incrementing integers using a global
             // state such that a number is only produced once. A number, once produced, will
             // never be produced again across all instances of streams obtained from the closure.

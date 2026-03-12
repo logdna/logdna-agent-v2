@@ -229,7 +229,7 @@ mod tests {
 
     #[tokio::test]
     async fn messages_pass_through() {
-        let input = vec![
+        let input = [
             OffsetLine::new(Line::builder().line("0".to_string()).build().unwrap(), None),
             OffsetLine::new(Line::builder().line("1".to_string()).build().unwrap(), None),
             OffsetLine::new(Line::builder().line("2".to_string()).build().unwrap(), None),
@@ -263,7 +263,7 @@ mod tests {
             .map(|l| OffsetLine::new(l, None))
             .collect();
 
-        assert_eq!(input, lines);
+        assert_eq!(input.as_slice(), lines);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 3)]
@@ -340,7 +340,7 @@ mod tests {
         let stream1 = stream::iter(input1.iter())
             .then(move |n| Delay::new(Duration::from_millis(300)).map(move |_| n));
 
-        let input2 = vec![
+        let input2 = [
             OffsetLine::new(Line::builder().line("5".to_string()).build().unwrap(), None),
             OffsetLine::new(Line::builder().line("6".to_string()).build().unwrap(), None),
             OffsetLine::new(Line::builder().line("7".to_string()).build().unwrap(), None),

@@ -2,7 +2,8 @@
 name = "api"
 version = "0.1.0"
 authors = ["dkhokhlov <dkhokhlov@gmail.com>"]
-edition = "2018"
+edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 http = { package = "mz-http", path = "../common/http" }
