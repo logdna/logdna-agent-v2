@@ -42,7 +42,7 @@ types = { package = "shared_types", path = "../common/misc/shared_types" }
 bytes = "1"
 time = "0.3"
 async-trait = "0.1"
-kube = { version = "0.87", default-features = false, features = ["rustls-tls"] }
+kube = { version = "0.98", default-features = false, features = ["rustls-tls"] }
 env_logger = "0.9"
 anyhow = "1"
 futures = "0.3"
@@ -92,8 +92,8 @@ dhat-ad-hoc = []  # if you are doing ad hoc profiling
 [dev-dependencies]
 assert_cmd = "2"
 escargot = "0.5"
-kube = { version = "0.87", default-features = false, features = ["runtime", "rustls-tls"] }
-k8s-openapi = { version = "0.20.0", default-features = false, features = ["v1_22"] }
+kube = { version = "0.98", default-features = false, features = ["runtime", "rustls-tls"] }
+k8s-openapi = { version = "0.24.0", default-features = false, features = ["earliest"] }
 itertools = "0.10"
 predicates = "3"
 tempfile = "3"

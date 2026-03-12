@@ -24,7 +24,7 @@ pub struct Client {
 
 pub enum SendStatus {
     Sent,
-    Retry(hyper::Error),
+    Retry(hyper_util::client::legacy::Error),
     RetryServerError(hyper::StatusCode, String),
     RetryTimeout,
 }
@@ -58,7 +58,7 @@ impl Client {
             .map(|(sw, sf)| (Some(sw), Some(sf)))
             .unwrap_or((None, None));
         Self {
-            inner: HttpClient::new(template, require_ssl),
+            inner: HttpClient::new(template, require_ssl).expect("failed to create client"),
             limiter: RateLimiter::new(concurrency_limit.unwrap_or(10)),
             retry,
             state_write,
