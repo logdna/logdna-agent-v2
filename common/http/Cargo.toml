@@ -15,7 +15,7 @@ state = { package = "state", path = "../state", default-features=false }
 rate-limit-macro = { package = "rate-limit-macro", path = "../misc/rate-limit/macro" }
 
 #http
-logdna-client = { git = "https://github.com/logdna/logdna-rust.git", rev = "d7b61fa" }
+logdna-client = { git = "https://github.com/logdna/logdna-rust.git", rev = "54bc3a459e4ca3107403f4272ed779a2bce2fcca" }
 
 #io
 tokio = { version = "1", features = ["fs", "io-util", "macros"] }
@@ -24,7 +24,8 @@ async-compat = "0.2.1"
 tracing = "0.1"
 bytes = "1"
 crossbeam = "0.8"
-hyper = { version = "0.14", features = ["http1", "server"] }
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1.20", features = ["server", "service"] }
 uuid = { version = "1", features = ["v4"] }
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"

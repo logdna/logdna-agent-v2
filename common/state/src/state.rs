@@ -412,7 +412,7 @@ mod test {
     #[test]
     fn it_works() {
         let _ = env_logger::Builder::from_default_env().try_init();
-        let data_dir = tempdir().expect("Could not create temp dir").into_path();
+        let data_dir = tempdir().expect("Could not create temp dir").keep();
 
         // create a db, write to it, mutate it, delete entries.
         // The times/delays are significant
@@ -495,7 +495,7 @@ mod test {
         // build a path with multiple levels of missing directories to ensure they're all created
         let missing_state_dir = tempdir()
             .unwrap()
-            .into_path()
+            .keep()
             .join("a")
             .join("ghostly")
             .join("path");

@@ -1,8 +1,8 @@
 use futures::{future, Stream, StreamExt, TryFutureExt, TryStreamExt};
 use hyper::service::Service;
-use hyper::{Body, Request, Response};
+use hyper::{Request, Response};
 use serde::{Deserialize, Serialize};
-
+use hyper::body::Body;
 use serde_json::Value;
 use thiserror::Error;
 use tokio::macros::support::{Future, Pin};
@@ -13,7 +13,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::server::TlsStream;
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::wrappers::TcpListenerStream;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 use std::collections::HashMap;
 use std::convert::From;

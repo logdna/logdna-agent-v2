@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 async-trait = "0.1"
 bytes = "1"
-logdna-client = { git = "https://github.com/logdna/logdna-rust.git", rev = "d7b61fa" }
+logdna-client = { git = "https://github.com/logdna/logdna-rust.git", rev = "54bc3a459e4ca3107403f4272ed779a2bce2fcca" }
 proptest = "1"
 serde_json = "1"
 state = { package = "state", path = "../../state", default-features=false }

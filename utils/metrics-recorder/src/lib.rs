@@ -1,14 +1,15 @@
 use futures::future::{AbortHandle, Abortable};
 use futures::stream;
 use futures::stream::{Stream, StreamExt};
-use hyper::{Client, StatusCode};
+use hyper::StatusCode;
+use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use prometheus_parse::{Sample, Scrape};
 use std::time::Duration;
 
 pub async fn fetch_agent_metrics(
     metrics_port: u16,
 ) -> Result<(StatusCode, Option<String>), hyper::Error> {
-    let client = Client::new();
+    let client = Client::builder(TokioExecutor::new()).build_http();
     let url = format!("http://127.0.0.1:{metrics_port}/metrics")
         .parse()
         .unwrap();
