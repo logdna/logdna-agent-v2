@@ -26,7 +26,7 @@ async fn test_retry_disk_limit() {
     let step_delay_ms = 500;
     let disk_limit = 7 * 1024;
 
-    let log_dir = tempdir().unwrap().into_path();
+    let log_dir = tempdir().unwrap().keep();
     let log_file_path = log_dir.join("test.log");
     let mut log_file = File::create(&log_file_path).expect("Couldn't create temp log file...");
 
@@ -45,7 +45,7 @@ async fn test_retry_disk_limit() {
     });
 
     // Agent Process
-    let retry_dir = tempdir().unwrap().into_path();
+    let retry_dir = tempdir().unwrap().keep();
     let mut settings = AgentSettings::with_mock_ingester(log_dir.to_str().unwrap(), &address);
     let config_file_path = get_config_file(
         timeout,
@@ -96,7 +96,7 @@ async fn test_retry_location() {
     let step_delay_ms = 100;
     let metrics_port = 9881;
 
-    let log_dir = tempdir().unwrap().into_path();
+    let log_dir = tempdir().unwrap().keep();
     let log_file_path = log_dir.join("test.log");
     let mut log_file = File::create(&log_file_path).expect("Couldn't create temp log file...");
 
@@ -118,7 +118,7 @@ async fn test_retry_location() {
     });
 
     // Agent Process
-    let retry_dir = tempdir().unwrap().into_path();
+    let retry_dir = tempdir().unwrap().keep();
 
     let mut settings = AgentSettings::with_mock_ingester(log_dir.to_str().unwrap(), &address);
     let config_file_path = get_config_file(
@@ -164,11 +164,11 @@ async fn test_retry_after_timeout() {
     let base_delay_ms = 300;
     let step_delay_ms = 100;
     let attempts = 10;
-    let retry_dir = tempdir().unwrap().into_path();
+    let retry_dir = tempdir().unwrap().keep();
     let config_file_path =
         get_config_file(timeout, base_delay_ms, step_delay_ms, Some(retry_dir), None);
 
-    let dir = tempdir().unwrap().into_path();
+    let dir = tempdir().unwrap().keep();
     let file_path = dir.join("test.log");
     let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
@@ -248,10 +248,10 @@ async fn test_retry_is_not_made_before_retry_base_delay_ms() {
     // Use a large base delay
     let base_delay_ms = 300_000;
     let timeout = 200;
-    let retry_dir = tempdir().unwrap().into_path();
+    let retry_dir = tempdir().unwrap().keep();
     let config_file_path = get_config_file(timeout, base_delay_ms, 100, Some(retry_dir), None);
 
-    let dir = tempdir().unwrap().into_path();
+    let dir = tempdir().unwrap().keep();
     let file_path = dir.join("test.log");
     let mut file = File::create(&file_path).expect("Couldn't create temp log file...");
 
@@ -327,7 +327,7 @@ async fn test_retry_metrics_emitted() {
     let step_delay_ms = 50;
     let metrics_port = 9882;
 
-    let log_dir = tempdir().unwrap().into_path();
+    let log_dir = tempdir().unwrap().keep();
     let log_file_path = log_dir.join("test.log");
     let mut log_file = File::create(&log_file_path).expect("Couldn't create temp log file...");
 
@@ -353,7 +353,7 @@ async fn test_retry_metrics_emitted() {
 
     // Agent Process
     let mut settings = AgentSettings::with_mock_ingester(log_dir.to_str().unwrap(), &address);
-    let retry_dir = tempdir().unwrap().into_path();
+    let retry_dir = tempdir().unwrap().keep();
     let config_file_path =
         get_config_file(timeout, base_delay_ms, step_delay_ms, Some(retry_dir), None);
     settings.config_file = config_file_path.to_str();
@@ -552,7 +552,7 @@ fn get_config_file(
     retry_dir: Option<PathBuf>,
     retry_disk_limit: Option<u64>,
 ) -> PathBuf {
-    let config_dir = tempdir().unwrap().into_path();
+    let config_dir = tempdir().unwrap().keep();
     let config_file_path = config_dir.join("config.yaml");
     let mut config_file = File::create(&config_file_path).unwrap();
 

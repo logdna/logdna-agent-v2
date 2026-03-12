@@ -99,7 +99,7 @@ predicates = "3"
 tempfile = "3"
 rustls = "0.21"
 rustls-pemfile = "1"
-rcgen = "0.11"
+rcgen = "0.14.7"
 logdna_mock_ingester = { package = "logdna-mock-ingester", path = "../common/test/mock-ingester" }
 logdna-metrics-recorder = { package = "logdna-metrics-recorder", path = "../utils/metrics-recorder" }
 test_types = { package = "types", path = "../common/test/types" }
