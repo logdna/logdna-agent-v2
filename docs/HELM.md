@@ -64,6 +64,10 @@ Parameter | Description | Default
 `extraVolumes` | Additional Volumes | `[]`
 `serviceAccount.create` | Whether to create a service account for this release | `true`
 `serviceAccount.name` | The name of the service account. Defaults to `logdna-agent` unless `serviceAccount.create=false` in which case it defaults to `default` | None
+`podSecurityContext` | The `securityContext` for the agent pods | `add: DAC_READ_SEARCH, drop: all`
+`nodeSelector` | The `nodeSelector` for the agent pods | None
+`podAnnotations` | Additional `annotations` for the agent pods | None
+`secretAnnotations` | Additional `annotations` for the agent secret(s) | None
 
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example:
 
