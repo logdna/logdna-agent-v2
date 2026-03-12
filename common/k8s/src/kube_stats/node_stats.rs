@@ -260,8 +260,7 @@ impl NodeStatsBuilder<'_> {
             }
         }
 
-        if let Some(creation_timestamp) = &self.n.metadata.creation_timestamp {
-            let node_created = creation_timestamp;
+        if let Some(node_created) = &self.n.metadata.creation_timestamp {
             age = Utc::now()
                 .signed_duration_since(node_created.0)
                 .num_milliseconds();
