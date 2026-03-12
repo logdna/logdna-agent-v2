@@ -396,9 +396,9 @@ impl ArgumentOptions {
                 .for_each(|v| values.push(v.clone()));
         }
 
-        if let Some(inclusion) = self.k8s_metadata_line_exclusion {
+        if let Some(exclusion) = self.k8s_metadata_line_exclusion {
             let values = raw.log.k8s_metadata_exclude.get_or_insert(Vec::new());
-            with_csv(inclusion)
+            with_csv(exclusion)
                 .iter()
                 .for_each(|v| values.push(v.clone()));
         }
