@@ -32,7 +32,7 @@ pub struct PodStats {
 }
 
 impl PodStats {
-    pub fn builder(p: &Pod) -> PodStatsBuilder {
+    pub fn builder(p: &Pod) -> PodStatsBuilder<'_> {
         PodStatsBuilder { p }
     }
 }
@@ -42,7 +42,7 @@ pub struct PodStatsBuilder<'a> {
 }
 
 impl PodStatsBuilder<'_> {
-    pub fn new(p: &Pod) -> PodStatsBuilder {
+    pub fn new(p: &Pod) -> PodStatsBuilder<'_> {
         PodStatsBuilder { p }
     }
 
@@ -70,8 +70,8 @@ impl PodStatsBuilder<'_> {
         let pod = self.p.metadata.name.clone().unwrap_or_default();
 
         if let Some(spec) = spec {
-            if spec.priority.is_some() {
-                priority = Some(spec.priority.unwrap());
+            if let Some(p) = spec.priority {
+                priority = Some(p);
             }
 
             if spec.priority_class_name.is_some() {

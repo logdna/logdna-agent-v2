@@ -200,7 +200,7 @@ build: ## Build the agent
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
-	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && llvm-strip ./$(TARGET_DIR)/$(TARGET)/release/logdna-agent${BIN_SUFFIX}"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' CARGO_BUILD_TARGET='$(TARGET)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && llvm-strip ./$(TARGET_DIR)/$(TARGET)/release/logdna-agent${BIN_SUFFIX}"
 
 .PHONY:check
 check: ## Run unit tests
@@ -215,7 +215,7 @@ unit-test:
 
 .PHONY:unit-test-coverage
 unit-code-coverage: ## Run code coverage report and output to HTML
-	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG)" "cargo llvm-cov nextest --ignore-filename-regex=vendor/* --html --output-dir=target/llvm-cov"
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full --env RUST_LOG=$(RUST_LOG) --env CI=true" "cargo llvm-cov nextest --ignore-filename-regex=vendor/* --html --output-dir=target/llvm-cov"
 
 .PHONY:integration-test
 integration-test: ## Run integration tests using image with additional tools

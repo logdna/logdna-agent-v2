@@ -389,16 +389,16 @@ impl ArgumentOptions {
                 .for_each(|v| regex.push(v.clone()));
         }
 
-        if self.k8s_metadata_line_inclusion.is_some() {
+        if let Some(inclusion) = self.k8s_metadata_line_inclusion {
             let values = raw.log.k8s_metadata_include.get_or_insert(Vec::new());
-            with_csv(self.k8s_metadata_line_inclusion.unwrap())
+            with_csv(inclusion)
                 .iter()
                 .for_each(|v| values.push(v.clone()));
         }
 
-        if self.k8s_metadata_line_exclusion.is_some() {
+        if let Some(exclusion) = self.k8s_metadata_line_exclusion {
             let values = raw.log.k8s_metadata_exclude.get_or_insert(Vec::new());
-            with_csv(self.k8s_metadata_line_exclusion.unwrap())
+            with_csv(exclusion)
                 .iter()
                 .for_each(|v| values.push(v.clone()));
         }

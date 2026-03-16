@@ -1,3 +1,13 @@
+# version bump checklist
+# 1) version = "X.Y.Z" in this file
+#       Cargo.toml
+# 2) version in all the k8s yaml image: logdna/logdna-agent-v2:X.Y.Z
+#       k8s/*.yaml
+# 3) update changelog
+#       CHANGELOG.md
+# 4) *optional* run 'cargo update' so that new deps are pulled in
+# 5) once the diff/pr is accepted tag the commit in master X.Y.Z, this will trigger the CI job
+
 [workspace]
 members = [
     "bin",
@@ -18,6 +28,11 @@ members = [
     "common/misc/shared_types",
 ]
 resolver = "2"
+
+[workspace.package]
+edition = "2018"
+rust-version = "1.93.1"
+version = "3.9.0-dev"
 
 [profile.release]
 opt-level = 3

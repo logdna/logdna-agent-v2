@@ -13,7 +13,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio_rustls::server::TlsStream;
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::wrappers::TcpListenerStream;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 use std::collections::HashMap;
 use std::convert::From;
