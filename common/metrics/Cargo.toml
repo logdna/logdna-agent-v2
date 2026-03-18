@@ -8,7 +8,7 @@ rust-version.workspace = true
 [dependencies]
 lazy_static = "1.0"
 json = "0.12"
-prometheus = { version = "0.13", features = ["process"] }
+prometheus = { version = "0.14.0", features = ["process"] }
 tokio = { version= "1", features= ["time"] }
 tracing = "0.1"
 num = "0.4"

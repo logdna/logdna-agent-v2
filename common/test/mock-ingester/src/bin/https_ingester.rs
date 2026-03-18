@@ -1,7 +1,7 @@
 use logdna_mock_ingester::https_ingester;
 use tracing::info;
 
-use rcgen::generate_simple_self_signed;
+use rcgen::{generate_simple_self_signed, CertifiedKey};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -10,15 +10,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let subject_alt_names = vec!["logdna.com".to_string(), "localhost".to_string()];
 
     // The certificate is now valid for localhost and the domain "hello.world.example"
-    let cert = generate_simple_self_signed(subject_alt_names).unwrap();
+    let CertifiedKey { cert, signing_key } =
+        generate_simple_self_signed(subject_alt_names).unwrap();
 
-    let cert_bytes = cert.serialize_pem()?;
-    let certs = rustls_pemfile::certs(&mut std::io::BufReader::new(cert_bytes.as_bytes()))
+    let cert_pem = cert.pem();
+    let certs = rustls_pemfile::certs(&mut std::io::BufReader::new(cert_pem.as_bytes()))
         .map(|certs| certs.into_iter().map(rustls::Certificate).collect())?;
 
-    let key_bytes = cert.serialize_private_key_pem();
+    let key_pem = signing_key.serialize_pem();
     let keys: Vec<rustls::PrivateKey> =
-        rustls_pemfile::pkcs8_private_keys(&mut std::io::BufReader::new(key_bytes.as_bytes()))
+        rustls_pemfile::pkcs8_private_keys(&mut std::io::BufReader::new(key_pem.as_bytes()))
             .map(|keys| keys.into_iter().map(rustls::PrivateKey).collect())?;
 
     let addr = "0.0.0.0:1337".parse().unwrap();

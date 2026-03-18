@@ -1,8 +1,8 @@
 use futures::{future, Stream, StreamExt, TryFutureExt, TryStreamExt};
 use hyper::service::Service;
-use hyper::{Body, Request, Response};
+use hyper::{Request, Response};
 use serde::{Deserialize, Serialize};
-
+use hyper::body::Body;
 use serde_json::Value;
 use thiserror::Error;
 use tokio::macros::support::{Future, Pin};
