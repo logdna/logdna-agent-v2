@@ -2,7 +2,8 @@
 name = "logdna-mock-ingester"
 version = "0.1.0"
 authors = ["Connor Peticca <cjpet10@gmail.com>"]
-edition = "2018"
+edition.workspace = true
+rust-version.workspace = true
 default-run = "https_ingester"
 
 [[bin]]

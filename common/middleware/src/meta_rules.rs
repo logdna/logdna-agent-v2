@@ -5,7 +5,6 @@ use lazy_static::lazy_static;
 use regex::bytes::Regex as RegexB;
 use std::collections::HashMap;
 use std::ops::Deref;
-use tracing::error;
 
 static K8S_LOG_DIR: &str = "/var/log/containers/";
 

@@ -169,23 +169,21 @@ impl NodeStatsBuilder<'_> {
         let pods_unknown = self.n_pods.pods_unknown;
 
         if let Some(spec) = spec {
-            if spec.unschedulable.is_some() {
-                unschedulable = Some(*spec.unschedulable.as_ref().unwrap());
+            if let Some(u) = &spec.unschedulable {
+                unschedulable = Some(*u);
             }
         }
 
         if let Some(status) = status {
-            if status.node_info.is_some() {
-                container_runtime_version
-                    .clone_from(&status.node_info.as_ref().unwrap().container_runtime_version);
+            if let Some(node_info) = &status.node_info {
+                container_runtime_version.clone_from(&node_info.container_runtime_version);
 
-                kernel_version.clone_from(&status.node_info.as_ref().unwrap().kernel_version);
-                kubelet_version.clone_from(&status.node_info.as_ref().unwrap().kubelet_version);
-                os_image.clone_from(&status.node_info.as_ref().unwrap().os_image);
+                kernel_version.clone_from(&node_info.kernel_version);
+                kubelet_version.clone_from(&node_info.kubelet_version);
+                os_image.clone_from(&node_info.os_image);
             }
 
-            if status.allocatable.is_some() {
-                let allocatable = status.allocatable.as_ref().unwrap();
+            if let Some(allocatable) = &status.allocatable {
                 let cpu_quantity = allocatable.get("cpu");
                 let memory_quantity = allocatable.get("memory");
                 let pods_quantity = allocatable.get("pods");
@@ -202,8 +200,7 @@ impl NodeStatsBuilder<'_> {
                     pods_quantity.and_then(|pods_quantity| pods_quantity.0.parse().ok());
             }
 
-            if status.capacity.is_some() {
-                let capacity = status.capacity.as_ref().unwrap();
+            if let Some(capacity) = &status.capacity {
                 let cpu_quantity = capacity.get("cpu");
                 let memory_quantity = capacity.get("memory");
                 let pods_quantity = capacity.get("pods");
@@ -220,9 +217,7 @@ impl NodeStatsBuilder<'_> {
                     pods_quantity.and_then(|pods_quantity| pods_quantity.0.parse().ok());
             }
 
-            if status.addresses.is_some() {
-                let addresses = status.addresses.as_ref().unwrap();
-
+            if let Some(addresses) = &status.addresses {
                 for address in addresses {
                     if address.type_.to_lowercase() == "internalip" {
                         ip.clone_from(&address.address);
@@ -232,9 +227,7 @@ impl NodeStatsBuilder<'_> {
                 }
             }
 
-            if status.conditions.is_some() {
-                let conditions = status.conditions.as_ref().unwrap();
-
+            if let Some(conditions) = &status.conditions {
                 for condition in conditions {
                     if condition.type_.to_lowercase() == "ready" {
                         if condition.last_heartbeat_time.is_some() {
@@ -267,8 +260,7 @@ impl NodeStatsBuilder<'_> {
             }
         }
 
-        if self.n.metadata.creation_timestamp.is_some() {
-            let node_created = self.n.metadata.creation_timestamp.clone().unwrap();
+        if let Some(node_created) = &self.n.metadata.creation_timestamp {
             age = Utc::now()
                 .signed_duration_since(node_created.0)
                 .num_milliseconds();
@@ -276,8 +268,8 @@ impl NodeStatsBuilder<'_> {
             created = node_created.0.timestamp_millis();
         }
 
-        if self.n.metadata.name.is_some() {
-            node.clone_from(self.n.metadata.name.as_ref().unwrap());
+        if let Some(name) = &self.n.metadata.name {
+            node.clone_from(name);
         }
 
         NodeStats {

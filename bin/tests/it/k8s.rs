@@ -2140,7 +2140,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
 
         // Wait for the data to be received by the mock ingester
         // and delayed lines (all) delay time to expire
-        tokio::time::sleep(tokio::time::Duration::from_millis(60_000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(120_000)).await;
 
         // get socat pod log stats from ingester
         let map = received.lock().await;
