@@ -85,6 +85,27 @@ ARG VCS_REF
 ARG VCS_URL
 ARG BUILD_VERSION
 
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
+ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
+
+# hadolint ignore=DL3041
+RUN microdnf update --refresh --best --nodocs --noplugins --setopt=install_weak_deps=0 -y \
+    && microdnf install ca-certificates libcap shadow-utils systemd --best --nodocs --noplugins --setopt=install_weak_deps=0 -y \
+    && groupadd -g 5000 logdna \
+    && useradd -u 5000 -g logdna logdna \
+    && microdnf remove shadow-utils -y \
+    && microdnf clean all \
+    && rm -rf /var/cache/yum
+
+# Copy the agent binary from the build stage
+COPY --from=build /logdna-agent /work/
+WORKDIR /work/
+
+RUN setcap "cap_dac_read_search+p" /work/logdna-agent \
+    && chmod -R 777 .
+
 LABEL org.opencontainers.image.created="${BUILD_TIMESTAMP}"
 LABEL org.opencontainers.image.authors="LogDNA <support@logdna.com>"
 LABEL org.opencontainers.image.url="https://logdna.com"
@@ -97,24 +118,5 @@ LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.ref.name=""
 LABEL org.opencontainers.image.title="LogDNA Agent"
 LABEL org.opencontainers.image.description="The blazingly fast, resource efficient log collection client"
-
-ENV DEBIAN_FRONTEND=noninteractive
-ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
-ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
-
-# Copy the agent binary from the build stage
-COPY --from=build /logdna-agent /work/
-WORKDIR /work/
-
-# hadolint ignore=DL3041
-RUN microdnf update --refresh --best --nodocs --noplugins --setopt=install_weak_deps=0 -y \
-    && microdnf install ca-certificates libcap shadow-utils systemd --best --nodocs --noplugins --setopt=install_weak_deps=0 -y \
-    && chmod -R 777 . \
-    && setcap "cap_dac_read_search+p" /work/logdna-agent \
-    && groupadd -g 5000 logdna \
-    && useradd -u 5000 -g logdna logdna \
-    && microdnf remove shadow-utils -y \
-    && microdnf clean all \
-    && rm -rf /var/cache/yum
 
 CMD ["./logdna-agent"]

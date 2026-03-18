@@ -1,5 +1,6 @@
-use std::collections::HashMap;
+use std::convert::TryInto;
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::{collections::HashMap, time::SystemTime, time::UNIX_EPOCH};
 
 use futures::{AsyncBufReadExt, StreamExt, TryStreamExt};
 use k8s_openapi::api::apps::v1::DaemonSet;
@@ -283,12 +284,7 @@ async fn delete_namespace(client: Client, namespace_name: &str) {
     }
 }
 
-async fn start_line_proxy_pod(
-    client: Client,
-    pod_name: &str,
-    namespace: &str,
-    node_port: u16,
-) -> SocketAddr {
+async fn start_line_proxy_pod(client: Client, pod_name: &str, namespace: &str) -> SocketAddr {
     //// Create socat pod
     let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
     let services: Api<Service> = Api::namespaced(client.clone(), namespace);
@@ -357,7 +353,6 @@ async fn start_line_proxy_pod(
                 {
                     "protocol": "TCP",
                     "port": 80,
-                    "nodePort": node_port,
                 }
             ],
         }
@@ -427,6 +422,26 @@ async fn start_line_proxy_pod(
         .expect("pod has a host ip")
         .parse::<std::net::IpAddr>()
         .expect("host IP should be an IP");
+
+    let services = services.list(&lp).await.unwrap();
+    let node_port = services
+        .iter()
+        .next()
+        .as_ref()
+        .expect("service exists")
+        .spec
+        .as_ref()
+        .expect("spec exists")
+        .ports
+        .as_ref()
+        .expect("ports exists")
+        .first()
+        .expect("ports has items")
+        .node_port
+        .expect("port has node_port")
+        .try_into()
+        .unwrap();
+
     // Get the IP for the node port
     SocketAddr::new(pod_addr, node_port)
 }
@@ -1032,7 +1047,12 @@ fn get_agent_ds_yaml(
     serde_json::from_value(cfgmap).expect("failed to serialize DS manifest")
 }
 
-async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: &str) {
+async fn create_agent_startup_lease_list(
+    client: Client,
+    agent_name: &str,
+    name: &str,
+    namespace: &str,
+) {
     let r = serde_json::from_value(serde_json::json!({
         "apiVersion": "rbac.authorization.k8s.io/v1",
         "kind": "Role",
@@ -1079,7 +1099,7 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
         "subjects": [
             {
                 "kind": "ServiceAccount",
-                "name": namespace,
+                "name": agent_name,
                 "namespace": namespace
             }
         ]
@@ -1152,6 +1172,7 @@ async fn create_agent_startup_lease_list(client: Client, name: &str, namespace: 
 
 async fn create_agent_feature_lease(
     client: Client,
+    agent_name: &str,
     namespace: &str,
     lease_name: &str,
     process: &str,
@@ -1203,7 +1224,7 @@ async fn create_agent_feature_lease(
         "subjects": [
             {
                 "kind": "ServiceAccount",
-                "name": namespace,
+                "name": agent_name,
                 "namespace": namespace
             }
         ]
@@ -1236,6 +1257,16 @@ async fn create_agent_feature_lease(
         .unwrap();
 }
 
+fn make_unique(s: impl AsRef<str>) -> String {
+    // unique enough for the test setup
+    let unique_suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+
+    format!("{}-{}", s.as_ref(), unique_suffix)
+}
+
 #[test(tokio::test)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_k8s_connection() {
@@ -1255,15 +1286,15 @@ async fn test_k8s_enrichment() {
 
     let client = Client::try_default().await.unwrap();
 
-    let socat_pod_name = "socat-listener";
+    let socat_pod_name = make_unique("socat-listener");
     let default_namespace = "default";
     let socat_pod_node_addr =
-        start_line_proxy_pod(client.clone(), socat_pod_name, default_namespace, 30001).await;
+        start_line_proxy_pod(client.clone(), &socat_pod_name, default_namespace).await;
 
     assert!(
         wait_for_pod_ready(
             client.clone(),
-            socat_pod_name,
+            &socat_pod_name,
             default_namespace,
             tokio::time::Duration::from_millis(10_000),
         )
@@ -1271,8 +1302,8 @@ async fn test_k8s_enrichment() {
     );
     info!("pod {} in {} is ready", socat_pod_name, default_namespace);
 
-    let agent_name = "k8s-enrichment";
-    let agent_namespace = "k8s-enrichment";
+    let agent_name = make_unique("k8s-enrichment");
+    let agent_namespace = make_unique("k8s-enrichment");
 
     let (server_result, _) = tokio::join!(server, async {
         let ns = serde_json::from_value(serde_json::json!({
@@ -1290,15 +1321,15 @@ async fn test_k8s_enrichment() {
             client.clone(),
             ingester_public_addr(ingester_addr),
             "ingest-service",
-            agent_namespace,
+            &agent_namespace,
             80,
         )
         .await;
 
         create_agent_ds(
             client.clone(),
-            agent_name,
-            agent_namespace,
+            &agent_name,
+            &agent_namespace,
             &mock_ingester_socket_addr_str,
             "never",
             "always",
@@ -1318,8 +1349,8 @@ async fn test_k8s_enrichment() {
         assert!(
             wait_for_ds_ready(
                 client.clone(),
-                agent_name,
-                agent_namespace,
+                &agent_name,
+                &agent_namespace,
                 tokio::time::Duration::from_millis(10_000),
             )
             .await
@@ -1329,7 +1360,7 @@ async fn test_k8s_enrichment() {
 
         print_pod_logs(
             client.clone(),
-            agent_namespace,
+            &agent_namespace,
             &format!("app={}", &agent_name),
         )
         .await;
@@ -1355,7 +1386,7 @@ async fn test_k8s_enrichment() {
 
         let map = received.lock().await;
 
-        let result = map.iter().find(|(k, _)| k.contains(socat_pod_name));
+        let result = map.iter().find(|(k, _)| k.contains(&socat_pod_name));
         assert!(result.is_some());
 
         let (_, pod_file_info) = result.unwrap();
@@ -1406,11 +1437,11 @@ async fn test_k8s_enrichment() {
     });
 
     // cleanup
-    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
-    delete_service(client.clone(), "ingest-service", agent_namespace).await;
-    delete_namespace(client.clone(), agent_namespace).await;
-    delete_pod(client.clone(), socat_pod_name, default_namespace).await;
-    delete_service(client.clone(), socat_pod_name, default_namespace).await;
+    delete_daemonset(client.clone(), &agent_name, &agent_namespace).await;
+    delete_service(client.clone(), "ingest-service", &agent_namespace).await;
+    delete_namespace(client.clone(), &agent_namespace).await;
+    delete_pod(client.clone(), &socat_pod_name, default_namespace).await;
+    delete_service(client.clone(), &socat_pod_name, default_namespace).await;
 
     server_result.unwrap();
 }
@@ -1434,8 +1465,8 @@ async fn test_k8s_events_logged() {
 
     let client = Client::try_default().await.unwrap();
 
-    let agent_name = "k8s-events-logged";
-    let agent_namespace = "k8s-events-logged";
+    let agent_name = make_unique("k8s-events-logged");
+    let agent_namespace = make_unique("k8s-events-logged");
 
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
@@ -1454,7 +1485,8 @@ async fn test_k8s_events_logged() {
 
         create_agent_feature_lease(
             client.clone(),
-            agent_namespace,
+            &agent_name,
+            &agent_namespace,
             "logdna-agent-k8-events-lease",
             "logdna-agent-k8-events",
         )
@@ -1466,7 +1498,7 @@ async fn test_k8s_events_logged() {
             client.clone(),
             ingester_public_addr(ingester_addr),
             "ingest-service",
-            agent_namespace,
+            &agent_namespace,
             80,
         )
         .await;
@@ -1474,8 +1506,8 @@ async fn test_k8s_events_logged() {
 
         create_agent_ds(
             client.clone(),
-            agent_name,
-            agent_namespace,
+            &agent_name,
+            &agent_namespace,
             &mock_ingester_socket_addr_str,
             "always",
             "always",
@@ -1511,9 +1543,9 @@ async fn test_k8s_events_logged() {
     });
 
     // cleanup
-    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
-    delete_service(client.clone(), "ingest-service", agent_namespace).await;
-    delete_namespace(client.clone(), agent_namespace).await;
+    delete_daemonset(client.clone(), &agent_name, &agent_namespace).await;
+    delete_service(client.clone(), "ingest-service", &agent_namespace).await;
+    delete_namespace(client.clone(), &agent_namespace).await;
 
     server_result.unwrap();
 }
@@ -1530,7 +1562,7 @@ async fn test_k8s_startup_lease_functions() {
     let lease_client: Api<Lease> = Api::namespaced(client.clone(), namespace);
     let lp = ListParams::default().labels(lease_label);
 
-    create_agent_startup_lease_list(client, lease_name, namespace).await;
+    create_agent_startup_lease_list(client, namespace, lease_name, namespace).await;
     let lease_list = lease_client.list(&lp).await;
     assert!(lease_list.as_ref().unwrap().iter().count() > 0);
 
@@ -1554,17 +1586,19 @@ async fn test_k8s_startup_lease_functions() {
 #[test(tokio::test)]
 #[cfg_attr(not(feature = "k8s_tests"), ignore)]
 async fn test_k8s_startup_leases_always_start() {
+    let ingest_service = make_unique("ingest-service");
+
     let (server, received, shutdown_handle, ingester_addr) = common::start_http_ingester();
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
     let client = Client::try_default().await.unwrap();
 
-    let pod_name = "always-lease-listener";
-    let pod_node_addr = start_line_proxy_pod(client.clone(), pod_name, "default", 30002).await;
+    let pod_name = make_unique("always-lease-listener");
+    let pod_node_addr = start_line_proxy_pod(client.clone(), &pod_name, "default").await;
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
-    let agent_name = "k8s-agent-lease";
-    let agent_namespace = "k8s-agent-lease";
+    let agent_name = make_unique("k8s-agent-lease");
+    let agent_namespace = make_unique("k8s-agent-lease");
 
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
@@ -1586,9 +1620,15 @@ async fn test_k8s_startup_leases_always_start() {
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         // Crate Startup Leases
-        let agent_lease_api: Api<Lease> = Api::namespaced(client.clone(), agent_namespace);
+        let agent_lease_api: Api<Lease> = Api::namespaced(client.clone(), &agent_namespace);
         let lp = ListParams::default().labels(agent_lease_label);
-        create_agent_startup_lease_list(client.clone(), agent_lease_name, agent_namespace).await;
+        create_agent_startup_lease_list(
+            client.clone(),
+            &agent_name,
+            agent_lease_name,
+            &agent_namespace,
+        )
+        .await;
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
         // Assert leases were created
@@ -1599,8 +1639,8 @@ async fn test_k8s_startup_leases_always_start() {
         let mock_ingester_socket_addr_str = create_mock_ingester_service(
             client.clone(),
             ingester_public_addr(ingester_addr),
-            "ingest-service",
-            agent_namespace,
+            &ingest_service,
+            &agent_namespace,
             80,
         )
         .await;
@@ -1608,8 +1648,8 @@ async fn test_k8s_startup_leases_always_start() {
 
         create_agent_ds(
             client.clone(),
-            agent_name,
-            agent_namespace,
+            &agent_name,
+            &agent_namespace,
             &mock_ingester_socket_addr_str,
             "always",
             "always",
@@ -1623,7 +1663,7 @@ async fn test_k8s_startup_leases_always_start() {
 
         print_pod_logs(
             client.clone(),
-            agent_namespace,
+            &agent_namespace,
             &format!("app={}", &agent_name),
         )
         .await;
@@ -1648,7 +1688,7 @@ async fn test_k8s_startup_leases_always_start() {
         tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
         let mut map = received.lock().await;
-        let mut result = map.iter().find(|(k, _)| k.contains(pod_name));
+        let mut result = map.iter().find(|(k, _)| k.contains(&pod_name));
         assert!(result.is_none());
         drop(map);
 
@@ -1671,16 +1711,16 @@ async fn test_k8s_startup_leases_always_start() {
         tokio::time::sleep(tokio::time::Duration::from_millis(10_000)).await;
 
         map = received.lock().await;
-        result = map.iter().find(|(k, _)| k.contains(pod_name));
+        result = map.iter().find(|(k, _)| k.contains(&pod_name));
         assert!(result.is_some());
 
         shutdown_handle();
     });
 
     // cleanup
-    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
-    delete_service(client.clone(), "ingest-service", agent_namespace).await;
-    delete_namespace(client.clone(), agent_namespace).await;
+    delete_daemonset(client.clone(), &agent_name, &agent_namespace).await;
+    delete_service(client.clone(), &ingest_service, &agent_namespace).await;
+    delete_namespace(client.clone(), &agent_namespace).await;
 
     server_result.unwrap();
 }
@@ -1694,12 +1734,12 @@ async fn test_k8s_startup_leases_never_start() {
     let client = Client::try_default().await.unwrap();
 
     let pod_name = "off-lease-listener";
-    let pod_node_addr = start_line_proxy_pod(client.clone(), pod_name, "default", 30003).await;
+    let pod_node_addr = start_line_proxy_pod(client.clone(), pod_name, "default").await;
 
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
-    let agent_name = "k8s-agent-lease-off";
-    let agent_namespace = "k8s-agent-lease-off";
+    let agent_name = make_unique("k8s-agent-lease-off");
+    let agent_namespace = make_unique("k8s-agent-lease-off");
 
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
@@ -1722,7 +1762,7 @@ async fn test_k8s_startup_leases_never_start() {
             client.clone(),
             ingester_public_addr(ingester_addr),
             "ingest-service",
-            agent_namespace,
+            &agent_namespace,
             80,
         )
         .await;
@@ -1730,8 +1770,8 @@ async fn test_k8s_startup_leases_never_start() {
 
         create_agent_ds(
             client.clone(),
-            agent_name,
-            agent_namespace,
+            &agent_name,
+            &agent_namespace,
             &mock_ingester_socket_addr_str,
             "always",
             "always",
@@ -1745,7 +1785,7 @@ async fn test_k8s_startup_leases_never_start() {
 
         print_pod_logs(
             client.clone(),
-            agent_namespace,
+            &agent_namespace,
             &format!("app={}", &agent_name),
         )
         .await;
@@ -1777,9 +1817,9 @@ async fn test_k8s_startup_leases_never_start() {
     });
 
     // cleanup
-    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
-    delete_service(client.clone(), "ingest-service", agent_namespace).await;
-    delete_namespace(client.clone(), agent_namespace).await;
+    delete_daemonset(client.clone(), &agent_name, &agent_namespace).await;
+    delete_service(client.clone(), "ingest-service", &agent_namespace).await;
+    delete_namespace(client.clone(), &agent_namespace).await;
 
     server_result.unwrap();
 }
@@ -1793,8 +1833,8 @@ async fn test_metric_stats_aggregator_enabled() {
     let client = Client::try_default().await.unwrap();
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
-    let agent_name = "metric-aggregator";
-    let agent_namespace = "metric-aggregator";
+    let agent_name = make_unique("metric-aggregator");
+    let agent_namespace = make_unique("metric-aggregator");
 
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
@@ -1814,7 +1854,8 @@ async fn test_metric_stats_aggregator_enabled() {
 
         create_agent_feature_lease(
             client.clone(),
-            agent_namespace,
+            &agent_name,
+            &agent_namespace,
             "logdna-agent-reporter-lease",
             "logdna-agent-reporter",
         )
@@ -1825,7 +1866,7 @@ async fn test_metric_stats_aggregator_enabled() {
             client.clone(),
             ingester_public_addr(ingester_addr),
             "ingest-service",
-            agent_namespace,
+            &agent_namespace,
             80,
         )
         .await;
@@ -1833,8 +1874,8 @@ async fn test_metric_stats_aggregator_enabled() {
 
         create_agent_ds(
             client.clone(),
-            agent_name,
-            agent_namespace,
+            &agent_name,
+            &agent_namespace,
             &mock_ingester_socket_addr_str,
             "never",
             "never",
@@ -1873,9 +1914,9 @@ async fn test_metric_stats_aggregator_enabled() {
     });
 
     // cleanup
-    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
-    delete_service(client.clone(), "ingest-service", agent_namespace).await;
-    delete_namespace(client.clone(), agent_namespace).await;
+    delete_daemonset(client.clone(), &agent_name, &agent_namespace).await;
+    delete_service(client.clone(), "ingest-service", &agent_namespace).await;
+    delete_namespace(client.clone(), &agent_namespace).await;
 
     server_result.unwrap();
 }
@@ -1890,8 +1931,8 @@ async fn test_metric_stats_aggregator_disabled() {
 
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
-    let agent_name = "metric-aggregator-disabled";
-    let agent_namespace = "metric-aggregator-disabled";
+    let agent_name = make_unique("metric-aggregator-disabled");
+    let agent_namespace = make_unique("metric-aggregator-disabled");
 
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
@@ -1911,7 +1952,8 @@ async fn test_metric_stats_aggregator_disabled() {
 
         create_agent_feature_lease(
             client.clone(),
-            agent_namespace,
+            &agent_name,
+            &agent_namespace,
             "logdna-agent-reporter-lease",
             "logdna-agent-reporter",
         )
@@ -1922,7 +1964,7 @@ async fn test_metric_stats_aggregator_disabled() {
             client.clone(),
             ingester_public_addr(ingester_addr),
             "ingest-service",
-            agent_namespace,
+            &agent_namespace,
             80,
         )
         .await;
@@ -1930,8 +1972,8 @@ async fn test_metric_stats_aggregator_disabled() {
 
         create_agent_ds(
             client.clone(),
-            agent_name,
-            agent_namespace,
+            &agent_name,
+            &agent_namespace,
             &mock_ingester_socket_addr_str,
             "always",
             "always",
@@ -1969,9 +2011,9 @@ async fn test_metric_stats_aggregator_disabled() {
     });
 
     // cleanup
-    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
-    delete_service(client.clone(), "ingest-service", agent_namespace).await;
-    delete_namespace(client.clone(), agent_namespace).await;
+    delete_daemonset(client.clone(), &agent_name, &agent_namespace).await;
+    delete_service(client.clone(), "ingest-service", &agent_namespace).await;
+    delete_namespace(client.clone(), &agent_namespace).await;
 
     server_result.unwrap();
 }
@@ -1986,8 +2028,8 @@ async fn test_feature_leader_grabbing_lease() {
 
     tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
 
-    let agent_name = "feature-leader";
-    let agent_namespace = "feature-leader";
+    let agent_name = make_unique("feature-leader");
+    let agent_namespace = make_unique("feature-leader");
 
     let (server_result, _) = tokio::join!(server, async {
         tokio::time::sleep(tokio::time::Duration::from_millis(5000)).await;
@@ -2007,14 +2049,15 @@ async fn test_feature_leader_grabbing_lease() {
 
         create_agent_feature_lease(
             client.clone(),
-            agent_namespace,
+            &agent_name,
+            &agent_namespace,
             "logdna-agent-reporter-lease",
             "logdna-agent-reporter",
         )
         .await;
 
         let lease_name = "logdna-agent-reporter-lease".to_string();
-        let lease_api = k8s::lease::get_k8s_lease_api(agent_namespace, client.clone()).await;
+        let lease_api = k8s::lease::get_k8s_lease_api(&agent_namespace, client.clone()).await;
 
         let feature_leader = FeatureLeader::new(
             agent_namespace.to_string(),
@@ -2037,9 +2080,9 @@ async fn test_feature_leader_grabbing_lease() {
     });
 
     // cleanup
-    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
-    delete_service(client.clone(), "ingest-service", agent_namespace).await;
-    delete_namespace(client.clone(), agent_namespace).await;
+    delete_daemonset(client.clone(), &agent_name, &agent_namespace).await;
+    delete_service(client.clone(), "ingest-service", &agent_namespace).await;
+    delete_namespace(client.clone(), &agent_namespace).await;
 
     server_result.unwrap();
 }
@@ -2053,16 +2096,16 @@ async fn test_retry_line_with_missing_pod_metadata() {
 
     let client = Client::try_default().await.unwrap();
 
-    let socat_pod_name = "test-retry-line-socat-listener";
+    let socat_pod_name = make_unique("test-retry-line-socat-listener");
     let default_namespace = "default";
 
     let socat_pod_node_addr =
-        start_line_proxy_pod(client.clone(), socat_pod_name, default_namespace, 30004).await;
+        start_line_proxy_pod(client.clone(), &socat_pod_name, default_namespace).await;
 
     assert!(
         wait_for_pod_ready(
             client.clone(),
-            socat_pod_name,
+            &socat_pod_name,
             default_namespace,
             tokio::time::Duration::from_millis(10_000),
         )
@@ -2073,8 +2116,8 @@ async fn test_retry_line_with_missing_pod_metadata() {
         socat_pod_name, default_namespace
     );
 
-    let agent_name = "test-retry-line-agent";
-    let agent_namespace = "test-retry-line";
+    let agent_name = make_unique("test-retry-line-agent");
+    let agent_namespace = make_unique("test-retry-line");
 
     let (server_result, _) = tokio::join!(server, async {
         let ns = serde_json::from_value(serde_json::json!({
@@ -2092,15 +2135,15 @@ async fn test_retry_line_with_missing_pod_metadata() {
             client.clone(),
             ingester_public_addr(ingester_addr),
             "ingest-service",
-            agent_namespace,
+            &agent_namespace,
             80,
         )
         .await;
 
         create_agent_ds(
             client.clone(),
-            agent_name,
-            agent_namespace,
+            &agent_name,
+            &agent_namespace,
             &mock_ingester_socket_addr_str,
             "never",
             "always",
@@ -2145,7 +2188,7 @@ async fn test_retry_line_with_missing_pod_metadata() {
         // get socat pod log stats from ingester
         let map = received.lock().await;
 
-        let result = map.iter().find(|(k, _)| k.contains(socat_pod_name));
+        let result = map.iter().find(|(k, _)| k.contains(&socat_pod_name));
         info!("received lines: {:#?}", result);
         assert!(result.is_some());
 
@@ -2159,10 +2202,10 @@ async fn test_retry_line_with_missing_pod_metadata() {
     });
 
     // cleanup
-    delete_daemonset(client.clone(), agent_name, agent_namespace).await;
-    delete_namespace(client.clone(), agent_namespace).await;
-    delete_pod(client.clone(), socat_pod_name, default_namespace).await;
-    delete_service(client.clone(), socat_pod_name, default_namespace).await;
+    delete_daemonset(client.clone(), &agent_name, &agent_namespace).await;
+    delete_namespace(client.clone(), &agent_namespace).await;
+    delete_pod(client.clone(), &socat_pod_name, default_namespace).await;
+    delete_service(client.clone(), &socat_pod_name, default_namespace).await;
 
     server_result.unwrap();
 }
