@@ -6,6 +6,8 @@ build: false
 skip_branch_with_pr: true
 
 environment:
+  BINSTALL_NO_CONFIRM: true
+  BINSTALL_DISABLE_TELEMETRY: true
   PATH: c:\OpenSSL-v111-Win64\bin;%PATH%
   OPENSSL_ROOT_DIR: c:\OpenSSL-v111-Win64
   OPENSSL_DIR: c:\OpenSSL-v111-Win64
@@ -21,8 +23,8 @@ install:
   - rustc -vV
   - cargo -vV
   - rustup component add llvm-tools-preview --toolchain stable-x86_64-pc-windows-msvc
-  - cargo install cargo-llvm-cov
-  - cargo install cargo-nextest --locked
+  - ps: Invoke-Expression (Invoke-WebRequest "https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.ps1").Content
+  - cargo binstall cargo-llvm-cov cargo-nextest
 
 test_script:
   - cargo llvm-cov nextest --html

@@ -3,7 +3,7 @@ use regex::Regex;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
-use tracing::{error, warn};
+use tracing::warn;
 
 #[cfg(not(windows))]
 lazy_static! {

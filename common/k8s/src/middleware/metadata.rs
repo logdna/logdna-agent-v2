@@ -224,7 +224,7 @@ impl K8sMetadata {
     ) -> Result<
         (
             impl futures::StreamExt<Item = WatcherEvent<Pod>>,
-            StoreSwapIntent,
+            StoreSwapIntent<'_>,
         ),
         Error,
     > {
@@ -636,7 +636,7 @@ mod tests {
         let matching_file1 = "/var/log/containers/first_file_sample-f39155eb652f5161f4a34b1fbd89a4d361e76ccb6c3cdc0e2c18e0d0abb26516.log";
         let matching_file2 = "/var/log/containers/second_file_sample-f39155eb652f5161f4a34b1fbd89a4d361e76ccb6c3cdc0e2c18e0d0abb26516.log";
         let k8s_meta = get_instance(vec![get_pod_metadata("first", "file")]);
-        let mut lines = vec![
+        let mut lines = [
             LineBuilder::new().line("line 0").file(matching_file1),
             // 1: File not matching
             LineBuilder::new()
