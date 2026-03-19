@@ -331,7 +331,7 @@ fn check_ingest_req_duration(samples: &[Sample]) {
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 async fn test_metrics_endpoint() {
-    let dir = tempdir().expect("Could not create temp dir").into_path();
+    let dir = tempdir().expect("Could not create temp dir").keep();
     let included_file = dir.join("file1.log");
     let metrics_port = 9881;
 

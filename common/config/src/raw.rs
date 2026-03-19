@@ -572,7 +572,7 @@ mod tests {
 
     #[test]
     fn test_properties_file_basic() -> io::Result<()> {
-        let dir = tempdir().unwrap().into_path();
+        let dir = tempdir().unwrap().keep();
         let file_name = dir.join("test.conf");
         fs::write(
             &file_name,
@@ -1304,7 +1304,7 @@ tags = production, stable
 exclude = /path/to/exclude/**, /second/path/to/exclude/**
 
 exclude_regex = /a/regex/exclude.*
-hostname = jorge's-laptop        
+hostname = jorge's-laptop
 ",
         )?;
 
@@ -1375,7 +1375,7 @@ tags = production, stable
 exclude = /path/to/exclude/**, /second/path/to/exclude/**
 
 exclude_regex = /a/regex/exclude.*
-hostname = jorge's-laptop        
+hostname = jorge's-laptop
 ",
         )?;
 
