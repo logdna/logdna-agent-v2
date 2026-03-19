@@ -611,7 +611,7 @@ impl RetryableLine for LazyLineSerializer {
             let delay = delay.replace_nanosecond(0).unwrap();
             let delay = delay.replace_microsecond(0).unwrap();
             delay
-                .replace_millisecond(delay.millisecond() % 250 * 250)
+                .replace_millisecond(delay.millisecond() / 250 * 250)
                 .unwrap()
         };
 
