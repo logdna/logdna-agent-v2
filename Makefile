@@ -65,7 +65,7 @@ VCS_REF := $(shell git rev-parse --short HEAD)
 VCS_URL := https://github.com/logdna/$(REPO)
 BUILD_DATE := $(shell date -u +'%Y%m%d')
 BUILD_TIMESTAMP := $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
-BUILD_VERSION := $(shell sed -nE "s/^version = \"(.+)\"\$$/\1/p" bin/Cargo.toml)
+BUILD_VERSION := $(shell sed -nE "s/^version = \"(.+)\"\$$/\1/p" Cargo.toml)
 BUILD_SLUG ?= $(VCS_REF)
 IMAGE_TAG := $(BUILD_SLUG)-$(ARCH)
 BUILD_NUMBER ?= 0
@@ -134,7 +134,7 @@ BUILD_ENVS:=$(BUILD_ENVS) CARGO_TARGET_DIR=$(TARGET_DIR)
 # Should we profile the benchmarks
 PROFILE?=--profile
 
-CHANGE_BIN_VERSION = awk '{sub(/^version = ".+"$$/, "version = \"$(1)\"")}1' bin/Cargo.toml >> bin/Cargo.toml.tmp && mv bin/Cargo.toml.tmp bin/Cargo.toml
+CHANGE_BIN_VERSION = awk '{sub(/^version = ".+"$$/, "version = \"$(1)\"")}1' Cargo.toml >> Cargo.toml.tmp && mv Cargo.toml.tmp Cargo.toml
 
 CHANGE_K8S_VERSION = sed 's/\(.*\)app\.kubernetes\.io\/version\(.\).*$$/\1app.kubernetes.io\/version\2 $(1)/g' $(2) >> $(2).tmp && mv $(2).tmp $(2)
 
@@ -287,7 +287,8 @@ bump-major-dev: ## Create a new minor beta release and push to github
 	$(call CHANGE_README_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
-	git add bin/Cargo.toml
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
+	git add Cargo.lock Cargo.toml
 	git add docs/README.md
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
@@ -302,7 +303,7 @@ release-major: ## Create a new major beta release and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
-	git add Cargo.lock bin/Cargo.toml
+	git add Cargo.lock Cargo.toml
 	git add docs/README.md
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
@@ -318,7 +319,8 @@ bump-minor-dev: ## Create a new minor beta release and push to github
 	$(call CHANGE_README_VERSION,$(NEW_VERSION))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
-	git add bin/Cargo.toml
+	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
+	git add Cargo.lock Cargo.toml
 	git add docs/README.md
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
@@ -333,7 +335,7 @@ release-minor: ## Create a new minor beta release and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
-	git add Cargo.lock bin/Cargo.toml
+	git add Cargo.lock Cargo.toml
 	git add docs/README.md
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
@@ -351,7 +353,7 @@ release-patch: ## Create a new patch beta release and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
-	git add Cargo.lock bin/Cargo.toml
+	git add Cargo.lock Cargo.toml
 	git add docs/README.md
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
@@ -369,7 +371,7 @@ release-beta: ## Bump the beta version and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
-	git add Cargo.lock bin/Cargo.toml
+	git add Cargo.lock Cargo.toml
 	git add docs/README.md
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
@@ -387,7 +389,7 @@ release: ## Create a new release from the current beta and push to github
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_VERSION,$(NEW_VERSION),$(yaml))))
 	$(foreach yaml,$(wildcard k8s/*.yaml),$(shell $(call CHANGE_K8S_IMAGE,$(NEW_VERSION),$(yaml))))
 	$(RUST_COMMAND) "--env RUST_BACKTRACE=full" "cargo generate-lockfile"
-	git add Cargo.lock bin/Cargo.toml
+	git add Cargo.lock Cargo.toml
 	git add docs/README.md
 	git add -u k8s/
 	git commit -sS -m "Bumping $(BUILD_VERSION) to $(NEW_VERSION)"
