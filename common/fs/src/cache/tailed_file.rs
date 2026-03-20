@@ -1119,7 +1119,7 @@ mod tests {
     }
 
     fn get_line() -> LazyLineSerializer {
-        let file_path = tempdir().unwrap().into_path().join("test.log");
+        let file_path = tempdir().unwrap().keep().join("test.log");
         let file_inner = Arc::new(Mutex::new(TailedFileInner {
             reader: BufReader::new(tokio::fs::File::from_std(
                 OpenOptions::new()

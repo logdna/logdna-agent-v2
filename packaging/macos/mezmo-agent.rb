@@ -4,7 +4,7 @@
 cask "mezmo-agent" do
   arch arm: "arm64", intel: "x86"
 
-  version "3.9.0"
+  version "3.11.2"
   sha256  arm:   "8abcd3f4942fe9ca6ec8c1f5eb6d5cd12c927f1735aa90450d46894f73626318",
           intel: "31f1f3fc276946b15cbdd487a9c0a974bb78336b534b2314cc5f60e5b661b741"
 

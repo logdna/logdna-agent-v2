@@ -538,7 +538,7 @@ fn test_deprecated_environment_variables_should_set_config() {
 #[test]
 #[cfg_attr(not(feature = "integration_tests"), ignore)]
 fn test_command_line_arguments_should_merge_config_from_file() {
-    let config_dir = tempdir().unwrap().into_path();
+    let config_dir = tempdir().unwrap().keep();
     let config_file_path = config_dir.join("config.yaml");
     let mut file = File::create(&config_file_path).unwrap();
     write!(

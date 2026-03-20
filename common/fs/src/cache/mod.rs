@@ -1038,7 +1038,7 @@ impl FileSystem {
             return Ok(None);
         }
 
-        return self.insert_helper(path, events, _entries);
+        self.insert_helper(path, events, _entries)
     }
 
     /// A helper function that should only be used recursively by itself, all other callers should
@@ -2271,7 +2271,7 @@ mod tests {
     #[cfg(unix)]
     async fn filesystem_delete_symlink_to_untracked_dir() -> io::Result<()> {
         let tempdir = TempDir::new()?;
-        let tempdir2 = TempDir::new()?.into_path();
+        let tempdir2 = TempDir::new()?.keep();
         let path = tempdir.path().to_path_buf();
 
         let real_dir_path = tempdir2.join("real_dir_sample");
@@ -2542,7 +2542,7 @@ mod tests {
     #[tokio::test]
     async fn filesystem_move_dir_internal() -> io::Result<()> {
         let _ = env_logger::Builder::from_default_env().try_init();
-        let tempdir = TempDir::new()?.into_path();
+        let tempdir = TempDir::new()?.keep();
         let path = tempdir.clone();
 
         let old_dir_path = path.join("old");
