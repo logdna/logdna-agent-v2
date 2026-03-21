@@ -589,6 +589,7 @@ mod tests {
                 self_link: None,
             },
             items: Vec::new(),
+            types: kube::api::TypeMeta::list::<Pod>(),
         };
 
         let mut controller_map: HashMap<String, ControllerStats> = HashMap::new();
@@ -618,6 +619,7 @@ mod tests {
                 self_link: None,
             },
             items: Vec::new(),
+            types: kube::api::TypeMeta::list::<Node>(),
         };
 
         let mut node_pod_counts_map: HashMap<String, NodePodStats> = HashMap::new();
