@@ -39,6 +39,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tracing::{debug, error, trace, warn};
 
+#[cfg(feature = "integration_tests")]
 lazy_static::lazy_static! {
     static ref MOCK_NO_PODS: bool = std::env::var(config::env_vars::MOCK_NO_PODS).is_ok();
 }
@@ -499,15 +500,19 @@ impl Middleware for K8sMetadata {
             debug!("validate line from file: '{:?}'", file_name);
         });
         if let Some(parse_result) = parse_container_path(file_name) {
-            if !*MOCK_NO_PODS {
+            #[cfg(feature = "integration_tests")]
+            if *MOCK_NO_PODS {
+                return Err(MiddlewareError::Retry(self.name().into()));
+            }
+
+            if let Some(ref store) = self.state.lock().unwrap().store {
                 let obj_ref =
                     ObjectRef::new(&parse_result.pod_name).within(&parse_result.pod_namespace);
-                if let Some(ref store) = self.state.lock().unwrap().store {
-                    if store.get(&obj_ref).is_some() {
-                        return Ok(line);
-                    }
+                if store.get(&obj_ref).is_some() {
+                    return Ok(line);
                 }
             }
+
             // line does not have metadata yet
             return Err(MiddlewareError::Retry(self.name().into()));
         }
