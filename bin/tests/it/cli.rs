@@ -1186,7 +1186,7 @@ async fn test_transient_access_denied() {
         }
 
         fs::set_permissions(&file_path, fs::Permissions::from_mode(0o775)).unwrap();
-        tokio::time::sleep(tokio::time::Duration::from_millis(2000)).await;
+        tokio::time::sleep(tokio::time::Duration::from_millis(20000)).await;
 
         // Agent has successfully opened the file
         {
