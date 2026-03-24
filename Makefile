@@ -108,7 +108,7 @@ ROCKSDB_VERSION=8.3.2
 ifneq ($(WINDOWS),)
 	FEATURES?=windows_service
 	TARGET=$(ARCH)-pc-windows-msvc
-	ARCH_TRIPLE?=$(ARCH)-windows-msvc
+	ARCH_TRIPLE=$(ARCH)-windows-msvc
 	BINDGEN_EXTRA_CLANG_ARGS:=
 	RUSTFLAGS:=
 	RUSTFLAGS:=-Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc
