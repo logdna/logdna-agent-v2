@@ -85,7 +85,6 @@ ARG VCS_REF
 ARG VCS_URL
 ARG BUILD_VERSION
 
-
 ENV DEBIAN_FRONTEND=noninteractive
 ENV _RJEM_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"
 ENV JEMALLOC_SYS_WITH_MALLOC_CONF="narenas:1,tcache:false,dirty_decay_ms:0,muzzy_decay_ms:0"

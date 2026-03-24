@@ -11,11 +11,17 @@ def slugify(str) {
 def withAwsCreds(Closure body) {
     withCredentials([[
         $class: 'AmazonWebServicesCredentialsBinding',
-        credentialsId: 'aws'
+        credentialsId: 'aws',
+        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'
     ]]) {
         def credsFile = "${env.WORKSPACE}/.aws_creds_${UUID.randomUUID()}"
 
-        withEnv(["AWS_SHARED_CREDENTIALS_FILE=${credsFile}"]) {
+        withEnv([
+            "AWS_SHARED_CREDENTIALS_FILE=${credsFile}",
+            "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}",
+            "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
+        ]) {
             sh '''
                 echo "[default]" > $AWS_SHARED_CREDENTIALS_FILE
                 echo "AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID" >> $AWS_SHARED_CREDENTIALS_FILE
@@ -284,11 +290,6 @@ pipeline {
                     }
                 }
             }
-            post {
-                always {
-                    sh 'make clean'
-                }
-            }
         }
         stage('Check Publish Images') {
             stages {
@@ -352,10 +353,14 @@ pipeline {
                         environment name: 'PUBLISH_LINUX_BINARIES', value: 'true'
                     }
                     steps {
-                        sh '''
-                            ARCH=x86_64 STATIC=1 make publish-s3-binary
-                            ARCH=aarch64 STATIC=1 make publish-s3-binary
-                        '''
+                        script {
+                            withAwsCreds {
+                                sh '''
+                                    ARCH=x86_64 STATIC=1 make publish-s3-binary
+                                    ARCH=aarch64 STATIC=1 make publish-s3-binary
+                                '''
+                            }
+                        }
                     }
                 }
 
@@ -367,12 +372,16 @@ pipeline {
                         WINDOWS = '1'
                     }
                     steps {
-                        sh '''
-                            make publish-s3-binary
-                            make msi-release
-                            make test-msi-release
-                            make publish-s3-binary-signed-release
-                        '''
+                        script {
+                            withAwsCreds {
+                                sh '''
+                                    make publish-s3-binary
+                                    make msi-release
+                                    make test-msi-release
+                                    make publish-s3-binary-signed-release
+                                '''
+                            }
+                        }
                     }
                 }
 
@@ -386,11 +395,15 @@ pipeline {
                         WINDOWS = '1'
                     }
                     steps {
-                        sh '''
-                            make choco-release
-                            make publish-s3-choco-release
-                            make publish-choco-release
-                        '''
+                        script {
+                            withAwsCreds {
+                                sh '''
+                                    make choco-release
+                                    make publish-s3-choco-release
+                                    make publish-choco-release
+                                '''
+                            }
+                        }
                     }
                 }
 

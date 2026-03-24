@@ -2325,7 +2325,7 @@ dependencies = [
 [[package]]
 name = "logdna-client"
 version = "0.7.4"
-source = "git+https://github.com/logdna/logdna-rust.git?branch=0.7.x#2e6538b0b0514386e0ef2eb3cd7efae99f8c77d6"
+source = "git+https://github.com/logdna/logdna-rust.git?branch=bump-rustls-and-trust-dns-deps#8c76b3dd28b35d611188ec94331e78bfab763a16"
 dependencies = [
  "async-buf-pool",
  "async-compression",

@@ -108,7 +108,7 @@ ROCKSDB_VERSION=8.3.2
 ifneq ($(WINDOWS),)
 	FEATURES?=windows_service
 	TARGET=$(ARCH)-pc-windows-msvc
-	ARCH_TRIPLE?=$(ARCH)-windows-msvc
+	ARCH_TRIPLE=$(ARCH)-windows-msvc
 	BINDGEN_EXTRA_CLANG_ARGS:=
 	RUSTFLAGS:=
 	RUSTFLAGS:=-Ctarget-feature=+crt-static -Clink-arg=-static -Clink-arg=-static-libstdc++ -Clink-arg=-static-libgcc
@@ -200,7 +200,7 @@ build: ## Build the agent
 
 .PHONY:build-release
 build-release: ## Build a release version of the agent
-	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build $(FEATURES_ARG) --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && llvm-strip ./$(TARGET_DIR)/$(TARGET)/release/logdna-agent${BIN_SUFFIX}"
+	$(UNCACHED_RUST_COMMAND) "$(BUILD_ENV_DOCKER_ARGS) --env RUST_BACKTRACE=full" "XWIN_VERSION=16 RUSTFLAGS='$(RUSTFLAGS)' BINDGEN_EXTRA_CLANG_ARGS='$(BINDGEN_EXTRA_CLANG_ARGS)' $(CARGO_COMMAND) build $(FEATURES_ARG) --verbose --manifest-path bin/Cargo.toml --release $(TARGET_DOCKER_ARG) && llvm-strip ./$(TARGET_DIR)/$(TARGET)/release/logdna-agent${BIN_SUFFIX}"
 
 .PHONY:check
 check: ## Run unit tests
@@ -345,8 +345,8 @@ release-minor: ## Create a new minor beta release and push to github
 
 .PHONY:release-patch
 release-patch: ## Create a new patch beta release and push to github
-	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(MINOR_VERSION))
-	$(eval NEW_VERSION := $(TARGET_BRANCH).$(shell expr $(PATCH_VERSION) + 1))
+	$(eval TARGET_BRANCH := $(MAJOR_VERSION).$(MINOR_VERSION)-dev)
+	$(eval NEW_VERSION := $(MAJOR_VERSION).$(MINOR_VERSION).$(shell expr $(PATCH_VERSION) + 1)-beta.1)
 	@if [ ! "$(REMOTE_BRANCH)" = "$(TARGET_BRANCH)" ]; then echo "Can't create the patch release \"$(NEW_VERSION)\" on the remote branch \"$(REMOTE_BRANCH)\". Please checkout \"$(TARGET_BRANCH)\""; exit 1; fi
 	$(call CHANGE_BIN_VERSION,$(NEW_VERSION))
 	$(call CHANGE_README_VERSION,$(NEW_VERSION))
@@ -409,6 +409,7 @@ build-image: ## Build a docker image as specified in the Dockerfile
 		--platform=linux/${DEB_ARCH_NAME_${ARCH}} \
 		--secret id=aws,src=$(AWS_SHARED_CREDENTIALS_FILE) \
 		--rm \
+		--provenance=false \
 		--build-arg BUILD_ENVS="$(BUILD_ENVS)" \
 		--build-arg BUILD_IMAGE=$(RUST_IMAGE) \
 		--build-arg TARGET=$(TARGET) \
@@ -638,13 +639,13 @@ $(foreach _type, $(BUILD_TYPES), $(eval $(call PUBLISH_S3_CHOCO_RULE,$(_type))))
 define publish_images
 	$(eval VCS_REF_BUILD_NUMBER_SHA:=$(shell echo "$(VCS_REF)$(BUILD_NUMBER)" | sha256sum | head -c 16))
 	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(VCS_REF_BUILD_NUMBER_SHA) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
-	@set -e; \
-	arch=$(shell docker inspect --format "{{.Architecture}}" $(REPO)$(2):$(IMAGE_TAG)); \
+	set -xe; \
+	arch=$(shell docker inspect --format "{{.Architecture}}" $(REPO):$(IMAGE_TAG)); \
 	arr=($(TARGET_VERSIONS)); \
 	for version in $${arr[@]}; do \
-		echo "$(REPO)$(2):$(IMAGE_TAG) -> $(1)$(2):$${version}-$${arch}"; \
-		$(DOCKER) tag $(REPO)$(2):$(IMAGE_TAG) $(1)$(2):$${version}-$${arch}; \
-		$(DOCKER) push $(1)$(2):$${version}-$${arch}; \
+		echo "$(REPO):$(IMAGE_TAG) -> $(1):$${version}-$${arch}"; \
+		$(DOCKER) tag $(REPO):$(IMAGE_TAG) $(1):$${version}-$${arch}; \
+		$(DOCKER) push $(1):$${version}-$${arch}; \
 	done;
 endef
 
@@ -652,14 +653,13 @@ define publish_images_multi
 	$(eval VCS_REF_BUILD_NUMBER_SHA:=$(shell echo "$(VCS_REF)$(BUILD_NUMBER)" | sha256sum | head -c 16))
 	$(eval TARGET_VERSIONS := $(TARGET_TAG) $(shell if [ "$(BETA_VERSION)" = "0" ]; then echo "$(BUILD_VERSION)-$(BUILD_DATE).$(VCS_REF_BUILD_NUMBER_SHA) $(MAJOR_VERSION) $(MAJOR_VERSION).$(MINOR_VERSION)"; fi))
 	@set -e; \
-	rm -rf ~/.docker/manifests; \
 	arr=($(TARGET_VERSIONS)); \
 	for version in $${arr[@]}; do \
-		echo "$(REPO)$(2):$(IMAGE_TAG) -> $(1)$(2):$${version}"; \
-		$(DOCKER) manifest create $(1)$(2):$${version} \
-			--amend $(1)$(2):$${version}-arm64 \
-			--amend $(1)$(2):$${version}-amd64; \
-		$(DOCKER) manifest push $(1)$(2):$${version}; \
+		echo "$(REPO):$(IMAGE_TAG) -> $(1):$${version}"; \
+		$(DOCKER) manifest create $(1):$${version} \
+			--amend $(1):$${version}-arm64 \
+			--amend $(1):$${version}-amd64; \
+		$(DOCKER) manifest push $(1):$${version}; \
 	done;
 endef
 
