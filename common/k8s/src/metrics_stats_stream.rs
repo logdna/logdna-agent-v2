@@ -11,7 +11,7 @@ use kube::{
 };
 use serde_json::Value;
 
-use std::collections::HashMap;
+use hashbrown::{Equivalent, HashMap};
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::{debug, error, info, trace};
@@ -27,6 +27,28 @@ use crate::{
         pod_stats::PodStats,
     },
 };
+
+#[derive(Hash, PartialEq, Eq)]
+pub struct ContainerKey {
+    namespace: String,
+    pod_name: String,
+    container_name: String,
+}
+
+#[derive(Hash, PartialEq, Eq)]
+pub struct ContainerKeyRef<'s> {
+    namespace: &'s str,
+    pod_name: &'s str,
+    container_name: &'s str,
+}
+
+impl<'s> Equivalent<ContainerKey> for ContainerKeyRef<'s> {
+    fn equivalent(&self, key: &ContainerKey) -> bool {
+        self.namespace == key.namespace
+            && self.pod_name == key.pod_name
+            && self.container_name == key.container_name
+    }
+}
 
 pub static LOG_FILE_NAME: &str = "logdna-reporter";
 pub static GENERATE_REPORT_INTERVAL_MS: u64 = 30000;
@@ -93,7 +115,7 @@ async fn process_reporter_info(
     let mut controller_map: HashMap<String, ControllerStats> = HashMap::new();
     let mut node_pod_counts_map: HashMap<String, NodePodStats> = HashMap::new();
     let mut node_container_counts_map: HashMap<String, NodeContainerStats> = HashMap::new();
-    let mut pod_usage_map: HashMap<String, Value> = HashMap::new();
+    let mut pod_usage_map: HashMap<ContainerKey, Value> = HashMap::new();
     let mut node_usage_map: HashMap<String, Value> = HashMap::new();
 
     let mut extended_pod_stats: Vec<ExtendedPodStats> = Vec::new();
@@ -126,22 +148,36 @@ async fn process_reporter_info(
     Ok((pods_strings, node_strings, cluster_stats_string))
 }
 
+/// Append metrics to `pod_usage_map`, sourced from `pod_metrics`.
+///
+/// `pod_usage_map` is keyed by `namespace, pod_name, container_name`.
 fn build_pod_metric_map(
     pod_metrics: ObjectList<DynamicObject>,
-    pod_usage_map: &mut HashMap<String, Value>,
+    pod_usage_map: &mut HashMap<ContainerKey, Value>,
 ) {
     for pod_metric in pod_metrics {
+        let pod_name = pod_metric.metadata.name.as_deref().unwrap_or("");
+        let namespace = pod_metric.metadata.namespace.as_deref().unwrap_or("");
+
         if let Some(containers) = pod_metric.data["containers"].as_array() {
             for container in containers {
-                let container_name = container["name"].as_str();
+                let container_name = match container.get("name").and_then(|name| name.as_str()) {
+                    Some(n) => n,
+                    None => continue,
+                };
 
-                if container_name.is_none() {
-                    continue;
-                }
+                let usage = match container.get("usage").cloned() {
+                    Some(u) => u,
+                    None => continue,
+                };
 
                 pod_usage_map.insert(
-                    container_name.unwrap().to_string(),
-                    container["usage"].clone(),
+                    ContainerKey {
+                        namespace: namespace.to_owned(),
+                        pod_name: pod_name.to_owned(),
+                        container_name: container_name.to_owned(),
+                    },
+                    usage,
                 );
             }
         }
@@ -272,7 +308,7 @@ fn format_cluster_str(cluster_stats: &ClusterStats) -> String {
 fn process_pods(
     pods: ObjectList<Pod>,
     controller_map: &mut HashMap<String, ControllerStats>,
-    pod_usage_map: HashMap<String, Value>,
+    pod_usage_map: HashMap<ContainerKey, Value>,
     extended_pod_stats: &mut Vec<ExtendedPodStats>,
     node_pod_counts_map: &mut HashMap<String, NodePodStats>,
     node_container_counts_map: &mut HashMap<String, NodeContainerStats>,
@@ -423,12 +459,18 @@ fn process_pods(
 }
 
 fn build_extended_pod_stat(
-    pod_usage_map: &HashMap<String, Value>,
+    pod_usage_map: &HashMap<ContainerKey, Value>,
     container: &Container,
     container_status: Option<&ContainerStatus>,
     translated_pod: &PodStats,
 ) -> Option<ExtendedPodStats> {
-    if let Some(usage) = pod_usage_map.get(&container.name) {
+    let key = ContainerKeyRef {
+        namespace: &translated_pod.namespace,
+        pod_name: &translated_pod.pod,
+        container_name: &container.name,
+    };
+
+    if let Some(usage) = pod_usage_map.get(&key) {
         let translated_container = ContainerStats::builder(
             container,
             container_status.as_ref().unwrap(),
@@ -510,7 +552,7 @@ async fn get_all_pods(client: Client) -> Result<ObjectList<Pod>, kube::Error> {
 #[cfg(test)]
 mod tests {
 
-    use std::collections::HashMap;
+    use hashbrown::HashMap;
 
     use k8s_openapi::api::core::v1::{Node, Pod};
     use kube::api::{ListMeta, ObjectList};
@@ -525,7 +567,7 @@ mod tests {
         metrics_stats_stream::{process_nodes, process_pods},
     };
 
-    use super::build_cluster_stats;
+    use super::{build_cluster_stats, ContainerKey};
 
     #[tokio::test]
     async fn test_build_cluster_stats() {
@@ -594,7 +636,7 @@ mod tests {
         let mut controller_map: HashMap<String, ControllerStats> = HashMap::new();
         let mut node_pod_counts_map: HashMap<String, NodePodStats> = HashMap::new();
         let mut node_container_counts_map: HashMap<String, NodeContainerStats> = HashMap::new();
-        let pod_usage_map: HashMap<String, Value> = HashMap::new();
+        let pod_usage_map: HashMap<ContainerKey, Value> = HashMap::new();
 
         let mut extended_pod_stats: Vec<ExtendedPodStats> = Vec::new();
 
